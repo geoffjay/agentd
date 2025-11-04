@@ -1,72 +1,364 @@
 # agentd
 
-A Rust workspace project with multiple daemon services and supporting libraries.
+A modular daemon system for managing notifications, interactive questions, and system monitoring on macOS.
 
-## Project Structure
+## Overview
 
-This project uses Cargo workspaces with all crates located in the `crates/` directory:
+**agentd** is a suite of services and tools designed to provide intelligent, context-aware notifications and interactions. It consists of:
 
-### Daemon Services (with Tokio async runtime)
+- **agent** - Command-line interface for interacting with all services
+- **Agent** - macOS GUI application (GPUI-based)
+- **agentd-notify** - Notification service with REST API
+- **agentd-ask** - Interactive question service with tmux integration
+- **agentd-hook** - Shell hook integration service
+- **agentd-monitor** - System monitoring service
 
-- **agentd-ask** - Ask daemon service
-- **agentd-notify** - Notification daemon service
-- **agentd-hook** - Hook daemon service
-- **agentd-monitor** - Monitoring daemon service
+## Quick Start
 
-All daemon services include:
-- Tokio async runtime
-- Graceful shutdown handling (Ctrl+C)
-- Tracing/logging setup
-- Basic daemon loop structure
-
-### Libraries
-
-- **agentd-wrap** - Wrap functionality library
-- **agentd-ollama** - Ollama integration library
-
-### CLI
-
-- **agentd-cli** - Command-line interface with subcommands for managing daemons
-
-## Building
-
-Build all crates:
 ```bash
-cargo build
+# Clone the repository
+git clone https://github.com/yourusername/agentd.git
+cd agentd
+
+# Install (creates Agent.app bundle)
+cargo xtask install-user
+cargo xtask start-services
+
+# Use the CLI
+agent notify create --title "Hello" --message "agentd is working!"
+agent notify list
+
+# Launch the GUI (if no arguments given)
+agent
 ```
 
-Build a specific crate:
+## Features
+
+### Notification System (agentd-notify)
+
+- **REST API** for creating and managing notifications
+- **Multiple priority levels** (Low, Normal, High, Urgent)
+- **Ephemeral and persistent** notifications
+- **Response handling** for interactive notifications
+- **SQLite storage** for persistence
+- **Filtering and querying** (by status, priority, actionable)
+
+### Ask Service (agentd-ask)
+
+- **tmux integration** - Detects when no tmux sessions are running
+- **Smart notifications** - Asks user questions based on system state
+- **Cooldown logic** - Prevents notification spam
+- **REST API** for triggering checks and answering questions
+
+### CLI (agent)
+
+- **Rich terminal output** with colors and tables
+- **Comprehensive commands** for all services
+- **Easy-to-use** interface for notification management
+
+## Installation
+
+### Prerequisites
+
+- macOS 14+ (tested)
+- Rust 1.75+ ([Install Rust](https://rustup.rs/))
+- Git
+
+### Install
+
 ```bash
-cargo build -p agentd-ask
+# Using cargo xtask (creates Agent.app bundle)
+cargo xtask install-user
+cargo xtask start-services
+
+# Or use the interactive script
+./contrib/scripts/install.sh
 ```
 
-## Running
+**Note:** Installation creates `/Applications/Agent.app` with all binaries and a symlink at `/usr/local/bin/agent`.
 
-Run individual daemon services:
+If you encounter permission errors:
 ```bash
-cargo run -p agentd-ask
-cargo run -p agentd-notify
-cargo run -p agentd-hook
-cargo run -p agentd-monitor
+sudo chown -R $(whoami) /usr/local
 ```
 
-Run the CLI:
+For detailed installation instructions, see [INSTALL.md](INSTALL.md).
+
+## Usage
+
+### CLI Commands
+
 ```bash
-cargo run -p agentd-cli -- --help
+# Notifications
+agent notify create --title "Task" --message "Remember this" --priority high
+agent notify list --actionable
+agent notify get <UUID>
+agent notify respond <UUID> "My answer"
+agent notify delete <UUID>
+
+# Ask Service
+agent ask trigger              # Trigger system checks
+agent ask answer <UUID> "yes"  # Answer a question
+```
+
+### REST API
+
+**Notify Service (port 3000):**
+
+```bash
+# Health check
+curl http://localhost:3000/health
+
+# List notifications
+curl http://localhost:3000/notifications
+
+# Create notification
+curl -X POST http://localhost:3000/notifications \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": {"type": "system"},
+    "lifetime": {"type": "persistent"},
+    "priority": "normal",
+    "title": "Test",
+    "message": "Hello",
+    "requires_response": false
+  }'
+```
+
+**Ask Service (port 3001):**
+
+```bash
+# Health check
+curl http://localhost:3001/health
+
+# Trigger checks
+curl -X POST http://localhost:3001/trigger
+
+# Answer question
+curl -X POST http://localhost:3001/answer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question_id": "UUID",
+    "answer": "yes"
+  }'
+```
+
+## Architecture
+
+### Project Structure
+```
+agentd/
+├── crates/
+│   ├── cli/              # CLI binary (installed as "cli" in Agent.app)
+│   ├── ui/               # GUI binary (installed as "agent" in Agent.app)
+│   ├── notify/           # Notification service daemon
+│   ├── ask/              # Ask service daemon
+│   ├── hook/             # Hook service daemon
+│   ├── monitor/          # Monitor service daemon
+│   ├── ollama/           # Ollama integration (library)
+│   └── wrap/             # Wrapper utilities (library)
+├── contrib/
+│   ├── plists/           # macOS LaunchAgent plist files
+│   └── scripts/          # Installation scripts
+├── docs/                 # Documentation
+└── xtask/                # Installation automation
+```
+
+### Installed Structure (macOS)
+```
+/Applications/Agent.app/
+├── Contents/
+│   ├── Info.plist
+│   ├── MacOS/
+│   │   ├── agent              # GUI application
+│   │   ├── cli                # CLI (symlinked from /usr/local/bin/agent)
+│   │   ├── agentd-notify      # Notification service
+│   │   ├── agentd-ask         # Ask service
+│   │   ├── agentd-hook        # Hook service
+│   │   └── agentd-monitor     # Monitor service
+│   └── Resources/
+│
+/usr/local/bin/agent -> /Applications/Agent.app/Contents/MacOS/cli
+~/Library/LaunchAgents/com.geoffjay.agentd-*.plist
+```
+
+### Service Communication
+Services communicate via REST APIs:
+- agentd-notify: http://localhost:3000
+- agentd-ask: http://localhost:3001
 ```
 
 ## Development
 
-Check all crates:
+### Building
+
 ```bash
-cargo check
+# Build all crates
+cargo build --release
+
+# Build specific crate
+cargo build -p agentd-cli --release
+cargo build -p agentd-notify --release
+cargo build -p agentd-ask --release
 ```
 
-Run tests:
+### Testing
+
 ```bash
+# Run all tests
 cargo test
+
+# Run tests for specific crate
+cargo test -p agentd-cli
+cargo test -p agentd-ask
+
+# Run with output
+cargo test -- --nocapture
 ```
+
+**Test Coverage:**
+- CLI: 61 tests (30 unit + 31 integration)
+- Ask Service: 87 tests (74 unit + 13 integration)
+- **Total: 148+ tests**
+
+### Running Services Locally
+
+```bash
+# Terminal 1: Notify service
+cargo run -p agentd-notify
+
+# Terminal 2: Ask service
+cargo run -p agentd-ask
+
+# Terminal 3: CLI
+cargo run -p agentd-cli -- notify list
+```
+
+### Code Quality
+
+```bash
+# Run clippy
+cargo clippy --all-targets --all-features
+
+# Format code
+cargo fmt
+
+# Check formatting
+cargo fmt -- --check
+```
+
+## Service Management
+
+### Using cargo xtask
+
+```bash
+cargo xtask service-status  # Check if services are running
+cargo xtask start-services  # Start all services
+cargo xtask stop-services   # Stop all services
+```
+
+### Using launchctl
+
+```bash
+# Start a service
+launchctl load ~/Library/LaunchAgents/com.geoffjay.agentd-notify.plist
+
+# Stop a service
+launchctl unload ~/Library/LaunchAgents/com.geoffjay.agentd-notify.plist
+
+# List services
+launchctl list | grep agentd
+```
+
+## Configuration
+
+### Service Ports
+
+- **agentd-notify**: Port 3000 (configurable via environment)
+- **agentd-ask**: Port 3001 (configurable via `ASK_PORT`)
+
+### Log Files
+
+Logs are written to `/usr/local/var/log/`:
+- `agentd-notify.log` / `agentd-notify.err`
+- `agentd-ask.log` / `agentd-ask.err`
+- `agentd-hook.log` / `agentd-hook.err`
+- `agentd-monitor.log` / `agentd-monitor.err`
+
+### Database
+
+The notify service stores data in:
+- `~/.local/share/agentd/notifications.db` (SQLite)
+
+## Uninstallation
+
+```bash
+# Using cargo xtask
+cargo xtask uninstall
+
+# Or manually
+launchctl unload ~/Library/LaunchAgents/com.geoffjay.agentd-*.plist
+rm -f /usr/local/bin/agent
+rm -f /usr/local/bin/agentd-*
+rm -f ~/Library/LaunchAgents/com.geoffjay.agentd-*.plist
+```
+
+## Troubleshooting
+
+### Services won't start
+
+1. Check logs: `tail -f /usr/local/var/log/agentd-*.err`
+2. Check status: `cargo xtask service-status`
+3. Verify ports: `lsof -i :3000` and `lsof -i :3001`
+
+### Permission errors
+
+```bash
+# Fix /usr/local permissions
+sudo chown -R $(whoami) /usr/local/bin
+sudo mkdir -p /usr/local/var/log
+sudo chown -R $(whoami) /usr/local/var
+```
+
+### Cannot connect to service
+
+```bash
+# Test health endpoints
+curl http://localhost:3000/health
+curl http://localhost:3001/health
+
+# Restart services
+cargo xtask stop-services
+cargo xtask start-services
+```
+
+For more troubleshooting, see [INSTALL.md](INSTALL.md).
+
+## Project Status
+
+**Completed:**
+- ✅ Notification service (REST API, SQLite storage)
+- ✅ Ask service (tmux integration, REST API)
+- ✅ CLI with full notification commands
+- ✅ Comprehensive test suite (148+ tests)
+- ✅ macOS LaunchAgent integration
+- ✅ Installation automation
+
+**In Progress:**
+- 🔄 GUI application (GPUI)
+- 🔄 Hook service
+- 🔄 Monitor service
+
+**Planned:**
+- 📋 Additional check types for ask service
+- 📋 Web UI for notifications
+- 📋 Plugin system
+- 📋 AI integration via Ollama
 
 ## License
 
 MIT OR Apache-2.0
+
+## Author
+
+Geoff Johnson

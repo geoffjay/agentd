@@ -1,6 +1,76 @@
-use anyhow::Result;
-use tracing::{info, warn};
+//! Ask service entry point and initialization.
+//!
+//! This module contains the main function that initializes and runs the ask service.
+//! It handles service startup, configuration, health checks, and graceful shutdown.
+//!
+//! # Environment Variables
+//!
+//! The following environment variables configure the service:
+//!
+//! - `ASK_PORT` - The port to bind to (default: 3001)
+//! - `NOTIFY_SERVICE_URL` - Base URL of the notification service (default: http://localhost:3000)
+//! - `RUST_LOG` - Logging configuration (default: info)
+//!
+//! # Service Lifecycle
+//!
+//! 1. **Initialization**: Sets up logging, loads configuration, checks tmux availability
+//! 2. **State Creation**: Initializes application state and notification client
+//! 3. **Health Check**: Verifies notification service connectivity
+//! 4. **Server Start**: Binds to configured port and starts accepting requests
+//! 5. **Background Tasks**: Spawns cleanup task for old questions (runs hourly)
+//! 6. **Graceful Shutdown**: Listens for CTRL+C and shuts down cleanly
+//!
+//! # Examples
+//!
+//! ## Running with default configuration
+//!
+//! ```bash
+//! cargo run
+//! # Starts on port 3001, connects to notification service at http://localhost:3000
+//! ```
+//!
+//! ## Running with custom configuration
+//!
+//! ```bash
+//! ASK_PORT=8080 NOTIFY_SERVICE_URL=http://notify:3000 cargo run
+//! ```
+//!
+//! ## With debug logging
+//!
+//! ```bash
+//! RUST_LOG=debug cargo run
+//! ```
 
+mod api;
+mod error;
+mod notification_client;
+mod state;
+mod tmux_check;
+mod types;
+
+use anyhow::Result;
+use api::{create_router_with_tracing, ApiState};
+use notification_client::NotificationClient;
+use state::AppState;
+use std::env;
+use tracing::{error, info, warn};
+
+/// Service entry point.
+///
+/// Initializes the ask service, sets up all components, and runs the HTTP server
+/// with graceful shutdown support.
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the service starts and stops successfully, or an error
+/// if initialization or runtime fails.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Failed to bind to the configured port
+/// - Invalid port configuration
+/// - Failed to start the HTTP server
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing subscriber for logging
@@ -12,90 +82,77 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    info!("Starting agentd-ask daemon...");
+    info!("Starting agentd-ask service...");
+
+    // Get configuration from environment
+    let port =
+        env::var("ASK_PORT").unwrap_or_else(|_| "3001".to_string()).parse::<u16>().unwrap_or(3001);
+
+    let notify_service_url =
+        env::var("NOTIFY_SERVICE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+
+    info!("Configuration:");
+    info!("  Port: {}", port);
+    info!("  Notification service: {}", notify_service_url);
+
+    // Check if tmux is installed
+    if !tmux_check::is_tmux_installed() {
+        warn!("tmux is not installed - tmux checks will fail");
+    } else {
+        info!("tmux is installed");
+    }
+
+    // Initialize application state
+    let app_state = AppState::new();
+
+    // Initialize notification client
+    let notification_client = NotificationClient::new(notify_service_url.clone());
+
+    // Check notification service health
+    match notification_client.health_check().await {
+        Ok(true) => info!("Notification service is healthy"),
+        Ok(false) => warn!("Notification service returned unhealthy status"),
+        Err(e) => {
+            error!("Failed to connect to notification service: {}", e);
+            warn!("Service will continue, but notifications may fail");
+        }
+    }
+
+    // Create API state
+    let api_state = ApiState {
+        app_state: app_state.clone(),
+        notification_client,
+        notification_service_url: notify_service_url,
+    };
+
+    // Create router with tracing middleware
+    let app = create_router_with_tracing(api_state);
+
+    // Bind to address
+    let addr = format!("0.0.0.0:{port}");
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    info!("Listening on {}", addr);
 
     // Set up graceful shutdown signal handler
     let shutdown_signal = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to install CTRL+C signal handler");
-        warn!("Shutdown signal received, stopping daemon...");
+        tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
+        warn!("Shutdown signal received, stopping service...");
     };
 
-    // Main daemon loop
-    tokio::select! {
-        _ = run_daemon() => {
-            info!("Daemon task completed");
+    // Start background task to clean up old questions
+    let cleanup_state = app_state.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+            info!("Running cleanup of old questions");
+            cleanup_state.cleanup_old_questions().await;
         }
-        _ = shutdown_signal => {
-            info!("Graceful shutdown initiated");
-        }
-    }
+    });
 
-    info!("agentd-ask daemon stopped");
+    // Run the server with graceful shutdown
+    info!("agentd-ask service is ready");
+    axum::serve(listener, app).with_graceful_shutdown(shutdown_signal).await?;
+
+    info!("agentd-ask service stopped");
     Ok(())
-}
-
-async fn run_daemon() {
-    // Main daemon logic goes here
-    loop {
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        // TODO: Implement daemon functionality
-    }
-}
-
-/// Process a message and return a response
-fn process_message(msg: &str) -> Result<String> {
-    if msg.is_empty() {
-        anyhow::bail!("Message cannot be empty");
-    }
-    Ok(format!("Processed: {}", msg))
-}
-
-/// Validate if a request is allowed
-fn validate_request(request: &str) -> bool {
-    !request.is_empty() && request.len() <= 1024
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_process_message_success() {
-        let result = process_message("hello");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "Processed: hello");
-    }
-
-    #[test]
-    fn test_process_message_empty() {
-        let result = process_message("");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "Message cannot be empty");
-    }
-
-    #[test]
-    fn test_validate_request_valid() {
-        assert!(validate_request("valid request"));
-    }
-
-    #[test]
-    fn test_validate_request_empty() {
-        assert!(!validate_request(""));
-    }
-
-    #[test]
-    fn test_validate_request_too_long() {
-        let long_request = "x".repeat(1025);
-        assert!(!validate_request(&long_request));
-    }
-
-    #[tokio::test]
-    async fn test_async_operation() {
-        // Example async test
-        let duration = tokio::time::Duration::from_millis(10);
-        tokio::time::sleep(duration).await;
-        assert!(true);
-    }
 }

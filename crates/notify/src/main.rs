@@ -1,3 +1,65 @@
+//! agentd-notify service entry point.
+//!
+//! This is the main executable for the notification service. It initializes
+//! the storage backend, sets up the REST API server, and starts a background
+//! task to clean up expired notifications.
+//!
+//! # Features
+//!
+//! - SQLite-based persistent notification storage
+//! - REST API on `http://127.0.0.1:3030`
+//! - Automatic cleanup of expired notifications every 5 minutes
+//! - Structured logging with tracing
+//! - Graceful shutdown support
+//!
+//! # Running the Service
+//!
+//! ```bash
+//! # Run with default INFO logging
+//! cargo run -p agentd-notify
+//!
+//! # Run with DEBUG logging
+//! RUST_LOG=debug cargo run -p agentd-notify
+//!
+//! # Run the release build
+//! cargo run -p agentd-notify --release
+//! ```
+//!
+//! # Environment Variables
+//!
+//! - `RUST_LOG` - Controls logging level (e.g., `debug`, `info`, `warn`, `error`)
+//!   Defaults to `info` if not set.
+//!
+//! # API Endpoints
+//!
+//! Once running, the service exposes the following endpoints:
+//!
+//! - `GET /health` - Health check
+//! - `GET /notifications` - List all notifications
+//! - `POST /notifications` - Create a notification
+//! - `GET /notifications/:id` - Get a specific notification
+//! - `PUT /notifications/:id` - Update a notification
+//! - `DELETE /notifications/:id` - Delete a notification
+//! - `GET /notifications/actionable` - List actionable notifications
+//! - `GET /notifications/history` - List notification history
+//!
+//! # Database Location
+//!
+//! The SQLite database is stored at a platform-specific location:
+//! - Linux: `~/.local/share/agentd-notify/notify.db`
+//! - macOS: `~/Library/Application Support/agentd-notify/notify.db`
+//! - Windows: `C:\Users\<user>\AppData\Local\agentd-notify\notify.db`
+//!
+//! # Examples
+//!
+//! ```bash
+//! # Start the service
+//! cargo run -p agentd-notify
+//!
+//! # In another terminal, test the API
+//! curl http://localhost:3030/health
+//! ```
+
 mod api;
 mod notification;
 mod storage;
@@ -8,6 +70,30 @@ use storage::NotificationStorage;
 use tokio::time::{interval, Duration};
 use tracing::{info, warn};
 
+/// Main entry point for the agentd-notify service.
+///
+/// This function performs the following initialization steps:
+/// 1. Sets up structured logging with tracing
+/// 2. Initializes the SQLite storage backend
+/// 3. Spawns a background task for cleaning up expired notifications
+/// 4. Creates and configures the Axum HTTP router
+/// 5. Starts the HTTP server on `127.0.0.1:3030`
+///
+/// # Returns
+///
+/// Returns `Ok(())` on successful shutdown, or an error if initialization
+/// or server startup fails.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Unable to initialize the database
+/// - Unable to bind to the network address
+/// - The HTTP server encounters a fatal error
+///
+/// # Panics
+///
+/// Does not panic under normal operation.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize tracing subscriber for logging
@@ -22,10 +108,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize SQLite storage
     let storage = NotificationStorage::new().await?;
-    info!(
-        "Notification storage initialized at: {:?}",
-        NotificationStorage::get_db_path()?
-    );
+    info!("Notification storage initialized at: {:?}", NotificationStorage::get_db_path()?);
 
     // Wrap storage for sharing
     let storage = Arc::new(storage);
@@ -50,9 +133,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Create API state and router
-    let api_state = ApiState {
-        storage: storage.clone(),
-    };
+    let api_state = ApiState { storage: storage.clone() };
     let app = create_router(api_state);
 
     // Bind to address

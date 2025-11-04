@@ -1,0 +1,10 @@
+[alias]
+xtask = "run --package xtask --"
+
+[doc]
+rustdoc-line-numbers = true
+rustdoc-preferred-dark-theme = "ayu"
+rustdoc-sans-serif-fonts = true
+rustdoc-theme = "ayu"
+rustdoc-use-system-theme = true
+summaryCollapsed = "expand"

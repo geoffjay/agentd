@@ -1,3 +1,58 @@
-target/
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
 
+# Cargo
+Cargo.lock
+# Allow Cargo.lock for binary projects
+!/Cargo.lock
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+*.err
+
+# Environment
+.env
+.env.local
+
+# Testing
+.tarpaulin/
+coverage/
+
+# Vim
+tags
+tags.lock
+tags.temp
+
+# Other
+.env
+
+# AI
 .claude/settings.local.json

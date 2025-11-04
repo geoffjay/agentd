@@ -16,9 +16,7 @@ async fn main() -> Result<()> {
 
     // Set up graceful shutdown signal handler
     let shutdown_signal = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to install CTRL+C signal handler");
+        tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
         warn!("Shutdown signal received, stopping daemon...");
     };
 

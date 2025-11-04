@@ -2,23 +2,25 @@
 resolver = "2"
 members = [
     "crates/ask",
-    "crates/notify",
+    "crates/cli",
     "crates/hook",
     "crates/monitor",
-    "crates/wrap",
+    "crates/notify",
     "crates/ollama",
-    "crates/cli",
+    "crates/ui",
+    "crates/wrap",
+    "crates/xtask",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Geoff"]
+authors = ["Geoff Johnson"]
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 # Async runtime
-tokio = { version = "1.41", features = ["full"] }
+tokio = { version = "1.48", features = ["full"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -34,3 +36,6 @@ thiserror = "2.0"
 
 # CLI
 clap = { version = "4.5", features = ["derive"] }
+
+# GUI
+gpui = { git = "https://github.com/zed-industries/zed" }
