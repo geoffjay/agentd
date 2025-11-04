@@ -15,83 +15,49 @@ The Notification Service (agentd-notify) is a daemon that manages user notificat
 
 ## Technology Stack
 
-### Common Components
+### Core Components
 
 - **Language**: Rust
 - **Runtime**: Tokio async runtime
-- **Database**: SQLite (via sqlx) for notification history
+- **Database**: SQLite (via sqlx) for persistent notification storage
 - **API Framework**: Axum for HTTP server
-- **Configuration**: TOML format
+- **Configuration**: TOML format with `directories` crate for platform paths
 - **Logging**: tracing + tracing-subscriber
 
-### Approach 1: System Notifications (notify-rust)
+### UI Architecture: Hybrid tray-icon + GPUI
 
 ```toml
 [dependencies]
-notify-rust = "4"          # Cross-platform system notifications
-# On macOS: Uses NSUserNotificationCenter
-# On Linux: Uses D-Bus (libnotify)
-# On Windows: Uses Windows Toast API
+# System tray integration
+tray-icon = "0.19"          # Native system tray/menu bar
+                            # On macOS: Uses NSStatusBar
+                            # On Linux: Uses freedesktop system tray spec
+
+# Rich notification UI
+gpui = { git = "https://github.com/zed-industries/zed" }  # GPU-accelerated UI framework
+
+# Storage and utilities
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+directories = "5.0"         # Platform-independent directory locations
 ```
 
 **Capabilities:**
 
-- Display notifications with title, body, icon
-- Add action buttons (limited platform support)
-- Handle button clicks
-- Set notification urgency/priority
-- Play notification sounds
+- **Tray Icon**: Native system tray integration with menus
+- **GPUI Windows**: Beautiful, performant notification windows
+- **Rich Interactions**: Complex forms, multiple input types
+- **Custom Styling**: Full control over notification appearance
+- **Persistent Storage**: SQLite database for notification history
+- **Response Tracking**: Store and retrieve user responses
+- **Platform Support**: macOS and Linux
 
-**Limitations:**
+**Architecture Benefits:**
 
-- Action button support varies by platform
-- Limited input types (mostly buttons)
-- macOS Notification Center requires signed app for actions
-- No complex forms or multi-step interactions
-
-### Approach 2: Custom Menu Bar Application
-
-```toml
-[dependencies]
-tao = "0.16"               # Cross-platform windowing
-egui = "0.27"              # Immediate mode GUI
-egui-notify = "0.14"       # Notification overlays
-tray-icon = "0.14"         # System tray/menu bar
-rfd = "0.14"               # Native file dialogs
-```
-
-**Capabilities:**
-
-- Rich interactive forms
-- Multiple input types (text, select, checkbox, radio)
-- Custom styling and branding
-- Better multi-step workflows
-- More control over notification persistence
-- Better visual feedback
-
-**Limitations:**
-
-- More complex to implement
-- Requires app to be always running
-- Higher resource usage
-- Need to handle app lifecycle (minimize, quit, etc.)
-
-## Recommended Hybrid Approach
-
-Start with **notify-rust** for MVP, design with **custom UI** as future upgrade path:
-
-1. **Phase 1**: Implement with notify-rust
-
-   - Fast time-to-value
-   - Leverage existing OS notification infrastructure
-   - Works across platforms immediately
-   - Simpler codebase
-
-2. **Phase 2**: Add custom menu bar UI as opt-in
-   - Config option: `notification.ui_mode = "system" | "menubar"`
-   - Reuse API layer and notification models
-   - Enhanced UX for power users
-   - Side-by-side comparison of approaches
+- Best of both worlds: native tray + custom rendering
+- GPUI provides excellent performance for interactive UI
+- Tray icon gives OS-native integration
+- SQLite ensures data persistence across restarts
+- Clean separation between tray (menu) and windows (forms)
 
 ## Architecture
 
@@ -104,19 +70,20 @@ agentd-notify/
 │   ├── main.rs              # Entry point, daemon management
 │   ├── lib.rs               # Library exports
 │   ├── config.rs            # Configuration handling
-│   ├── db/
-│   │   ├── mod.rs
-│   │   ├── schema.rs        # SQL schema
-│   │   └── models.rs        # Notification, Response models
+│   ├── notification.rs      # Notification data models
+│   ├── storage.rs           # SQLite storage layer
 │   ├── api/
 │   │   ├── mod.rs
 │   │   ├── server.rs        # HTTP API server (axum)
 │   │   └── handlers.rs      # Route handlers
-│   ├── notifier/
+│   ├── tray/
 │   │   ├── mod.rs
-│   │   ├── system.rs        # System notifications (notify-rust)
-│   │   ├── menubar.rs       # Custom menu bar UI (future)
-│   │   └── trait.rs         # Notifier trait for abstraction
+│   │   └── menu.rs          # Tray icon and menu handling
+│   ├── ui/
+│   │   ├── mod.rs
+│   │   ├── window.rs        # GPUI window management
+│   │   ├── notification_view.rs  # Notification UI components
+│   │   └── theme.rs         # GPUI theming and styles
 │   └── daemon/
 │       ├── mod.rs
 │       └── service.rs       # Service management (systemd/launchd)
@@ -275,12 +242,19 @@ Using `directories` crate for platform-specific paths:
 
 - Config: `~/Library/Application Support/agentd-notify/config.toml`
 - Data: `~/Library/Application Support/agentd-notify/notify.db`
-- Logs: `~/Library/Application Support/agentd-notify/notify.log`
+- Logs: `~/Library/Logs/agentd-notify/notify.log`
 
-**Windows:**
+**Platform-independent code:**
 
-- Config: `C:\Users\<User>\AppData\Roaming\agentd-notify\config.toml`
-- Data: `C:\Users\<User>\AppData\Roaming\agentd-notify\notify.db`
+```rust
+use directories::ProjectDirs;
+
+let proj_dirs = ProjectDirs::from("", "", "agentd-notify")
+    .expect("Failed to determine project directories");
+
+let config_path = proj_dirs.config_dir().join("config.toml");
+let db_path = proj_dirs.data_dir().join("notify.db");
+```
 
 ### config.toml
 
@@ -665,56 +639,58 @@ async fn cleanup_expired_notifications(db: &Pool<Sqlite>) -> Result<()> {
 
 ## Implementation Phases
 
-### Phase 1: MVP with System Notifications
+### Phase 1: Core Infrastructure
 
-- [ ] Database schema and migrations
-- [ ] Configuration loading
+- [x] Notification data models with hybrid lifetime support
+- [x] SQLite storage layer with async operations
+- [ ] Database schema and migrations with sqlx
+- [ ] Configuration loading with `directories` crate
 - [ ] HTTP API server (axum)
-- [ ] Basic notification storage
-- [ ] System notifications via notify-rust
-- [ ] Button action handling
-- [ ] Response polling endpoint
-- [ ] Basic fallback for select/input (dialogs or buttons)
 - [ ] Daemon management (systemd/launchd)
 
-### Phase 2: Enhanced System Notifications
+### Phase 2: Tray Icon & Basic UI
 
-- [ ] Better fallback UI for complex actions
-- [ ] Notification history UI (CLI)
+- [ ] System tray icon with tray-icon
+- [ ] Basic tray menu (show history, quit)
+- [ ] GPUI application setup
+- [ ] Basic notification window
+- [ ] Simple notification display
+
+### Phase 3: Rich Notification UI
+
+- [ ] GPUI notification components
+- [ ] Form input handling (text, select, checkbox)
+- [ ] Action button handling
+- [ ] Response capture and storage
 - [ ] Notification expiration handling
-- [ ] Queue management
+- [ ] Theme and styling
+
+### Phase 4: Advanced Features
+
+- [ ] Notification queue management
 - [ ] Priority/urgency handling
-- [ ] Sound customization
-
-### Phase 3: Custom Menu Bar UI (Future)
-
-- [ ] Tray icon with menu
-- [ ] Custom notification overlay
-- [ ] Rich input forms
-- [ ] Config option to switch modes
-- [ ] Migration path from system to menubar
+- [ ] Notification history browser (GPUI window)
+- [ ] Background cleanup tasks
+- [ ] Ephemeral vs persistent notification handling
+- [ ] Sound notifications
 
 ## Platform-Specific Considerations
 
 ### macOS
 
-- **Notification Center**: Requires signed app for action buttons
-- **Permission**: User must grant notification permission
-- **Sound**: Custom sounds need to be bundled
-- **Menu Bar**: Native look and feel with `tray-icon`
+- **Menu Bar**: Native look and feel with `tray-icon` using NSStatusBar
+- **GPUI**: Excellent performance on Metal backend
+- **Permissions**: May need accessibility permissions for some features
+- **Sound**: Custom sounds can be bundled with app
+- **Code Signing**: Recommended for distribution
 
 ### Linux
 
-- **D-Bus**: Depends on notification daemon (dunst, mako, etc.)
-- **Action Support**: Varies by daemon
-- **Desktop Files**: May need .desktop file for proper display
-- **Wayland vs X11**: Ensure compatibility
-
-### Windows
-
-- **Toast Notifications**: Good action button support
-- **Focus Assist**: Notifications may be suppressed
-- **Tray Icon**: Different conventions than macOS/Linux
+- **System Tray**: Uses freedesktop system tray specification
+- **Compositor**: GPUI requires modern compositor support
+- **Wayland**: Full support via GPUI's Wayland backend
+- **X11**: Also supported via GPUI
+- **Desktop Files**: May need .desktop file for proper integration
 
 ## Security Considerations
 
@@ -751,9 +727,10 @@ async fn cleanup_expired_notifications(db: &Pool<Sqlite>) -> Result<()> {
 
 1. **Response Time**: < 100ms API response time
 2. **Reliability**: Notifications always displayed
-3. **Compatibility**: Works on macOS, Linux, Windows
-4. **Usability**: Clear, actionable notifications
-5. **Performance**: Low resource usage when idle
+3. **Compatibility**: Works on macOS and Linux
+4. **Usability**: Clear, actionable notifications with rich UI
+5. **Performance**: Low resource usage when idle, smooth 60fps UI
+6. **Persistence**: Notification history survives daemon restarts
 
 ## Open Questions
 

@@ -16,3 +16,19 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+# HTTP API server
+axum = "0.8.6"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Database
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "chrono", "uuid"] }
+
+# Additional utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+directories = "6.0.0"
+
+[dev-dependencies]
+tempfile = "3.14"
