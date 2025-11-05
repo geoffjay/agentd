@@ -86,6 +86,10 @@ use std::env;
 #[command(name = "agent")]
 #[command(author, version, about = "CLI for interacting with agentd services", long_about = None)]
 struct Cli {
+    /// Output raw JSON responses instead of formatted text
+    #[arg(long, global = true)]
+    json: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -159,14 +163,14 @@ async fn main() -> Result<()> {
             let url = env::var("NOTIFY_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7004".to_string());
             let client = NotifyClient::new(url);
-            command.execute(&client).await?;
+            command.execute(&client, cli.json).await?;
         }
         Commands::Ask { command } => {
             // Use ASK_SERVICE_URL env var, default to production port
             let url =
                 env::var("ASK_SERVICE_URL").unwrap_or_else(|_| "http://localhost:7001".to_string());
             let client = AskClient::new(url);
-            command.execute(&client).await?;
+            command.execute(&client, cli.json).await?;
         }
         Commands::Hook => {
             println!("Starting hook daemon...");

@@ -84,15 +84,16 @@ impl AskCommand {
     /// # Arguments
     ///
     /// * `client` - The ask service client
+    /// * `json` - If true, output raw JSON instead of formatted text
     ///
     /// # Returns
     ///
     /// Returns `Ok(())` on success, or an error if the command fails.
-    pub async fn execute(&self, client: &AskClient) -> Result<()> {
+    pub async fn execute(&self, client: &AskClient, json: bool) -> Result<()> {
         match self {
-            AskCommand::Trigger => trigger_checks(client).await,
+            AskCommand::Trigger => trigger_checks(client, json).await,
             AskCommand::Answer { question_id, answer } => {
-                answer_question(client, question_id, answer).await
+                answer_question(client, question_id, answer, json).await
             }
         }
     }
@@ -114,11 +115,15 @@ impl AskCommand {
 /// # Errors
 ///
 /// Returns an error if the network request fails or the ask service is not running.
-async fn trigger_checks(client: &AskClient) -> Result<()> {
-    println!("{}", "Triggering ask service checks...".cyan());
-
+async fn trigger_checks(client: &AskClient, json: bool) -> Result<()> {
     let response = client.trigger_checks().await.context("Failed to trigger checks. Is the ask service running?")?;
 
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+        return Ok(());
+    }
+
+    println!("{}", "Triggering ask service checks...".cyan());
     println!();
     println!("{}", "✓ Checks completed successfully!".green().bold());
     println!();
@@ -162,10 +167,8 @@ async fn trigger_checks(client: &AskClient) -> Result<()> {
 /// - The network request fails
 /// - The ask service is not running
 /// - The question is not found
-async fn answer_question(client: &AskClient, question_id: &str, answer: &str) -> Result<()> {
+async fn answer_question(client: &AskClient, question_id: &str, answer: &str, json: bool) -> Result<()> {
     let uuid = Uuid::parse_str(question_id).context("Invalid question UUID format")?;
-
-    println!("{}", format!("Submitting answer to question {uuid}...").cyan());
 
     let request = AnswerRequest { question_id: uuid, answer: answer.to_string() };
 
@@ -174,10 +177,15 @@ async fn answer_question(client: &AskClient, question_id: &str, answer: &str) ->
         .await
         .context("Failed to submit answer. Is the ask service running?")?;
 
-    println!();
-    println!("{}", "✓ Answer submitted successfully!".green().bold());
-    println!();
-    println!("{}: {}", "Message".bold(), response.message);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        println!("{}", format!("Submitting answer to question {uuid}...").cyan());
+        println!();
+        println!("{}", "✓ Answer submitted successfully!".green().bold());
+        println!();
+        println!("{}: {}", "Message".bold(), response.message);
+    }
 
     Ok(())
 }

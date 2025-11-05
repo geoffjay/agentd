@@ -131,6 +131,18 @@ pub enum NotifyCommand {
         actionable: bool,
     },
 
+    /// Get the total count of notifications.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// # Get total count
+    /// agent notify count
+    ///
+    /// # Shows total and breakdown by status
+    /// ```
+    Count,
+
     /// Delete a notification by its UUID.
     ///
     /// # Examples
@@ -178,11 +190,12 @@ impl NotifyCommand {
     /// # Arguments
     ///
     /// * `client` - The notification service client
+    /// * `json` - If true, output raw JSON instead of formatted text
     ///
     /// # Returns
     ///
     /// Returns `Ok(())` on success, or an error if the command fails.
-    pub async fn execute(&self, client: &NotifyClient) -> Result<()> {
+    pub async fn execute(&self, client: &NotifyClient, json: bool) -> Result<()> {
         match self {
             NotifyCommand::Create {
                 source,
@@ -202,17 +215,19 @@ impl NotifyCommand {
                     title,
                     message,
                     *requires_response,
+                    json,
                 )
                 .await
             }
             NotifyCommand::List { status, actionable } => {
-                list_notifications(client, status.as_deref(), *actionable).await
+                list_notifications(client, status.as_deref(), *actionable, json).await
             }
-            NotifyCommand::Delete { id } => delete_notification(client, id).await,
+            NotifyCommand::Count => count_notifications(client, json).await,
+            NotifyCommand::Delete { id } => delete_notification(client, id, json).await,
             NotifyCommand::Respond { id, response } => {
-                respond_to_notification(client, id, response).await
+                respond_to_notification(client, id, response, json).await
             }
-            NotifyCommand::Get { id } => get_notification(client, id).await,
+            NotifyCommand::Get { id } => get_notification(client, id, json).await,
         }
     }
 }
@@ -253,6 +268,7 @@ async fn create_notification(
     title: &str,
     message: &str,
     requires_response: bool,
+    json: bool,
 ) -> Result<()> {
     // Parse source
     let source = match source.to_lowercase().as_str() {
@@ -292,9 +308,13 @@ async fn create_notification(
         .await
         .context("Failed to create notification")?;
 
-    println!("{}", "Notification created successfully!".green().bold());
-    println!();
-    display_notification(&notification);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&notification)?);
+    } else {
+        println!("{}", "Notification created successfully!".green().bold());
+        println!();
+        display_notification(&notification);
+    }
 
     Ok(())
 }
@@ -321,6 +341,7 @@ async fn list_notifications(
     client: &NotifyClient,
     status: Option<&str>,
     actionable: bool,
+    json: bool,
 ) -> Result<()> {
     let notifications = if actionable {
         client
@@ -338,6 +359,11 @@ async fn list_notifications(
     } else {
         client.list_notifications().await.context("Failed to fetch notifications")?
     };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&notifications)?);
+        return Ok(());
+    }
 
     if notifications.is_empty() {
         println!("{}", "No notifications found.".yellow());
@@ -384,6 +410,63 @@ async fn list_notifications(
     Ok(())
 }
 
+/// Get and display notification counts grouped by status.
+///
+/// Fetches notification statistics from the API and displays the total count
+/// along with a breakdown by status.
+///
+/// # Arguments
+///
+/// * `client` - Notification service client
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success after displaying the counts.
+///
+/// # Errors
+///
+/// Returns an error if the network request fails or API returns an error.
+async fn count_notifications(client: &NotifyClient, json: bool) -> Result<()> {
+    let counts = client.count_notifications().await.context("Failed to fetch notification counts")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&counts)?);
+        return Ok(());
+    }
+
+    println!("{}", format!("Total: {}", counts.total).cyan().bold());
+    println!();
+
+    if !counts.by_status.is_empty() {
+        let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        table.set_titles(Row::new(vec![
+            Cell::new("Status").style_spec("Fb"),
+            Cell::new("Count").style_spec("Fb"),
+        ]));
+
+        for status_count in counts.by_status {
+            let status_style = match status_count.status.as_str() {
+                "pending" => "Fy",    // yellow
+                "viewed" => "Fc",     // cyan
+                "responded" => "Fg",  // green
+                "dismissed" => "Fd",  // dim
+                "expired" => "Fr",    // red
+                _ => "",
+            };
+
+            table.add_row(Row::new(vec![
+                Cell::new(&status_count.status).style_spec(status_style),
+                Cell::new(&status_count.count.to_string()),
+            ]));
+        }
+
+        table.printstd();
+    }
+
+    Ok(())
+}
+
 /// Get and display a specific notification by ID.
 ///
 /// # Arguments
@@ -401,11 +484,15 @@ async fn list_notifications(
 /// - The ID is not a valid UUID
 /// - The network request fails
 /// - The notification is not found
-async fn get_notification(client: &NotifyClient, id: &str) -> Result<()> {
+async fn get_notification(client: &NotifyClient, id: &str, json: bool) -> Result<()> {
     let uuid = Uuid::parse_str(id).context("Invalid UUID format")?;
     let notification = client.get_notification(uuid).await.context("Failed to fetch notification")?;
 
-    display_notification(&notification);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&notification)?);
+    } else {
+        display_notification(&notification);
+    }
 
     Ok(())
 }
@@ -427,12 +514,20 @@ async fn get_notification(client: &NotifyClient, id: &str) -> Result<()> {
 /// - The ID is not a valid UUID
 /// - The network request fails
 /// - The notification is not found
-async fn delete_notification(client: &NotifyClient, id: &str) -> Result<()> {
+async fn delete_notification(client: &NotifyClient, id: &str, json: bool) -> Result<()> {
     let uuid = Uuid::parse_str(id).context("Invalid UUID format")?;
 
     client.delete_notification(uuid).await.context("Failed to delete notification")?;
 
-    println!("{}", format!("Notification {uuid} deleted successfully!").green().bold());
+    if json {
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+            "success": true,
+            "message": format!("Notification {uuid} deleted successfully"),
+            "id": uuid
+        }))?);
+    } else {
+        println!("{}", format!("Notification {uuid} deleted successfully!").green().bold());
+    }
 
     Ok(())
 }
@@ -459,7 +554,7 @@ async fn delete_notification(client: &NotifyClient, id: &str) -> Result<()> {
 /// - The network request fails
 /// - The notification is not found
 /// - The notification doesn't accept responses
-async fn respond_to_notification(client: &NotifyClient, id: &str, response: &str) -> Result<()> {
+async fn respond_to_notification(client: &NotifyClient, id: &str, response: &str, json: bool) -> Result<()> {
     let uuid = Uuid::parse_str(id).context("Invalid UUID format")?;
 
     let request = UpdateNotificationRequest { status: None, response: Some(response.to_string()) };
@@ -467,9 +562,13 @@ async fn respond_to_notification(client: &NotifyClient, id: &str, response: &str
     let notification =
         client.update_notification(uuid, &request).await.context("Failed to respond to notification")?;
 
-    println!("{}", "Response submitted successfully!".green().bold());
-    println!();
-    display_notification(&notification);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&notification)?);
+    } else {
+        println!("{}", "Response submitted successfully!".green().bold());
+        println!();
+        display_notification(&notification);
+    }
 
     Ok(())
 }

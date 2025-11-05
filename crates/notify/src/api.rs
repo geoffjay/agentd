@@ -140,15 +140,18 @@ pub struct ApiState {
 /// }
 /// ```
 pub fn create_router(state: ApiState) -> Router {
+    let notifications_router = Router::new()
+        .route("/", axum::routing::get(list_notifications).post(create_notification))
+        .route("/count", axum::routing::get(count_notifications))
+        .route("/actionable", axum::routing::get(list_actionable))
+        .route("/history", axum::routing::get(list_history))
+        .route("/{id}", axum::routing::get(get_notification)
+            .put(update_notification)
+            .delete(delete_notification));
+
     Router::new()
         .route("/health", axum::routing::get(health_check))
-        .route("/notifications", axum::routing::get(list_notifications))
-        .route("/notifications", axum::routing::post(create_notification))
-        .route("/notifications/{id}", axum::routing::get(get_notification))
-        .route("/notifications/{id}", axum::routing::put(update_notification))
-        .route("/notifications/{id}", axum::routing::delete(delete_notification))
-        .route("/notifications/actionable", axum::routing::get(list_actionable))
-        .route("/notifications/history", axum::routing::get(list_history))
+        .nest("/notifications", notifications_router)
         .with_state(state)
 }
 
@@ -281,6 +284,54 @@ async fn list_actionable(
 async fn list_history(State(state): State<ApiState>) -> Result<Json<Vec<Notification>>, ApiError> {
     let notifications = state.storage.list_history().await?;
     Ok(Json(notifications))
+}
+
+/// Returns the count of notifications grouped by status.
+///
+/// Provides statistics about how many notifications exist in each status category.
+/// Useful for dashboard displays and monitoring notification load.
+///
+/// # Endpoint
+///
+/// `GET /notifications/count`
+///
+/// # Response
+///
+/// Returns HTTP 200 with JSON object containing:
+/// - `total` - Total number of notifications
+/// - `by_status` - Array of status counts with status name and count
+///
+/// # Example
+///
+/// ```bash
+/// curl http://localhost:3030/notifications/count
+/// ```
+///
+/// Response:
+/// ```json
+/// {
+///   "total": 42,
+///   "by_status": [
+///     {"status": "pending", "count": 15},
+///     {"status": "viewed", "count": 10},
+///     {"status": "responded", "count": 12},
+///     {"status": "dismissed", "count": 5}
+///   ]
+/// }
+/// ```
+async fn count_notifications(State(state): State<ApiState>) -> Result<Json<CountResponse>, ApiError> {
+    let counts = state.storage.count().await?;
+
+    let total: usize = counts.iter().map(|(_, count)| count).sum();
+    let by_status: Vec<StatusCount> = counts
+        .into_iter()
+        .map(|(status, count)| StatusCount {
+            status: format!("{status:?}").to_lowercase(),
+            count,
+        })
+        .collect();
+
+    Ok(Json(CountResponse { total, by_status }))
 }
 
 /// Creates a new notification.

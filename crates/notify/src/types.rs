@@ -553,6 +553,41 @@ pub struct UpdateNotificationRequest {
     pub response: Option<String>,
 }
 
+/// Count of notifications for a specific status.
+///
+/// Used in the count endpoint response to show how many notifications
+/// exist in each status category.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusCount {
+    /// The status name (e.g., "pending", "viewed", "responded")
+    pub status: String,
+    /// Number of notifications with this status
+    pub count: usize,
+}
+
+/// Response from the count endpoint.
+///
+/// Contains the total notification count and a breakdown by status.
+///
+/// # JSON Example
+///
+/// ```json
+/// {
+///   "total": 42,
+///   "by_status": [
+///     {"status": "pending", "count": 15},
+///     {"status": "viewed", "count": 10}
+///   ]
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CountResponse {
+    /// Total number of notifications across all statuses
+    pub total: usize,
+    /// Count breakdown by status
+    pub by_status: Vec<StatusCount>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

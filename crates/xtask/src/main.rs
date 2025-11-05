@@ -29,6 +29,10 @@ fn main() -> Result<()> {
             let service = args.get(2).context("Service name required")?;
             restart_service(service)?;
         }
+        Some("hex-to-rgb-hsl") => {
+            let hex = args.get(2).context("Hex color value required (e.g., dc8a78 or #dc8a78)")?;
+            hex_to_rgb_hsl(hex)?;
+        }
         _ => print_help(),
     }
     Ok(())
@@ -51,10 +55,14 @@ fn print_help() {
     println!("  {} <name> - Restart specific service", "restart-service".green());
     println!("  {} - Check service status", "service-status".green());
     println!();
+    println!("{}", "Development Utilities:".cyan());
+    println!("  {} <hex> - Convert hex color to RGB and HSL", "hex-to-rgb-hsl".green());
+    println!();
     println!("{}", "Examples:".cyan());
     println!("  {}", "cargo xtask install-user".yellow());
     println!("  {}", "cargo xtask start-service notify".yellow());
     println!("  {}", "cargo xtask restart-service ask".yellow());
+    println!("  {}", "cargo xtask hex-to-rgb-hsl dc8a78".yellow());
     println!();
     println!("{}", "Available services:".cyan());
     println!("  notify, ask, hook, monitor");
@@ -604,4 +612,121 @@ fn validate_service_name(service: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Convert a hex color string to RGB and HSL formats.
+///
+/// Accepts hex colors with or without the # prefix (e.g., "dc8a78" or "#dc8a78").
+/// Outputs JSON with RGB (0-255) and HSL (h: 0-360, s: 0-1, l: 0-1) values.
+///
+/// # Arguments
+///
+/// * `hex` - Hex color string (3 or 6 digits, with or without # prefix)
+///
+/// # Examples
+///
+/// ```bash
+/// cargo xtask hex-to-rgb-hsl dc8a78
+/// cargo xtask hex-to-rgb-hsl "#dc8a78"
+/// cargo xtask hex-to-rgb-hsl fff
+/// ```
+fn hex_to_rgb_hsl(hex: &str) -> Result<()> {
+    // Strip # prefix if present
+    let hex = hex.strip_prefix('#').unwrap_or(hex);
+
+    // Expand 3-digit hex to 6-digit
+    let hex = if hex.len() == 3 {
+        format!(
+            "{}{}{}{}{}{}",
+            &hex[0..1], &hex[0..1],
+            &hex[1..2], &hex[1..2],
+            &hex[2..3], &hex[2..3]
+        )
+    } else if hex.len() == 6 {
+        hex.to_string()
+    } else {
+        anyhow::bail!("Invalid hex color: must be 3 or 6 digits (got {})", hex.len());
+    };
+
+    // Parse RGB components
+    let r = u8::from_str_radix(&hex[0..2], 16)
+        .context("Invalid hex color: failed to parse red component")?;
+    let g = u8::from_str_radix(&hex[2..4], 16)
+        .context("Invalid hex color: failed to parse green component")?;
+    let b = u8::from_str_radix(&hex[4..6], 16)
+        .context("Invalid hex color: failed to parse blue component")?;
+
+    // Convert RGB to HSL
+    let (h, s, l) = rgb_to_hsl(r, g, b);
+
+    // Output as JSON
+    let output = serde_json::json!({
+        "rgb": {
+            "r": r,
+            "g": g,
+            "b": b
+        },
+        "hsl": {
+            "h": h,
+            "s": s,
+            "l": l
+        }
+    });
+
+    println!("{}", serde_json::to_string_pretty(&output)?);
+
+    Ok(())
+}
+
+/// Convert RGB values (0-255) to HSL (h: 0-360, s: 0-1, l: 0-1).
+///
+/// Implements the standard RGB to HSL conversion algorithm.
+///
+/// # Arguments
+///
+/// * `r` - Red component (0-255)
+/// * `g` - Green component (0-255)
+/// * `b` - Blue component (0-255)
+///
+/// # Returns
+///
+/// Returns a tuple (h, s, l) where:
+/// - h: Hue in degrees (0-360)
+/// - s: Saturation (0-1)
+/// - l: Lightness (0-1)
+fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
+    // Normalize RGB values to 0-1 range
+    let r = f64::from(r) / 255.0;
+    let g = f64::from(g) / 255.0;
+    let b = f64::from(b) / 255.0;
+
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let delta = max - min;
+
+    // Calculate lightness
+    let l = (max + min) / 2.0;
+
+    // Calculate saturation
+    let s = if delta == 0.0 {
+        0.0
+    } else {
+        delta / (1.0 - (2.0 * l - 1.0).abs())
+    };
+
+    // Calculate hue
+    let h = if delta == 0.0 {
+        0.0
+    } else if max == r {
+        60.0 * (((g - b) / delta) % 6.0)
+    } else if max == g {
+        60.0 * (((b - r) / delta) + 2.0)
+    } else {
+        60.0 * (((r - g) / delta) + 4.0)
+    };
+
+    // Normalize hue to 0-360 range
+    let h = if h < 0.0 { h + 360.0 } else { h };
+
+    (h, s, l)
 }

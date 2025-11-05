@@ -258,6 +258,28 @@ impl NotifyClient {
         self.delete(&format!("/notifications/{id}")).await
     }
 
+    /// Get notification counts grouped by status.
+    ///
+    /// Returns statistics about how many notifications exist in each status category.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use notify::client::NotifyClient;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let client = NotifyClient::new("http://localhost:7004");
+    /// let counts = client.count_notifications().await?;
+    /// println!("Total notifications: {}", counts.total);
+    /// for status_count in counts.by_status {
+    ///     println!("{}: {}", status_count.status, status_count.count);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn count_notifications(&self) -> Result<CountResponse> {
+        self.get("/notifications/count").await
+    }
+
     /// Check the health of the notification service.
     ///
     /// # Examples
