@@ -1,13 +1,9 @@
 [package]
-name = "agentd-ask"
+name = "ask"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-
-[lib]
-name = "agentd_ask"
-path = "src/lib.rs"
 
 [[bin]]
 name = "agentd-ask"

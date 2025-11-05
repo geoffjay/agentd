@@ -1,6 +1,6 @@
 //! Command-line interface for the agentd service ecosystem.
 //!
-//! The `agentd` CLI provides a unified interface for interacting with multiple services:
+//! The `agent` CLI provides a unified interface for interacting with multiple services:
 //! - **Notification Service** (port 3000): Manage notifications from various sources
 //! - **Ask Service** (port 3001): Trigger checks and answer questions
 //! - **Hook Daemon**: Git and system hooks integration (coming soon)
@@ -12,7 +12,7 @@
 //!
 //! Create a notification:
 //! ```bash
-//! agentd notify create \
+//! agent notify create \
 //!   --title "Build Failed" \
 //!   --message "Tests failed on main branch" \
 //!   --priority high \
@@ -21,39 +21,39 @@
 //!
 //! List all notifications:
 //! ```bash
-//! agentd notify list
+//! agent notify list
 //! ```
 //!
 //! List only actionable notifications:
 //! ```bash
-//! agentd notify list --actionable
+//! agent notify list --actionable
 //! ```
 //!
 //! Get a specific notification:
 //! ```bash
-//! agentd notify get <notification-id>
+//! agent notify get <notification-id>
 //! ```
 //!
 //! Respond to a notification:
 //! ```bash
-//! agentd notify respond <notification-id> "This is my response"
+//! agent notify respond <notification-id> "This is my response"
 //! ```
 //!
 //! Delete a notification:
 //! ```bash
-//! agentd notify delete <notification-id>
+//! agent notify delete <notification-id>
 //! ```
 //!
 //! ## Ask Service Commands
 //!
 //! Trigger checks in the ask service:
 //! ```bash
-//! agentd ask trigger
+//! agent ask trigger
 //! ```
 //!
 //! Answer a question:
 //! ```bash
-//! agentd ask answer <question-id> "This is my answer"
+//! agent ask answer <question-id> "This is my answer"
 //! ```
 //!
 //! # Service URLs
@@ -79,17 +79,17 @@ use std::env;
 
 /// Main CLI structure parsed by clap.
 ///
-/// This is the entry point for all agentd commands. The CLI uses a subcommand
+/// This is the entry point for all agent commands. The CLI uses a subcommand
 /// pattern where each major service has its own subcommand namespace.
 #[derive(Parser)]
-#[command(name = "agentd")]
+#[command(name = "agent")]
 #[command(author, version, about = "CLI for interacting with agentd services", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
 
-/// Top-level commands for the agentd CLI.
+/// Top-level commands for the agent CLI.
 ///
 /// Each variant represents a major service or daemon in the agentd ecosystem.
 /// Commands are dispatched to their respective handlers which communicate with
@@ -126,7 +126,7 @@ enum Commands {
     Monitor,
 }
 
-/// Main entry point for the agentd CLI.
+/// Main entry point for the agent CLI.
 ///
 /// Parses command-line arguments using clap and dispatches to the appropriate
 /// command handler. Uses Tokio async runtime for all I/O operations.
@@ -197,7 +197,7 @@ fn launch_gui() -> Result<()> {
             .spawn()
             .context("Failed to launch Agent.app. Is it installed?")?;
 
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]

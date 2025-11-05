@@ -20,8 +20,8 @@
 //! ## Creating a Router
 //!
 //! ```no_run
-//! use agentd_notify::api::{create_router, ApiState};
-//! use agentd_notify::storage::NotificationStorage;
+//! use notify::api::{create_router, ApiState};
+//! use notify::storage::NotificationStorage;
 //! use std::sync::Arc;
 //!
 //! #[tokio::main]
@@ -86,8 +86,8 @@ use uuid::Uuid;
 /// # Examples
 ///
 /// ```no_run
-/// use agentd_notify::api::ApiState;
-/// use agentd_notify::storage::NotificationStorage;
+/// use notify::api::ApiState;
+/// use notify::storage::NotificationStorage;
 /// use std::sync::Arc;
 ///
 /// #[tokio::main]
@@ -122,8 +122,8 @@ pub struct ApiState {
 /// # Examples
 ///
 /// ```no_run
-/// use agentd_notify::api::{create_router, ApiState};
-/// use agentd_notify::storage::NotificationStorage;
+/// use notify::api::{create_router, ApiState};
+/// use notify::storage::NotificationStorage;
 /// use std::sync::Arc;
 ///
 /// #[tokio::main]
@@ -221,7 +221,7 @@ async fn list_notifications(
     State(state): State<ApiState>,
     axum::extract::Query(params): axum::extract::Query<ListParams>,
 ) -> Result<Json<Vec<Notification>>, ApiError> {
-    let status = params.status.map(|s| s.parse()).transpose()?;
+    let status = params.status.map(|s| s.parse::<NotificationStatus>().map_err(|e| ApiError::InvalidInput(e.to_string()))).transpose()?;
     let notifications = state.storage.list(status).await?;
     Ok(Json(notifications))
 }
@@ -592,37 +592,5 @@ impl From<anyhow::Error> for ApiError {
     /// This allows using `?` operator with database operations in handlers.
     fn from(err: anyhow::Error) -> Self {
         ApiError::Database(err)
-    }
-}
-
-impl std::str::FromStr for NotificationStatus {
-    type Err = ApiError;
-
-    /// Parses a status string from query parameters.
-    ///
-    /// Accepts case-insensitive status names and returns the corresponding
-    /// [`NotificationStatus`] enum variant.
-    ///
-    /// # Arguments
-    ///
-    /// * `s` - Status string (e.g., "pending", "VIEWED", "Dismissed")
-    ///
-    /// # Returns
-    ///
-    /// Returns the parsed status or an error if the string is invalid.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ApiError::InvalidInput`] if the status string doesn't match
-    /// any known status value.
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "pending" => Ok(NotificationStatus::Pending),
-            "viewed" => Ok(NotificationStatus::Viewed),
-            "dismissed" => Ok(NotificationStatus::Dismissed),
-            "responded" => Ok(NotificationStatus::Responded),
-            "expired" => Ok(NotificationStatus::Expired),
-            _ => Err(ApiError::InvalidInput(format!("Invalid status: {s}"))),
-        }
     }
 }

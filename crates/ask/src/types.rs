@@ -16,7 +16,7 @@
 //! ## Creating a notification request
 //!
 //! ```
-//! use agentd_ask::types::{
+//! use ask::types::{
 //!     CreateNotificationRequest, NotificationSource, NotificationLifetime,
 //!     NotificationPriority,
 //! };
@@ -35,7 +35,7 @@
 //! ## Working with question info
 //!
 //! ```
-//! use agentd_ask::types::{QuestionInfo, CheckType, QuestionStatus};
+//! use ask::types::{QuestionInfo, CheckType, QuestionStatus};
 //! use chrono::Utc;
 //! use uuid::Uuid;
 //!
@@ -97,7 +97,7 @@ impl NotificationLifetime {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::types::NotificationLifetime;
+    /// use ask::types::NotificationLifetime;
     /// use chrono::Duration;
     ///
     /// // Create a notification that expires in 5 minutes
@@ -255,7 +255,7 @@ impl CheckType {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::types::CheckType;
+    /// use ask::types::CheckType;
     ///
     /// assert_eq!(CheckType::TmuxSessions.as_str(), "tmux_sessions");
     /// ```

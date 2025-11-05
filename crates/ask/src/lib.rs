@@ -64,7 +64,7 @@
 //! ## Using the service programmatically
 //!
 //! ```no_run
-//! use agentd_ask::{api::ApiState, state::AppState, notification_client::NotificationClient};
+//! use ask::{api::ApiState, state::AppState, notification_client::NotificationClient};
 //!
 //! #[tokio::main]
 //! async fn main() {

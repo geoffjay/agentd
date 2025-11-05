@@ -78,7 +78,7 @@ use uuid::Uuid;
 /// # Examples
 ///
 /// ```no_run
-/// use agentd_ask::{api::ApiState, state::AppState, notification_client::NotificationClient};
+/// use ask::{api::ApiState, state::AppState, notification_client::NotificationClient};
 ///
 /// let api_state = ApiState {
 ///     app_state: AppState::new(),
@@ -109,7 +109,7 @@ pub struct ApiState {
 /// # Examples
 ///
 /// ```no_run
-/// use agentd_ask::{api::{create_router, ApiState}, state::AppState, notification_client::NotificationClient};
+/// use ask::{api::{create_router, ApiState}, state::AppState, notification_client::NotificationClient};
 ///
 /// # async fn example() {
 /// let api_state = ApiState {
@@ -472,7 +472,7 @@ async fn answer_question(
 /// # Examples
 ///
 /// ```no_run
-/// use agentd_ask::{api::{create_router_with_tracing, ApiState}, state::AppState, notification_client::NotificationClient};
+/// use ask::{api::{create_router_with_tracing, ApiState}, state::AppState, notification_client::NotificationClient};
 ///
 /// # async fn example() {
 /// let api_state = ApiState {

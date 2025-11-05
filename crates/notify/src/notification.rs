@@ -15,7 +15,7 @@ use uuid::Uuid;
 /// # Examples
 ///
 /// ```
-/// use agentd_notify::notification::NotificationSource;
+/// use notify::notification::NotificationSource;
 /// use uuid::Uuid;
 ///
 /// // System notification
@@ -85,7 +85,7 @@ impl NotificationLifetime {
     /// # Examples
     ///
     /// ```
-    /// use agentd_notify::notification::NotificationLifetime;
+    /// use notify::notification::NotificationLifetime;
     /// use chrono::Duration;
     ///
     /// // Already expired
@@ -112,7 +112,7 @@ impl NotificationLifetime {
     /// # Examples
     ///
     /// ```
-    /// use agentd_notify::notification::NotificationLifetime;
+    /// use notify::notification::NotificationLifetime;
     /// use chrono::Duration;
     ///
     /// // Expires in 30 seconds
@@ -142,7 +142,7 @@ impl NotificationLifetime {
 /// # Examples
 ///
 /// ```
-/// use agentd_notify::notification::NotificationPriority;
+/// use notify::notification::NotificationPriority;
 ///
 /// let low = NotificationPriority::Low;
 /// let urgent = NotificationPriority::Urgent;
@@ -160,6 +160,20 @@ pub enum NotificationPriority {
     High,
     /// Urgent priority - critical, needs immediate attention
     Urgent,
+}
+
+impl std::str::FromStr for NotificationPriority {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "low" => Ok(NotificationPriority::Low),
+            "normal" => Ok(NotificationPriority::Normal),
+            "high" => Ok(NotificationPriority::High),
+            "urgent" => Ok(NotificationPriority::Urgent),
+            _ => anyhow::bail!("Invalid priority: {}", s),
+        }
+    }
 }
 
 /// Current status of a notification in its lifecycle.
@@ -180,7 +194,7 @@ pub enum NotificationPriority {
 /// # Examples
 ///
 /// ```
-/// use agentd_notify::notification::NotificationStatus;
+/// use notify::notification::NotificationStatus;
 ///
 /// let status = NotificationStatus::Pending;
 /// assert_eq!(status, NotificationStatus::Pending);
@@ -214,6 +228,21 @@ pub enum NotificationStatus {
     Expired,
 }
 
+impl std::str::FromStr for NotificationStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "pending" => Ok(NotificationStatus::Pending),
+            "viewed" => Ok(NotificationStatus::Viewed),
+            "responded" => Ok(NotificationStatus::Responded),
+            "dismissed" => Ok(NotificationStatus::Dismissed),
+            "expired" => Ok(NotificationStatus::Expired),
+            _ => anyhow::bail!("Invalid status: {}", s),
+        }
+    }
+}
+
 /// A complete notification in the system.
 ///
 /// Notifications are the core data structure, containing all information about
@@ -229,7 +258,7 @@ pub enum NotificationStatus {
 /// # Examples
 ///
 /// ```
-/// use agentd_notify::notification::*;
+/// use notify::notification::*;
 ///
 /// let notification = Notification::new(
 ///     NotificationSource::System,
@@ -318,7 +347,7 @@ impl Notification {
     /// # Examples
     ///
     /// ```
-    /// use agentd_notify::notification::*;
+    /// use notify::notification::*;
     ///
     /// // Create a high-priority system notification
     /// let notification = Notification::new(
@@ -363,7 +392,7 @@ impl Notification {
     /// # Examples
     ///
     /// ```
-    /// use agentd_notify::notification::*;
+    /// use notify::notification::*;
     ///
     /// let notif = Notification::new(
     ///     NotificationSource::System,
@@ -415,7 +444,7 @@ impl Notification {
     /// # Examples
     ///
     /// ```
-    /// use agentd_notify::notification::*;
+    /// use notify::notification::*;
     ///
     /// let mut notif = Notification::new(
     ///     NotificationSource::System,

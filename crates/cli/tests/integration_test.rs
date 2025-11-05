@@ -1,9 +1,14 @@
-use agentd_cli::client::ApiClient;
-use agentd_cli::types::*;
 use chrono::{Duration, Utc};
+use cli::client::ApiClient;
+use cli::types::*;
 use mockito::Server;
 use serde_json::json;
 use uuid::Uuid;
+
+use notify::notification::{
+    Notification, NotificationLifetime, NotificationPriority, NotificationSource,
+    NotificationStatus,
+};
 
 // Helper function to create a test notification
 fn create_test_notification(id: Uuid) -> Notification {

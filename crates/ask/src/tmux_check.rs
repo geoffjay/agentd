@@ -22,7 +22,7 @@
 //! ## Check if tmux is installed
 //!
 //! ```
-//! use agentd_ask::tmux_check::is_tmux_installed;
+//! use ask::tmux_check::is_tmux_installed;
 //!
 //! if is_tmux_installed() {
 //!     println!("tmux is available");
@@ -34,7 +34,7 @@
 //! ## Check for running sessions
 //!
 //! ```
-//! use agentd_ask::tmux_check::check_tmux_sessions;
+//! use ask::tmux_check::check_tmux_sessions;
 //!
 //! match check_tmux_sessions() {
 //!     Ok(result) if result.running => {
@@ -52,7 +52,7 @@
 //! ## List all sessions
 //!
 //! ```
-//! use agentd_ask::tmux_check::list_sessions;
+//! use ask::tmux_check::list_sessions;
 //!
 //! match list_sessions() {
 //!     Ok(sessions) => {
@@ -83,7 +83,7 @@ use tracing::{debug, warn};
 /// # Examples
 ///
 /// ```
-/// use agentd_ask::tmux_check::is_tmux_installed;
+/// use ask::tmux_check::is_tmux_installed;
 ///
 /// if is_tmux_installed() {
 ///     println!("tmux is available");
@@ -120,7 +120,7 @@ pub fn is_tmux_installed() -> bool {
 /// # Examples
 ///
 /// ```
-/// use agentd_ask::tmux_check::is_tmux_server_running;
+/// use ask::tmux_check::is_tmux_server_running;
 ///
 /// match is_tmux_server_running() {
 ///     Ok(true) => println!("Tmux server is running"),
@@ -175,7 +175,7 @@ pub fn is_tmux_server_running() -> Result<bool, TmuxError> {
 /// # Examples
 ///
 /// ```
-/// use agentd_ask::tmux_check::list_sessions;
+/// use ask::tmux_check::list_sessions;
 ///
 /// match list_sessions() {
 ///     Ok(sessions) if sessions.is_empty() => {
@@ -248,7 +248,7 @@ pub fn list_sessions() -> Result<Vec<String>, TmuxError> {
 /// # Examples
 ///
 /// ```
-/// use agentd_ask::tmux_check::check_tmux_sessions;
+/// use ask::tmux_check::check_tmux_sessions;
 ///
 /// match check_tmux_sessions() {
 ///     Ok(result) if result.running => {

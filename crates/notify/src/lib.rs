@@ -22,7 +22,7 @@
 //! ## Example Usage
 //!
 //! ```no_run
-//! use agentd_notify::{notification::*, storage::NotificationStorage, api::create_router};
+//! use notify::{notification::*, storage::NotificationStorage, api::create_router};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {

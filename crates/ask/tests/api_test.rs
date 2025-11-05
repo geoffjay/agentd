@@ -1,4 +1,4 @@
-use agentd_ask::{
+use ask::{
     api::{create_router, ApiState},
     notification_client::NotificationClient,
     state::AppState,

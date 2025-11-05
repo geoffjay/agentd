@@ -27,8 +27,8 @@
 //! # Examples
 //!
 //! ```
-//! use agentd_ask::state::AppState;
-//! use agentd_ask::types::{QuestionInfo, CheckType, QuestionStatus};
+//! use ask::state::AppState;
+//! use ask::types::{QuestionInfo, CheckType, QuestionStatus};
 //! use chrono::Utc;
 //! use uuid::Uuid;
 //!
@@ -82,7 +82,7 @@ use uuid::Uuid;
 /// # Examples
 ///
 /// ```
-/// use agentd_ask::state::AppState;
+/// use ask::state::AppState;
 ///
 /// let state = AppState::new();
 /// let state_clone = state.clone(); // Cheap clone, same underlying data
@@ -118,7 +118,7 @@ impl AppState {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::state::AppState;
+    /// use ask::state::AppState;
     ///
     /// let state = AppState::new();
     /// // State has 30-minute cooldown by default
@@ -143,7 +143,7 @@ impl AppState {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::state::AppState;
+    /// use ask::state::AppState;
     /// use chrono::Duration;
     ///
     /// // 10-minute cooldown for testing
@@ -175,8 +175,8 @@ impl AppState {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::state::AppState;
-    /// use agentd_ask::types::CheckType;
+    /// use ask::state::AppState;
+    /// use ask::types::CheckType;
     ///
     /// # async fn example() {
     /// let state = AppState::new();
@@ -212,8 +212,8 @@ impl AppState {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::state::AppState;
-    /// use agentd_ask::types::CheckType;
+    /// use ask::state::AppState;
+    /// use ask::types::CheckType;
     ///
     /// # async fn example() {
     /// let state = AppState::new();
@@ -242,8 +242,8 @@ impl AppState {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::state::AppState;
-    /// use agentd_ask::types::{QuestionInfo, CheckType, QuestionStatus};
+    /// use ask::state::AppState;
+    /// use ask::types::{QuestionInfo, CheckType, QuestionStatus};
     /// use chrono::Utc;
     /// use uuid::Uuid;
     ///
@@ -280,7 +280,7 @@ impl AppState {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::state::AppState;
+    /// use ask::state::AppState;
     /// use uuid::Uuid;
     ///
     /// # async fn example() {
@@ -322,8 +322,8 @@ impl AppState {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::state::AppState;
-    /// use agentd_ask::types::{QuestionInfo, CheckType, QuestionStatus};
+    /// use ask::state::AppState;
+    /// use ask::types::{QuestionInfo, CheckType, QuestionStatus};
     /// use chrono::Utc;
     /// use uuid::Uuid;
     ///
@@ -409,7 +409,7 @@ impl AppState {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::state::AppState;
+    /// use ask::state::AppState;
     ///
     /// # async fn example() {
     /// let state = AppState::new();

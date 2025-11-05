@@ -33,8 +33,8 @@
 //! # Examples
 //!
 //! ```no_run
-//! use agentd_notify::storage::NotificationStorage;
-//! use agentd_notify::notification::*;
+//! use notify::storage::NotificationStorage;
+//! use notify::notification::*;
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -87,7 +87,7 @@ use uuid::Uuid;
 /// # Examples
 ///
 /// ```no_run
-/// use agentd_notify::storage::NotificationStorage;
+/// use notify::storage::NotificationStorage;
 ///
 /// #[tokio::main]
 /// async fn main() -> anyhow::Result<()> {
@@ -135,7 +135,7 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
+    /// use notify::storage::NotificationStorage;
     ///
     /// let db_path = NotificationStorage::get_db_path().unwrap();
     /// println!("Database location: {:?}", db_path);
@@ -170,7 +170,7 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
+    /// use notify::storage::NotificationStorage;
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
@@ -208,7 +208,7 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
+    /// use notify::storage::NotificationStorage;
     /// use std::path::Path;
     ///
     /// #[tokio::main]
@@ -297,8 +297,8 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
-    /// use agentd_notify::notification::*;
+    /// use notify::storage::NotificationStorage;
+    /// use notify::notification::*;
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
@@ -384,7 +384,7 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
+    /// use notify::storage::NotificationStorage;
     /// use uuid::Uuid;
     ///
     /// #[tokio::main]
@@ -433,8 +433,8 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
-    /// use agentd_notify::notification::*;
+    /// use notify::storage::NotificationStorage;
+    /// use notify::notification::*;
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
@@ -498,7 +498,7 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
+    /// use notify::storage::NotificationStorage;
     /// use uuid::Uuid;
     ///
     /// #[tokio::main]
@@ -547,8 +547,8 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
-    /// use agentd_notify::notification::NotificationStatus;
+    /// use notify::storage::NotificationStorage;
+    /// use notify::notification::NotificationStatus;
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
@@ -604,7 +604,7 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
+    /// use notify::storage::NotificationStorage;
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
@@ -652,7 +652,7 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
+    /// use notify::storage::NotificationStorage;
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
@@ -693,7 +693,7 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
+    /// use notify::storage::NotificationStorage;
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {
@@ -749,7 +749,7 @@ impl NotificationStorage {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_notify::storage::NotificationStorage;
+    /// use notify::storage::NotificationStorage;
     ///
     /// #[tokio::main]
     /// async fn main() -> anyhow::Result<()> {

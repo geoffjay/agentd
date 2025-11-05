@@ -9,18 +9,18 @@
 //! ## Creating a client
 //!
 //! ```rust
-//! use agentd_cli::client::ApiClient;
+//! use cli::client::ApiClient;
 //!
-//! let client = ApiClient::new("http://localhost:3000".to_string());
+//! let client = ApiClient::new("http://localhost:7004".to_string());
 //! ```
 //!
 //! ## Making a GET request
 //!
 //! ```rust,no_run
-//! # use agentd_cli::client::ApiClient;
-//! # use agentd_cli::types::Notification;
+//! # use cli::client::ApiClient;
+//! # use cli::types::Notification;
 //! # async fn example() -> anyhow::Result<()> {
-//! let client = ApiClient::new("http://localhost:3000".to_string());
+//! let client = ApiClient::new("http://localhost:7004".to_string());
 //! let notifications: Vec<Notification> = client.get("/notifications").await?;
 //! # Ok(())
 //! # }
@@ -29,10 +29,10 @@
 //! ## Making a POST request
 //!
 //! ```rust,no_run
-//! # use agentd_cli::client::ApiClient;
-//! # use agentd_cli::types::{CreateNotificationRequest, Notification};
+//! # use cli::client::ApiClient;
+//! # use cli::types::{CreateNotificationRequest, Notification};
 //! # async fn example(request: CreateNotificationRequest) -> anyhow::Result<()> {
-//! let client = ApiClient::new("http://localhost:3000".to_string());
+//! let client = ApiClient::new("http://localhost:7004".to_string());
 //! let notification: Notification = client
 //!     .post("/notifications", &request)
 //!     .await?;
@@ -63,13 +63,13 @@ use serde::Serialize;
 /// # Examples
 ///
 /// ```rust
-/// use agentd_cli::client::ApiClient;
+/// use cli::client::ApiClient;
 ///
 /// // Create a client for the notification service
-/// let notify_client = ApiClient::new("http://localhost:3000".to_string());
+/// let notify_client = ApiClient::new("http://localhost:7004".to_string());
 ///
 /// // Create a client for the ask service
-/// let ask_client = ApiClient::new("http://localhost:3001".to_string());
+/// let ask_client = ApiClient::new("http://localhost:7001".to_string());
 /// ```
 #[derive(Clone)]
 pub struct ApiClient {
@@ -86,14 +86,14 @@ impl ApiClient {
     /// # Examples
     ///
     /// ```rust
-    /// use agentd_cli::client::ApiClient;
+    /// use cli::client::ApiClient;
     ///
-    /// let client = ApiClient::new("http://localhost:3000".to_string());
+    /// let client = ApiClient::new("http://localhost:7004".to_string());
     /// ```
     ///
     /// # Arguments
     ///
-    /// * `base_url` - The base URL for all requests (e.g., "http://localhost:3000")
+    /// * `base_url` - The base URL for all requests (e.g., "http://localhost:7004")
     pub fn new(base_url: String) -> Self {
         Self { client: reqwest::Client::new(), base_url }
     }
@@ -122,10 +122,10 @@ impl ApiClient {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use agentd_cli::client::ApiClient;
-    /// # use agentd_cli::types::Notification;
+    /// # use cli::client::ApiClient;
+    /// # use cli::types::Notification;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let client = ApiClient::new("http://localhost:3000".to_string());
+    /// let client = ApiClient::new("http://localhost:7004".to_string());
     /// let notifications: Vec<Notification> = client.get("/notifications").await?;
     /// println!("Found {} notifications", notifications.len());
     /// # Ok(())
@@ -166,11 +166,11 @@ impl ApiClient {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use agentd_cli::client::ApiClient;
-    /// # use agentd_cli::types::{CreateNotificationRequest, Notification};
-    /// # use agentd_cli::types::{NotificationSource, NotificationLifetime, NotificationPriority};
+    /// # use cli::client::ApiClient;
+    /// # use cli::types::{CreateNotificationRequest, Notification};
+    /// # use cli::types::{NotificationSource, NotificationLifetime, NotificationPriority};
     /// # async fn example() -> anyhow::Result<()> {
-    /// let client = ApiClient::new("http://localhost:3000".to_string());
+    /// let client = ApiClient::new("http://localhost:7004".to_string());
     /// let request = CreateNotificationRequest {
     ///     source: NotificationSource::System,
     ///     lifetime: NotificationLifetime::Persistent,
@@ -224,10 +224,10 @@ impl ApiClient {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use agentd_cli::client::ApiClient;
-    /// # use agentd_cli::types::{UpdateNotificationRequest, Notification, NotificationStatus};
+    /// # use cli::client::ApiClient;
+    /// # use cli::types::{UpdateNotificationRequest, Notification, NotificationStatus};
     /// # async fn example() -> anyhow::Result<()> {
-    /// let client = ApiClient::new("http://localhost:3000".to_string());
+    /// let client = ApiClient::new("http://localhost:7004".to_string());
     /// let request = UpdateNotificationRequest {
     ///     status: Some(NotificationStatus::Viewed),
     ///     response: None,
@@ -270,9 +270,9 @@ impl ApiClient {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// # use agentd_cli::client::ApiClient;
+    /// # use cli::client::ApiClient;
     /// # async fn example() -> anyhow::Result<()> {
-    /// let client = ApiClient::new("http://localhost:3000".to_string());
+    /// let client = ApiClient::new("http://localhost:7004".to_string());
     /// client.delete("/notifications/550e8400-e29b-41d4-a716-446655440000").await?;
     /// println!("Notification deleted");
     /// # Ok(())
@@ -331,23 +331,23 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = ApiClient::new("http://localhost:3000".to_string());
-        assert_eq!(client.base_url, "http://localhost:3000");
+        let client = ApiClient::new("http://localhost:7004".to_string());
+        assert_eq!(client.base_url, "http://localhost:7004");
     }
 
     #[test]
     fn test_client_clone() {
-        let client1 = ApiClient::new("http://localhost:3000".to_string());
+        let client1 = ApiClient::new("http://localhost:7004".to_string());
         let client2 = client1.clone();
         assert_eq!(client1.base_url, client2.base_url);
     }
 
     #[test]
     fn test_client_with_different_base_urls() {
-        let notify_client = ApiClient::new("http://localhost:3000".to_string());
-        let ask_client = ApiClient::new("http://localhost:3001".to_string());
+        let notify_client = ApiClient::new("http://localhost:7004".to_string());
+        let ask_client = ApiClient::new("http://localhost:7001".to_string());
 
-        assert_eq!(notify_client.base_url, "http://localhost:3000");
-        assert_eq!(ask_client.base_url, "http://localhost:3001");
+        assert_eq!(notify_client.base_url, "http://localhost:7004");
+        assert_eq!(ask_client.base_url, "http://localhost:7001");
     }
 }

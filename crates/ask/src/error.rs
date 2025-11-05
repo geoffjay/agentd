@@ -27,8 +27,8 @@
 //! ## Handling tmux errors
 //!
 //! ```
-//! use agentd_ask::tmux_check::check_tmux_sessions;
-//! use agentd_ask::error::TmuxError;
+//! use ask::tmux_check::check_tmux_sessions;
+//! use ask::error::TmuxError;
 //!
 //! match check_tmux_sessions() {
 //!     Ok(result) => println!("Check succeeded: {:?}", result),
@@ -41,7 +41,7 @@
 //! ## API error conversion
 //!
 //! ```no_run
-//! use agentd_ask::error::ApiError;
+//! use ask::error::ApiError;
 //! use axum::response::IntoResponse;
 //!
 //! fn example_handler() -> Result<String, ApiError> {

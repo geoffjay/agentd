@@ -25,7 +25,7 @@
 //! ## Creating a client and checking health
 //!
 //! ```no_run
-//! use agentd_ask::notification_client::NotificationClient;
+//! use ask::notification_client::NotificationClient;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = NotificationClient::new("http://localhost:3000".to_string());
@@ -42,7 +42,7 @@
 //! ## Creating a notification
 //!
 //! ```no_run
-//! use agentd_ask::notification_client::NotificationClient;
+//! use ask::notification_client::NotificationClient;
 //! use uuid::Uuid;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -78,7 +78,7 @@ use uuid::Uuid;
 /// # Examples
 ///
 /// ```no_run
-/// use agentd_ask::notification_client::NotificationClient;
+/// use ask::notification_client::NotificationClient;
 ///
 /// let client = NotificationClient::new("http://localhost:3000".to_string());
 /// let client_clone = client.clone(); // Cheap clone
@@ -103,7 +103,7 @@ impl NotificationClient {
     /// # Examples
     ///
     /// ```
-    /// use agentd_ask::notification_client::NotificationClient;
+    /// use ask::notification_client::NotificationClient;
     ///
     /// let client = NotificationClient::new("http://localhost:3000".to_string());
     /// ```
@@ -134,8 +134,8 @@ impl NotificationClient {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_ask::notification_client::NotificationClient;
-    /// use agentd_ask::types::{
+    /// use ask::notification_client::NotificationClient;
+    /// use ask::types::{
     ///     CreateNotificationRequest, NotificationSource, NotificationLifetime,
     ///     NotificationPriority,
     /// };
@@ -213,8 +213,8 @@ impl NotificationClient {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_ask::notification_client::NotificationClient;
-    /// use agentd_ask::types::{UpdateNotificationRequest, NotificationStatus};
+    /// use ask::notification_client::NotificationClient;
+    /// use ask::types::{UpdateNotificationRequest, NotificationStatus};
     /// use uuid::Uuid;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -310,7 +310,7 @@ impl NotificationClient {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_ask::notification_client::NotificationClient;
+    /// use ask::notification_client::NotificationClient;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = NotificationClient::new("http://localhost:3000".to_string());
@@ -357,7 +357,7 @@ impl NotificationClient {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_ask::notification_client::NotificationClient;
+    /// use ask::notification_client::NotificationClient;
     /// use uuid::Uuid;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
