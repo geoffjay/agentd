@@ -27,6 +27,7 @@ use uuid::Uuid;
 /// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum NotificationSource {
     /// From an agent hook requiring user input.
     ///
@@ -65,6 +66,7 @@ pub enum NotificationSource {
 
 /// Lifetime behavior of a notification
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum NotificationLifetime {
     /// Ephemeral notifications expire after a timeout
     /// These are typically tied to active processes and can't be acted on after expiration
@@ -148,6 +150,7 @@ impl NotificationLifetime {
 /// assert!(urgent > low); // Priorities are comparable
 /// ```
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
 pub enum NotificationPriority {
     /// Low priority - informational only
     Low,
@@ -183,6 +186,7 @@ pub enum NotificationPriority {
 /// assert_eq!(status, NotificationStatus::Pending);
 /// ```
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum NotificationStatus {
     /// Notification is pending user action.
     ///

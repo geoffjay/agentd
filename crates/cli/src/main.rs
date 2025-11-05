@@ -162,8 +162,8 @@ async fn main() -> Result<()> {
         }
         Commands::Ask { command } => {
             // Use ASK_SERVICE_URL env var, default to production port
-            let url = env::var("ASK_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7001".to_string());
+            let url =
+                env::var("ASK_SERVICE_URL").unwrap_or_else(|_| "http://localhost:7001".to_string());
             let client = ApiClient::new(url);
             command.execute(&client).await?;
         }
