@@ -9,9 +9,9 @@
 //! - `GET /health` - Health check endpoint
 //! - `GET /notifications` - List all notifications (with optional status filter)
 //! - `POST /notifications` - Create a new notification
-//! - `GET /notifications/:id` - Get a specific notification by ID
-//! - `PUT /notifications/:id` - Update a notification
-//! - `DELETE /notifications/:id` - Delete a notification
+//! - `GET /notifications/{id}` - Get a specific notification by ID
+//! - `PUT /notifications/{id}` - Update a notification
+//! - `DELETE /notifications/{id}` - Delete a notification
 //! - `GET /notifications/actionable` - List actionable notifications
 //! - `GET /notifications/history` - List notification history
 //!
@@ -144,9 +144,9 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/health", axum::routing::get(health_check))
         .route("/notifications", axum::routing::get(list_notifications))
         .route("/notifications", axum::routing::post(create_notification))
-        .route("/notifications/:id", axum::routing::get(get_notification))
-        .route("/notifications/:id", axum::routing::put(update_notification))
-        .route("/notifications/:id", axum::routing::delete(delete_notification))
+        .route("/notifications/{id}", axum::routing::get(get_notification))
+        .route("/notifications/{id}", axum::routing::put(update_notification))
+        .route("/notifications/{id}", axum::routing::delete(delete_notification))
         .route("/notifications/actionable", axum::routing::get(list_actionable))
         .route("/notifications/history", axum::routing::get(list_history))
         .with_state(state)
@@ -349,7 +349,7 @@ async fn create_notification(
 ///
 /// # Endpoint
 ///
-/// `GET /notifications/:id`
+/// `GET /notifications/{id}`
 ///
 /// # Path Parameters
 ///
@@ -389,7 +389,7 @@ async fn get_notification(
 ///
 /// # Endpoint
 ///
-/// `PUT /notifications/:id`
+/// `PUT /notifications/{id}`
 ///
 /// # Path Parameters
 ///
@@ -454,7 +454,7 @@ async fn update_notification(
 ///
 /// # Endpoint
 ///
-/// `DELETE /notifications/:id`
+/// `DELETE /notifications/{id}`
 ///
 /// # Path Parameters
 ///
@@ -528,7 +528,7 @@ pub struct CreateNotificationRequest {
 
 /// Request body for updating a notification.
 ///
-/// Both fields are optional. Used by the `PUT /notifications/:id` endpoint
+/// Both fields are optional. Used by the `PUT /notifications/{id}` endpoint
 /// to modify an existing notification's status and/or response.
 ///
 /// # Examples

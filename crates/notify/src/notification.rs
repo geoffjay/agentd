@@ -379,7 +379,7 @@ impl Notification {
 
     /// Mark the notification as viewed
     #[allow(dead_code)]
-        /// Mark this notification as viewed by the user.
+    /// Mark this notification as viewed by the user.
     ///
     /// Transitions the notification from Pending to Viewed status if it was pending.
     /// Updates the `updated_at` timestamp.
@@ -441,7 +441,7 @@ impl Notification {
 
     /// Dismiss the notification
     #[allow(dead_code)]
-        /// Dismiss this notification.
+    /// Dismiss this notification.
     ///
     /// Marks the notification as dismissed and updates the timestamp.
     /// Dismissed notifications are removed from actionable lists.
@@ -452,7 +452,7 @@ impl Notification {
 
     /// Update status based on lifetime expiration
     #[allow(dead_code)]
-        /// Update the notification status if it has expired.
+    /// Update the notification status if it has expired.
     ///
     /// Checks if an ephemeral notification has expired and updates its status
     /// to Expired if it was still Pending. This method should be called

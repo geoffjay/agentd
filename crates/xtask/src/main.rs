@@ -6,14 +6,29 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() -> Result<()> {
-    let task = env::args().nth(1);
-    match task.as_deref() {
+    let args: Vec<String> = env::args().collect();
+    let task = args.get(1).map(|s| s.as_str());
+
+    match task {
         Some("install") => install()?,
         Some("install-user") => install_user()?,
         Some("uninstall") => uninstall()?,
         Some("start-services") => start_services()?,
         Some("stop-services") => stop_services()?,
+        Some("restart-services") => restart_services()?,
         Some("service-status") => service_status()?,
+        Some("start-service") => {
+            let service = args.get(2).context("Service name required")?;
+            start_service(service)?;
+        }
+        Some("stop-service") => {
+            let service = args.get(2).context("Service name required")?;
+            stop_service(service)?;
+        }
+        Some("restart-service") => {
+            let service = args.get(2).context("Service name required")?;
+            restart_service(service)?;
+        }
         _ => print_help(),
     }
     Ok(())
@@ -22,15 +37,27 @@ fn main() -> Result<()> {
 fn print_help() {
     println!("{}", "agentd xtask commands:".blue().bold());
     println!();
+    println!("{}", "Installation:".cyan());
     println!("  {} - Install for current user", "install-user".green());
     println!("  {} - System-wide install (requires sudo)", "install".green());
     println!("  {} - Uninstall all components", "uninstall".green());
+    println!();
+    println!("{}", "Service Management:".cyan());
     println!("  {} - Start all services", "start-services".green());
     println!("  {} - Stop all services", "stop-services".green());
+    println!("  {} - Restart all services", "restart-services".green());
+    println!("  {} <name> - Start specific service", "start-service".green());
+    println!("  {} <name> - Stop specific service", "stop-service".green());
+    println!("  {} <name> - Restart specific service", "restart-service".green());
     println!("  {} - Check service status", "service-status".green());
     println!();
-    println!("Example:");
+    println!("{}", "Examples:".cyan());
     println!("  {}", "cargo xtask install-user".yellow());
+    println!("  {}", "cargo xtask start-service notify".yellow());
+    println!("  {}", "cargo xtask restart-service ask".yellow());
+    println!();
+    println!("{}", "Available services:".cyan());
+    println!("  notify, ask, hook, monitor");
 }
 
 fn install_user() -> Result<()> {
@@ -66,15 +93,55 @@ fn install_user() -> Result<()> {
 
     install_plists(&plist_dir)?;
 
-    // Create log directory
+    // Create and setup log directory
+    println!();
+    println!("{}", "Setting up log directory...".blue());
     let log_dir = prefix.join("var/log");
-    if let Err(_e) = fs::create_dir_all(&log_dir) {
-        eprintln!("{}", format!("Warning: Failed to create log directory: {}", log_dir.display()).yellow());
-        eprintln!("Logs may not work until you run:");
-        eprintln!("  {}", format!("sudo mkdir -p {}", log_dir.display()).cyan());
+
+    // Ensure directory exists
+    let dir_created = if !log_dir.exists() {
+        println!("{}", "  Creating log directory (requires sudo)...".yellow());
+        let status = Command::new("sudo")
+            .arg("mkdir")
+            .arg("-p")
+            .arg(&log_dir)
+            .status()
+            .context("Failed to execute sudo mkdir")?;
+
+        if !status.success() {
+            eprintln!("{}", "Error: Failed to create log directory".red());
+            return Err(anyhow::anyhow!("Failed to create log directory"));
+        }
+        true
+    } else {
+        false
+    };
+
+    // Always fix ownership, not just when creating
+    let user = env::var("USER")
+        .unwrap_or_else(|_| env::var("LOGNAME").unwrap_or_else(|_| "user".to_string()));
+
+    println!("{}", format!("  Ensuring {} can write to log directory...", user).blue());
+
+    let chown_status = Command::new("sudo")
+        .arg("chown")
+        .arg("-R")
+        .arg(&user)
+        .arg(&log_dir)
+        .status()
+        .context("Failed to execute sudo chown")?;
+
+    if !chown_status.success() {
+        eprintln!("{}", "Warning: Failed to change log directory ownership".yellow());
+        eprintln!("Services may not be able to write logs");
+        eprintln!("Run manually:");
         eprintln!("  {}", format!("sudo chown -R $(whoami) {}", log_dir.display()).cyan());
-        eprintln!();
-        eprintln!("{}", "Continuing with installation...".yellow());
+    } else {
+        if dir_created {
+            println!("  {} Log directory created and owned by {}", "✓".green(), user);
+        } else {
+            println!("  {} Log directory ownership fixed (now owned by {})", "✓".green(), user);
+        }
     }
 
     println!();
@@ -87,7 +154,10 @@ fn install_user() -> Result<()> {
     println!("{}", "Usage:".cyan().bold());
     println!("  {} - Launch GUI", "agent".cyan());
     println!("  {} - List notifications", "agent notify list".cyan());
-    println!("  {} - Create notification", "agent notify create --title \"Test\" --message \"Hello\"".cyan());
+    println!(
+        "  {} - Create notification",
+        "agent notify create --title \"Test\" --message \"Hello\"".cyan()
+    );
     println!();
     println!("To start services: {}", "cargo xtask start-services".cyan());
 
@@ -228,6 +298,97 @@ fn service_status() -> Result<()> {
     Ok(())
 }
 
+fn start_service(service: &str) -> Result<()> {
+    validate_service_name(service)?;
+
+    let plist_dir = home_dir()?.join("Library/LaunchAgents");
+    let plist_name = format!("com.geoffjay.agentd-{service}.plist");
+    let plist_path = plist_dir.join(&plist_name);
+
+    if !plist_path.exists() {
+        anyhow::bail!("Service '{}' not installed. Run 'cargo xtask install-user' first.", service);
+    }
+
+    print!("  Starting agentd-{service}... ");
+    let output = Command::new("launchctl")
+        .arg("load")
+        .arg(&plist_path)
+        .output()
+        .context("Failed to execute launchctl")?;
+
+    if output.status.success() {
+        println!("{}", "✓".green());
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("already loaded") {
+            println!("{}", "⚠ (already running)".yellow());
+        } else {
+            println!("{}", "✗ (failed)".red());
+            eprintln!("  Error: {}", stderr.trim());
+        }
+    }
+
+    Ok(())
+}
+
+fn stop_service(service: &str) -> Result<()> {
+    validate_service_name(service)?;
+
+    let plist_dir = home_dir()?.join("Library/LaunchAgents");
+    let plist_name = format!("com.geoffjay.agentd-{service}.plist");
+    let plist_path = plist_dir.join(&plist_name);
+
+    if !plist_path.exists() {
+        anyhow::bail!("Service '{}' not installed", service);
+    }
+
+    print!("  Stopping agentd-{service}... ");
+    let output = Command::new("launchctl")
+        .arg("unload")
+        .arg(&plist_path)
+        .output()
+        .context("Failed to execute launchctl")?;
+
+    if output.status.success() {
+        println!("{}", "✓".green());
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("Could not find") {
+            println!("{}", "⚠ (not running)".yellow());
+        } else {
+            println!("{}", "✗ (failed)".red());
+            eprintln!("  Error: {}", stderr.trim());
+        }
+    }
+
+    Ok(())
+}
+
+fn restart_services() -> Result<()> {
+    println!("{}", "Restarting all services...".blue());
+    println!();
+
+    stop_services()?;
+    println!();
+    start_services()?;
+
+    Ok(())
+}
+
+fn restart_service(service: &str) -> Result<()> {
+    validate_service_name(service)?;
+
+    println!("{}", format!("Restarting agentd-{service}...").blue());
+
+    stop_service(service)?;
+    start_service(service)?;
+
+    println!();
+    println!("{}", format!("✓ Service agentd-{service} restarted").green().bold());
+
+    Ok(())
+}
+
 // Helper functions
 
 fn check_macos() -> Result<()> {
@@ -326,28 +487,71 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
     println!();
     println!("{}", "Creating symlink...".blue());
 
-    fs::create_dir_all(bin_dir).context("Failed to create /usr/local/bin")?;
-
     let symlink_path = bin_dir.join("agent");
     let target_path = macos_dir.join("cli");
 
-    // Remove existing symlink if present
-    if symlink_path.exists() {
-        fs::remove_file(&symlink_path).ok();
-    }
-
+    // Try to create the symlink, use sudo if needed
     #[cfg(unix)]
     {
         use std::os::unix::fs::symlink;
-        if let Err(e) = symlink(&target_path, &symlink_path) {
-            eprintln!("{}", format!("Failed to create symlink: {}", e).red());
-            eprintln!("{}", "To fix permissions, run:".yellow());
-            eprintln!("  {}", format!("sudo chown -R $(whoami) {}", bin_dir.display()).cyan());
-            return Err(e.into());
+
+        // First, try creating the directory if needed
+        let needs_sudo =
+            if !bin_dir.exists() { matches!(fs::create_dir_all(bin_dir), Err(_)) } else { false };
+
+        // Remove existing symlink if present (might need sudo)
+        if symlink_path.exists() {
+            if fs::remove_file(&symlink_path).is_err() {
+                println!("{}", "  Existing symlink requires sudo to remove...".yellow());
+                let status = Command::new("sudo")
+                    .arg("rm")
+                    .arg(&symlink_path)
+                    .status()
+                    .context("Failed to execute sudo rm")?;
+
+                if !status.success() {
+                    anyhow::bail!("Failed to remove existing symlink");
+                }
+            }
+        }
+
+        // Try to create symlink without sudo first
+        let symlink_result = if needs_sudo {
+            Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "needs sudo"))
+        } else {
+            fs::create_dir_all(bin_dir).ok();
+            symlink(&target_path, &symlink_path)
+        };
+
+        match symlink_result {
+            Ok(_) => {
+                println!("  {} agent -> {}", "✓".green(), target_path.display());
+            }
+            Err(_) => {
+                // Permission denied - use sudo for just the symlink
+                println!("{}", "  Creating symlink requires sudo...".yellow());
+
+                // Use sudo to create the symlink
+                let status = Command::new("sudo")
+                    .arg("ln")
+                    .arg("-sf")
+                    .arg(&target_path)
+                    .arg(&symlink_path)
+                    .status()
+                    .context("Failed to execute sudo ln")?;
+
+                if !status.success() {
+                    anyhow::bail!("Failed to create symlink with sudo");
+                }
+
+                println!(
+                    "  {} agent -> {} (created with sudo)",
+                    "✓".green(),
+                    target_path.display()
+                );
+            }
         }
     }
-
-    println!("  {} agent -> {}", "✓".green(), target_path.display());
 
     Ok(())
 }
@@ -391,4 +595,16 @@ fn get_prefix() -> PathBuf {
 
 fn home_dir() -> Result<PathBuf> {
     env::var("HOME").map(PathBuf::from).context("HOME environment variable not set")
+}
+
+fn validate_service_name(service: &str) -> Result<()> {
+    let valid_services = ["notify", "ask", "hook", "monitor"];
+    if !valid_services.contains(&service) {
+        anyhow::bail!(
+            "Invalid service name: '{}'. Valid services are: {}",
+            service,
+            valid_services.join(", ")
+        );
+    }
+    Ok(())
 }

@@ -7,7 +7,7 @@
 //!
 //! The following environment variables configure the service:
 //!
-//! - `ASK_PORT` - The port to bind to (default: 3001)
+//! - `PORT` - The port to bind to (default: 17001 dev, 7001 production)
 //! - `NOTIFY_SERVICE_URL` - Base URL of the notification service (default: http://localhost:3000)
 //! - `RUST_LOG` - Logging configuration (default: info)
 //!
@@ -32,7 +32,7 @@
 //! ## Running with custom configuration
 //!
 //! ```bash
-//! ASK_PORT=8080 NOTIFY_SERVICE_URL=http://notify:3000 cargo run
+//! PORT=8080 NOTIFY_SERVICE_URL=http://notify:7004 cargo run
 //! ```
 //!
 //! ## With debug logging
@@ -86,10 +86,10 @@ async fn main() -> Result<()> {
 
     // Get configuration from environment
     let port =
-        env::var("ASK_PORT").unwrap_or_else(|_| "3001".to_string()).parse::<u16>().unwrap_or(3001);
+        env::var("PORT").unwrap_or_else(|_| "17001".to_string()).parse::<u16>().unwrap_or(17001);
 
     let notify_service_url =
-        env::var("NOTIFY_SERVICE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+        env::var("NOTIFY_SERVICE_URL").unwrap_or_else(|_| "http://localhost:7004".to_string());
 
     info!("Configuration:");
     info!("  Port: {}", port);

@@ -75,6 +75,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use client::ApiClient;
 use commands::{AskCommand, NotifyCommand};
+use std::env;
 
 /// Main CLI structure parsed by clap.
 ///
@@ -153,11 +154,17 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Notify { command } => {
-            let client = ApiClient::new("http://localhost:3000".to_string());
+            // Use NOTIFY_SERVICE_URL env var, default to production port
+            let url = env::var("NOTIFY_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7004".to_string());
+            let client = ApiClient::new(url);
             command.execute(&client).await?;
         }
         Commands::Ask { command } => {
-            let client = ApiClient::new("http://localhost:3001".to_string());
+            // Use ASK_SERVICE_URL env var, default to production port
+            let url = env::var("ASK_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7001".to_string());
+            let client = ApiClient::new(url);
             command.execute(&client).await?;
         }
         Commands::Hook => {

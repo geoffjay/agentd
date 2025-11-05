@@ -7,7 +7,7 @@
 //! # Features
 //!
 //! - SQLite-based persistent notification storage
-//! - REST API on `http://127.0.0.1:3030`
+//! - REST API on `http://127.0.0.1:3000`
 //! - Automatic cleanup of expired notifications every 5 minutes
 //! - Structured logging with tracing
 //! - Graceful shutdown support
@@ -57,7 +57,7 @@
 //! cargo run -p agentd-notify
 //!
 //! # In another terminal, test the API
-//! curl http://localhost:3030/health
+//! curl http://localhost:3000/health
 //! ```
 
 mod api;
@@ -65,6 +65,7 @@ mod notification;
 mod storage;
 
 use api::{create_router, ApiState};
+use std::env;
 use std::sync::Arc;
 use storage::NotificationStorage;
 use tokio::time::{interval, Duration};
@@ -77,7 +78,7 @@ use tracing::{info, warn};
 /// 2. Initializes the SQLite storage backend
 /// 3. Spawns a background task for cleaning up expired notifications
 /// 4. Creates and configures the Axum HTTP router
-/// 5. Starts the HTTP server on `127.0.0.1:3030`
+/// 5. Starts the HTTP server on `127.0.0.1:3000`
 ///
 /// # Returns
 ///
@@ -136,9 +137,10 @@ async fn main() -> anyhow::Result<()> {
     let api_state = ApiState { storage: storage.clone() };
     let app = create_router(api_state);
 
-    // Bind to address
-    let addr = "127.0.0.1:3030";
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    // Bind to address (use PORT env var, default 17004 for dev, 7004 for production)
+    let port = env::var("PORT").unwrap_or_else(|_| "17004".to_string());
+    let addr = format!("127.0.0.1:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Notification API server listening on http://{}", addr);
 
     // Start the HTTP server
