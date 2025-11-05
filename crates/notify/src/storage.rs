@@ -62,7 +62,7 @@
 //! }
 //! ```
 
-use crate::notification::{
+use crate::types::{
     Notification, NotificationLifetime, NotificationPriority, NotificationSource,
     NotificationStatus,
 };

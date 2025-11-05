@@ -17,6 +17,7 @@
 //! The service consists of several key modules:
 //!
 //! - [`api`] - HTTP endpoints and routing
+//! - [`client`] - HTTP client for making requests to the ask service
 //! - [`state`] - Thread-safe application state management
 //! - [`tmux_check`] - Tmux session detection and monitoring
 //! - [`notification_client`] - HTTP client for notification service
@@ -95,6 +96,7 @@
 //! status.
 
 pub mod api;
+pub mod client;
 pub mod error;
 pub mod notification_client;
 pub mod state;

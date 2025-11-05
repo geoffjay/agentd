@@ -32,6 +32,9 @@ chrono = { version = "0.4", features = ["serde"] }
 # tmux interface
 tmux_interface = "0.3"
 
+# Internal dependencies
+notify = { path = "../notify" }
+
 [dev-dependencies]
 # Testing
 mockito = "1.2"

@@ -1,12 +1,11 @@
 //! Request and response types for the ask service.
 //!
-//! This module defines all data structures used in API requests and responses,
-//! as well as types shared with the notification service. All types implement
-//! `Serialize` and `Deserialize` for JSON communication.
+//! This module defines all data structures used in API requests and responses.
+//! Notification types are re-exported from the [`notify`] crate.
 //!
 //! # Type Categories
 //!
-//! - **Notification Types**: Aligned with the notification service schema
+//! - **Notification Types**: Re-exported from `notify::types`
 //! - **Question Types**: Track questions asked to users
 //! - **Check Types**: Different kinds of environment checks
 //! - **Request/Response Types**: API endpoint request and response structures
@@ -53,166 +52,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Source of a notification.
-///
-/// Identifies where a notification originated from. Currently only supports
-/// the ask service, but the enum structure allows for future expansion.
-///
-/// This type must match the notification service's schema exactly.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum NotificationSource {
-    #[serde(rename = "AskService")]
-    AskService { request_id: Uuid },
-}
-
-/// Lifetime behavior of a notification.
-///
-/// Determines whether a notification persists indefinitely or expires after a time.
-///
-/// # Variants
-///
-/// - `Ephemeral` - Notification expires at a specific timestamp
-/// - `Persistent` - Notification remains until explicitly dismissed
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum NotificationLifetime {
-    /// Ephemeral notification that expires at the given timestamp.
-    #[serde(rename = "Ephemeral")]
-    Ephemeral { expires_at: DateTime<Utc> },
-    /// Persistent notification that remains until dismissed.
-    #[serde(rename = "Persistent")]
-    Persistent,
-}
-
-impl NotificationLifetime {
-    /// Creates an ephemeral notification that expires after the given duration.
-    ///
-    /// # Arguments
-    ///
-    /// - `duration` - How long from now until the notification expires
-    ///
-    /// # Returns
-    ///
-    /// Returns a [`NotificationLifetime::Ephemeral`] variant with calculated expiry time.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use ask::types::NotificationLifetime;
-    /// use chrono::Duration;
-    ///
-    /// // Create a notification that expires in 5 minutes
-    /// let lifetime = NotificationLifetime::ephemeral(Duration::minutes(5));
-    /// ```
-    pub fn ephemeral(duration: chrono::Duration) -> Self {
-        NotificationLifetime::Ephemeral { expires_at: Utc::now() + duration }
-    }
-}
-
-/// Priority level for notifications.
-///
-/// Indicates the urgency of a notification. Higher priorities may be displayed
-/// more prominently or trigger more immediate alerts.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum NotificationPriority {
-    /// Low priority - informational only
-    Low,
-    /// Normal priority - standard notifications
-    Normal,
-    /// High priority - important but not urgent
-    High,
-    /// Urgent - requires immediate attention
-    Urgent,
-}
-
-/// Status of a notification.
-///
-/// Tracks the lifecycle state of a notification from creation through completion.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub enum NotificationStatus {
-    /// Notification created but not yet viewed
-    Pending,
-    /// User has viewed the notification
-    Viewed,
-    /// User has responded to the notification
-    Responded,
-    /// User dismissed the notification
-    Dismissed,
-    /// Notification expired (for ephemeral notifications)
-    Expired,
-}
-
-/// Request to create a new notification.
-///
-/// Contains all information needed to create a notification in the notification service.
-///
-/// # JSON Example
-///
-/// ```json
-/// {
-///   "source": {"AskService": {"request_id": "550e8400-e29b-41d4-a716-446655440000"}},
-///   "lifetime": "Persistent",
-///   "priority": "Normal",
-///   "title": "Question",
-///   "message": "Do you want to continue?",
-///   "requires_response": true
-/// }
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateNotificationRequest {
-    /// Source identifier for the notification
-    pub source: NotificationSource,
-    /// Lifetime behavior (ephemeral or persistent)
-    pub lifetime: NotificationLifetime,
-    /// Priority level
-    pub priority: NotificationPriority,
-    /// Notification title
-    pub title: String,
-    /// Notification message body
-    pub message: String,
-    /// Whether this notification requires a response
-    pub requires_response: bool,
-}
-
-/// A notification from the notification service.
-///
-/// Contains all notification data including metadata, status, and timestamps.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Notification {
-    pub id: Uuid,
-    pub source: NotificationSource,
-    pub lifetime: NotificationLifetime,
-    pub priority: NotificationPriority,
-    pub status: NotificationStatus,
-    pub title: String,
-    pub message: String,
-    pub requires_response: bool,
-    pub response: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-/// Request to update an existing notification.
-///
-/// Only includes fields that should be updated. Fields set to `None` are not
-/// included in the JSON (via `skip_serializing_if`).
-///
-/// # JSON Example
-///
-/// ```json
-/// {
-///   "status": "Responded",
-///   "response": "yes"
-/// }
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateNotificationRequest {
-    /// Updated status (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<NotificationStatus>,
-    /// User's response text (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub response: Option<String>,
-}
+// Re-export notification types from the notify crate
+pub use notify::types::{
+    CreateNotificationRequest, Notification, NotificationLifetime, NotificationPriority,
+    NotificationSource, NotificationStatus, UpdateNotificationRequest,
+};
 
 /// Information about a question asked to the user.
 ///
@@ -383,9 +227,9 @@ pub struct AnswerResponse {
 /// ```json
 /// {
 ///   "status": "ok",
-///   "service": "agentd-ask",
+///   "service": "ask",
 ///   "version": "0.1.0",
-///   "notification_service_url": "http://localhost:3000"
+///   "notification_service_url": "http://localhost:7004"
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -403,127 +247,6 @@ pub struct HealthResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_notification_source_serialization() {
-        let source = NotificationSource::AskService { request_id: Uuid::new_v4() };
-        let json = serde_json::to_string(&source).unwrap();
-        assert!(json.contains("AskService"));
-        assert!(json.contains("request_id"));
-
-        let deserialized: NotificationSource = serde_json::from_str(&json).unwrap();
-        match deserialized {
-            NotificationSource::AskService { .. } => {}
-        }
-    }
-
-    #[test]
-    fn test_notification_lifetime_ephemeral() {
-        let lifetime = NotificationLifetime::ephemeral(chrono::Duration::minutes(5));
-        match lifetime {
-            NotificationLifetime::Ephemeral { expires_at } => {
-                let now = Utc::now();
-                let duration = expires_at - now;
-                assert!(duration.num_minutes() >= 4 && duration.num_minutes() <= 5);
-            }
-            _ => panic!("Expected ephemeral lifetime"),
-        }
-    }
-
-    #[test]
-    fn test_notification_lifetime_serialization() {
-        let ephemeral = NotificationLifetime::ephemeral(chrono::Duration::minutes(5));
-        let json = serde_json::to_string(&ephemeral).unwrap();
-        assert!(json.contains("Ephemeral"));
-        assert!(json.contains("expires_at"));
-
-        let persistent = NotificationLifetime::Persistent;
-        let json = serde_json::to_string(&persistent).unwrap();
-        assert!(json.contains("Persistent"));
-    }
-
-    #[test]
-    fn test_notification_priority_serialization() {
-        let priorities = vec![
-            NotificationPriority::Low,
-            NotificationPriority::Normal,
-            NotificationPriority::High,
-            NotificationPriority::Urgent,
-        ];
-
-        for priority in priorities {
-            let json = serde_json::to_string(&priority).unwrap();
-            let deserialized: NotificationPriority = serde_json::from_str(&json).unwrap();
-            assert_eq!(std::mem::discriminant(&priority), std::mem::discriminant(&deserialized));
-        }
-    }
-
-    #[test]
-    fn test_notification_status_equality() {
-        assert_eq!(NotificationStatus::Pending, NotificationStatus::Pending);
-        assert_eq!(NotificationStatus::Viewed, NotificationStatus::Viewed);
-        assert_ne!(NotificationStatus::Pending, NotificationStatus::Viewed);
-    }
-
-    #[test]
-    fn test_notification_status_serialization() {
-        let statuses = vec![
-            NotificationStatus::Pending,
-            NotificationStatus::Viewed,
-            NotificationStatus::Responded,
-            NotificationStatus::Dismissed,
-            NotificationStatus::Expired,
-        ];
-
-        for status in statuses {
-            let json = serde_json::to_string(&status).unwrap();
-            let deserialized: NotificationStatus = serde_json::from_str(&json).unwrap();
-            assert_eq!(status, deserialized);
-        }
-    }
-
-    #[test]
-    fn test_create_notification_request_serialization() {
-        let request = CreateNotificationRequest {
-            source: NotificationSource::AskService { request_id: Uuid::new_v4() },
-            lifetime: NotificationLifetime::Persistent,
-            priority: NotificationPriority::Normal,
-            title: "Test".to_string(),
-            message: "Test message".to_string(),
-            requires_response: true,
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
-        let deserialized: CreateNotificationRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(request.title, deserialized.title);
-        assert_eq!(request.message, deserialized.message);
-        assert_eq!(request.requires_response, deserialized.requires_response);
-    }
-
-    #[test]
-    fn test_update_notification_request_serialization() {
-        let request = UpdateNotificationRequest {
-            status: Some(NotificationStatus::Responded),
-            response: Some("yes".to_string()),
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
-        assert!(json.contains("status"));
-        assert!(json.contains("response"));
-
-        let deserialized: UpdateNotificationRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(request.status, deserialized.status);
-        assert_eq!(request.response, deserialized.response);
-    }
-
-    #[test]
-    fn test_update_notification_request_skip_none() {
-        let request = UpdateNotificationRequest { status: None, response: Some("yes".to_string()) };
-
-        let json = serde_json::to_string(&request).unwrap();
-        assert!(!json.contains("status"));
-        assert!(json.contains("response"));
-    }
 
     #[test]
     fn test_check_type_as_str() {
@@ -635,9 +358,9 @@ mod tests {
     fn test_health_response_serialization() {
         let response = HealthResponse {
             status: "ok".to_string(),
-            service: "agentd-ask".to_string(),
+            service: "ask".to_string(),
             version: "0.1.0".to_string(),
-            notification_service_url: "http://localhost:3000".to_string(),
+            notification_service_url: "http://localhost:7004".to_string(),
         };
 
         let json = serde_json::to_string(&response).unwrap();

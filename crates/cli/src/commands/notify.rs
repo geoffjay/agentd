@@ -43,12 +43,12 @@
 //!
 //! All output uses colored terminal formatting for better readability.
 
-use crate::client::ApiClient;
 use crate::types::*;
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
 use clap::Subcommand;
 use colored::*;
+use notify::client::NotifyClient;
 use prettytable::{format, Cell, Row, Table};
 use uuid::Uuid;
 
@@ -177,12 +177,12 @@ impl NotifyCommand {
     ///
     /// # Arguments
     ///
-    /// * `client` - The API client configured for the notification service
+    /// * `client` - The notification service client
     ///
     /// # Returns
     ///
     /// Returns `Ok(())` on success, or an error if the command fails.
-    pub async fn execute(&self, client: &ApiClient) -> Result<()> {
+    pub async fn execute(&self, client: &NotifyClient) -> Result<()> {
         match self {
             NotifyCommand::Create {
                 source,
@@ -224,7 +224,7 @@ impl NotifyCommand {
 ///
 /// # Arguments
 ///
-/// * `client` - API client for making requests
+/// * `client` - Notification service client
 /// * `source` - Source type as string ("system", "ask", "monitor", "hook")
 /// * `lifetime` - Lifetime type as string ("ephemeral", "persistent")
 /// * `expires_in` - Seconds until expiration (for ephemeral notifications)
@@ -245,7 +245,7 @@ impl NotifyCommand {
 /// - API returns an error
 #[allow(clippy::too_many_arguments)]
 async fn create_notification(
-    client: &ApiClient,
+    client: &NotifyClient,
     source: &str,
     lifetime: &str,
     expires_in: i64,
@@ -287,8 +287,10 @@ async fn create_notification(
         requires_response,
     };
 
-    let notification: Notification =
-        client.post("/notifications", &request).await.context("Failed to create notification")?;
+    let notification = client
+        .create_notification(&request)
+        .await
+        .context("Failed to create notification")?;
 
     println!("{}", "Notification created successfully!".green().bold());
     println!();
@@ -304,7 +306,7 @@ async fn create_notification(
 ///
 /// # Arguments
 ///
-/// * `client` - API client for making requests
+/// * `client` - Notification service client
 /// * `status` - Optional status filter ("pending", "viewed", etc.)
 /// * `actionable` - If true, only show actionable notifications (pending + requires response)
 ///
@@ -316,22 +318,25 @@ async fn create_notification(
 ///
 /// Returns an error if the network request fails or API returns an error.
 async fn list_notifications(
-    client: &ApiClient,
+    client: &NotifyClient,
     status: Option<&str>,
     actionable: bool,
 ) -> Result<()> {
-    let notifications: Vec<Notification> = if actionable {
+    let notifications = if actionable {
         client
-            .get("/notifications/actionable")
+            .list_actionable_notifications()
             .await
             .context("Failed to fetch actionable notifications")?
     } else if let Some(status) = status {
+        let status_enum = status
+            .parse::<NotificationStatus>()
+            .context(format!("Invalid status: {status}"))?;
         client
-            .get(&format!("/notifications?status={status}"))
+            .list_notifications_by_status(status_enum)
             .await
             .context("Failed to fetch notifications")?
     } else {
-        client.get("/notifications").await.context("Failed to fetch notifications")?
+        client.list_notifications().await.context("Failed to fetch notifications")?
     };
 
     if notifications.is_empty() {
@@ -354,22 +359,23 @@ async fn list_notifications(
     ]));
 
     for notification in notifications {
-        let priority_str = format_priority(notification.priority);
-        let status_str = format_status(notification.status);
+        let priority_text = format_priority_plain(notification.priority);
+        let priority_style = get_priority_style(notification.priority);
+
+        let status_text = format_status_plain(notification.status);
+        let status_style = get_status_style(notification.status);
+
         let created = notification.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
-        let requires_response = if notification.requires_response {
-            "Yes".green().to_string()
-        } else {
-            "No".to_string()
-        };
+        let response_text = if notification.requires_response { "Yes" } else { "No" };
+        let response_style = if notification.requires_response { "Fg" } else { "" };
 
         table.add_row(Row::new(vec![
             Cell::new(&notification.id.to_string()[..8]),
-            Cell::new(&priority_str),
-            Cell::new(&status_str),
+            Cell::new(priority_text).style_spec(priority_style),
+            Cell::new(status_text).style_spec(status_style),
             Cell::new(&notification.title),
             Cell::new(&created),
-            Cell::new(&requires_response),
+            Cell::new(response_text).style_spec(response_style),
         ]));
     }
 
@@ -382,7 +388,7 @@ async fn list_notifications(
 ///
 /// # Arguments
 ///
-/// * `client` - API client for making requests
+/// * `client` - Notification service client
 /// * `id` - Notification UUID as string
 ///
 /// # Returns
@@ -395,12 +401,9 @@ async fn list_notifications(
 /// - The ID is not a valid UUID
 /// - The network request fails
 /// - The notification is not found
-async fn get_notification(client: &ApiClient, id: &str) -> Result<()> {
+async fn get_notification(client: &NotifyClient, id: &str) -> Result<()> {
     let uuid = Uuid::parse_str(id).context("Invalid UUID format")?;
-    let notification: Notification = client
-        .get(&format!("/notifications/{uuid}"))
-        .await
-        .context("Failed to fetch notification")?;
+    let notification = client.get_notification(uuid).await.context("Failed to fetch notification")?;
 
     display_notification(&notification);
 
@@ -411,7 +414,7 @@ async fn get_notification(client: &ApiClient, id: &str) -> Result<()> {
 ///
 /// # Arguments
 ///
-/// * `client` - API client for making requests
+/// * `client` - Notification service client
 /// * `id` - Notification UUID as string
 ///
 /// # Returns
@@ -424,13 +427,10 @@ async fn get_notification(client: &ApiClient, id: &str) -> Result<()> {
 /// - The ID is not a valid UUID
 /// - The network request fails
 /// - The notification is not found
-async fn delete_notification(client: &ApiClient, id: &str) -> Result<()> {
+async fn delete_notification(client: &NotifyClient, id: &str) -> Result<()> {
     let uuid = Uuid::parse_str(id).context("Invalid UUID format")?;
 
-    client
-        .delete(&format!("/notifications/{uuid}"))
-        .await
-        .context("Failed to delete notification")?;
+    client.delete_notification(uuid).await.context("Failed to delete notification")?;
 
     println!("{}", format!("Notification {uuid} deleted successfully!").green().bold());
 
@@ -444,7 +444,7 @@ async fn delete_notification(client: &ApiClient, id: &str) -> Result<()> {
 ///
 /// # Arguments
 ///
-/// * `client` - API client for making requests
+/// * `client` - Notification service client
 /// * `id` - Notification UUID as string
 /// * `response` - User's response text
 ///
@@ -459,15 +459,13 @@ async fn delete_notification(client: &ApiClient, id: &str) -> Result<()> {
 /// - The network request fails
 /// - The notification is not found
 /// - The notification doesn't accept responses
-async fn respond_to_notification(client: &ApiClient, id: &str, response: &str) -> Result<()> {
+async fn respond_to_notification(client: &NotifyClient, id: &str, response: &str) -> Result<()> {
     let uuid = Uuid::parse_str(id).context("Invalid UUID format")?;
 
     let request = UpdateNotificationRequest { status: None, response: Some(response.to_string()) };
 
-    let notification: Notification = client
-        .put(&format!("/notifications/{uuid}"), &request)
-        .await
-        .context("Failed to respond to notification")?;
+    let notification =
+        client.update_notification(uuid, &request).await.context("Failed to respond to notification")?;
 
     println!("{}", "Response submitted successfully!".green().bold());
     println!();
@@ -567,6 +565,99 @@ fn format_status(status: NotificationStatus) -> String {
         NotificationStatus::Responded => "Responded".green().to_string(),
         NotificationStatus::Dismissed => "Dismissed".bright_black().to_string(),
         NotificationStatus::Expired => "Expired".red().to_string(),
+    }
+}
+
+/// Format a notification priority as plain text (no colors) for table display.
+///
+/// Returns an unformatted string representation of the priority level.
+/// Used in table cells to avoid ANSI escape code width calculation issues.
+///
+/// # Arguments
+///
+/// * `priority` - The priority level to format
+///
+/// # Returns
+///
+/// Returns a plain string representation of the priority.
+fn format_priority_plain(priority: NotificationPriority) -> &'static str {
+    match priority {
+        NotificationPriority::Low => "Low",
+        NotificationPriority::Normal => "Normal",
+        NotificationPriority::High => "High",
+        NotificationPriority::Urgent => "Urgent",
+    }
+}
+
+/// Format a notification status as plain text (no colors) for table display.
+///
+/// Returns an unformatted string representation of the status.
+/// Used in table cells to avoid ANSI escape code width calculation issues.
+///
+/// # Arguments
+///
+/// * `status` - The notification status to format
+///
+/// # Returns
+///
+/// Returns a plain string representation of the status.
+fn format_status_plain(status: NotificationStatus) -> &'static str {
+    match status {
+        NotificationStatus::Pending => "Pending",
+        NotificationStatus::Viewed => "Viewed",
+        NotificationStatus::Responded => "Responded",
+        NotificationStatus::Dismissed => "Dismissed",
+        NotificationStatus::Expired => "Expired",
+    }
+}
+
+/// Get the prettytable style spec for a notification priority.
+///
+/// Returns a style specification string that prettytable uses to apply colors:
+/// - Low: dim (Fd)
+/// - Normal: default (empty string)
+/// - High: yellow (Fy)
+/// - Urgent: bold red (Frb)
+///
+/// # Arguments
+///
+/// * `priority` - The priority level
+///
+/// # Returns
+///
+/// Returns a style spec string for prettytable.
+fn get_priority_style(priority: NotificationPriority) -> &'static str {
+    match priority {
+        NotificationPriority::Low => "Fd",      // dim/dark
+        NotificationPriority::Normal => "",     // default
+        NotificationPriority::High => "Fy",     // yellow
+        NotificationPriority::Urgent => "Frb",  // red bold
+    }
+}
+
+/// Get the prettytable style spec for a notification status.
+///
+/// Returns a style specification string that prettytable uses to apply colors:
+/// - Pending: yellow (Fy)
+/// - Viewed: cyan (Fc)
+/// - Responded: green (Fg)
+/// - Dismissed: dim (Fd)
+/// - Expired: red (Fr)
+///
+/// # Arguments
+///
+/// * `status` - The notification status
+///
+/// # Returns
+///
+/// Returns a style spec string for prettytable.
+fn get_status_style(status: NotificationStatus) -> &'static str {
+    match status {
+        NotificationStatus::Pending => "Fy",    // yellow
+        NotificationStatus::Viewed => "Fc",     // cyan
+        NotificationStatus::Responded => "Fg",  // green
+        NotificationStatus::Dismissed => "Fd",  // dim/dark
+        NotificationStatus::Expired => "Fr",    // red
     }
 }
 

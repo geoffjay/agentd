@@ -121,7 +121,7 @@ fn install_user() -> Result<()> {
     let user = env::var("USER")
         .unwrap_or_else(|_| env::var("LOGNAME").unwrap_or_else(|_| "user".to_string()));
 
-    println!("{}", format!("  Ensuring {} can write to log directory...", user).blue());
+    println!("{}", format!("  Ensuring {user} can write to log directory...").blue());
 
     let chown_status = Command::new("sudo")
         .arg("chown")
@@ -136,12 +136,10 @@ fn install_user() -> Result<()> {
         eprintln!("Services may not be able to write logs");
         eprintln!("Run manually:");
         eprintln!("  {}", format!("sudo chown -R $(whoami) {}", log_dir.display()).cyan());
+    } else if dir_created {
+        println!("  {} Log directory created and owned by {}", "✓".green(), user);
     } else {
-        if dir_created {
-            println!("  {} Log directory created and owned by {}", "✓".green(), user);
-        } else {
-            println!("  {} Log directory ownership fixed (now owned by {})", "✓".green(), user);
-        }
+        println!("  {} Log directory ownership fixed (now owned by {})", "✓".green(), user);
     }
 
     println!();
@@ -306,7 +304,7 @@ fn start_service(service: &str) -> Result<()> {
     let plist_path = plist_dir.join(&plist_name);
 
     if !plist_path.exists() {
-        anyhow::bail!("Service '{}' not installed. Run 'cargo xtask install-user' first.", service);
+        anyhow::bail!("Service '{service}' not installed. Run 'cargo xtask install-user' first.");
     }
 
     print!("  Starting agentd-{service}... ");
@@ -339,7 +337,7 @@ fn stop_service(service: &str) -> Result<()> {
     let plist_path = plist_dir.join(&plist_name);
 
     if !plist_path.exists() {
-        anyhow::bail!("Service '{}' not installed", service);
+        anyhow::bail!("Service '{service}' not installed");
     }
 
     print!("  Stopping agentd-{service}... ");
@@ -497,21 +495,20 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
 
         // First, try creating the directory if needed
         let needs_sudo =
-            if !bin_dir.exists() { matches!(fs::create_dir_all(bin_dir), Err(_)) } else { false };
+            if !bin_dir.exists() { fs::create_dir_all(bin_dir).is_err() } else { false };
 
         // Remove existing symlink if present (might need sudo)
-        if symlink_path.exists() {
-            if fs::remove_file(&symlink_path).is_err() {
-                println!("{}", "  Existing symlink requires sudo to remove...".yellow());
-                let status = Command::new("sudo")
-                    .arg("rm")
-                    .arg(&symlink_path)
-                    .status()
-                    .context("Failed to execute sudo rm")?;
+        if symlink_path.exists()
+            && fs::remove_file(&symlink_path).is_err() {
+            println!("{}", "  Existing symlink requires sudo to remove...".yellow());
+            let status = Command::new("sudo")
+                .arg("rm")
+                .arg(&symlink_path)
+                .status()
+                .context("Failed to execute sudo rm")?;
 
-                if !status.success() {
-                    anyhow::bail!("Failed to remove existing symlink");
-                }
+            if !status.success() {
+                anyhow::bail!("Failed to remove existing symlink");
             }
         }
 

@@ -72,9 +72,10 @@ mod commands;
 pub mod types;
 
 use anyhow::{Context, Result};
+use ask::client::AskClient;
 use clap::{Parser, Subcommand};
-use client::ApiClient;
 use commands::{AskCommand, NotifyCommand};
+use notify::client::NotifyClient;
 use std::env;
 
 /// Main CLI structure parsed by clap.
@@ -157,14 +158,14 @@ async fn main() -> Result<()> {
             // Use NOTIFY_SERVICE_URL env var, default to production port
             let url = env::var("NOTIFY_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7004".to_string());
-            let client = ApiClient::new(url);
+            let client = NotifyClient::new(url);
             command.execute(&client).await?;
         }
         Commands::Ask { command } => {
             // Use ASK_SERVICE_URL env var, default to production port
             let url =
                 env::var("ASK_SERVICE_URL").unwrap_or_else(|_| "http://localhost:7001".to_string());
-            let client = ApiClient::new(url);
+            let client = AskClient::new(url);
             command.execute(&client).await?;
         }
         Commands::Hook => {

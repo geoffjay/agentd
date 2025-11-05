@@ -63,6 +63,7 @@
 mod api;
 mod notification;
 mod storage;
+mod types;
 
 use api::{create_router, ApiState};
 use std::env;
@@ -139,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Bind to address (use PORT env var, default 17004 for dev, 7004 for production)
     let port = env::var("PORT").unwrap_or_else(|_| "17004".to_string());
-    let addr = format!("127.0.0.1:{}", port);
+    let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Notification API server listening on http://{}", addr);
 

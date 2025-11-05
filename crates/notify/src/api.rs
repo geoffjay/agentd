@@ -67,7 +67,7 @@
 //! curl http://localhost:3030/notifications/actionable
 //! ```
 
-use crate::{notification::*, storage::NotificationStorage};
+use crate::{storage::NotificationStorage, types::*};
 use axum::{
     extract::{Path, State},
     http::StatusCode,

@@ -13,16 +13,17 @@
 //!
 //! ## Architecture
 //!
-//! The service consists of three main components:
+//! The service consists of four main components:
 //!
-//! - **Notification Types** ([`notification`]): Core data structures and types
+//! - **Notification Types** ([`types`]): Core data structures and types
+//! - **HTTP Client** ([`client`]): Client for making requests to the notification service
 //! - **Storage Backend** ([`storage`]): SQLite-based persistence layer
 //! - **REST API** ([`api`]): HTTP endpoints for managing notifications
 //!
-//! ## Example Usage
+//! ## Example Usage (Service)
 //!
 //! ```no_run
-//! use notify::{notification::*, storage::NotificationStorage, api::create_router};
+//! use notify::{types::*, storage::NotificationStorage, api::create_router};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -46,6 +47,25 @@
 //! }
 //! ```
 //!
+//! ## Example Usage (Client)
+//!
+//! ```no_run
+//! use notify::client::NotifyClient;
+//! use notify::types::*;
+//!
+//! #[tokio::main]
+//! async fn main() -> anyhow::Result<()> {
+//!     // Create a client
+//!     let client = NotifyClient::new("http://localhost:7004");
+//!
+//!     // List notifications
+//!     let notifications = client.list_notifications().await?;
+//!     println!("Found {} notifications", notifications.len());
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
 //! ## Features
 //!
 //! - **Multiple Priority Levels**: Low, Normal, High, Urgent
@@ -59,6 +79,8 @@
 //! The service listens on port 3000 by default and stores data in:
 //! `~/.local/share/agentd/notifications.db`
 
+pub mod types;
 pub mod api;
+pub mod client;
 pub mod notification;
 pub mod storage;
