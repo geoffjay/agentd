@@ -37,6 +37,3 @@ thiserror = "2.0"
 
 # CLI
 clap = { version = "4.5", features = ["derive"] }
-
-# GUI
-gpui = { git = "https://github.com/zed-industries/zed" }
