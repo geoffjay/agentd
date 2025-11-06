@@ -54,5 +54,8 @@ tags.temp
 # Other
 .env
 
+# External works brought in mostly as context for use by agents
+contrib/pgui
+
 # AI
 .claude/settings.local.json

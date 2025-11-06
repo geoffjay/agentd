@@ -1,7 +1,6 @@
 use gpui::*;
 use gpui_component::{ActiveTheme as _, Root, init, theme};
 
-mod app;
 mod assets;
 mod theme;
 mod window;
