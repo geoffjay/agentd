@@ -1,46 +1,21 @@
-use async_std::fs;
 use serde::{Deserialize, Serialize};
 
+/// Information about a saved notify service connection
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConnectionInfo {
+pub struct ServiceConnection {
     pub name: String,
-    pub hostname: String,
-    pub username: String,
-    pub password: String,
-    pub database: String,
-    pub port: usize,
+    pub url: String,
 }
 
-impl Default for ConnectionInfo {
+impl Default for ServiceConnection {
     fn default() -> Self {
-        Self {
-            name: "Test".to_string(),
-            hostname: "localhost".to_string(),
-            username: "test".to_string(),
-            password: "test".to_string(),
-            database: "test".to_string(),
-            port: 5432,
-        }
+        Self { name: "Local Service".to_string(), url: "http://localhost:7004".to_string() }
     }
 }
 
-pub async fn load_connections() -> Vec<ConnectionInfo> {
-    let default = vec![];
-    if let Some(path) = std::env::home_dir() {
-        let project_dir = path.join(".pgui");
-        let connections_file = project_dir.join("connections.json");
-        if !connections_file.exists() {
-            return default;
-        }
-        let content = match fs::read_to_string(connections_file).await {
-            Ok(content) => content,
-            Err(_) => return default,
-        };
-        if content.trim().is_empty() {
-            return default;
-        }
-        serde_json::from_str(&content).unwrap_or(default)
-    } else {
-        default
-    }
+/// Load saved service connections from configuration
+pub async fn load_connections() -> Vec<ServiceConnection> {
+    // For now, return a default local connection
+    // In the future, this could load from a config file
+    vec![ServiceConnection::default()]
 }

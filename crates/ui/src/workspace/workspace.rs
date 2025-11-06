@@ -3,15 +3,12 @@ use super::footer_bar::{FooterBar, FooterBarEvent};
 use super::header_bar::HeaderBar;
 use super::notifications_panel::NotificationsPanel;
 
-use crate::services::TableInfo;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 
 use gpui_component::ActiveTheme;
-use gpui_component::resizable::{ResizableState, resizable_panel, v_resizable};
 
 pub struct Workspace {
-    resize_state: Entity<ResizableState>,
     header_bar: Entity<HeaderBar>,
     footer_bar: Entity<FooterBar>,
     connections_panel: Entity<ConnectionsPanel>,
@@ -24,25 +21,45 @@ impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let header_bar = HeaderBar::view(window, cx);
         let footer_bar = FooterBar::view(window, cx);
-        let resize_state = ResizableState::new(cx);
         let connections_panel = ConnectionsPanel::view(window, cx);
         let notifications_panel = NotificationsPanel::view(window, cx);
 
         let _subscriptions = vec![
             cx.subscribe(&connections_panel, |this, _, event: &ConnectionEvent, cx| {
-                this.tables_panel.update(cx, |tables_panel, cx| {
-                    tables_panel.handle_connection_event(event, cx);
-                });
+                match event {
+                    ConnectionEvent::Connected(service_manager) => {
+                        // When connected, fetch and display notifications
+                        let service_manager = service_manager.clone();
+                        cx.spawn(async move |view, cx| {
+                            let notifications = service_manager.list_notifications().await;
+                            if let Ok(notifs) = notifications {
+                                let _ = view.update(cx, |view, cx| {
+                                    view.notifications_panel.update(cx, |panel, cx| {
+                                        panel.update_notifications(notifs, cx);
+                                    });
+                                });
+                            }
+                        })
+                        .detach();
+                    }
+                    ConnectionEvent::Disconnected => {
+                        this.notifications_panel.update(cx, |panel, cx| {
+                            panel.clear_notifications(cx);
+                        });
+                    }
+                    ConnectionEvent::ConnectionError { .. } => {
+                        // Handle connection error if needed
+                    }
+                }
+                cx.notify();
             }),
             cx.subscribe(&footer_bar, |this, _, event: &FooterBarEvent, cx| {
                 match event {
                     FooterBarEvent::ShowConnections => {
                         this.show_connections = true;
-                        this.show_tables = false;
                     }
-                    FooterBarEvent::ShowTables => {
+                    FooterBarEvent::ShowNotifications => {
                         this.show_connections = false;
-                        this.show_tables = true;
                     }
                 }
                 cx.notify();
@@ -50,7 +67,6 @@ impl Workspace {
         ];
 
         Self {
-            resize_state,
             header_bar,
             footer_bar,
             connections_panel,
@@ -63,39 +79,6 @@ impl Workspace {
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
     }
-
-    fn show_table_columns(&mut self, table: TableInfo, cx: &mut Context<Self>) {
-        // Get database manager from connections panel
-        let db_manager = self.connections_panel.read(cx).db_manager.clone();
-
-        cx.spawn(async move |this, cx| {
-            let result = db_manager.get_table_columns(&table.table_name, &table.table_schema).await;
-
-            this.update(cx, |this, cx| {
-                match result {
-                    Ok(query_result) => {
-                        this.results_panel.update(cx, |results, cx| {
-                            results.update_result(QueryExecutionResult::Select(query_result), cx);
-                        });
-                    }
-                    Err(e) => {
-                        this.results_panel.update(cx, |results, cx| {
-                            results.update_result(
-                                QueryExecutionResult::Error(format!(
-                                    "Failed to load table columns: {}",
-                                    e
-                                )),
-                                cx,
-                            );
-                        });
-                    }
-                }
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
 }
 
 impl Render for Workspace {
@@ -107,19 +90,14 @@ impl Render for Workspace {
             .border_color(cx.theme().border)
             .border_r_1()
             .min_w(px(300.0))
-            .when(self.show_connections, |this| this.child(self.connections_panel.clone()))
-            .when(self.show_tables, |this| this.child(self.tables_panel.clone()));
+            .when(self.show_connections, |this| this.child(self.connections_panel.clone()));
 
-        let main = div().flex().flex_col().w_full().overflow_hidden().child(
-            v_resizable("resizable", self.resize_state.clone())
-                .child(
-                    resizable_panel()
-                        .size(px(400.))
-                        .size_range(px(200.)..px(800.))
-                        .child(self.editor.clone()),
-                )
-                .child(resizable_panel().size(px(200.)).child(self.results_panel.clone())),
-        );
+        let main = div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .overflow_hidden()
+            .child(self.notifications_panel.clone());
 
         let content = div()
             .id("workspace-content")

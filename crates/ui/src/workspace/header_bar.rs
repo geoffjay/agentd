@@ -7,7 +7,7 @@ use gpui_component::{
     label::Label,
 };
 
-use crate::themes::*;
+use crate::theme::*;
 
 pub struct HeaderBar {}
 

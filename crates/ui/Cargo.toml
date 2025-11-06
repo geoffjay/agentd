@@ -10,11 +10,17 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-env_logger.workspace = true
-log.workspace = true
-rust-embed.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
+
+# Local dependencies
+env_logger = "0.11"
+log = "0.4"
+rust-embed = "8.5"
+
+# Internal crates
+notify = { path = "../notify" }
 
 # UI dependencies
 gpui = "0.2.2"

@@ -14,9 +14,9 @@ use gpui_component::{
 use crate::services::*;
 
 pub enum ConnectionEvent {
-    Connected(Arc<DatabaseManager>),
+    Connected(Arc<NotifyServiceManager>),
     Disconnected,
-    ConnectionError { field1: String },
+    ConnectionError { message: String },
 }
 
 impl EventEmitter<ConnectionEvent> for ConnectionsPanel {}
@@ -25,14 +25,14 @@ impl EventEmitter<ConnectionEvent> for ConnectionsPanel {}
 struct ConnectionListItem {
     base: ListItem,
     ix: IndexPath,
-    connection: ConnectionInfo,
+    connection: ServiceConnection,
     selected: bool,
 }
 
 impl ConnectionListItem {
     pub fn new(
         id: impl Into<ElementId>,
-        connection: ConnectionInfo,
+        connection: ServiceConnection,
         ix: IndexPath,
         selected: bool,
     ) -> Self {
@@ -76,16 +76,10 @@ impl RenderOnce for ConnectionListItem {
                             .whitespace_nowrap(),
                     )
                     .child(
-                        Label::new(format!(
-                            "{}@{}:{}/{}",
-                            self.connection.username,
-                            self.connection.hostname,
-                            self.connection.port,
-                            self.connection.database
-                        ))
-                        .text_xs()
-                        .text_color(text_color.opacity(0.6))
-                        .whitespace_nowrap(),
+                        Label::new(self.connection.url.clone())
+                            .text_xs()
+                            .text_color(text_color.opacity(0.6))
+                            .whitespace_nowrap(),
                     ),
             ),
         )
@@ -93,8 +87,8 @@ impl RenderOnce for ConnectionListItem {
 }
 
 struct ConnectionListDelegate {
-    connections: Vec<ConnectionInfo>,
-    matched_connections: Vec<ConnectionInfo>,
+    connections: Vec<ServiceConnection>,
+    matched_connections: Vec<ServiceConnection>,
     selected_index: Option<IndexPath>,
     query: String,
 }
@@ -119,8 +113,8 @@ impl ListDelegate for ConnectionListDelegate {
             self.connections
                 .iter()
                 .filter(|conn| {
-                    conn.database.to_lowercase().contains(&query.to_lowercase())
-                        || conn.username.to_lowercase().contains(&query.to_lowercase())
+                    conn.name.to_lowercase().contains(&query.to_lowercase())
+                        || conn.url.to_lowercase().contains(&query.to_lowercase())
                 })
                 .cloned()
                 .collect()
@@ -131,7 +125,7 @@ impl ListDelegate for ConnectionListDelegate {
     fn confirm(&mut self, _secondary: bool, _window: &mut Window, _cx: &mut Context<List<Self>>) {
         if let Some(selected) = self.selected_index {
             if let Some(conn) = self.matched_connections.get(selected.row) {
-                println!("Selected conn: {}@{}", conn.username, conn.hostname);
+                println!("Selected connection: {} at {}", conn.name, conn.url);
             }
         }
     }
@@ -160,7 +154,7 @@ impl ListDelegate for ConnectionListDelegate {
     }
 
     fn loading(&self, _: &App) -> bool {
-        false // We don't have pagination for tables
+        false
     }
 
     fn load_more_threshold(&self) -> usize {
@@ -168,7 +162,7 @@ impl ListDelegate for ConnectionListDelegate {
     }
 
     fn load_more(&mut self, _window: &mut Window, _cx: &mut Context<List<Self>>) {
-        // No-op for tables
+        // No-op
     }
 }
 
@@ -182,8 +176,7 @@ impl ConnectionListDelegate {
         }
     }
 
-    #[allow(dead_code)]
-    fn update_connections(&mut self, connections: Vec<ConnectionInfo>) {
+    fn update_connections(&mut self, connections: Vec<ServiceConnection>) {
         self.connections = connections;
         self.matched_connections = self.connections.clone();
         if !self.matched_connections.is_empty() && self.selected_index.is_none() {
@@ -191,14 +184,13 @@ impl ConnectionListDelegate {
         }
     }
 
-    #[allow(dead_code)]
-    fn selected_connection(&self) -> Option<&ConnectionInfo> {
+    fn selected_connection(&self) -> Option<&ServiceConnection> {
         self.selected_index.and_then(|ix| self.matched_connections.get(ix.row))
     }
 }
 
 pub struct ConnectionsPanel {
-    pub db_manager: Arc<DatabaseManager>,
+    pub service_manager: Arc<NotifyServiceManager>,
     input_esc: Entity<InputState>,
     connection_list: Entity<List<ConnectionListDelegate>>,
     is_connected: bool,
@@ -209,7 +201,7 @@ pub struct ConnectionsPanel {
 impl ConnectionsPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input_esc =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Enter DB URL").clean_on_escape());
+            cx.new(|cx| InputState::new(window, cx).placeholder("Service URL").clean_on_escape());
 
         let connection_list = cx.new(|cx| List::new(ConnectionListDelegate::new(), window, cx));
 
@@ -219,12 +211,8 @@ impl ConnectionsPanel {
             |this, _, ev: &ListEvent, window, cx| match ev {
                 ListEvent::Confirm(ix) => {
                     if let Some(conn) = this.get_selected_connection(*ix, cx) {
-                        let con_str = format!(
-                            "postgres://{}:{}@{}:{}/{}",
-                            conn.username, conn.password, conn.hostname, conn.port, conn.database
-                        );
                         this.input_esc.update(cx, |is, cx| {
-                            is.set_value(con_str, window, cx);
+                            is.set_value(conn.url.clone(), window, cx);
                             cx.notify();
                         })
                     }
@@ -244,7 +232,7 @@ impl ConnectionsPanel {
         .detach();
 
         Self {
-            db_manager: Arc::new(DatabaseManager::new()),
+            service_manager: Arc::new(NotifyServiceManager::new()),
             input_esc,
             is_connected: false,
             is_loading: false,
@@ -257,11 +245,11 @@ impl ConnectionsPanel {
         cx.new(|cx| Self::new(window, cx))
     }
 
-    fn get_selected_connection(&self, ix: IndexPath, cx: &App) -> Option<ConnectionInfo> {
+    fn get_selected_connection(&self, ix: IndexPath, cx: &App) -> Option<ServiceConnection> {
         self.connection_list.read(cx).delegate().matched_connections.get(ix.row).cloned()
     }
 
-    pub fn connect_to_database(
+    pub fn connect_to_service(
         &mut self,
         _: &ClickEvent,
         _window: &mut Window,
@@ -274,24 +262,24 @@ impl ConnectionsPanel {
         self.is_loading = true;
         cx.notify();
 
-        let db_manager = self.db_manager.clone();
-        let connection_url = self.input_esc.read(cx).value().clone();
+        let service_manager = self.service_manager.clone();
+        let service_url = self.input_esc.read(cx).value().clone();
 
         cx.spawn(async move |this: WeakEntity<ConnectionsPanel>, cx| {
-            let result = db_manager.connect(&connection_url).await;
+            let result = service_manager.connect(&service_url).await;
 
             this.update(cx, |this, cx| {
                 this.is_loading = false;
                 match result {
                     Ok(_) => {
                         this.is_connected = true;
-                        cx.emit(ConnectionEvent::Connected(this.db_manager.clone()));
+                        cx.emit(ConnectionEvent::Connected(this.service_manager.clone()));
                     }
                     Err(e) => {
-                        let error_msg = format!("Failed to connect to database: {}", e);
+                        let error_msg = format!("Failed to connect to service: {}", e);
                         eprintln!("{}", error_msg);
                         this.is_connected = false;
-                        cx.emit(ConnectionEvent::ConnectionError { field1: error_msg });
+                        cx.emit(ConnectionEvent::ConnectionError { message: error_msg });
                     }
                 }
                 cx.notify();
@@ -301,16 +289,16 @@ impl ConnectionsPanel {
         .detach();
     }
 
-    pub fn disconnect_from_database(
+    pub fn disconnect_from_service(
         &mut self,
         _: &ClickEvent,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let db_manager = self.db_manager.clone();
+        let service_manager = self.service_manager.clone();
 
         cx.spawn(async move |this, cx| {
-            db_manager.disconnect().await;
+            service_manager.disconnect().await;
 
             this.update(cx, |this, cx| {
                 this.is_connected = false;
@@ -322,7 +310,6 @@ impl ConnectionsPanel {
         .detach();
     }
 
-    #[allow(dead_code)]
     pub fn is_connected(&self) -> bool {
         self.is_connected
     }
@@ -334,7 +321,7 @@ impl ConnectionsPanel {
                 .icon(Icon::empty().path("icons/unplug.svg"))
                 .small()
                 .danger()
-                .on_click(cx.listener(Self::disconnect_from_database))
+                .on_click(cx.listener(Self::disconnect_from_service))
         } else {
             Button::new("connect")
                 .label(if self.is_loading { "Connecting..." } else { "Connect" })
@@ -342,7 +329,7 @@ impl ConnectionsPanel {
                 .small()
                 .outline()
                 .disabled(self.is_loading)
-                .on_click(cx.listener(Self::connect_to_database))
+                .on_click(cx.listener(Self::connect_to_service))
         };
 
         v_flex()
@@ -350,7 +337,7 @@ impl ConnectionsPanel {
             .p_3()
             .border_b_1()
             .border_color(cx.theme().border)
-            .child(Label::new("Database Connection").font_bold().text_sm())
+            .child(Label::new("Service Connection").font_bold().text_sm())
             .child(TextInput::new(&self.input_esc).cleanable())
             .child(connection_button)
     }
