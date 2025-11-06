@@ -2,12 +2,19 @@ use std::ops::Range;
 
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Size, StyleSized, h_flex,
+    ActiveTheme as _, Icon, Size, StyleSized, Sizable as _, StyledExt, h_flex,
+    button::{Button, ButtonVariants as _},
     label::Label,
     table::{Column, Table, TableDelegate},
     v_flex,
 };
 use notify::types::Notification;
+
+pub enum NotificationsPanelEvent {
+    Refresh,
+}
+
+impl EventEmitter<NotificationsPanelEvent> for NotificationsPanel {}
 
 pub struct NotificationsPanel {
     notifications: Vec<Notification>,
@@ -26,12 +33,12 @@ struct NotificationsTableDelegate {
 impl NotificationsTableDelegate {
     fn new() -> Self {
         let columns = vec![
-            Column::new("priority", "Priority"),
-            Column::new("title", "Title"),
-            Column::new("message", "Message"),
-            Column::new("source", "Source"),
-            Column::new("status", "Status"),
-            Column::new("created_at", "Created"),
+            Column::new("priority", "Priority").width(80.0),
+            Column::new("title", "Title").width(200.0),
+            Column::new("message", "Message").width(600.0),
+            Column::new("source", "Source").width(120.0),
+            Column::new("status", "Status").width(100.0),
+            Column::new("created_at", "Created").width(180.0),
         ];
 
         Self {
@@ -196,18 +203,51 @@ impl NotificationsPanel {
         });
         cx.notify();
     }
+
+    fn on_refresh(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        cx.emit(NotificationsPanelEvent::Refresh);
+    }
 }
 
 impl Render for NotificationsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let refresh_button = Button::new("refresh")
+            .label("Refresh")
+            .icon(Icon::empty().path("icons/refresh-cw.svg"))
+            .small()
+            .outline()
+            .on_click(cx.listener(Self::on_refresh));
+
+        let header = h_flex()
+            .w_full()
+            .items_center()
+            .justify_between()
+            .p_4()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                Label::new(format!("Notifications ({})", self.notifications.len()))
+                    .font_semibold()
+                    .text_sm(),
+            )
+            .child(refresh_button);
+
         if self.notifications.is_empty() {
-            h_flex().size_full().items_center().justify_center().child(
-                Label::new("No notifications")
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground),
+            v_flex().size_full().child(header).child(
+                h_flex()
+                    .flex_1()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Label::new("No notifications")
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground),
+                    ),
             )
         } else {
-            v_flex().size_full().p_4().child(self.table.clone())
+            v_flex().size_full().child(header).child(
+                div().flex_1().p_4().child(self.table.clone()),
+            )
         }
     }
 }

@@ -1,10 +1,13 @@
 use super::connections_panel::{ConnectionEvent, ConnectionsPanel};
 use super::footer_bar::{FooterBar, FooterBarEvent};
 use super::header_bar::HeaderBar;
-use super::notifications_panel::NotificationsPanel;
+use super::notifications_panel::{NotificationsPanel, NotificationsPanelEvent};
 
+use crate::services::NotifyServiceManager;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use std::sync::Arc;
+use std::time::Duration;
 
 use gpui_component::ActiveTheme;
 
@@ -15,6 +18,8 @@ pub struct Workspace {
     notifications_panel: Entity<NotificationsPanel>,
     _subscriptions: Vec<Subscription>,
     show_connections: bool,
+    service_manager: Option<Arc<NotifyServiceManager>>,
+    polling_task: Option<Task<()>>,
 }
 
 impl Workspace {
@@ -28,21 +33,15 @@ impl Workspace {
             cx.subscribe(&connections_panel, |this, _, event: &ConnectionEvent, cx| {
                 match event {
                     ConnectionEvent::Connected(service_manager) => {
-                        // When connected, fetch and display notifications
-                        let service_manager = service_manager.clone();
-                        cx.spawn(async move |view, cx| {
-                            let notifications = service_manager.list_notifications().await;
-                            if let Ok(notifs) = notifications {
-                                let _ = view.update(cx, |view, cx| {
-                                    view.notifications_panel.update(cx, |panel, cx| {
-                                        panel.update_notifications(notifs, cx);
-                                    });
-                                });
-                            }
-                        })
-                        .detach();
+                        this.service_manager = Some(service_manager.clone());
+                        // Initial fetch
+                        this.fetch_notifications(cx);
+                        // Start polling
+                        this.start_polling(cx);
                     }
                     ConnectionEvent::Disconnected => {
+                        this.service_manager = None;
+                        this.stop_polling();
                         this.notifications_panel.update(cx, |panel, cx| {
                             panel.clear_notifications(cx);
                         });
@@ -64,6 +63,13 @@ impl Workspace {
                 }
                 cx.notify();
             }),
+            cx.subscribe(&notifications_panel, |this, _, event: &NotificationsPanelEvent, cx| {
+                match event {
+                    NotificationsPanelEvent::Refresh => {
+                        this.fetch_notifications(cx);
+                    }
+                }
+            }),
         ];
 
         Self {
@@ -73,11 +79,71 @@ impl Workspace {
             notifications_panel,
             _subscriptions,
             show_connections: true,
+            service_manager: None,
+            polling_task: None,
         }
     }
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
+    }
+
+    fn fetch_notifications(&mut self, cx: &mut Context<Self>) {
+        if let Some(service_manager) = &self.service_manager {
+            let service_manager = service_manager.clone();
+            cx.spawn(async move |view, cx| {
+                let notifications = service_manager.list_notifications().await;
+                if let Ok(notifs) = notifications {
+                    let _ = view.update(cx, |view, cx| {
+                        view.notifications_panel.update(cx, |panel, cx| {
+                            panel.update_notifications(notifs, cx);
+                        });
+                    });
+                }
+            })
+            .detach();
+        }
+    }
+
+    fn start_polling(&mut self, cx: &mut Context<Self>) {
+        // Cancel any existing polling task
+        self.stop_polling();
+
+        if self.service_manager.is_some() {
+            let task = cx.spawn(async move |view, mut cx| {
+                loop {
+                    // Wait 5 seconds between polls
+                    cx.background_executor()
+                        .timer(Duration::from_secs(5))
+                        .await;
+
+                    // Fetch notifications
+                    let should_continue = view
+                        .update(cx, |view, cx| {
+                            if view.service_manager.is_some() {
+                                view.fetch_notifications(cx);
+                                true
+                            } else {
+                                false
+                            }
+                        })
+                        .ok()
+                        .unwrap_or(false);
+
+                    if !should_continue {
+                        break;
+                    }
+                }
+            });
+
+            self.polling_task = Some(task);
+        }
+    }
+
+    fn stop_polling(&mut self) {
+        if let Some(task) = self.polling_task.take() {
+            drop(task);
+        }
     }
 }
 

@@ -28,7 +28,7 @@ pub static THEMES: LazyLock<HashMap<SharedString, ThemeConfig>> = LazyLock::new(
 pub fn change_color_mode(mode: ThemeMode, _win: &mut Window, cx: &mut App) {
     let theme_name = match mode {
         ThemeMode::Light => "Kanagawa Lotus",
-        ThemeMode::Dark => "Kanagawa Dragon",
+        ThemeMode::Dark => "Kanagawa Wave",
     };
 
     if let Some(theme_config) = THEMES.get(theme_name) {
