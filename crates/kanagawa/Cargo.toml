@@ -49,7 +49,7 @@ name = "css"
 required-features = ["css-colors"]
 
 [[example]]
-name = "custom_flavor"
+name = "custom_theme"
 
 [[example]]
 name = "ratatui"

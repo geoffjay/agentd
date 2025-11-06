@@ -9,11 +9,11 @@ const fn ansi_term_ansi_color(color: &kanagawa::AnsiColor) -> ansi_term::Colour 
 }
 
 fn main() {
-    for flavor in &PALETTE {
-        let heading = format!("{} ({})", flavor.name, if flavor.dark { "dark" } else { "light" });
+    for theme in &PALETTE {
+        let heading = format!("{} ({})", theme.name, if theme.dark { "dark" } else { "light" });
         println!("{}\n", ansi_term::Style::new().underline().bold().paint(heading));
 
-        for color in flavor {
+        for color in theme {
             let name = format!("{}{}", color.name, if color.accent { " (accent)" } else { "" });
             let rgb = format!("rgb({:3}, {:3}, {:3})", color.rgb.r, color.rgb.g, color.rgb.b);
             let hsl = format!("hsl({:3.0}, {:5.3}, {:5.3})", color.hsl.h, color.hsl.s, color.hsl.l);
@@ -30,10 +30,10 @@ fn main() {
 
         println!(
             "{}\n",
-            ansi_term::Style::new().underline().bold().paint(format!("{} ANSI", flavor.name))
+            ansi_term::Style::new().underline().bold().paint(format!("{} ANSI", theme.name))
         );
 
-        for ansi_color in &flavor.ansi_colors {
+        for ansi_color in &theme.ansi_colors {
             let rgb = format!(
                 "rgb({:3}, {:3}, {:3})",
                 ansi_color.rgb.r, ansi_color.rgb.g, ansi_color.rgb.b
@@ -56,10 +56,10 @@ fn main() {
 
         println!(
             "{}\n",
-            ansi_term::Style::new().underline().bold().paint(format!("{} ANSI Pairs", flavor.name))
+            ansi_term::Style::new().underline().bold().paint(format!("{} ANSI Pairs", theme.name))
         );
 
-        for ansi_color_pair in &flavor.ansi_colors.to_ansi_color_pairs() {
+        for ansi_color_pair in &theme.ansi_colors.to_ansi_color_pairs() {
             println!(
                 "{}{} {}",
                 ansi_term_ansi_color(&ansi_color_pair.normal).reverse().paint("  "),

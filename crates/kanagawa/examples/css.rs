@@ -1,8 +1,8 @@
 //! Example demonstrating integration with the `css-colors` crate.
-use css_colors::{Color, percent};
+use css_colors::{percent, Color};
 
 fn main() {
-    let teal = kanagawa::PALETTE.mocha.colors.teal;
+    let teal = kanagawa::PALETTE.dragon.colors.teal;
     let rgb: css_colors::RGB = teal.into();
 
     println!("RGB: {}", rgb.to_css());
@@ -13,8 +13,8 @@ fn main() {
     let lighter = hsl.lighten(percent(20));
     println!("20% lighter: {lighter}");
 
-    let ansi_normal_magenta = kanagawa::PALETTE.mocha.ansi_colors.magenta;
-    let ansi_bright_magenta = kanagawa::PALETTE.mocha.ansi_colors.bright_magenta;
+    let ansi_normal_magenta = kanagawa::PALETTE.dragon.ansi_colors.magenta;
+    let ansi_bright_magenta = kanagawa::PALETTE.dragon.ansi_colors.bright_magenta;
     let ansi_magenta_normal_rgb: css_colors::RGB = ansi_normal_magenta.into();
     let ansi_magenta_bright_rgb: css_colors::RGB = ansi_bright_magenta.into();
 

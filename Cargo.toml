@@ -4,6 +4,7 @@ members = [
     "crates/ask",
     "crates/cli",
     "crates/hook",
+    "crates/kanagawa",
     "crates/monitor",
     "crates/notify",
     "crates/ollama",

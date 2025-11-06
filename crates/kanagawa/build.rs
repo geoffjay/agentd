@@ -1,6 +1,6 @@
 //! Build script for the Kanagawa crate.
 //! This script uses the palette JSON file from the kanagawa/palette github repo
-//! in order to populate the `FlavorColors` struct as well as implement the various
+//! in order to populate the `ThemeColors` struct as well as implement the various
 //! iteration & indexing primitives offered by the crate.
 use std::{
     collections::HashMap,
@@ -21,11 +21,11 @@ struct Palette {
     #[allow(dead_code)]
     version: String,
     #[serde(flatten)]
-    flavors: HashMap<String, Flavor>,
+    themes: HashMap<String, Theme>,
 }
 
 #[derive(Debug, Deserialize)]
-struct Flavor {
+struct Theme {
     emoji: char,
     order: u32,
     dark: bool,
@@ -80,45 +80,45 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let palette: Palette =
         serde_json::from_reader(BufReader::new(File::open("src/palette.json")?))?;
-    let sample_flavor = palette.flavors.values().next().expect("at least one flavor");
+    let sample_theme = palette.themes.values().next().expect("at least one theme");
 
-    let flavor_tokens = [
+    let theme_tokens = [
         // Colors
-        make_flavor_colors_struct_tokens(sample_flavor),
-        make_flavor_colors_all_impl_tokens(sample_flavor),
+        make_theme_colors_struct_tokens(sample_theme),
+        make_theme_colors_all_impl_tokens(sample_theme),
         // ANSI Colors
-        make_flavor_ansi_colors_struct_tokens(sample_flavor),
-        make_flavor_ansi_colors_all_impl_tokens(sample_flavor),
+        make_theme_ansi_colors_struct_tokens(sample_theme),
+        make_theme_ansi_colors_all_impl_tokens(sample_theme),
         // ANSI Color Pairs
-        make_flavor_ansi_color_pairs_struct_tokens(sample_flavor),
-        make_flavor_ansi_color_pairs_all_impl_tokens(sample_flavor),
+        make_theme_ansi_color_pairs_struct_tokens(sample_theme),
+        make_theme_ansi_color_pairs_all_impl_tokens(sample_theme),
     ];
     let color_tokens = [
-        make_color_name_enum_tokens(sample_flavor),
-        make_color_name_index_impl_tokens(sample_flavor),
-        make_color_name_display_impl_tokens(sample_flavor),
-        make_color_name_identifier_impl_tokens(sample_flavor),
-        make_color_name_fromstr_impl_tokens(sample_flavor),
+        make_color_name_enum_tokens(sample_theme),
+        make_color_name_index_impl_tokens(sample_theme),
+        make_color_name_display_impl_tokens(sample_theme),
+        make_color_name_identifier_impl_tokens(sample_theme),
+        make_color_name_fromstr_impl_tokens(sample_theme),
     ];
     let ansi_color_tokens = [
-        make_ansi_color_name_enum_tokens(sample_flavor),
-        make_ansi_color_name_index_impl_tokens(sample_flavor),
-        make_ansi_color_name_display_impl_tokens(sample_flavor),
-        make_ansi_color_name_identifier_impl_tokens(sample_flavor),
-        make_ansi_color_name_fromstr_impl_tokens(sample_flavor),
+        make_ansi_color_name_enum_tokens(sample_theme),
+        make_ansi_color_name_index_impl_tokens(sample_theme),
+        make_ansi_color_name_display_impl_tokens(sample_theme),
+        make_ansi_color_name_identifier_impl_tokens(sample_theme),
+        make_ansi_color_name_fromstr_impl_tokens(sample_theme),
     ];
     let ansi_color_pair_tokens = [
-        make_ansi_color_pair_name_enum_tokens(sample_flavor),
-        make_ansi_color_pair_name_index_impl_tokens(sample_flavor),
-        make_ansi_color_pair_name_display_impl_tokens(sample_flavor),
-        make_ansi_color_pair_name_identifier_impl_tokens(sample_flavor),
-        make_ansi_color_pair_name_fromstr_impl_tokens(sample_flavor),
+        make_ansi_color_pair_name_enum_tokens(sample_theme),
+        make_ansi_color_pair_name_index_impl_tokens(sample_theme),
+        make_ansi_color_pair_name_display_impl_tokens(sample_theme),
+        make_ansi_color_pair_name_identifier_impl_tokens(sample_theme),
+        make_ansi_color_pair_name_fromstr_impl_tokens(sample_theme),
     ];
     let palette_tokens = [make_palette_const_tokens(&palette)];
 
     let ast = syn::parse2(
         [
-            &flavor_tokens[..],
+            &theme_tokens[..],
             &color_tokens[..],
             &ansi_color_tokens[..],
             &ansi_color_pair_tokens[..],
@@ -141,14 +141,14 @@ fn palette_circle(filename: &str) -> String {
 }
 
 fn color_palette_circles(color_key: &str) -> String {
-    ["latte", "frappe", "macchiato", "mocha"]
+    ["lotus", "wave", "dragon"]
         .map(|n| palette_circle(format!("{n}_{color_key}").as_str()))
         .into_iter()
         .collect::<String>()
 }
 
 fn ansi_color_palette_circles(color_key: &str) -> String {
-    ["latte", "frappe", "macchiato", "mocha"]
+    ["lotus", "wave", "dragon"]
         .map(|n| palette_circle(format!("ansi/{n}_ansi_{color_key}").as_str()))
         .into_iter()
         .collect::<String>()
@@ -163,18 +163,18 @@ fn remove_whitespace(s: &str) -> String {
     s.replace(' ', "")
 }
 
-fn flavors_in_order(palette: &Palette) -> std::vec::IntoIter<(&String, &Flavor)> {
-    palette.flavors.iter().sorted_by(|(_, a), (_, b)| a.order.cmp(&b.order))
+fn themes_in_order(palette: &Palette) -> std::vec::IntoIter<(&String, &Theme)> {
+    palette.themes.iter().sorted_by(|(_, a), (_, b)| a.order.cmp(&b.order))
 }
 
-fn colors_in_order(flavor: &Flavor) -> std::vec::IntoIter<(&String, &Color)> {
-    flavor.colors.iter().sorted_by(|(_, a), (_, b)| a.order.cmp(&b.order))
+fn colors_in_order(theme: &Theme) -> std::vec::IntoIter<(&String, &Color)> {
+    theme.colors.iter().sorted_by(|(_, a), (_, b)| a.order.cmp(&b.order))
 }
 
 fn ansi_color_pairs_in_order(
-    flavor: &Flavor,
+    theme: &Theme,
 ) -> std::vec::IntoIter<(&String, &AnsiColorPair, String, String)> {
-    flavor
+    theme
         .ansi_colors
         .iter()
         .map(|(ident, pair)| {
@@ -188,8 +188,8 @@ fn ansi_color_pairs_in_order(
         .sorted_by(|(_, a, _, _), (_, b, _, _)| a.order.cmp(&b.order))
 }
 
-fn ansi_colors_in_order(flavor: &Flavor) -> std::vec::IntoIter<(String, &AnsiColor)> {
-    flavor
+fn ansi_colors_in_order(theme: &Theme) -> std::vec::IntoIter<(String, &AnsiColor)> {
+    theme
         .ansi_colors
         .iter()
         .flat_map(|(_, c)| [&c.normal, &c.bright])
@@ -197,8 +197,8 @@ fn ansi_colors_in_order(flavor: &Flavor) -> std::vec::IntoIter<(String, &AnsiCol
         .sorted_by(|(_, a), (_, b)| a.code.cmp(&b.code))
 }
 
-fn make_flavor_colors_struct_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let colors = colors_in_order(sample_flavor).map(|(k, _)| {
+fn make_theme_colors_struct_tokens(sample_theme: &Theme) -> TokenStream {
+    let colors = colors_in_order(sample_theme).map(|(k, _)| {
         let ident = format_ident!("{k}");
         let color_img = format!(" {}", color_palette_circles(k));
         quote! {
@@ -207,18 +207,18 @@ fn make_flavor_colors_struct_tokens(sample_flavor: &Flavor) -> TokenStream {
         }
     });
     quote! {
-        /// All of the colors for a particular flavor of kanagawa.
-        /// Obtained via [`Flavor::colors`].
+        /// All of the colors for a particular theme of kanagawa.
+        /// Obtained via [`Theme::colors`].
         #[derive(Clone, Copy, Debug, PartialEq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-        pub struct FlavorColors {
+        pub struct ThemeColors {
             #(#colors),*
         }
     }
 }
 
-fn make_flavor_ansi_colors_struct_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let colors = ansi_colors_in_order(sample_flavor).map(|(k, _)| {
+fn make_theme_ansi_colors_struct_tokens(sample_theme: &Theme) -> TokenStream {
+    let colors = ansi_colors_in_order(sample_theme).map(|(k, _)| {
         let ident = format_ident!("{k}");
         let color_img = format!(" {}", ansi_color_palette_circles(&k));
         quote! {
@@ -227,11 +227,11 @@ fn make_flavor_ansi_colors_struct_tokens(sample_flavor: &Flavor) -> TokenStream 
         }
     });
     quote! {
-        /// All of the ANSI colors for a particular flavor of kanagawa.
-        /// Obtained via [`Flavor::ansi_colors`].
+        /// All of the ANSI colors for a particular theme of kanagawa.
+        /// Obtained via [`Theme::ansi_colors`].
         #[derive(Clone, Copy, Debug, PartialEq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-        pub struct FlavorAnsiColors {
+        pub struct ThemeAnsiColors {
             #(#colors),*
         }
 
@@ -253,8 +253,8 @@ fn make_flavor_ansi_colors_struct_tokens(sample_flavor: &Flavor) -> TokenStream 
     }
 }
 
-fn make_flavor_ansi_color_pairs_struct_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let color_pairs = ansi_color_pairs_in_order(sample_flavor).map(|(k, ..)| {
+fn make_theme_ansi_color_pairs_struct_tokens(sample_theme: &Theme) -> TokenStream {
+    let color_pairs = ansi_color_pairs_in_order(sample_theme).map(|(k, ..)| {
         let ident = format_ident!("{k}");
         let doc = format!("The normal and bright {k} ANSI color pair.");
         quote! {
@@ -263,10 +263,10 @@ fn make_flavor_ansi_color_pairs_struct_tokens(sample_flavor: &Flavor) -> TokenSt
         }
     });
     quote! {
-        /// All of the ANSI color pairs for a particular flavor of kanagawa.
+        /// All of the ANSI color pairs for a particular theme of kanagawa.
         #[derive(Clone, Copy, Debug, PartialEq)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-        pub struct FlavorAnsiColorPairs {
+        pub struct ThemeAnsiColorPairs {
             #(#color_pairs),*
         }
 
@@ -286,14 +286,14 @@ fn make_flavor_ansi_color_pairs_struct_tokens(sample_flavor: &Flavor) -> TokenSt
     }
 }
 
-fn make_flavor_colors_all_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let items = colors_in_order(sample_flavor).map(|(identifier, _)| {
+fn make_theme_colors_all_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let items = colors_in_order(sample_theme).map(|(identifier, _)| {
         let ident = format_ident!("{identifier}");
         quote! { &self.#ident }
     });
     quote! {
-        impl FlavorColors {
-            /// Get an array of the colors in the flavor.
+        impl ThemeColors {
+            /// Get an array of the colors in the theme.
             #[must_use]
             pub const fn all_colors(&self) -> [&Color; 26] {
                 [
@@ -304,12 +304,12 @@ fn make_flavor_colors_all_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
     }
 }
 
-fn make_flavor_ansi_colors_all_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let ansi_colors = ansi_colors_in_order(sample_flavor).map(|(identifier, _)| {
+fn make_theme_ansi_colors_all_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let ansi_colors = ansi_colors_in_order(sample_theme).map(|(identifier, _)| {
         let ident = format_ident!("{identifier}");
         quote! { &self.#ident }
     });
-    let ansi_color_pairs = ansi_color_pairs_in_order(sample_flavor).map(
+    let ansi_color_pairs = ansi_color_pairs_in_order(sample_theme).map(
         |(identifier, color_pair, normal_identifier, bright_identifier)| {
             make_ansi_color_pair_entry(
                 identifier,
@@ -320,8 +320,8 @@ fn make_flavor_ansi_colors_all_impl_tokens(sample_flavor: &Flavor) -> TokenStrea
         },
     );
     quote! {
-        impl FlavorAnsiColors {
-            /// Get an array of the ANSI colors in the flavor.
+        impl ThemeAnsiColors {
+            /// Get an array of the ANSI colors in the theme.
             #[must_use]
             pub const fn all_ansi_colors(&self) -> [&AnsiColor; 16] {
                 [
@@ -332,8 +332,8 @@ fn make_flavor_ansi_colors_all_impl_tokens(sample_flavor: &Flavor) -> TokenStrea
             /// Convert the 16 ANSI colors to 8 ANSI color pairs.
             #[must_use]
             #[allow(clippy::too_many_lines, clippy::unreadable_literal)]
-            pub const fn to_ansi_color_pairs(&self) -> FlavorAnsiColorPairs {
-                FlavorAnsiColorPairs {
+            pub const fn to_ansi_color_pairs(&self) -> ThemeAnsiColorPairs {
+                ThemeAnsiColorPairs {
                     #(#ansi_color_pairs),*
                 }
             }
@@ -341,14 +341,14 @@ fn make_flavor_ansi_colors_all_impl_tokens(sample_flavor: &Flavor) -> TokenStrea
     }
 }
 
-fn make_flavor_ansi_color_pairs_all_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let items = ansi_color_pairs_in_order(sample_flavor).map(|(identifier, ..)| {
+fn make_theme_ansi_color_pairs_all_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let items = ansi_color_pairs_in_order(sample_theme).map(|(identifier, ..)| {
         let ident = format_ident!("{identifier}");
         quote! { &self.#ident }
     });
     quote! {
-        impl FlavorAnsiColorPairs {
-            /// Get an array of the ANSI color pairs in the flavor.
+        impl ThemeAnsiColorPairs {
+            /// Get an array of the ANSI color pairs in the theme.
             #[must_use]
             pub const fn all_ansi_color_pairs(&self) -> [&AnsiColorPair; 8] {
                 [
@@ -359,8 +359,8 @@ fn make_flavor_ansi_color_pairs_all_impl_tokens(sample_flavor: &Flavor) -> Token
     }
 }
 
-fn make_color_name_enum_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let variants = colors_in_order(sample_flavor).map(|(name, _)| {
+fn make_color_name_enum_tokens(sample_theme: &Theme) -> TokenStream {
+    let variants = colors_in_order(sample_theme).map(|(name, _)| {
         let ident = format_ident!("{}", titlecase(name));
         let circles = format!(" {}", color_palette_circles(name));
         quote! {
@@ -369,7 +369,7 @@ fn make_color_name_enum_tokens(sample_flavor: &Flavor) -> TokenStream {
         }
     });
     quote! {
-        /// Enum of all named kanagawa colors. Can be used to index into a [`FlavorColors`].
+        /// Enum of all named kanagawa colors. Can be used to index into a [`ThemeColors`].
         #[derive(Copy, Clone, Eq, PartialEq, Debug)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub enum ColorName {
@@ -378,8 +378,8 @@ fn make_color_name_enum_tokens(sample_flavor: &Flavor) -> TokenStream {
     }
 }
 
-fn make_ansi_color_name_enum_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let variants = ansi_colors_in_order(sample_flavor).map(|(identifier, color)| {
+fn make_ansi_color_name_enum_tokens(sample_theme: &Theme) -> TokenStream {
+    let variants = ansi_colors_in_order(sample_theme).map(|(identifier, color)| {
         let name = remove_whitespace(&color.name);
         let ident = format_ident!("{name}");
         let circles = format!(" {}", ansi_color_palette_circles(&identifier));
@@ -389,7 +389,7 @@ fn make_ansi_color_name_enum_tokens(sample_flavor: &Flavor) -> TokenStream {
         }
     });
     quote! {
-        /// Enum of all named ANSI colors. Can be used to index into a [`FlavorAnsiColors`]
+        /// Enum of all named ANSI colors. Can be used to index into a [`ThemeAnsiColors`]
         #[derive(Copy, Clone, Eq, PartialEq, Debug)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub enum AnsiColorName {
@@ -398,8 +398,8 @@ fn make_ansi_color_name_enum_tokens(sample_flavor: &Flavor) -> TokenStream {
     }
 }
 
-fn make_ansi_color_pair_name_enum_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let variants = ansi_color_pairs_in_order(sample_flavor).map(|(name, ..)| {
+fn make_ansi_color_pair_name_enum_tokens(sample_theme: &Theme) -> TokenStream {
+    let variants = ansi_color_pairs_in_order(sample_theme).map(|(name, ..)| {
         let ident = format_ident!("{}", titlecase(name));
         let circles = format!(" {}", ansi_color_palette_circles(name));
         quote! {
@@ -408,7 +408,7 @@ fn make_ansi_color_pair_name_enum_tokens(sample_flavor: &Flavor) -> TokenStream 
         }
     });
     quote! {
-        /// Enum of all ANSI color pairs. Can be used to index into a [`FlavorAnsiColorPairs`].
+        /// Enum of all ANSI color pairs. Can be used to index into a [`ThemeAnsiColorPairs`].
         #[derive(Copy, Clone, Eq, PartialEq, Debug)]
         #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub enum AnsiColorPairName {
@@ -417,8 +417,8 @@ fn make_ansi_color_pair_name_enum_tokens(sample_flavor: &Flavor) -> TokenStream 
     }
 }
 
-fn make_color_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let first = colors_in_order(sample_flavor).map(|(identifier, _)| {
+fn make_color_name_index_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let first = colors_in_order(sample_theme).map(|(identifier, _)| {
         let variant = format_ident!("{}", titlecase(identifier));
         let ident = format_ident!("{}", identifier);
         quote! {
@@ -427,7 +427,7 @@ fn make_color_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
     });
     let second = first.clone();
     quote! {
-        impl Index<ColorName> for FlavorColors {
+        impl Index<ColorName> for ThemeColors {
             type Output = Color;
 
             fn index(&self, index: ColorName) -> &Self::Output {
@@ -437,7 +437,7 @@ fn make_color_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
             }
         }
 
-        impl FlavorColors {
+        impl ThemeColors {
             /// Get a color by name.
             ///
             /// This is equivalent to using the index operator, but can also be used in
@@ -452,8 +452,8 @@ fn make_color_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
     }
 }
 
-fn make_ansi_color_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let first = ansi_colors_in_order(sample_flavor).map(|(identifier, color)| {
+fn make_ansi_color_name_index_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let first = ansi_colors_in_order(sample_theme).map(|(identifier, color)| {
         let variant = format_ident!("{}", remove_whitespace(&color.name));
         let ident = format_ident!("{}", identifier);
         quote! {
@@ -462,7 +462,7 @@ fn make_ansi_color_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenStream
     });
     let second = first.clone();
     quote! {
-        impl Index<AnsiColorName> for FlavorAnsiColors {
+        impl Index<AnsiColorName> for ThemeAnsiColors {
             type Output = AnsiColor;
 
             fn index(&self, index: AnsiColorName) -> &Self::Output {
@@ -472,7 +472,7 @@ fn make_ansi_color_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenStream
             }
         }
 
-        impl FlavorAnsiColors {
+        impl ThemeAnsiColors {
             /// Get an ANSI color by name.
             ///
             /// This is equivalent to using the index operator, but can also be used in
@@ -487,8 +487,8 @@ fn make_ansi_color_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenStream
     }
 }
 
-fn make_ansi_color_pair_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let first = ansi_color_pairs_in_order(sample_flavor).map(|(identifier, ..)| {
+fn make_ansi_color_pair_name_index_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let first = ansi_color_pairs_in_order(sample_theme).map(|(identifier, ..)| {
         let variant = format_ident!("{}", titlecase(identifier));
         let ident = format_ident!("{}", identifier);
         quote! {
@@ -497,7 +497,7 @@ fn make_ansi_color_pair_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenS
     });
     let second = first.clone();
     quote! {
-        impl Index<AnsiColorPairName> for FlavorAnsiColorPairs {
+        impl Index<AnsiColorPairName> for ThemeAnsiColorPairs {
             type Output = AnsiColorPair;
 
             fn index(&self, index: AnsiColorPairName) -> &Self::Output {
@@ -507,7 +507,7 @@ fn make_ansi_color_pair_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenS
             }
         }
 
-        impl FlavorAnsiColorPairs {
+        impl ThemeAnsiColorPairs {
             /// Get an ANSI color pair by name.
             ///
             /// This is equivalent to using the index operator, but can also be used in
@@ -522,8 +522,8 @@ fn make_ansi_color_pair_name_index_impl_tokens(sample_flavor: &Flavor) -> TokenS
     }
 }
 
-fn make_color_name_display_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let match_arms = colors_in_order(sample_flavor).map(|(identifier, color)| {
+fn make_color_name_display_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let match_arms = colors_in_order(sample_theme).map(|(identifier, color)| {
         let variant = format_ident!("{}", titlecase(identifier));
         let name = &color.name;
         quote! {
@@ -541,8 +541,8 @@ fn make_color_name_display_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
     }
 }
 
-fn make_ansi_color_name_display_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let match_arms = ansi_colors_in_order(sample_flavor).map(|(_, color)| {
+fn make_ansi_color_name_display_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let match_arms = ansi_colors_in_order(sample_theme).map(|(_, color)| {
         let name = &color.name;
         let variant = format_ident!("{}", remove_whitespace(name));
         quote! {
@@ -560,8 +560,8 @@ fn make_ansi_color_name_display_impl_tokens(sample_flavor: &Flavor) -> TokenStre
     }
 }
 
-fn make_ansi_color_pair_name_display_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let match_arms = ansi_color_pairs_in_order(sample_flavor).map(|(identifier, ..)| {
+fn make_ansi_color_pair_name_display_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let match_arms = ansi_color_pairs_in_order(sample_theme).map(|(identifier, ..)| {
         let name = titlecase(identifier);
         let variant = format_ident!("{name}");
         quote! {
@@ -579,8 +579,8 @@ fn make_ansi_color_pair_name_display_impl_tokens(sample_flavor: &Flavor) -> Toke
     }
 }
 
-fn make_color_name_identifier_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let match_arms = colors_in_order(sample_flavor).map(|(identifier, _)| {
+fn make_color_name_identifier_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let match_arms = colors_in_order(sample_theme).map(|(identifier, _)| {
         let variant = format_ident!("{}", titlecase(identifier));
         quote! {
             Self::#variant => #identifier
@@ -595,7 +595,7 @@ fn make_color_name_identifier_impl_tokens(sample_flavor: &Flavor) -> TokenStream
             /// Example:
             ///
             /// ```rust
-            /// let surface0 = kanagawa::PALETTE.latte.colors.surface0;
+            /// let surface0 = kanagawa::PALETTE.lotus.colors.surface0;
             /// assert_eq!(surface0.name.to_string(), "Surface 0");
             /// assert_eq!(surface0.name.identifier(), "surface0");
             /// ```
@@ -609,8 +609,8 @@ fn make_color_name_identifier_impl_tokens(sample_flavor: &Flavor) -> TokenStream
     }
 }
 
-fn make_ansi_color_name_identifier_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let match_arms = ansi_colors_in_order(sample_flavor).map(|(identifier, color)| {
+fn make_ansi_color_name_identifier_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let match_arms = ansi_colors_in_order(sample_theme).map(|(identifier, color)| {
         let variant = format_ident!("{}", remove_whitespace(&color.name));
         quote! {
             Self::#variant => #identifier
@@ -625,7 +625,7 @@ fn make_ansi_color_name_identifier_impl_tokens(sample_flavor: &Flavor) -> TokenS
             /// Example:
             ///
             /// ```rust
-            /// let bright_black = kanagawa::PALETTE.latte.ansi_colors.bright_black;
+            /// let bright_black = kanagawa::PALETTE.lotus.ansi_colors.bright_black;
             /// assert_eq!(bright_black.name.to_string(), "Bright Black");
             /// assert_eq!(bright_black.name.identifier(), "bright_black");
             /// ```
@@ -639,8 +639,8 @@ fn make_ansi_color_name_identifier_impl_tokens(sample_flavor: &Flavor) -> TokenS
     }
 }
 
-fn make_ansi_color_pair_name_identifier_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let match_arms = ansi_color_pairs_in_order(sample_flavor).map(|(identifier, ..)| {
+fn make_ansi_color_pair_name_identifier_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let match_arms = ansi_color_pairs_in_order(sample_theme).map(|(identifier, ..)| {
         let variant = format_ident!("{}", titlecase(identifier));
         quote! {
             Self::#variant => #identifier
@@ -655,7 +655,7 @@ fn make_ansi_color_pair_name_identifier_impl_tokens(sample_flavor: &Flavor) -> T
             /// Example:
             ///
             /// ```rust
-            /// let black_ansi_pair = kanagawa::PALETTE.latte.ansi_colors.all_pairs().black;
+            /// let black_ansi_pair = kanagawa::PALETTE.lotus.ansi_colors.all_pairs().black;
             /// assert_eq!(black_ansi_pair.name.to_string(), "Black");
             /// assert_eq!(black_ansi_pair.name.identifier(), "black");
             /// assert_eq!(black_ansi_pair.normal.name.to_string(), "Black");
@@ -673,8 +673,8 @@ fn make_ansi_color_pair_name_identifier_impl_tokens(sample_flavor: &Flavor) -> T
     }
 }
 
-fn make_color_name_fromstr_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let match_arms = colors_in_order(sample_flavor)
+fn make_color_name_fromstr_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let match_arms = colors_in_order(sample_theme)
         .map(|(identifier, _)| {
             let variant = format_ident!("{}", titlecase(identifier));
             quote! {
@@ -696,8 +696,8 @@ fn make_color_name_fromstr_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
     }
 }
 
-fn make_ansi_color_name_fromstr_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let match_arms = ansi_colors_in_order(sample_flavor)
+fn make_ansi_color_name_fromstr_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let match_arms = ansi_colors_in_order(sample_theme)
         .map(|(identifier, color)| {
             let variant = format_ident!("{}", remove_whitespace(&color.name));
             quote! {
@@ -719,8 +719,8 @@ fn make_ansi_color_name_fromstr_impl_tokens(sample_flavor: &Flavor) -> TokenStre
     }
 }
 
-fn make_ansi_color_pair_name_fromstr_impl_tokens(sample_flavor: &Flavor) -> TokenStream {
-    let match_arms = ansi_color_pairs_in_order(sample_flavor)
+fn make_ansi_color_pair_name_fromstr_impl_tokens(sample_theme: &Theme) -> TokenStream {
+    let match_arms = ansi_color_pairs_in_order(sample_theme)
         .map(|(identifier, ..)| {
             let variant = format_ident!("{}", titlecase(identifier));
             quote! {
@@ -743,38 +743,38 @@ fn make_ansi_color_pair_name_fromstr_impl_tokens(sample_flavor: &Flavor) -> Toke
 }
 
 fn make_palette_const_tokens(palette: &Palette) -> TokenStream {
-    let flavors =
-        flavors_in_order(palette).map(|(identifier, flavor)| make_flavor_entry(identifier, flavor));
+    let themes =
+        themes_in_order(palette).map(|(identifier, theme)| make_theme_entry(identifier, theme));
     let tokens = quote! {
         /// The kanagawa palette. This constant will generally be your entrypoint
         /// into using the crate.
         #[allow(clippy::unreadable_literal)]
         pub const PALETTE: Palette = Palette {
-            #(#flavors),*
+            #(#themes),*
         };
     };
 
     tokens
 }
 
-fn make_flavor_entry(identifier: &str, flavor: &Flavor) -> TokenStream {
-    let Flavor { emoji, order, dark, .. } = flavor;
+fn make_theme_entry(identifier: &str, theme: &Theme) -> TokenStream {
+    let Theme { emoji, order, dark, .. } = theme;
     let colors =
-        colors_in_order(flavor).map(|(identifier, color)| make_color_entry(identifier, color));
-    let ansi_colors = ansi_colors_in_order(flavor)
+        colors_in_order(theme).map(|(identifier, color)| make_color_entry(identifier, color));
+    let ansi_colors = ansi_colors_in_order(theme)
         .map(|(identifier, ansi_color_pair)| make_ansi_color_entry(&identifier, ansi_color_pair));
-    let flavorname_variant = format_ident!("{}", titlecase(identifier));
+    let themename_variant = format_ident!("{}", titlecase(identifier));
     let ident = format_ident!("{}", identifier);
     quote! {
-        #ident: Flavor {
-            name: FlavorName::#flavorname_variant,
+        #ident: Theme {
+            name: ThemeName::#themename_variant,
             emoji: #emoji,
             order: #order,
             dark: #dark,
-            colors: FlavorColors {
+            colors: ThemeColors {
                 #(#colors),*
             },
-            ansi_colors: FlavorAnsiColors {
+            ansi_colors: ThemeAnsiColors {
                 #(#ansi_colors),*
             }
         }
