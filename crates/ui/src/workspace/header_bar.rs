@@ -1,10 +1,10 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, IconName, Sizable as _, ThemeMode, TitleBar,
     button::{Button, ButtonVariants as _},
     h_flex,
     label::Label,
+    ActiveTheme as _, IconName, Sizable as _, ThemeMode, TitleBar,
 };
 
 use crate::theme::*;

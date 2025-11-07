@@ -3,6 +3,7 @@ use notify::client::NotifyClient;
 use notify::types::Notification;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 /// Manager for the notify service connection
 #[derive(Clone)]
@@ -73,6 +74,19 @@ impl NotifyServiceManager {
 
         let runtime = self.runtime.clone();
         let result = runtime.spawn(async move { client.list_actionable_notifications().await });
+
+        result.await?
+    }
+
+    /// Delete a notification by ID
+    pub async fn delete_notification(&self, id: Uuid) -> Result<()> {
+        let client_lock = self.client.read().await;
+        let client = client_lock.as_ref().ok_or_else(|| anyhow::anyhow!("Not connected"))?;
+        let client = client.clone();
+        drop(client_lock);
+
+        let runtime = self.runtime.clone();
+        let result = runtime.spawn(async move { client.delete_notification(id).await });
 
         result.await?
     }

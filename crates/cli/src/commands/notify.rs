@@ -303,10 +303,8 @@ async fn create_notification(
         requires_response,
     };
 
-    let notification = client
-        .create_notification(&request)
-        .await
-        .context("Failed to create notification")?;
+    let notification =
+        client.create_notification(&request).await.context("Failed to create notification")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&notification)?);
@@ -349,9 +347,8 @@ async fn list_notifications(
             .await
             .context("Failed to fetch actionable notifications")?
     } else if let Some(status) = status {
-        let status_enum = status
-            .parse::<NotificationStatus>()
-            .context(format!("Invalid status: {status}"))?;
+        let status_enum =
+            status.parse::<NotificationStatus>().context(format!("Invalid status: {status}"))?;
         client
             .list_notifications_by_status(status_enum)
             .await
@@ -396,7 +393,7 @@ async fn list_notifications(
         let response_style = if notification.requires_response { "Fg" } else { "" };
 
         table.add_row(Row::new(vec![
-            Cell::new(&notification.id.to_string()[..8]),
+            Cell::new(&notification.id.to_string()),
             Cell::new(priority_text).style_spec(priority_style),
             Cell::new(status_text).style_spec(status_style),
             Cell::new(&notification.title),
@@ -427,7 +424,8 @@ async fn list_notifications(
 ///
 /// Returns an error if the network request fails or API returns an error.
 async fn count_notifications(client: &NotifyClient, json: bool) -> Result<()> {
-    let counts = client.count_notifications().await.context("Failed to fetch notification counts")?;
+    let counts =
+        client.count_notifications().await.context("Failed to fetch notification counts")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&counts)?);
@@ -447,11 +445,11 @@ async fn count_notifications(client: &NotifyClient, json: bool) -> Result<()> {
 
         for status_count in counts.by_status {
             let status_style = match status_count.status.as_str() {
-                "pending" => "Fy",    // yellow
-                "viewed" => "Fc",     // cyan
-                "responded" => "Fg",  // green
-                "dismissed" => "Fd",  // dim
-                "expired" => "Fr",    // red
+                "pending" => "Fy",   // yellow
+                "viewed" => "Fc",    // cyan
+                "responded" => "Fg", // green
+                "dismissed" => "Fd", // dim
+                "expired" => "Fr",   // red
                 _ => "",
             };
 
@@ -486,7 +484,8 @@ async fn count_notifications(client: &NotifyClient, json: bool) -> Result<()> {
 /// - The notification is not found
 async fn get_notification(client: &NotifyClient, id: &str, json: bool) -> Result<()> {
     let uuid = Uuid::parse_str(id).context("Invalid UUID format")?;
-    let notification = client.get_notification(uuid).await.context("Failed to fetch notification")?;
+    let notification =
+        client.get_notification(uuid).await.context("Failed to fetch notification")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&notification)?);
@@ -520,11 +519,14 @@ async fn delete_notification(client: &NotifyClient, id: &str, json: bool) -> Res
     client.delete_notification(uuid).await.context("Failed to delete notification")?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-            "success": true,
-            "message": format!("Notification {uuid} deleted successfully"),
-            "id": uuid
-        }))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "success": true,
+                "message": format!("Notification {uuid} deleted successfully"),
+                "id": uuid
+            }))?
+        );
     } else {
         println!("{}", format!("Notification {uuid} deleted successfully!").green().bold());
     }
@@ -554,13 +556,20 @@ async fn delete_notification(client: &NotifyClient, id: &str, json: bool) -> Res
 /// - The network request fails
 /// - The notification is not found
 /// - The notification doesn't accept responses
-async fn respond_to_notification(client: &NotifyClient, id: &str, response: &str, json: bool) -> Result<()> {
+async fn respond_to_notification(
+    client: &NotifyClient,
+    id: &str,
+    response: &str,
+    json: bool,
+) -> Result<()> {
     let uuid = Uuid::parse_str(id).context("Invalid UUID format")?;
 
     let request = UpdateNotificationRequest { status: None, response: Some(response.to_string()) };
 
-    let notification =
-        client.update_notification(uuid, &request).await.context("Failed to respond to notification")?;
+    let notification = client
+        .update_notification(uuid, &request)
+        .await
+        .context("Failed to respond to notification")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&notification)?);
@@ -727,10 +736,10 @@ fn format_status_plain(status: NotificationStatus) -> &'static str {
 /// Returns a style spec string for prettytable.
 fn get_priority_style(priority: NotificationPriority) -> &'static str {
     match priority {
-        NotificationPriority::Low => "Fd",      // dim/dark
-        NotificationPriority::Normal => "",     // default
-        NotificationPriority::High => "Fy",     // yellow
-        NotificationPriority::Urgent => "Frb",  // red bold
+        NotificationPriority::Low => "Fd",     // dim/dark
+        NotificationPriority::Normal => "",    // default
+        NotificationPriority::High => "Fy",    // yellow
+        NotificationPriority::Urgent => "Frb", // red bold
     }
 }
 
@@ -752,11 +761,11 @@ fn get_priority_style(priority: NotificationPriority) -> &'static str {
 /// Returns a style spec string for prettytable.
 fn get_status_style(status: NotificationStatus) -> &'static str {
     match status {
-        NotificationStatus::Pending => "Fy",    // yellow
-        NotificationStatus::Viewed => "Fc",     // cyan
-        NotificationStatus::Responded => "Fg",  // green
-        NotificationStatus::Dismissed => "Fd",  // dim/dark
-        NotificationStatus::Expired => "Fr",    // red
+        NotificationStatus::Pending => "Fy",   // yellow
+        NotificationStatus::Viewed => "Fc",    // cyan
+        NotificationStatus::Responded => "Fg", // green
+        NotificationStatus::Dismissed => "Fd", // dim/dark
+        NotificationStatus::Expired => "Fr",   // red
     }
 }
 

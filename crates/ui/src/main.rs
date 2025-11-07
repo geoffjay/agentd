@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{ActiveTheme as _, Root, init};
+use gpui_component::{init, ActiveTheme as _, Root};
 
 mod assets;
 mod services;

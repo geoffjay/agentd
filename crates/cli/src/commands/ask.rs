@@ -116,7 +116,10 @@ impl AskCommand {
 ///
 /// Returns an error if the network request fails or the ask service is not running.
 async fn trigger_checks(client: &AskClient, json: bool) -> Result<()> {
-    let response = client.trigger_checks().await.context("Failed to trigger checks. Is the ask service running?")?;
+    let response = client
+        .trigger_checks()
+        .await
+        .context("Failed to trigger checks. Is the ask service running?")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);
@@ -167,7 +170,12 @@ async fn trigger_checks(client: &AskClient, json: bool) -> Result<()> {
 /// - The network request fails
 /// - The ask service is not running
 /// - The question is not found
-async fn answer_question(client: &AskClient, question_id: &str, answer: &str, json: bool) -> Result<()> {
+async fn answer_question(
+    client: &AskClient,
+    question_id: &str,
+    answer: &str,
+    json: bool,
+) -> Result<()> {
     let uuid = Uuid::parse_str(question_id).context("Invalid question UUID format")?;
 
     let request = AnswerRequest { question_id: uuid, answer: answer.to_string() };

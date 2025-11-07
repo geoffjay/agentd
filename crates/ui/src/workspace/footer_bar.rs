@@ -10,6 +10,7 @@ pub struct FooterBar {
 pub enum FooterBarEvent {
     ShowConnections,
     ShowNotifications,
+    OpenSettings,
 }
 
 impl EventEmitter<FooterBarEvent> for FooterBar {}
@@ -28,14 +29,14 @@ impl Render for FooterBar {
         let connections_button = Button::new("connections_panel")
             .icon(Icon::empty().path("icons/cable.svg"))
             .small()
-            .selected(self.connections_active.clone())
+            .selected(self.connections_active)
             .ghost()
             .tooltip("Show Connections");
 
         let notifications_button = Button::new("notifications_panel")
             .icon(Icon::empty().path("icons/bell.svg"))
             .small()
-            .selected(self.notifications_active.clone())
+            .selected(self.notifications_active)
             .ghost()
             .tooltip("Show Notifications");
 
@@ -55,6 +56,15 @@ impl Render for FooterBar {
                 cx.notify();
             }));
 
+        let settings_button = Button::new("settings")
+            .icon(Icon::empty().path("icons/settings.svg"))
+            .small()
+            .ghost()
+            .tooltip("Settings")
+            .on_click(cx.listener(|_this, _ev, _win, cx| {
+                cx.emit(FooterBarEvent::OpenSettings);
+            }));
+
         let footer = div()
             .border_t_1()
             .text_xs()
@@ -62,10 +72,11 @@ impl Render for FooterBar {
             .border_color(cx.theme().border)
             .flex()
             .flex_row()
-            .justify_start()
+            .justify_between()
             .items_center()
             .p_2()
-            .child(controls);
+            .child(controls)
+            .child(settings_button);
 
         footer
     }

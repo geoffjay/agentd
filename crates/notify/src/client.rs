@@ -302,12 +302,8 @@ impl NotifyClient {
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context(format!("Failed to GET {url}"))?;
+        let response =
+            self.client.get(&url).send().await.context(format!("Failed to GET {url}"))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -318,11 +314,7 @@ impl NotifyClient {
         response.json().await.context("Failed to parse response JSON")
     }
 
-    async fn post<T: DeserializeOwned, B: Serialize>(
-        &self,
-        path: &str,
-        body: &B,
-    ) -> Result<T> {
+    async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
         let response = self
             .client

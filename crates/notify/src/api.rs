@@ -145,9 +145,12 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/count", axum::routing::get(count_notifications))
         .route("/actionable", axum::routing::get(list_actionable))
         .route("/history", axum::routing::get(list_history))
-        .route("/{id}", axum::routing::get(get_notification)
-            .put(update_notification)
-            .delete(delete_notification));
+        .route(
+            "/{id}",
+            axum::routing::get(get_notification)
+                .put(update_notification)
+                .delete(delete_notification),
+        );
 
     Router::new()
         .route("/health", axum::routing::get(health_check))
@@ -224,7 +227,10 @@ async fn list_notifications(
     State(state): State<ApiState>,
     axum::extract::Query(params): axum::extract::Query<ListParams>,
 ) -> Result<Json<Vec<Notification>>, ApiError> {
-    let status = params.status.map(|s| s.parse::<NotificationStatus>().map_err(|e| ApiError::InvalidInput(e.to_string()))).transpose()?;
+    let status = params
+        .status
+        .map(|s| s.parse::<NotificationStatus>().map_err(|e| ApiError::InvalidInput(e.to_string())))
+        .transpose()?;
     let notifications = state.storage.list(status).await?;
     Ok(Json(notifications))
 }
@@ -319,16 +325,15 @@ async fn list_history(State(state): State<ApiState>) -> Result<Json<Vec<Notifica
 ///   ]
 /// }
 /// ```
-async fn count_notifications(State(state): State<ApiState>) -> Result<Json<CountResponse>, ApiError> {
+async fn count_notifications(
+    State(state): State<ApiState>,
+) -> Result<Json<CountResponse>, ApiError> {
     let counts = state.storage.count().await?;
 
     let total: usize = counts.iter().map(|(_, count)| count).sum();
     let by_status: Vec<StatusCount> = counts
         .into_iter()
-        .map(|(status, count)| StatusCount {
-            status: format!("{status:?}").to_lowercase(),
-            count,
-        })
+        .map(|(status, count)| StatusCount { status: format!("{status:?}").to_lowercase(), count })
         .collect();
 
     Ok(Json(CountResponse { total, by_status }))

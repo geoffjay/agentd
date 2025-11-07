@@ -506,8 +506,7 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
             if !bin_dir.exists() { fs::create_dir_all(bin_dir).is_err() } else { false };
 
         // Remove existing symlink if present (might need sudo)
-        if symlink_path.exists()
-            && fs::remove_file(&symlink_path).is_err() {
+        if symlink_path.exists() && fs::remove_file(&symlink_path).is_err() {
             println!("{}", "  Existing symlink requires sudo to remove...".yellow());
             let status = Command::new("sudo")
                 .arg("rm")
@@ -638,9 +637,12 @@ fn hex_to_rgb_hsl(hex: &str) -> Result<()> {
     let hex = if hex.len() == 3 {
         format!(
             "{}{}{}{}{}{}",
-            &hex[0..1], &hex[0..1],
-            &hex[1..2], &hex[1..2],
-            &hex[2..3], &hex[2..3]
+            &hex[0..1],
+            &hex[0..1],
+            &hex[1..2],
+            &hex[1..2],
+            &hex[2..3],
+            &hex[2..3]
         )
     } else if hex.len() == 6 {
         hex.to_string()
@@ -708,11 +710,7 @@ fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
     let l = (max + min) / 2.0;
 
     // Calculate saturation
-    let s = if delta == 0.0 {
-        0.0
-    } else {
-        delta / (1.0 - (2.0 * l - 1.0).abs())
-    };
+    let s = if delta == 0.0 { 0.0 } else { delta / (1.0 - (2.0 * l - 1.0).abs()) };
 
     // Calculate hue
     let h = if delta == 0.0 {

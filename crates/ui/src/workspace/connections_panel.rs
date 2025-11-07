@@ -2,13 +2,12 @@ use std::sync::Arc;
 
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, IndexPath, Selectable, Sizable as _, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputState, TextInput},
     label::Label,
     list::{List, ListDelegate, ListEvent, ListItem},
-    v_flex,
+    v_flex, ActiveTheme as _, Disableable, Icon, IndexPath, Selectable, Sizable as _, StyledExt,
 };
 
 use crate::services::*;
@@ -208,8 +207,8 @@ impl ConnectionsPanel {
         let _subscriptions = vec![cx.subscribe_in(
             &connection_list,
             window,
-            |this, _, ev: &ListEvent, window, cx| match ev {
-                ListEvent::Confirm(ix) => {
+            |this, _, ev: &ListEvent, window, cx| {
+                if let ListEvent::Confirm(ix) = ev {
                     if let Some(conn) = this.get_selected_connection(*ix, cx) {
                         this.input_esc.update(cx, |is, cx| {
                             is.set_value(conn.url.clone(), window, cx);
@@ -217,7 +216,6 @@ impl ConnectionsPanel {
                         })
                     }
                 }
-                _ => {}
             },
         )];
 
@@ -276,8 +274,8 @@ impl ConnectionsPanel {
                         cx.emit(ConnectionEvent::Connected(this.service_manager.clone()));
                     }
                     Err(e) => {
-                        let error_msg = format!("Failed to connect to service: {}", e);
-                        eprintln!("{}", error_msg);
+                        let error_msg = format!("Failed to connect to service: {e}");
+                        eprintln!("{error_msg}");
                         this.is_connected = false;
                         cx.emit(ConnectionEvent::ConnectionError { message: error_msg });
                     }

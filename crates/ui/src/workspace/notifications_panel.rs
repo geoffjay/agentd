@@ -1,17 +1,22 @@
 use std::ops::Range;
+use std::sync::Arc;
 
 use gpui::*;
 use gpui_component::{
-    ActiveTheme as _, Icon, Size, StyleSized, Sizable as _, StyledExt, h_flex,
     button::{Button, ButtonVariants as _},
+    h_flex,
     label::Label,
     table::{Column, Table, TableDelegate},
-    v_flex,
+    v_flex, ActiveTheme as _, Icon, Sizable as _, StyledExt,
 };
 use notify::types::Notification;
+use uuid::Uuid;
+
+use crate::services::NotifyServiceManager;
 
 pub enum NotificationsPanelEvent {
     Refresh,
+    DismissNotification(Uuid),
 }
 
 impl EventEmitter<NotificationsPanelEvent> for NotificationsPanel {}
@@ -19,39 +24,83 @@ impl EventEmitter<NotificationsPanelEvent> for NotificationsPanel {}
 pub struct NotificationsPanel {
     notifications: Vec<Notification>,
     table: Entity<Table<NotificationsTableDelegate>>,
-    size: Size,
+    service_manager: Option<Arc<NotifyServiceManager>>,
 }
 
 struct NotificationsTableDelegate {
     columns: Vec<Column>,
     notifications: Vec<Notification>,
-    size: Size,
     loading: bool,
     visible_rows: Range<usize>,
+    panel: WeakEntity<NotificationsPanel>,
+    sort_column: Option<usize>,
+    sort_ascending: bool,
 }
 
 impl NotificationsTableDelegate {
-    fn new() -> Self {
+    fn new(panel: WeakEntity<NotificationsPanel>) -> Self {
         let columns = vec![
-            Column::new("priority", "Priority").width(80.0),
-            Column::new("title", "Title").width(200.0),
-            Column::new("message", "Message").width(600.0),
-            Column::new("source", "Source").width(120.0),
-            Column::new("status", "Status").width(100.0),
-            Column::new("created_at", "Created").width(180.0),
+            Column::new("priority", "Priority").width(80.0).sortable().resizable(false),
+            Column::new("title", "Title").width(150.0).sortable(),
+            Column::new("message", "Message").width(300.0),
+            Column::new("source", "Source").width(100.0).sortable().resizable(false),
+            Column::new("status", "Status").width(80.0).sortable(),
+            Column::new("created_at", "Created").width(200.0).sortable(),
+            Column::new("actions", "").width(60.0).paddings(px(8.)).resizable(false),
         ];
 
         Self {
-            size: Size::default(),
             notifications: vec![],
             columns,
             loading: false,
             visible_rows: Range::default(),
+            panel,
+            sort_column: None,
+            sort_ascending: true,
         }
     }
 
     pub fn update(&mut self, notifications: Vec<Notification>) {
         self.notifications = notifications;
+        self.apply_sort();
+    }
+
+    fn apply_sort(&mut self) {
+        if let Some(col_ix) = self.sort_column {
+            let ascending = self.sort_ascending;
+            self.notifications.sort_by(|a, b| {
+                let ordering = match col_ix {
+                    0 => a.priority.cmp(&b.priority),
+                    1 => a.title.cmp(&b.title),
+                    2 => a.message.cmp(&b.message),
+                    3 => {
+                        // Format source for comparison
+                        let a_src = match &a.source {
+                            notify::types::NotificationSource::System => "System",
+                            notify::types::NotificationSource::AgentHook { .. } => "Agent",
+                            notify::types::NotificationSource::AskService { .. } => "Ask Service",
+                            notify::types::NotificationSource::MonitorService { .. } => "Monitor",
+                        };
+                        let b_src = match &b.source {
+                            notify::types::NotificationSource::System => "System",
+                            notify::types::NotificationSource::AgentHook { .. } => "Agent",
+                            notify::types::NotificationSource::AskService { .. } => "Ask Service",
+                            notify::types::NotificationSource::MonitorService { .. } => "Monitor",
+                        };
+                        a_src.cmp(b_src)
+                    }
+                    4 => {
+                        // Compare status using discriminant ordering
+                        let a_status = a.status as u8;
+                        let b_status = b.status as u8;
+                        a_status.cmp(&b_status)
+                    }
+                    5 => a.created_at.cmp(&b.created_at),
+                    _ => std::cmp::Ordering::Equal,
+                };
+                if ascending { ordering } else { ordering.reverse() }
+            });
+        }
     }
 
     fn format_priority(&self, notification: &Notification) -> String {
@@ -62,11 +111,11 @@ impl NotificationsTableDelegate {
         match &notification.source {
             notify::types::NotificationSource::System => "System".to_string(),
             notify::types::NotificationSource::AgentHook { agent_id, .. } => {
-                format!("Agent: {}", agent_id)
+                format!("Agent: {agent_id}")
             }
             notify::types::NotificationSource::AskService { .. } => "Ask Service".to_string(),
             notify::types::NotificationSource::MonitorService { alert_type } => {
-                format!("Monitor: {}", alert_type)
+                format!("Monitor: {alert_type}")
             }
         }
     }
@@ -99,8 +148,7 @@ impl TableDelegate for NotificationsTableDelegate {
         _: &mut Window,
         cx: &mut Context<Table<Self>>,
     ) -> impl IntoElement {
-        let th = div().child(format!("{}", self.column(col_ix, cx).name));
-        th.table_cell_size(self.size)
+        div().child(format!("{}", self.column(col_ix, cx).name))
     }
 
     fn render_tr(
@@ -122,6 +170,23 @@ impl TableDelegate for NotificationsTableDelegate {
         _cx: &mut Context<Table<Self>>,
     ) -> impl IntoElement {
         if let Some(notification) = self.notifications.get(row_ix) {
+            // Special handling for actions column
+            if col_ix == 6 {
+                let notification_id = notification.id;
+                let panel = self.panel.clone();
+                let dismiss_button = Button::new(SharedString::from(format!("dismiss_{row_ix}")))
+                    .icon(Icon::empty().path("icons/x.svg"))
+                    .xsmall()
+                    .ghost()
+                    .danger()
+                    .on_click(move |_ev, _window, cx| {
+                        let _ = panel.update(cx, |_panel, cx| {
+                            cx.emit(NotificationsPanelEvent::DismissNotification(notification_id));
+                        });
+                    });
+                return dismiss_button.into_any_element();
+            }
+
             let cell_value = match col_ix {
                 0 => self.format_priority(notification),
                 1 => notification.title.clone(),
@@ -168,25 +233,64 @@ impl TableDelegate for NotificationsTableDelegate {
     ) {
         self.visible_rows = visible_range;
     }
+
+    fn perform_sort(
+        &mut self,
+        col_ix: usize,
+        sort: gpui_component::table::ColumnSort,
+        _: &mut Window,
+        cx: &mut Context<Table<Self>>,
+    ) {
+        use gpui_component::table::ColumnSort;
+
+        // Determine sort direction
+        match sort {
+            ColumnSort::Ascending => {
+                self.sort_column = Some(col_ix);
+                self.sort_ascending = true;
+            }
+            ColumnSort::Descending => {
+                self.sort_column = Some(col_ix);
+                self.sort_ascending = false;
+            }
+            ColumnSort::Default => {
+                // Toggle or set ascending
+                if self.sort_column == Some(col_ix) {
+                    self.sort_ascending = !self.sort_ascending;
+                } else {
+                    self.sort_column = Some(col_ix);
+                    self.sort_ascending = true;
+                }
+            }
+        }
+
+        self.apply_sort();
+        cx.notify();
+    }
 }
 
 impl NotificationsPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let delegate = NotificationsTableDelegate::new();
+        let panel_weak = cx.weak_entity();
+        let delegate = NotificationsTableDelegate::new(panel_weak);
         let table = cx.new(|cx| {
             let mut t = Table::new(delegate, window, cx);
             t.set_stripe(true, cx);
             t
         });
 
-        Self { notifications: vec![], table, size: Size::default() }
+        Self { notifications: vec![], table, service_manager: None }
     }
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
     }
 
-    pub fn update_notifications(&mut self, notifications: Vec<Notification>, cx: &mut Context<Self>) {
+    pub fn update_notifications(
+        &mut self,
+        notifications: Vec<Notification>,
+        cx: &mut Context<Self>,
+    ) {
         self.notifications = notifications.clone();
         self.table.update(cx, |table, cx| {
             table.delegate_mut().update(notifications);
@@ -206,6 +310,14 @@ impl NotificationsPanel {
 
     fn on_refresh(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
         cx.emit(NotificationsPanelEvent::Refresh);
+    }
+
+    pub fn set_service_manager(&mut self, service_manager: Arc<NotifyServiceManager>) {
+        self.service_manager = Some(service_manager);
+    }
+
+    pub fn clear_service_manager(&mut self) {
+        self.service_manager = None;
     }
 }
 
@@ -234,20 +346,14 @@ impl Render for NotificationsPanel {
 
         if self.notifications.is_empty() {
             v_flex().size_full().child(header).child(
-                h_flex()
-                    .flex_1()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        Label::new("No notifications")
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground),
-                    ),
+                h_flex().flex_1().items_center().justify_center().child(
+                    Label::new("No notifications")
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground),
+                ),
             )
         } else {
-            v_flex().size_full().child(header).child(
-                div().flex_1().p_4().child(self.table.clone()),
-            )
+            v_flex().size_full().child(header).child(div().flex_1().p_4().child(self.table.clone()))
         }
     }
 }

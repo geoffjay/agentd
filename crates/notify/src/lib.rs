@@ -79,8 +79,8 @@
 //! The service listens on port 3000 by default and stores data in:
 //! `~/.local/share/agentd/notifications.db`
 
-pub mod types;
 pub mod api;
 pub mod client;
 pub mod notification;
 pub mod storage;
+pub mod types;

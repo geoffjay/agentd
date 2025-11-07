@@ -2,12 +2,14 @@ use super::connections_panel::{ConnectionEvent, ConnectionsPanel};
 use super::footer_bar::{FooterBar, FooterBarEvent};
 use super::header_bar::HeaderBar;
 use super::notifications_panel::{NotificationsPanel, NotificationsPanelEvent};
+use super::settings_dialog::{SettingsDialog, SettingsDialogEvent};
 
 use crate::services::NotifyServiceManager;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
 
 use gpui_component::ActiveTheme;
 
@@ -16,8 +18,10 @@ pub struct Workspace {
     footer_bar: Entity<FooterBar>,
     connections_panel: Entity<ConnectionsPanel>,
     notifications_panel: Entity<NotificationsPanel>,
+    settings_dialog: Option<Entity<SettingsDialog>>,
     _subscriptions: Vec<Subscription>,
     show_connections: bool,
+    show_settings: bool,
     service_manager: Option<Arc<NotifyServiceManager>>,
     polling_task: Option<Task<()>>,
 }
@@ -34,6 +38,10 @@ impl Workspace {
                 match event {
                     ConnectionEvent::Connected(service_manager) => {
                         this.service_manager = Some(service_manager.clone());
+                        // Pass service manager to notifications panel
+                        this.notifications_panel.update(cx, |panel, _cx| {
+                            panel.set_service_manager(service_manager.clone());
+                        });
                         // Initial fetch
                         this.fetch_notifications(cx);
                         // Start polling
@@ -43,6 +51,7 @@ impl Workspace {
                         this.service_manager = None;
                         this.stop_polling();
                         this.notifications_panel.update(cx, |panel, cx| {
+                            panel.clear_service_manager();
                             panel.clear_notifications(cx);
                         });
                     }
@@ -60,6 +69,9 @@ impl Workspace {
                     FooterBarEvent::ShowNotifications => {
                         this.show_connections = false;
                     }
+                    FooterBarEvent::OpenSettings => {
+                        this.show_settings = true;
+                    }
                 }
                 cx.notify();
             }),
@@ -67,6 +79,9 @@ impl Workspace {
                 match event {
                     NotificationsPanelEvent::Refresh => {
                         this.fetch_notifications(cx);
+                    }
+                    NotificationsPanelEvent::DismissNotification(notification_id) => {
+                        this.dismiss_notification(*notification_id, cx);
                     }
                 }
             }),
@@ -77,8 +92,10 @@ impl Workspace {
             footer_bar,
             connections_panel,
             notifications_panel,
+            settings_dialog: None,
             _subscriptions,
             show_connections: true,
+            show_settings: false,
             service_manager: None,
             polling_task: None,
         }
@@ -110,12 +127,10 @@ impl Workspace {
         self.stop_polling();
 
         if self.service_manager.is_some() {
-            let task = cx.spawn(async move |view, mut cx| {
+            let task = cx.spawn(async move |view, cx| {
                 loop {
                     // Wait 5 seconds between polls
-                    cx.background_executor()
-                        .timer(Duration::from_secs(5))
-                        .await;
+                    cx.background_executor().timer(Duration::from_secs(5)).await;
 
                     // Fetch notifications
                     let should_continue = view
@@ -145,10 +160,67 @@ impl Workspace {
             drop(task);
         }
     }
+
+    fn dismiss_notification(&mut self, notification_id: Uuid, cx: &mut Context<Self>) {
+        if let Some(service_manager) = &self.service_manager {
+            let service_manager = service_manager.clone();
+            cx.spawn(async move |view, cx| {
+                // Delete the notification
+                if let Err(e) = service_manager.delete_notification(notification_id).await {
+                    eprintln!("Failed to delete notification: {e}");
+                    return;
+                }
+
+                // Refresh the notifications list
+                let notifications = service_manager.list_notifications().await;
+                if let Ok(notifs) = notifications {
+                    let _ = view.update(cx, |view, cx| {
+                        view.notifications_panel.update(cx, |panel, cx| {
+                            panel.update_notifications(notifs, cx);
+                        });
+                    });
+                }
+            })
+            .detach();
+        }
+    }
+
+    fn apply_theme_by_name(&mut self, theme_name: &str, cx: &mut Context<Self>) {
+        use crate::theme::THEMES;
+        use std::rc::Rc;
+
+        if let Some(theme_config) = THEMES.get(theme_name) {
+            let theme_config = Rc::new(theme_config.clone());
+            let theme = gpui_component::Theme::global_mut(cx);
+            theme.mode = theme_config.mode;
+            theme.apply_config(&theme_config);
+        }
+    }
 }
 
 impl Render for Workspace {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Create settings dialog if needed
+        if self.show_settings && self.settings_dialog.is_none() {
+            let dialog = SettingsDialog::view(window, cx);
+            let subscription =
+                cx.subscribe(&dialog, |this, _, event: &SettingsDialogEvent, cx| match event {
+                    SettingsDialogEvent::Close => {
+                        this.show_settings = false;
+                        this.settings_dialog = None;
+                        cx.notify();
+                    }
+                    SettingsDialogEvent::ThemeChanged { theme_name } => {
+                        this.apply_theme_by_name(theme_name, cx);
+                        cx.notify();
+                    }
+                });
+            self._subscriptions.push(subscription);
+            self.settings_dialog = Some(dialog);
+        } else if !self.show_settings {
+            self.settings_dialog = None;
+        }
+
         let sidebar = div()
             .id("workspace-sidebar")
             .flex()
@@ -173,12 +245,18 @@ impl Render for Workspace {
             .child(sidebar)
             .child(main);
 
-        div()
+        let mut root = div()
             .flex()
             .flex_col()
             .size_full()
             .child(self.header_bar.clone())
             .child(content)
-            .child(self.footer_bar.clone())
+            .child(self.footer_bar.clone());
+
+        if let Some(settings_dialog) = &self.settings_dialog {
+            root = root.child(settings_dialog.clone());
+        }
+
+        root
     }
 }
