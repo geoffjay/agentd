@@ -18,25 +18,15 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
-# Web framework
 axum = "0.7"
 tower-http = { version = "0.6", features = ["trace"] }
-
-# HTTP client
 reqwest = { version = "0.12", features = ["json"] }
-
-# UUID and datetime
 uuid = { version = "1.0", features = ["serde", "v4"] }
 chrono = { version = "0.4", features = ["serde"] }
-
-# tmux interface
 tmux_interface = "0.3"
-
-# Internal dependencies
 notify = { path = "../notify" }
 
 [dev-dependencies]
-# Testing
 mockito = "1.2"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

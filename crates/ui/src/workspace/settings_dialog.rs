@@ -285,13 +285,6 @@ impl Render for SettingsDialog {
             .on_close(cx.listener(|this, _ev, _window, cx| {
                 this.on_close(_ev, _window, cx);
             }))
-            .child(
-                v_flex()
-                    .h(px(500.0))
-                    .flex()
-                    .flex_col()
-                    .child(header)
-                    .child(body)
-            )
+            .child(v_flex().h(px(500.0)).flex().flex_col().child(header).child(body))
     }
 }

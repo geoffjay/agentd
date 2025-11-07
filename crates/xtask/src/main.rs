@@ -201,7 +201,7 @@ fn uninstall() -> Result<()> {
 
     // Remove plist files
     let plist_dir = home_dir()?.join("Library/LaunchAgents");
-    let services = vec!["notify", "ask", "hook", "monitor"];
+    let services = vec!["notify", "ask", "hook", "monitor", "wrap"];
 
     for service in services {
         let plist_name = format!("com.geoffjay.agentd-{service}.plist");
@@ -222,7 +222,7 @@ fn start_services() -> Result<()> {
     println!("{}", "Starting services...".blue());
 
     let plist_dir = home_dir()?.join("Library/LaunchAgents");
-    let services = vec!["notify", "ask", "hook", "monitor"];
+    let services = vec!["notify", "ask", "hook", "monitor", "wrap"];
 
     for service in services {
         let plist_name = format!("com.geoffjay.agentd-{service}.plist");
@@ -253,7 +253,7 @@ fn stop_services() -> Result<()> {
     println!("{}", "Stopping services...".blue());
 
     let plist_dir = home_dir()?.join("Library/LaunchAgents");
-    let services = vec!["notify", "ask", "hook", "monitor"];
+    let services = vec!["notify", "ask", "hook", "monitor", "wrap"];
 
     for service in services {
         let plist_name = format!("com.geoffjay.agentd-{service}.plist");
@@ -288,7 +288,7 @@ fn service_status() -> Result<()> {
         Command::new("launchctl").arg("list").output().context("Failed to execute launchctl")?;
 
     let list_output = String::from_utf8_lossy(&output.stdout);
-    let services = vec!["notify", "ask", "hook", "monitor"];
+    let services = vec!["notify", "ask", "hook", "monitor", "wrap"];
 
     for service in services {
         let service_name = format!("com.geoffjay.agentd-{service}");
@@ -474,6 +474,7 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
         ("agentd-ask", "target/release/agentd-ask"),
         ("agentd-hook", "target/release/agentd-hook"),
         ("agentd-monitor", "target/release/agentd-monitor"),
+        ("agentd-wrap", "target/release/agentd-wrap"),
     ];
 
     for (name, src_path) in services {
@@ -574,7 +575,7 @@ fn set_executable(path: &Path) -> Result<()> {
 fn install_plists(plist_dir: &Path) -> Result<()> {
     println!("{}", "Installing service plists...".blue());
 
-    let services = vec!["notify", "ask", "hook", "monitor"];
+    let services = vec!["notify", "ask", "hook", "monitor", "wrap"];
     let plist_src_dir = Path::new("contrib/plists");
 
     for service in services {
@@ -602,7 +603,7 @@ fn home_dir() -> Result<PathBuf> {
 }
 
 fn validate_service_name(service: &str) -> Result<()> {
-    let valid_services = ["notify", "ask", "hook", "monitor"];
+    let valid_services = ["notify", "ask", "hook", "monitor", "wrap"];
     if !valid_services.contains(&service) {
         anyhow::bail!(
             "Invalid service name: '{}'. Valid services are: {}",

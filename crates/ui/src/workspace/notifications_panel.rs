@@ -98,7 +98,11 @@ impl NotificationsTableDelegate {
                     5 => a.created_at.cmp(&b.created_at),
                     _ => std::cmp::Ordering::Equal,
                 };
-                if ascending { ordering } else { ordering.reverse() }
+                if ascending {
+                    ordering
+                } else {
+                    ordering.reverse()
+                }
             });
         }
     }

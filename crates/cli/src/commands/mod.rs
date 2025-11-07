@@ -30,6 +30,8 @@
 
 pub mod ask;
 pub mod notify;
+pub mod wrap;
 
 pub use ask::AskCommand;
 pub use notify::NotifyCommand;
+pub use wrap::WrapCommand;

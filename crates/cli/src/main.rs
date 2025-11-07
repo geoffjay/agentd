@@ -74,9 +74,10 @@ pub mod types;
 use anyhow::{Context, Result};
 use ask::client::AskClient;
 use clap::{Parser, Subcommand};
-use commands::{AskCommand, NotifyCommand};
+use commands::{AskCommand, NotifyCommand, WrapCommand};
 use notify::client::NotifyClient;
 use std::env;
+use wrap::client::WrapClient;
 
 /// Main CLI structure parsed by clap.
 ///
@@ -118,6 +119,15 @@ enum Commands {
     Ask {
         #[command(subcommand)]
         command: AskCommand,
+    },
+    /// Interact with the wrap service
+    ///
+    /// Launch and manage agents in tmux sessions. The wrap service runs on
+    /// port 7005 by default and handles agent lifecycle management including
+    /// launching agents with proper configuration and monitoring their health.
+    Wrap {
+        #[command(subcommand)]
+        command: WrapCommand,
     },
     /// Start the hook daemon
     ///
@@ -170,6 +180,13 @@ async fn main() -> Result<()> {
             let url =
                 env::var("ASK_SERVICE_URL").unwrap_or_else(|_| "http://localhost:7001".to_string());
             let client = AskClient::new(url);
+            command.execute(&client, cli.json).await?;
+        }
+        Commands::Wrap { command } => {
+            // Use WRAP_SERVICE_URL env var, default to production port
+            let url = env::var("WRAP_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7005".to_string());
+            let client = WrapClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Hook => {

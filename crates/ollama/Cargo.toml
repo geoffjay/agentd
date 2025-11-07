@@ -1,5 +1,5 @@
 [package]
-name = "agentd-ollama"
+name = "ollama"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

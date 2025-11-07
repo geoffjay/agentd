@@ -20,7 +20,7 @@ Initial support for:
 
 ## Core Concept
 
-agentd-ask acts as an "agent launcher agent" that:
+agentd-ask acts as an "agent agent" that has some special abilities:
 
 - Maintains a registry of projects and their locations
 - Periodically polls project states
@@ -36,9 +36,11 @@ agentd-ask acts as an "agent launcher agent" that:
 - **Runtime**: Tokio async runtime
 - **Database**: SQLite (via sqlx)
 - **Configuration**: TOML format
-- **Platform Support**: Linux, macOS, Windows (cross-platform)
+- **Platform Support**: Linux, macOS (Windows support is not planned)
 
 ### Key Crates
+
+Note that in a lot of cases these should be taken from the root using, for example `tokio = { workspace = true }`.
 
 ```toml
 tokio = { version = "1", features = ["full"] }
@@ -62,7 +64,7 @@ thiserror = "1.0"
 ### Project Structure
 
 ```
-agentd-ask/
+crates/ask/
 ├── Cargo.toml
 ├── src/
 │   ├── main.rs              # Entry point, CLI parsing
@@ -83,9 +85,6 @@ agentd-ask/
 │   │   ├── scanner.rs       # Project discovery/scanning
 │   │   ├── session.rs       # tmux session management
 │   │   └── service.rs       # systemd/launchd service management
-│   ├── notification/
-│   │   ├── mod.rs
-│   │   └── client.rs        # Interface to agentd-notify service
 │   └── agent/
 │       ├── mod.rs
 │       └── launcher.rs      # Agent launching (agentd-wrap integration)
@@ -205,48 +204,42 @@ All paths are platform-specific:
 
 **Linux:**
 
-- Config: `~/.config/agentd-ask/config.toml`
-- Data: `~/.local/share/agentd-ask/agentd-ask.db`
-- Cache: `~/.cache/agentd-ask/`
-- Logs: `~/.local/share/agentd-ask/agentd-ask.log`
-- PID: `~/.local/share/agentd-ask/agentd-ask.pid`
+- Config: `~/.config/agentd/ask.toml`
+- Data: `~/.local/share/agentd/ask.db`
+- Cache: `~/.cache/agentd/ask/`
+- Logs: `~/.local/share/agentd/ask.log`
+- PID: `~/.local/share/agentd/ask.pid`
 
 **macOS:**
 
-- Config: `~/Library/Application Support/agentd-ask/config.toml`
-- Data: `~/Library/Application Support/agentd-ask/agentd-ask.db`
-- Cache: `~/Library/Caches/agentd-ask/`
-
-**Windows:**
-
-- Config: `C:\Users\<User>\AppData\Roaming\agentd-ask\config.toml`
-- Data: `C:\Users\<User>\AppData\Roaming\agentd-ask\agentd-ask.db`
-- Cache: `C:\Users\<User>\AppData\Local\agentd-ask\`
+- Config: `~/Library/Application Support/Agent/ask.toml`
+- Data: `~/Library/Application Support/Agent/ask.db`
+- Cache: `~/Library/Caches/Agent/ask/`
 
 ### config.toml Structure
 
 ```toml
 [daemon]
-poll_interval_minutes = 15
+poll_interval_minutes = 1
 enable_filesystem_watch = false  # Future feature
 
 [notifications]
 # agentd-notify service endpoint
-service_endpoint = "http://localhost:8080"
+service_endpoint = "http://localhost:7004"
 
 [tmux]
-session_prefix = "agentd-ask"
+session_prefix = "ask"
 default_shell = "/bin/bash"
 
 [agents]
 default_provider = "ollama"
-default_model = "llama2"
+default_model = "gpt-oss:120b-cloud"
 # Available agent types: claude-code, opencode, gemini
 available_types = ["claude-code", "opencode", "gemini", "general"]
 
 [database]
 # Automatically set to platform-specific data directory
-# path = "~/.local/share/agentd-ask/agentd-ask.db"
+# path = "~/.local/share/agentd/ask.db"
 ```
 
 ## CLI Interface
@@ -254,30 +247,22 @@ available_types = ["claude-code", "opencode", "gemini", "general"]
 ### Commands
 
 ```bash
-# Start the daemon (foreground for debugging)
-agentd-ask daemon [--foreground]
-
 # Project management
-agentd-ask register <name> <path>           # Register individual project
-agentd-ask register-location <path>         # Register location to scan
-agentd-ask list [--active-only]             # List projects
-agentd-ask locations                        # List registered locations
+agent ask register <name> <path>           # Register individual project
+agent ask register-location <path>         # Register location to scan
+agent ask list [--active-only]             # List projects
+agent ask locations                        # List registered locations
 
 # Session management
-agentd-ask start <project-name> [--agent-type <type>]
-agentd-ask stop <project-name>
-agentd-ask active                           # Show active sessions
-agentd-ask status                           # Daemon status
-
-# Utility
-agentd-ask cleanup                          # Remove ended sessions
-agentd-ask install                          # Install systemd/launchd service
-agentd-ask uninstall                        # Remove service
+agent ask start <project-name> [--agent-type <type>]
+agent ask stop <project-name>
+agent ask active                           # Show active sessions
+agent ask status                           # Daemon status
 ```
 
 ### HTTP API (IPC)
 
-The daemon runs an HTTP server on `127.0.0.1:7878` for CLI commands to communicate:
+The daemon runs an HTTP server on `127.0.0.1:7001` for CLI commands to communicate:
 
 ```
 GET  /health                          # Health check
@@ -304,7 +289,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/path/to/agentd-ask daemon
+ExecStart=/path/to/agentd-ask
 Restart=on-failure
 RestartSec=10
 
@@ -322,34 +307,8 @@ systemctl --user start agentd-ask
 
 ### macOS (launchd)
 
-Plist file: `~/Library/LaunchAgents/com.agentd.ask.plist`
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.agentd.ask</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/path/to/agentd-ask</string>
-        <string>daemon</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-</dict>
-</plist>
-```
-
-Load service:
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.agentd.ask.plist
-```
+macOS installation has already been added, see contrib/plists for existing plist files. Nothing is
+required to do for this section.
 
 ## Project Discovery
 
@@ -358,7 +317,7 @@ launchctl load ~/Library/LaunchAgents/com.agentd.ask.plist
 Users can explicitly register projects:
 
 ```bash
-agentd-ask register my-project ~/code/my-project
+agent ask register my-project ~/code/my-project
 ```
 
 ### Location Scanning
@@ -366,7 +325,7 @@ agentd-ask register my-project ~/code/my-project
 Register a parent directory to scan:
 
 ```bash
-agentd-ask register-location ~/projects/
+agent ask register-location ~/projects/
 ```
 
 The daemon scans for projects containing `.agentd.toml`:
@@ -445,7 +404,7 @@ When user selects a project to start:
 
 ### Stopping a Project
 
-When user runs `agentd-ask stop <project>`:
+When user runs `agent ask stop <project>`:
 
 1. **Kill tmux session**
 
@@ -485,7 +444,7 @@ impl SessionManager {
 2. **Running**: `ended_at` is NULL, tmux session exists
 3. **Ended**: Either:
    - User exits tmux session naturally
-   - User runs `agentd-ask stop`
+   - User runs `agent ask stop`
    - Daemon detects session no longer exists
 4. **Cleaned up**: `ended_at` set, `project.is_active = false`
 
@@ -512,6 +471,9 @@ impl NotificationClient {
     }
 }
 ```
+
+Note that the agentd-notify service is already implemented in crates/notify. There is already a
+client implementation for this purpose and a new one DOES NOT need to be implemented.
 
 ### Notification Structure
 
@@ -563,7 +525,7 @@ Expected interface:
 
 ```bash
 # agentd-ask will invoke:
-agentd-wrap launch \
+agent wrap launch \
   --agent-type claude-code \
   --model-provider anthropic \
   --model-name claude-sonnet-4.5 \
@@ -572,6 +534,7 @@ agentd-wrap launch \
 
 agentd-wrap responsibilities:
 
+- Tmux session management
 - Agent startup success/failure reporting
 - Agent health monitoring
 - Exit code reporting

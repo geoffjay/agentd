@@ -23,6 +23,7 @@ prettytable-rs = "0.10"
 # Internal dependencies
 notify = { path = "../notify" }
 ask = { path = "../ask" }
+wrap = { path = "../wrap" }
 
 [dev-dependencies]
 mockito = "1.2"
