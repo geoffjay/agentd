@@ -1,0 +1,27 @@
+[package]
+name = "ui_terminal"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Workspace dependencies
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+# Terminal backend
+alacritty_terminal = "0.25.1-rc1"
+
+# UI framework
+gpui = "0.2.2"
+
+# Async runtime
+smol = "2.0"
+futures = "0.3"
+
+# Logging
+log = "0.4"

@@ -1,8 +1,10 @@
 use super::connections_panel::{ConnectionEvent, ConnectionsPanel};
 use super::footer_bar::{FooterBar, FooterBarEvent};
 use super::header_bar::HeaderBar;
+use super::menu_bar::{MenuBar, MenuBarEvent, MenuItem};
 use super::notifications_panel::{NotificationsPanel, NotificationsPanelEvent};
 use super::settings_dialog::{SettingsDialog, SettingsDialogEvent};
+use super::terminal_panel::{TerminalPanel, TerminalPanelEvent};
 
 use crate::services::NotifyServiceManager;
 use gpui::prelude::FluentBuilder;
@@ -14,13 +16,15 @@ use uuid::Uuid;
 use gpui_component::ActiveTheme;
 
 pub struct Workspace {
+    menu_bar: Entity<MenuBar>,
     header_bar: Entity<HeaderBar>,
     footer_bar: Entity<FooterBar>,
     connections_panel: Entity<ConnectionsPanel>,
     notifications_panel: Entity<NotificationsPanel>,
+    terminal_panel: Entity<TerminalPanel>,
     settings_dialog: Option<Entity<SettingsDialog>>,
     _subscriptions: Vec<Subscription>,
-    show_connections: bool,
+    selected_menu_item: Option<MenuItem>,
     show_settings: bool,
     service_manager: Option<Arc<NotifyServiceManager>>,
     polling_task: Option<Task<()>>,
@@ -28,12 +32,30 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let menu_bar = MenuBar::view(window, cx);
         let header_bar = HeaderBar::view(window, cx);
         let footer_bar = FooterBar::view(window, cx);
         let connections_panel = ConnectionsPanel::view(window, cx);
         let notifications_panel = NotificationsPanel::view(window, cx);
+        let terminal_panel = TerminalPanel::view(window, cx);
 
         let _subscriptions = vec![
+            cx.subscribe(&menu_bar, |this, _, event: &MenuBarEvent, cx| {
+                match event {
+                    MenuBarEvent::MenuItemSelected(item) => {
+                        match item {
+                            MenuItem::Settings => {
+                                this.show_settings = true;
+                                this.selected_menu_item = None;
+                            }
+                            _ => {
+                                this.selected_menu_item = Some(*item);
+                            }
+                        }
+                    }
+                }
+                cx.notify();
+            }),
             cx.subscribe(&connections_panel, |this, _, event: &ConnectionEvent, cx| {
                 match event {
                     ConnectionEvent::Connected(service_manager) => {
@@ -64,13 +86,29 @@ impl Workspace {
             cx.subscribe(&footer_bar, |this, _, event: &FooterBarEvent, cx| {
                 match event {
                     FooterBarEvent::ShowConnections => {
-                        this.show_connections = true;
+                        // Connections are always visible in the sidebar when Notifications is selected
+                        this.selected_menu_item = Some(MenuItem::Notifications);
+                        this.menu_bar.update(cx, |bar, cx| {
+                            bar.select(MenuItem::Notifications, cx);
+                        });
                     }
                     FooterBarEvent::ShowNotifications => {
-                        this.show_connections = false;
+                        this.selected_menu_item = Some(MenuItem::Notifications);
+                        this.menu_bar.update(cx, |bar, cx| {
+                            bar.select(MenuItem::Notifications, cx);
+                        });
+                    }
+                    FooterBarEvent::ShowTerminal => {
+                        this.selected_menu_item = Some(MenuItem::Terminal);
+                        this.menu_bar.update(cx, |bar, cx| {
+                            bar.select(MenuItem::Terminal, cx);
+                        });
                     }
                     FooterBarEvent::OpenSettings => {
                         this.show_settings = true;
+                        this.menu_bar.update(cx, |bar, cx| {
+                            bar.select(MenuItem::Settings, cx);
+                        });
                     }
                 }
                 cx.notify();
@@ -85,16 +123,31 @@ impl Workspace {
                     }
                 }
             }),
+            cx.subscribe(&terminal_panel, |_this, _, event: &TerminalPanelEvent, _cx| {
+                match event {
+                    TerminalPanelEvent::SessionAttached(session_name) => {
+                        println!("Terminal session attached: {}", session_name);
+                    }
+                    TerminalPanelEvent::SessionDetached => {
+                        println!("Terminal session detached");
+                    }
+                    TerminalPanelEvent::SessionError(error) => {
+                        println!("Terminal session error: {}", error);
+                    }
+                }
+            }),
         ];
 
         Self {
+            menu_bar,
             header_bar,
             footer_bar,
             connections_panel,
             notifications_panel,
+            terminal_panel,
             settings_dialog: None,
             _subscriptions,
-            show_connections: true,
+            selected_menu_item: Some(MenuItem::Notifications), // Start with notifications selected
             show_settings: false,
             service_manager: None,
             polling_task: None,
@@ -196,6 +249,35 @@ impl Workspace {
             theme.apply_config(&theme_config);
         }
     }
+
+    pub fn show_terminal_with_session(&mut self, session_name: String, cx: &mut Context<Self>) {
+        // Switch to terminal panel
+        self.selected_menu_item = Some(MenuItem::Terminal);
+        self.menu_bar.update(cx, |bar, cx| {
+            bar.select(MenuItem::Terminal, cx);
+        });
+
+        // Attach to the specified session
+        self.terminal_panel.update(cx, |panel, cx| {
+            panel.attach_session(session_name, cx);
+        });
+
+        cx.notify();
+    }
+
+    /// Determine if the sidebar should be shown (only when Notifications is selected)
+    fn show_sidebar(&self) -> bool {
+        matches!(self.selected_menu_item, Some(MenuItem::Notifications))
+    }
+
+    /// Render the main content area based on the selected menu item
+    fn render_content(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+        match self.selected_menu_item {
+            Some(MenuItem::Notifications) => self.notifications_panel.clone().into_any_element(),
+            Some(MenuItem::Terminal) => self.terminal_panel.clone().into_any_element(),
+            Some(MenuItem::Settings) | None => div().into_any_element(),
+        }
+    }
 }
 
 impl Render for Workspace {
@@ -221,38 +303,46 @@ impl Render for Workspace {
             self.settings_dialog = None;
         }
 
-        let sidebar = div()
-            .id("workspace-sidebar")
-            .flex()
-            .h_full()
-            .border_color(cx.theme().border)
-            .border_r_1()
-            .min_w(px(300.0))
-            .when(self.show_connections, |this| this.child(self.connections_panel.clone()));
-
-        let main = div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .overflow_hidden()
-            .child(self.notifications_panel.clone());
-
-        let content = div()
-            .id("workspace-content")
-            .flex()
-            .flex_grow()
-            .bg(cx.theme().background)
-            .child(sidebar)
-            .child(main);
-
+        // Build the layout: MenuBar | Sidebar (optional) | Content
         let mut root = div()
+            .id("workspace")
             .flex()
-            .flex_col()
             .size_full()
-            .child(self.header_bar.clone())
-            .child(content)
-            .child(self.footer_bar.clone());
+            .bg(cx.theme().background)
+            .child(self.menu_bar.clone()); // Fixed width menu (48px)
 
+        // Add sidebar when showing notifications
+        root = root.when(self.show_sidebar(), |el| {
+            el.child(
+                div()
+                    .id("workspace-sidebar")
+                    .w(px(300.))
+                    .h_full()
+                    .border_r_1()
+                    .border_color(cx.theme().border)
+                    .child(self.connections_panel.clone()),
+            )
+        });
+
+        // Add main content area with header, content, and footer
+        root = root.child(
+            div()
+                .id("workspace-content")
+                .flex()
+                .flex_col()
+                .flex_1() // Take remaining space
+                .child(self.header_bar.clone())
+                .child(
+                    div()
+                        .id("workspace-main")
+                        .flex_1() // Content area takes remaining vertical space
+                        .overflow_hidden()
+                        .child(self.render_content(cx)),
+                )
+                .child(self.footer_bar.clone()),
+        );
+
+        // Overlay settings dialog if shown
         if let Some(settings_dialog) = &self.settings_dialog {
             root = root.child(settings_dialog.clone());
         }

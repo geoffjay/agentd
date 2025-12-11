@@ -10,6 +10,7 @@ pub struct FooterBar {
 pub enum FooterBarEvent {
     ShowConnections,
     ShowNotifications,
+    ShowTerminal,
     OpenSettings,
 }
 
