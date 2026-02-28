@@ -61,7 +61,13 @@ impl MenuBar {
     }
 
     /// Handle menu item click
-    fn handle_click(&mut self, item: MenuItem, _ev: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
+    fn handle_click(
+        &mut self,
+        item: MenuItem,
+        _ev: &ClickEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.selected == Some(item) {
             // Toggle off if clicking the same item
             self.deselect(cx);
@@ -110,26 +116,12 @@ impl Focusable for MenuBar {
 
 impl Render for MenuBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let notifications_button = self.render_menu_item(
-            MenuItem::Notifications,
-            "🔔",
-            "Notifications",
-            cx,
-        );
+        let notifications_button =
+            self.render_menu_item(MenuItem::Notifications, "🔔", "Notifications", cx);
 
-        let terminal_button = self.render_menu_item(
-            MenuItem::Terminal,
-            "⚡",
-            "Terminal",
-            cx,
-        );
+        let terminal_button = self.render_menu_item(MenuItem::Terminal, "⚡", "Terminal", cx);
 
-        let settings_button = self.render_menu_item(
-            MenuItem::Settings,
-            "⚙",
-            "Settings",
-            cx,
-        );
+        let settings_button = self.render_menu_item(MenuItem::Settings, "⚙", "Settings", cx);
 
         div()
             .id("menu-bar")
@@ -148,7 +140,7 @@ impl Render for MenuBar {
             .child(terminal_button)
             .child(
                 // Spacer to push settings to the bottom
-                div().flex_grow()
+                div().flex_grow(),
             )
             .child(settings_button)
             .pb_2()

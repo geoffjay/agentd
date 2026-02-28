@@ -51,7 +51,8 @@ impl TerminalPanel {
             let _ = view.update(cx, |view, cx| match result {
                 Ok(content) => {
                     view.terminal_content = content;
-                    view.status_message = format!("Connected to tmux session: {}", session_name_clone);
+                    view.status_message =
+                        format!("Connected to tmux session: {}", session_name_clone);
                     cx.emit(TerminalPanelEvent::SessionAttached(session_name_clone));
                     cx.notify();
                 }
@@ -133,19 +134,15 @@ impl Render for TerminalPanel {
                 .font_semibold()
                 .text_sm(),
             )
-            .child(Label::new(&self.status_message).text_xs().text_color(cx.theme().muted_foreground));
+            .child(
+                Label::new(&self.status_message).text_xs().text_color(cx.theme().muted_foreground),
+            );
 
         let terminal_view = if let Some(error) = &self.error_message {
             // Show error message
-            v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .child(
-                    Label::new(format!("Error: {}", error))
-                        .text_sm()
-                        .text_color(cx.theme().danger),
-                )
+            v_flex().flex_1().items_center().justify_center().child(
+                Label::new(format!("Error: {}", error)).text_sm().text_color(cx.theme().danger),
+            )
         } else if self.session_name.is_some() {
             // Show terminal content
             v_flex()
@@ -155,15 +152,11 @@ impl Render for TerminalPanel {
                 .child(TerminalElement::new(self.terminal_content.clone()))
         } else {
             // Show placeholder when no session is attached
-            v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .child(
-                    Label::new("No terminal session attached")
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground),
-                )
+            v_flex().flex_1().items_center().justify_center().child(
+                Label::new("No terminal session attached")
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground),
+            )
         };
 
         v_flex()

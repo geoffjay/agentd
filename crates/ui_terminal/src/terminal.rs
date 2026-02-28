@@ -35,28 +35,20 @@ impl Terminal {
         events_rx: UnboundedReceiver<AlacTermEvent>,
         pty_tx: EventLoopSender,
     ) -> Self {
-        Self {
-            term,
-            events_rx,
-            pty_tx,
-        }
+        Self { term, events_rx, pty_tx }
     }
 
     pub fn input(&self, data: impl Into<Vec<u8>>) -> Result<()> {
         use alacritty_terminal::event_loop::Msg;
 
         let bytes = data.into();
-        self.pty_tx
-            .send(Msg::Input(bytes.into()))
-            .context("Failed to send input to terminal")
+        self.pty_tx.send(Msg::Input(bytes.into())).context("Failed to send input to terminal")
     }
 
     pub fn resize(&self, size: WindowSize) -> Result<()> {
         use alacritty_terminal::event_loop::Msg;
 
-        self.pty_tx
-            .send(Msg::Resize(size))
-            .context("Failed to send resize to terminal")
+        self.pty_tx.send(Msg::Resize(size)).context("Failed to send resize to terminal")
     }
 
     pub fn read_content(&self) -> Result<String> {

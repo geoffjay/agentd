@@ -7,10 +7,7 @@ use thiserror::Error;
 pub enum BamlError {
     /// The BAML server is not reachable
     #[error("BAML server unreachable at {url}: {source}")]
-    ServerUnreachable {
-        url: String,
-        source: reqwest::Error,
-    },
+    ServerUnreachable { url: String, source: reqwest::Error },
 
     /// HTTP request failed
     #[error("HTTP request failed: {0}")]

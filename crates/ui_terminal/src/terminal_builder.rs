@@ -35,10 +35,7 @@ impl Dimensions for TermSize {
 
 impl From<WindowSize> for TermSize {
     fn from(size: WindowSize) -> Self {
-        TermSize {
-            num_lines: size.num_lines as usize,
-            num_cols: size.num_cols as usize,
-        }
+        TermSize { num_lines: size.num_lines as usize, num_cols: size.num_cols as usize }
     }
 }
 
@@ -96,11 +93,7 @@ impl TerminalBuilder {
         let session = session_name.into();
         self.shell = Some(Shell::new(
             "tmux".to_string(),
-            vec![
-                "attach".to_string(),
-                "-t".to_string(),
-                session,
-            ],
+            vec!["attach".to_string(), "-t".to_string(), session],
         ));
         self
     }
@@ -114,17 +107,13 @@ impl TerminalBuilder {
         let mut env = self.env;
 
         if std::env::var("LANG").is_err() {
-            env.entry("LANG".to_string())
-                .or_insert_with(|| "en_US.UTF-8".to_string());
+            env.entry("LANG".to_string()).or_insert_with(|| "en_US.UTF-8".to_string());
         }
 
         env.insert("TERM".to_string(), "xterm-256color".to_string());
         env.insert("COLORTERM".to_string(), "truecolor".to_string());
 
-        let config = Config {
-            scrolling_history: self.scroll_history,
-            ..Config::default()
-        };
+        let config = Config { scrolling_history: self.scroll_history, ..Config::default() };
 
         let (events_tx, events_rx) = unbounded();
         let listener = TerminalListener(events_tx);
@@ -142,8 +131,7 @@ impl TerminalBuilder {
             escape_args: false,
         };
 
-        let pty = tty::new(&pty_options, self.window_size, 0)
-            .context("Failed to create PTY")?;
+        let pty = tty::new(&pty_options, self.window_size, 0).context("Failed to create PTY")?;
 
         let event_loop = EventLoop::new(term.clone(), listener, pty, false, false)
             .context("Failed to create event loop")?;

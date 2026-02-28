@@ -42,17 +42,15 @@ impl Workspace {
         let _subscriptions = vec![
             cx.subscribe(&menu_bar, |this, _, event: &MenuBarEvent, cx| {
                 match event {
-                    MenuBarEvent::MenuItemSelected(item) => {
-                        match item {
-                            MenuItem::Settings => {
-                                this.show_settings = true;
-                                this.selected_menu_item = None;
-                            }
-                            _ => {
-                                this.selected_menu_item = Some(*item);
-                            }
+                    MenuBarEvent::MenuItemSelected(item) => match item {
+                        MenuItem::Settings => {
+                            this.show_settings = true;
+                            this.selected_menu_item = None;
                         }
-                    }
+                        _ => {
+                            this.selected_menu_item = Some(*item);
+                        }
+                    },
                 }
                 cx.notify();
             }),
@@ -123,8 +121,9 @@ impl Workspace {
                     }
                 }
             }),
-            cx.subscribe(&terminal_panel, |_this, _, event: &TerminalPanelEvent, _cx| {
-                match event {
+            cx.subscribe(
+                &terminal_panel,
+                |_this, _, event: &TerminalPanelEvent, _cx| match event {
                     TerminalPanelEvent::SessionAttached(session_name) => {
                         println!("Terminal session attached: {}", session_name);
                     }
@@ -134,8 +133,8 @@ impl Workspace {
                     TerminalPanelEvent::SessionError(error) => {
                         println!("Terminal session error: {}", error);
                     }
-                }
-            }),
+                },
+            ),
         ];
 
         Self {

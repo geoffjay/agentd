@@ -39,10 +39,10 @@ use tracing::{debug, warn};
 fn get_tmux_command() -> &'static str {
     // Check common tmux installation locations
     const COMMON_PATHS: &[&str] = &[
-        "/opt/homebrew/bin/tmux",  // Homebrew on Apple Silicon
-        "/usr/local/bin/tmux",     // Homebrew on Intel / manual install
-        "/usr/bin/tmux",           // System install
-        "tmux",                    // Fallback to PATH
+        "/opt/homebrew/bin/tmux", // Homebrew on Apple Silicon
+        "/usr/local/bin/tmux",    // Homebrew on Intel / manual install
+        "/usr/bin/tmux",          // System install
+        "tmux",                   // Fallback to PATH
     ];
 
     for path in COMMON_PATHS {
@@ -289,9 +289,8 @@ impl TmuxManager {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn session_exists(&self, session_name: &str) -> anyhow::Result<bool> {
-        let output = Command::new(get_tmux_command())
-            .args(["has-session", "-t", session_name])
-            .output()?;
+        let output =
+            Command::new(get_tmux_command()).args(["has-session", "-t", session_name]).output()?;
 
         Ok(output.status.success())
     }
@@ -325,9 +324,8 @@ impl TmuxManager {
     pub fn kill_session(&self, session_name: &str) -> anyhow::Result<()> {
         debug!("Killing tmux session: {}", session_name);
 
-        let output = Command::new(get_tmux_command())
-            .args(["kill-session", "-t", session_name])
-            .output()?;
+        let output =
+            Command::new(get_tmux_command()).args(["kill-session", "-t", session_name]).output()?;
 
         // Don't error if session doesn't exist
         if !output.status.success() {
