@@ -292,7 +292,7 @@ function SummarizeNotifications(
 }
 ```
 
-**Integration Point**: GUI application, scheduled task
+**Integration Point**: scheduled task
 **Benefit**: Users can quickly understand notification activity without reading everything
 
 ### 4. Log Analysis and Error Detection
@@ -510,7 +510,6 @@ agentd/
 1. **Notification Digests**
    - Implement `SummarizeNotifications`
    - Add scheduled digest generation
-   - Display in GUI
 
 2. **Natural Language CLI**
    - Implement `ParseUserCommand`

@@ -7,7 +7,6 @@ A modular daemon system for managing notifications, interactive questions, and s
 **agentd** is a suite of services and tools designed to provide intelligent, context-aware notifications and interactions. It consists of:
 
 - **agent** - Command-line interface for interacting with all services
-- **Agent** - macOS GUI application (GPUI-based)
 - **agentd-notify** - Notification service with REST API
 - **agentd-ask** - Interactive question service with tmux integration
 - **agentd-hook** - Shell hook integration service
@@ -27,9 +26,6 @@ cargo xtask start-services
 # Use the CLI
 agent notify create --title "Hello" --message "agentd is working!"
 agent notify list
-
-# Launch the GUI (if no arguments given)
-agent
 ```
 
 ## Features
@@ -145,32 +141,12 @@ curl -X POST http://localhost:3001/answer \
 
 ## Architecture
 
-### Project Structure
-```
-agentd/
-├── crates/
-│   ├── cli/              # CLI binary (installed as "cli" in Agent.app)
-│   ├── ui/               # GUI binary (installed as "agent" in Agent.app)
-│   ├── notify/           # Notification service daemon
-│   ├── ask/              # Ask service daemon
-│   ├── hook/             # Hook service daemon
-│   ├── monitor/          # Monitor service daemon
-│   ├── ollama/           # Ollama integration (library)
-│   └── wrap/             # Wrapper utilities (library)
-├── contrib/
-│   ├── plists/           # macOS LaunchAgent plist files
-│   └── scripts/          # Installation scripts
-├── docs/                 # Documentation
-└── xtask/                # Installation automation
-```
-
 ### Installed Structure (macOS)
 ```
 /Applications/Agent.app/
 ├── Contents/
 │   ├── Info.plist
 │   ├── MacOS/
-│   │   ├── agent              # GUI application
 │   │   ├── cli                # CLI (symlinked from /usr/local/bin/agent)
 │   │   ├── agentd-notify      # Notification service
 │   │   ├── agentd-ask         # Ask service
@@ -345,7 +321,7 @@ For more troubleshooting, see [INSTALL.md](INSTALL.md).
 - ✅ Installation automation
 
 **In Progress:**
-- 🔄 GUI application (GPUI)
+- 🔄 Orchestration service
 - 🔄 Hook service
 - 🔄 Monitor service
 
@@ -358,7 +334,3 @@ For more troubleshooting, see [INSTALL.md](INSTALL.md).
 ## License
 
 MIT OR Apache-2.0
-
-## Author
-
-Geoff Johnson

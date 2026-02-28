@@ -7,7 +7,6 @@ This guide covers installation of the agentd system on macOS.
 The agentd system consists of:
 
 - **agent** - Command-line interface for interacting with services
-- **Agent** - macOS GUI application (GPUI-based)
 - **agentd-notify** - Notification service (REST API on port 3000)
 - **agentd-ask** - Ask service for interactive questions (REST API on port 3001)
 - **agentd-hook** - Hook service for shell integration
@@ -107,7 +106,6 @@ cargo xtask service-status
 - `agentd-ask` - Ask service
 - `agentd-hook` - Hook service
 - `agentd-monitor` - Monitor service
-- `Agent` - GUI application
 
 **Service Files** (in `~/Library/LaunchAgents/`):
 - `com.geoffjay.agentd-notify.plist`

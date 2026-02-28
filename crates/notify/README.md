@@ -12,7 +12,6 @@ Notification service daemon with system tray integration and persistent storage.
 - **Background Tasks** - Automatic cleanup of expired notifications
 
 ### 🚧 In Progress
-- **GPUI Windows** - Rich notification UI (next phase)
 - **HTTP API** - Axum server for receiving notifications
 - **IPC Communication** - Communication with other agentd services
 
@@ -78,13 +77,6 @@ RUST_LOG=debug cargo run -p agentd-notify
 
 ## Next Steps
 
-### Phase 1: GPUI Integration
-- [ ] Set up GPUI app context
-- [ ] Create notification window component
-- [ ] Design notification UI layout
-- [ ] Handle user interactions (dismiss, respond)
-- [ ] Connect tray events to GPUI windows
-
 ### Phase 2: HTTP API
 - [ ] Axum server setup
 - [ ] POST /notifications endpoint
@@ -102,7 +94,7 @@ RUST_LOG=debug cargo run -p agentd-notify
 
 ### Event Loop Architecture
 
-The service uses **tao's event loop** on the main thread because system tray icons require native event pumping to be visible. When GPUI is integrated, we'll replace tao with GPUI's event loop, which handles both windowing and tray icons.
+The service uses **tao's event loop** on the main thread because system tray icons require native event pumping to be visible.
 
 ### Async/Sync Boundary
 

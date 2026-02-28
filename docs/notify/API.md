@@ -301,13 +301,3 @@ cargo run -p agentd-notify
 ```
 
 The service will start on `http://127.0.0.1:3030`
-
-## Future GUI Application
-
-A separate GUI application can be built that:
-- Displays a system tray icon
-- Polls this API for notifications
-- Shows notifications in GPUI windows
-- Handles user interactions and updates notifications via the API
-
-This separation allows the notification service to focus on data management while the GUI handles presentation.

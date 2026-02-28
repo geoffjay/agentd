@@ -158,7 +158,6 @@ fn install_user() -> Result<()> {
     println!("Services: {}", plist_dir.display().to_string().yellow());
     println!();
     println!("{}", "Usage:".cyan().bold());
-    println!("  {} - Launch GUI", "agent".cyan());
     println!("  {} - List notifications", "agent notify list".cyan());
     println!(
         "  {} - Create notification",
@@ -437,25 +436,6 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
 
     fs::create_dir_all(&macos_dir).context("Failed to create Agent.app/Contents/MacOS")?;
     fs::create_dir_all(&resources_dir).context("Failed to create Agent.app/Contents/Resources")?;
-
-    // Copy Info.plist
-    let info_plist_src = Path::new("crates/ui/Info.plist");
-    let info_plist_dest = app_bundle.join("Contents/Info.plist");
-    if info_plist_src.exists() {
-        fs::copy(info_plist_src, info_plist_dest).context("Failed to copy Info.plist")?;
-        println!("  {} Info.plist", "✓".green());
-    }
-
-    // Install GUI binary to Agent.app/Contents/MacOS/agent
-    let gui_src = Path::new("target/release/agent");
-    let gui_dest = macos_dir.join("agent");
-    if gui_src.exists() {
-        fs::copy(gui_src, &gui_dest).context("Failed to install GUI binary")?;
-        set_executable(&gui_dest)?;
-        println!("  {} GUI binary (agent)", "✓".green());
-    } else {
-        println!("  {} GUI binary (not built yet)", "⚠".yellow());
-    }
 
     // Install CLI binary to Agent.app/Contents/MacOS/cli
     let cli_src = Path::new("target/release/cli");

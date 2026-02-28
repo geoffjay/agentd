@@ -157,14 +157,6 @@ enum Commands {
 /// provides rich context and backtraces in debug mode.
 #[tokio::main]
 async fn main() -> Result<()> {
-    // If called as "agent" with no arguments, launch the GUI
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() == 1 {
-        // No arguments provided - launch GUI
-        launch_gui()?;
-        return Ok(());
-    }
-
     let cli = Cli::parse();
 
     match cli.command {
@@ -200,30 +192,4 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Launch the GUI application.
-///
-/// On macOS, this uses the `open` command to launch Agent.app.
-/// The GUI binary is located at /Applications/Agent.app/Contents/MacOS/agent.
-fn launch_gui() -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-
-        println!("Launching Agent GUI...");
-
-        Command::new("open")
-            .arg("-a")
-            .arg("Agent")
-            .spawn()
-            .context("Failed to launch Agent.app. Is it installed?")?;
-
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        anyhow::bail!("GUI is only supported on macOS");
-    }
 }

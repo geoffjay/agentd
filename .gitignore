@@ -57,10 +57,6 @@ tags.temp
 # Documentation build
 .venv
 
-# External works brought in mostly as context for use by agents
-contrib/pgui
-contrib/zed
-
 # AI
 .claude/settings.local.json
 

@@ -24,7 +24,7 @@ The Notification Service (agentd-notify) is a daemon that manages user notificat
 - **Configuration**: TOML format with `directories` crate for platform paths
 - **Logging**: tracing + tracing-subscriber
 
-### UI Architecture: Hybrid tray-icon + GPUI
+### UI Architecture: Hybrid tray-icon
 
 ```toml
 [dependencies]
@@ -32,9 +32,6 @@ The Notification Service (agentd-notify) is a daemon that manages user notificat
 tray-icon = "0.19"          # Native system tray/menu bar
                             # On macOS: Uses NSStatusBar
                             # On Linux: Uses freedesktop system tray spec
-
-# Rich notification UI
-gpui = { git = "https://github.com/zed-industries/zed" }  # GPU-accelerated UI framework
 
 # Storage and utilities
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
@@ -44,7 +41,6 @@ directories = "5.0"         # Platform-independent directory locations
 **Capabilities:**
 
 - **Tray Icon**: Native system tray integration with menus
-- **GPUI Windows**: Beautiful, performant notification windows
 - **Rich Interactions**: Complex forms, multiple input types
 - **Custom Styling**: Full control over notification appearance
 - **Persistent Storage**: SQLite database for notification history
@@ -54,7 +50,6 @@ directories = "5.0"         # Platform-independent directory locations
 **Architecture Benefits:**
 
 - Best of both worlds: native tray + custom rendering
-- GPUI provides excellent performance for interactive UI
 - Tray icon gives OS-native integration
 - SQLite ensures data persistence across restarts
 - Clean separation between tray (menu) and windows (forms)
@@ -79,11 +74,6 @@ agentd-notify/
 │   ├── tray/
 │   │   ├── mod.rs
 │   │   └── menu.rs          # Tray icon and menu handling
-│   ├── ui/
-│   │   ├── mod.rs
-│   │   ├── window.rs        # GPUI window management
-│   │   ├── notification_view.rs  # Notification UI components
-│   │   └── theme.rs         # GPUI theming and styles
 │   └── daemon/
 │       ├── mod.rs
 │       └── service.rs       # Service management (systemd/launchd)
@@ -652,13 +642,11 @@ async fn cleanup_expired_notifications(db: &Pool<Sqlite>) -> Result<()> {
 
 - [ ] System tray icon with tray-icon
 - [ ] Basic tray menu (show history, quit)
-- [ ] GPUI application setup
 - [ ] Basic notification window
 - [ ] Simple notification display
 
 ### Phase 3: Rich Notification UI
 
-- [ ] GPUI notification components
 - [ ] Form input handling (text, select, checkbox)
 - [ ] Action button handling
 - [ ] Response capture and storage
@@ -669,7 +657,6 @@ async fn cleanup_expired_notifications(db: &Pool<Sqlite>) -> Result<()> {
 
 - [ ] Notification queue management
 - [ ] Priority/urgency handling
-- [ ] Notification history browser (GPUI window)
 - [ ] Background cleanup tasks
 - [ ] Ephemeral vs persistent notification handling
 - [ ] Sound notifications
@@ -679,7 +666,6 @@ async fn cleanup_expired_notifications(db: &Pool<Sqlite>) -> Result<()> {
 ### macOS
 
 - **Menu Bar**: Native look and feel with `tray-icon` using NSStatusBar
-- **GPUI**: Excellent performance on Metal backend
 - **Permissions**: May need accessibility permissions for some features
 - **Sound**: Custom sounds can be bundled with app
 - **Code Signing**: Recommended for distribution
@@ -687,9 +673,6 @@ async fn cleanup_expired_notifications(db: &Pool<Sqlite>) -> Result<()> {
 ### Linux
 
 - **System Tray**: Uses freedesktop system tray specification
-- **Compositor**: GPUI requires modern compositor support
-- **Wayland**: Full support via GPUI's Wayland backend
-- **X11**: Also supported via GPUI
 - **Desktop Files**: May need .desktop file for proper integration
 
 ## Security Considerations
