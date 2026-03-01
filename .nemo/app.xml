@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- agentd orchestrator - nemo application -->
+<nemo>
+  <variable name="app_title" type="string" default="agentd" />
+  <variable name="api_base" type="string" default="http://127.0.0.1:17006" />
+  <variable name="ws_base" type="string" default="ws://127.0.0.1:17006" />
+  <variable name="poll_interval" type="int" default="5" />
+
+  <app title="${var.app_title}">
+    <window title="${var.app_title}" width="1200" height="800" min-width="800">
+      <header-bar theme-toggle="true" />
+      <footer-bar enabled="false" />
+    </window>
+    <theme name="kanagawa" mode="dark" />
+  </app>
+
+  <script src="./scripts" />
+
+  <include href="templates/cards.xml" />
+
+  <!-- Data sources: poll orchestrator REST API -->
+  <data>
+    <source name="health" type="http"
+            url="${var.api_base}/health"
+            interval="${var.poll_interval}" />
+
+    <source name="agents" type="http"
+            url="${var.api_base}/agents"
+            interval="${var.poll_interval}" />
+
+    <source name="workflows" type="http"
+            url="${var.api_base}/workflows"
+            interval="${var.poll_interval}" />
+
+    <source name="ticker" type="timer" interval="1" />
+
+    <source name="agent_stream" type="websocket"
+            url="${var.ws_base}/ws/stream" />
+  </data>
+
+  <!-- Main layout -->
+  <layout type="stack">
+    <stack id="root" direction="horizontal" spacing="0">
+
+      <!-- Sidebar -->
+      <panel id="sidebar">
+        <stack id="sidebar_inner" direction="vertical" spacing="8" padding="16"
+               scroll="true" border-right="1" border-color="theme.border">
+          <label id="sidebar_title" text="${var.app_title}" size="lg" />
+          <label id="sidebar_status" text="disconnected" size="sm"
+                 text-color="theme.muted_foreground">
+            <binding source="data.health" target="text" transform="format_status" />
+          </label>
+
+          <label id="cat_main" text="Manage" size="sm" />
+          <button id="nav_dashboard" template="nav_item" label="Dashboard" />
+          <button id="nav_agents" template="nav_item" label="Agents" />
+          <button id="nav_workflows" template="nav_item" label="Workflows" />
+
+          <label id="cat_monitor" text="Monitor" size="sm" />
+          <button id="nav_activity" template="nav_item" label="Activity" />
+        </stack>
+      </panel>
+
+      <!-- Content area -->
+      <stack id="content" direction="vertical" spacing="0" padding="16" scroll="true">
+
+        <!-- ============================================ -->
+        <!-- Dashboard page                               -->
+        <!-- ============================================ -->
+        <panel id="page_dashboard" template="content_page" visible="true">
+          <label id="dash_title" text="Dashboard" size="lg" />
+          <text id="dash_desc" content="Orchestrator overview." />
+
+          <!-- Row 1: Service + Active Agents -->
+          <stack id="dash_row1" direction="horizontal" spacing="16">
+            <panel id="card_health" template="status_card">
+              <label id="health_title" text="Service" size="sm" />
+              <label id="health_value" text="--" size="xl">
+                <binding source="data.health" target="text" transform="format_health_status" />
+              </label>
+            </panel>
+
+            <panel id="card_agents" template="status_card">
+              <label id="agents_count_title" text="Active Agents" size="sm" />
+              <label id="agents_count_value" text="0" size="xl">
+                <binding source="data.health" target="text" transform="format_active_count" />
+              </label>
+            </panel>
+          </stack>
+
+          <!-- Row 2: Workflows + Session -->
+          <stack id="dash_row2" direction="horizontal" spacing="16">
+            <panel id="card_workflows" template="status_card">
+              <label id="workflows_count_title" text="Workflows" size="sm" />
+              <label id="workflows_count_value" text="0" size="xl">
+                <binding source="data.workflows" target="text" transform="format_list_count" />
+              </label>
+            </panel>
+
+            <panel id="card_uptime" template="status_card">
+              <label id="uptime_title" text="Session" size="sm" />
+              <label id="uptime_value" text="0s" size="xl">
+                <binding source="data.ticker" target="text" transform="format_uptime" />
+              </label>
+            </panel>
+          </stack>
+
+          <label id="dash_agents_title" text="Agents" size="md" />
+          <panel id="dash_agents_panel" padding="16" border="1"
+                 border-color="theme.border" rounded="md">
+            <label id="dash_agents_list" text="Loading agents...">
+              <binding source="data.agents" target="text" transform="format_agent_table" />
+            </label>
+          </panel>
+
+          <label id="dash_workflows_title" text="Workflows" size="md" />
+          <panel id="dash_workflows_panel" padding="16" border="1"
+                 border-color="theme.border" rounded="md">
+            <label id="dash_workflows_list" text="Loading workflows...">
+              <binding source="data.workflows" target="text" transform="format_workflow_table" />
+            </label>
+          </panel>
+        </panel>
+
+        <!-- ============================================ -->
+        <!-- Agents page                                  -->
+        <!-- ============================================ -->
+        <panel id="page_agents" template="content_page">
+          <label id="agents_title" text="Agents" size="lg" />
+          <text id="agents_desc" content="Create and manage orchestrator agents." />
+
+          <!-- Create agent form -->
+          <panel id="agent_form_panel" padding="16" border="1"
+                 border-color="theme.border" rounded="md">
+            <stack id="agent_form" direction="vertical" spacing="12">
+              <label id="agent_form_title" text="Create Agent" size="md" />
+
+              <stack id="agent_name_row" direction="vertical" spacing="4">
+                <label id="agent_name_label" text="Name" size="sm" />
+                <input id="agent_name" placeholder="my-agent" value="" />
+              </stack>
+
+              <stack id="agent_dir_row" direction="vertical" spacing="4">
+                <label id="agent_dir_label" text="Working Directory" size="sm" />
+                <input id="agent_working_dir" placeholder="/path/to/project" value="" />
+              </stack>
+
+              <stack id="agent_user_row" direction="vertical" spacing="4">
+                <label id="agent_user_label" text="Run as User (optional)" size="sm" />
+                <input id="agent_user" placeholder="leave empty for current user" value="" />
+              </stack>
+
+              <stack id="agent_prompt_row" direction="vertical" spacing="4">
+                <label id="agent_prompt_label" text="Initial Prompt (optional)" size="sm" />
+                <input id="agent_prompt" placeholder="optional initial task" value="" />
+              </stack>
+
+              <stack id="agent_options_row" direction="horizontal" spacing="16">
+                <switch id="agent_worktree" label="Worktree" checked="false" />
+              </stack>
+
+              <stack id="agent_btn_row" direction="horizontal" spacing="8">
+                <button id="btn_create_agent" label="Create Agent"
+                        variant="primary" on-click="on_create_agent" />
+              </stack>
+
+              <label id="agent_form_status" text="" size="sm"
+                     text-color="theme.muted_foreground" />
+            </stack>
+          </panel>
+
+          <!-- Agent list -->
+          <label id="agents_list_title" text="Running Agents" size="md" />
+          <stack id="agents_actions" direction="horizontal" spacing="8">
+            <button id="btn_refresh_agents" label="Refresh"
+                    variant="secondary" size="sm" on-click="on_refresh_agents" />
+          </stack>
+
+          <panel id="agents_list_panel" padding="16" border="1"
+                 border-color="theme.border" rounded="md">
+            <label id="agents_detail_list" text="Loading agents...">
+              <binding source="data.agents" target="text" transform="format_agent_detail" />
+            </label>
+          </panel>
+        </panel>
+
+        <!-- ============================================ -->
+        <!-- Workflows page                               -->
+        <!-- ============================================ -->
+        <panel id="page_workflows" template="content_page">
+          <label id="wf_title" text="Workflows" size="lg" />
+          <text id="wf_desc" content="Configure autonomous workflows that poll task sources and dispatch work to agents." />
+
+          <!-- Create workflow form -->
+          <panel id="wf_form_panel" padding="16" border="1"
+                 border-color="theme.border" rounded="md">
+            <stack id="wf_form" direction="vertical" spacing="12">
+              <label id="wf_form_title" text="Create Workflow" size="md" />
+
+              <stack id="wf_name_row" direction="vertical" spacing="4">
+                <label id="wf_name_label" text="Name" size="sm" />
+                <input id="wf_name" placeholder="my-workflow" value="" />
+              </stack>
+
+              <stack id="wf_agent_row" direction="vertical" spacing="4">
+                <label id="wf_agent_label" text="Agent" size="sm" />
+                <select id="wf_agent_select" options='["(none)"]' value="(none)">
+                  <binding source="data.agents" target="options" transform="agent_options" />
+                </select>
+              </stack>
+
+              <label id="wf_source_heading" text="GitHub Issue Source" size="sm" />
+
+              <stack id="wf_owner_row" direction="horizontal" spacing="8">
+                <stack id="wf_owner_col" direction="vertical" spacing="4">
+                  <label id="wf_owner_label" text="Owner" size="sm" />
+                  <input id="wf_owner" placeholder="org-or-user" value="" />
+                </stack>
+                <stack id="wf_repo_col" direction="vertical" spacing="4">
+                  <label id="wf_repo_label" text="Repository" size="sm" />
+                  <input id="wf_repo" placeholder="repo-name" value="" />
+                </stack>
+              </stack>
+
+              <stack id="wf_labels_row" direction="vertical" spacing="4">
+                <label id="wf_labels_label" text="Labels (comma-separated)" size="sm" />
+                <input id="wf_labels" placeholder="agent, bug" value="" />
+              </stack>
+
+              <stack id="wf_template_row" direction="vertical" spacing="4">
+                <label id="wf_template_label" text="Prompt Template" size="sm" />
+                <textarea id="wf_template" rows="4"
+                          placeholder="Enter prompt template using placeholders: title, body, url, source_id"
+                          default_value="" />
+              </stack>
+
+              <stack id="wf_interval_row" direction="vertical" spacing="4">
+                <label id="wf_interval_label" text="Poll Interval (seconds)" size="sm" />
+                <input id="wf_interval" placeholder="60" value="60" />
+              </stack>
+
+              <stack id="wf_btn_row" direction="horizontal" spacing="8">
+                <button id="btn_create_workflow" label="Create Workflow"
+                        variant="primary" on-click="on_create_workflow" />
+              </stack>
+
+              <label id="wf_form_status" text="" size="sm"
+                     text-color="theme.muted_foreground" />
+            </stack>
+          </panel>
+
+          <!-- Workflow list -->
+          <label id="wf_list_title" text="Configured Workflows" size="md" />
+          <stack id="wf_actions" direction="horizontal" spacing="8">
+            <button id="btn_refresh_workflows" label="Refresh"
+                    variant="secondary" size="sm" on-click="on_refresh_workflows" />
+          </stack>
+
+          <panel id="wf_list_panel" padding="16" border="1"
+                 border-color="theme.border" rounded="md">
+            <label id="wf_detail_list" text="Loading workflows...">
+              <binding source="data.workflows" target="text" transform="format_workflow_detail" />
+            </label>
+          </panel>
+        </panel>
+
+        <!-- ============================================ -->
+        <!-- Activity page                                -->
+        <!-- ============================================ -->
+        <panel id="page_activity" template="content_page">
+          <label id="activity_title" text="Activity" size="lg" />
+          <text id="activity_desc" content="Real-time agent output and dispatch activity." />
+
+          <panel id="activity_feed_panel" padding="16" border="1"
+                 border-color="theme.border" rounded="md">
+            <label id="activity_feed" text="Waiting for agent activity...">
+              <binding source="data.agent_stream" target="text" transform="format_stream_message" />
+            </label>
+          </panel>
+        </panel>
+
+      </stack>
+    </stack>
+  </layout>
+</nemo>

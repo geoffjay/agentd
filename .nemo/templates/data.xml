@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Data source configuration notes.
+
+     The primary data sources (health, agents, workflows) are defined in app.xml
+     as HTTP polling sources against the orchestrator REST API.
+
+     WebSocket sources for individual agents can be added dynamically once we have
+     the ability to send messages from RHAI scripts. Each running agent exposes a
+     WebSocket at ws://127.0.0.1:17006/ws/{agent_id} which streams NDJSON messages
+     (system, assistant, result, control_request types).
+
+     For now, agent WebSocket connections are listed here as placeholders. When an
+     agent is created, a corresponding data source would need to be registered at
+     runtime to stream its output into the activity feed.
+-->
+<nemo>
+  <!-- Placeholder: agent WebSocket sources would be registered dynamically -->
+</nemo>

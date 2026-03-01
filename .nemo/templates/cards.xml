@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Reusable templates for the agentd UI -->
+<nemo>
+  <templates>
+    <template name="nav_item">
+      <button
+        variant="ghost"
+        size="sm"
+        text-color="theme.muted_foreground"
+        full-width="true"
+        min-height="24"
+        align="left"
+        padding-left="2"
+        on-click="on_nav" />
+    </template>
+
+    <template name="status_card">
+      <panel padding="8" border="1" border-color="theme.border" shadow="md" rounded="lg">
+        <stack direction="vertical" spacing="8">
+          <slot />
+        </stack>
+      </panel>
+    </template>
+
+    <template name="content_page">
+      <panel visible="false">
+        <stack id="inner" direction="vertical" spacing="12" padding="16">
+          <slot />
+        </stack>
+      </panel>
+    </template>
+
+    <template name="info_row">
+      <stack direction="horizontal" spacing="12" padding="4"
+             border-bottom="1" border-color="theme.border">
+        <slot />
+      </stack>
+    </template>
+  </templates>
+</nemo>

@@ -2,7 +2,7 @@ use crate::manager::AgentManager;
 use crate::scheduler::api::{workflow_routes, WorkflowState};
 use crate::scheduler::Scheduler;
 use crate::types::*;
-use crate::websocket::{ws_handler, ConnectionRegistry};
+use crate::websocket::{ws_handler, ws_stream_handler, ConnectionRegistry};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -22,8 +22,10 @@ pub struct ApiState {
 }
 
 pub fn create_router(state: ApiState) -> Router {
-    let ws_routes =
-        Router::new().route("/ws/{agent_id}", get(ws_handler)).with_state(state.registry.clone());
+    let ws_routes = Router::new()
+        .route("/ws/{agent_id}", get(ws_handler))
+        .route("/ws/stream", get(ws_stream_handler))
+        .with_state(state.registry.clone());
 
     let wf_state = WorkflowState {
         scheduler: state.scheduler.clone(),
