@@ -1,4 +1,6 @@
 use crate::manager::AgentManager;
+use crate::scheduler::api::{workflow_routes, WorkflowState};
+use crate::scheduler::Scheduler;
 use crate::types::*;
 use crate::websocket::{ws_handler, ConnectionRegistry};
 use axum::{
@@ -16,11 +18,18 @@ use uuid::Uuid;
 pub struct ApiState {
     pub manager: Arc<AgentManager>,
     pub registry: ConnectionRegistry,
+    pub scheduler: Arc<Scheduler>,
 }
 
 pub fn create_router(state: ApiState) -> Router {
     let ws_routes =
         Router::new().route("/ws/{agent_id}", get(ws_handler)).with_state(state.registry.clone());
+
+    let wf_state = WorkflowState {
+        scheduler: state.scheduler.clone(),
+        manager: state.manager.clone(),
+    };
+    let wf_routes = workflow_routes(wf_state);
 
     let api_routes = Router::new()
         .route("/health", get(health_check))
@@ -28,7 +37,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
         .with_state(state);
 
-    api_routes.merge(ws_routes)
+    api_routes.merge(ws_routes).merge(wf_routes)
 }
 
 #[derive(Deserialize)]

@@ -20,15 +20,22 @@ pub struct AgentConnection {
     pub tx: mpsc::UnboundedSender<String>,
 }
 
+/// Callback invoked when an agent produces a "result" message.
+pub type ResultCallback = Arc<dyn Fn(Uuid, bool) + Send + Sync>;
+
 /// Manages all active WebSocket connections from claude code instances.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct ConnectionRegistry {
     connections: Arc<RwLock<HashMap<Uuid, AgentConnection>>>,
+    result_callbacks: Arc<RwLock<Vec<ResultCallback>>>,
 }
 
 impl ConnectionRegistry {
     pub fn new() -> Self {
-        Self { connections: Arc::new(RwLock::new(HashMap::new())) }
+        Self {
+            connections: Arc::new(RwLock::new(HashMap::new())),
+            result_callbacks: Arc::new(RwLock::new(Vec::new())),
+        }
     }
 
     pub async fn register(&self, agent_id: Uuid, conn: AgentConnection) {
@@ -67,6 +74,19 @@ impl ConnectionRegistry {
 
     pub async fn connected_count(&self) -> usize {
         self.connections.read().await.len()
+    }
+
+    /// Register a callback to be invoked when any agent produces a "result" message.
+    pub async fn on_result(&self, callback: ResultCallback) {
+        self.result_callbacks.write().await.push(callback);
+    }
+
+    /// Notify all registered callbacks that an agent has completed a task.
+    pub async fn notify_result(&self, agent_id: Uuid, is_error: bool) {
+        let callbacks = self.result_callbacks.read().await;
+        for cb in callbacks.iter() {
+            cb(agent_id, is_error);
+        }
     }
 }
 
@@ -157,6 +177,7 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 } else {
                     info!(%agent_id, "Agent query completed successfully");
                 }
+                registry.notify_result(*agent_id, is_error).await;
             }
             "control_request" => {
                 handle_control_request(agent_id, &msg, registry).await;

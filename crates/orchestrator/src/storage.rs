@@ -12,6 +12,11 @@ pub struct AgentStorage {
 }
 
 impl AgentStorage {
+    /// Access the underlying SQLite pool (used by SchedulerStorage).
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     pub fn get_db_path() -> Result<PathBuf> {
         let proj_dirs = ProjectDirs::from("", "", "agentd-orchestrator")
             .ok_or_else(|| anyhow::anyhow!("Failed to determine project directories"))?;
