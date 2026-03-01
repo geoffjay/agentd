@@ -52,6 +52,18 @@ pub struct AgentConfig {
     /// Shell to run the agent in (e.g., "bash", "zsh").
     #[serde(default = "default_shell")]
     pub shell: String,
+    /// If true, start claude in normal interactive mode without WebSocket.
+    #[serde(default)]
+    pub interactive: bool,
+    /// Initial prompt to execute the claude session with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    /// If true, start the session with --worktree.
+    #[serde(default)]
+    pub worktree: bool,
+    /// System prompt to use for the session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
 }
 
 fn default_shell() -> String {
@@ -96,6 +108,18 @@ pub struct CreateAgentRequest {
     pub user: Option<String>,
     #[serde(default = "default_shell")]
     pub shell: String,
+    /// If true, start claude in normal interactive mode without WebSocket.
+    #[serde(default)]
+    pub interactive: bool,
+    /// Initial prompt to execute the claude session with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    /// If true, start the session with --worktree.
+    #[serde(default)]
+    pub worktree: bool,
+    /// System prompt to use for the session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
 }
 
 /// Response body for agent endpoints.

@@ -47,6 +47,10 @@ impl AgentStorage {
                 working_dir TEXT NOT NULL,
                 user TEXT,
                 shell TEXT NOT NULL,
+                interactive INTEGER NOT NULL DEFAULT 0,
+                prompt TEXT,
+                worktree INTEGER NOT NULL DEFAULT 0,
+                system_prompt TEXT,
                 tmux_session TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -66,8 +70,8 @@ impl AgentStorage {
     pub async fn add(&self, agent: &Agent) -> Result<Uuid> {
         sqlx::query(
             r#"
-            INSERT INTO agents (id, name, status, working_dir, user, shell, tmux_session, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO agents (id, name, status, working_dir, user, shell, interactive, prompt, worktree, system_prompt, tmux_session, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(agent.id.to_string())
@@ -76,6 +80,10 @@ impl AgentStorage {
         .bind(&agent.config.working_dir)
         .bind(agent.config.user.as_deref())
         .bind(&agent.config.shell)
+        .bind(agent.config.interactive)
+        .bind(agent.config.prompt.as_deref())
+        .bind(agent.config.worktree)
+        .bind(agent.config.system_prompt.as_deref())
         .bind(agent.tmux_session.as_deref())
         .bind(agent.created_at.to_rfc3339())
         .bind(agent.updated_at.to_rfc3339())
@@ -153,6 +161,10 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {
     let id: String = row.get("id");
     let status_str: String = row.get("status");
     let user: Option<String> = row.get("user");
+    let interactive: bool = row.get::<i32, _>("interactive") != 0;
+    let prompt: Option<String> = row.get("prompt");
+    let worktree: bool = row.get::<i32, _>("worktree") != 0;
+    let system_prompt: Option<String> = row.get("system_prompt");
     let tmux_session: Option<String> = row.get("tmux_session");
     let created_at: String = row.get("created_at");
     let updated_at: String = row.get("updated_at");
@@ -161,7 +173,15 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {
         id: Uuid::parse_str(&id)?,
         name: row.get("name"),
         status: status_str.parse()?,
-        config: AgentConfig { working_dir: row.get("working_dir"), user, shell: row.get("shell") },
+        config: AgentConfig {
+            working_dir: row.get("working_dir"),
+            user,
+            shell: row.get("shell"),
+            interactive,
+            prompt,
+            worktree,
+            system_prompt,
+        },
         tmux_session,
         created_at: DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&updated_at)?.with_timezone(&Utc),
@@ -187,6 +207,10 @@ mod tests {
                 working_dir: "/tmp/test".to_string(),
                 user: None,
                 shell: "zsh".to_string(),
+                interactive: false,
+                prompt: None,
+                worktree: false,
+                system_prompt: None,
             },
         )
     }

@@ -66,3 +66,4 @@ baml_openapi/
 # Documentation
 site/
 .todos/
+.sidecar/

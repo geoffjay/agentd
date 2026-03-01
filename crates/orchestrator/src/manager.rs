@@ -48,7 +48,7 @@ impl AgentManager {
 
         // Build the claude command.
         let ws_url = format!("{}/ws/{}", self.ws_base_url, agent.id);
-        let claude_cmd = build_claude_command(&ws_url, agent.config.user.as_deref());
+        let claude_cmd = build_claude_command(&agent.config, &ws_url);
 
         // Send the command into the tmux session.
         if let Err(e) = self.tmux.send_command(&session_name, &claude_cmd) {
@@ -133,13 +133,34 @@ impl AgentManager {
     }
 }
 
-fn build_claude_command(ws_url: &str, run_as_user: Option<&str>) -> String {
-    let base = format!(
-        "claude --sdk-url {} --print --output-format stream-json --input-format stream-json",
-        ws_url
-    );
+fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
+    let mut args = vec!["claude".to_string()];
 
-    match run_as_user {
+    if config.interactive {
+        // Interactive mode: no --sdk-url, no --print, no stream-json flags.
+        // User can attach to the tmux session and interact directly.
+    } else {
+        args.push(format!("--sdk-url {}", ws_url));
+        args.push("--print".to_string());
+        args.push("--output-format stream-json".to_string());
+        args.push("--input-format stream-json".to_string());
+    }
+
+    if config.worktree {
+        args.push("--worktree".to_string());
+    }
+
+    if let Some(ref system_prompt) = config.system_prompt {
+        args.push(format!("--system-prompt '{}'", system_prompt.replace('\'', "'\\''")));
+    }
+
+    if let Some(ref prompt) = config.prompt {
+        args.push(format!("-p '{}'", prompt.replace('\'', "'\\''")));
+    }
+
+    let base = args.join(" ");
+
+    match config.user.as_deref() {
         Some(user) => format!("sudo -u {} {}", user, base),
         None => base,
     }

@@ -62,7 +62,15 @@ async fn create_agent(
     State(state): State<ApiState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let config = AgentConfig { working_dir: req.working_dir, user: req.user, shell: req.shell };
+    let config = AgentConfig {
+        working_dir: req.working_dir,
+        user: req.user,
+        shell: req.shell,
+        interactive: req.interactive,
+        prompt: req.prompt,
+        worktree: req.worktree,
+        system_prompt: req.system_prompt,
+    };
 
     let agent = state.manager.spawn_agent(req.name, config).await?;
 
