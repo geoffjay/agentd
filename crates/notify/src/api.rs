@@ -549,65 +549,6 @@ struct ListParams {
     status: Option<String>,
 }
 
-/// Request body for creating a notification.
-///
-/// All fields are required when creating a new notification via the
-/// `POST /notifications` endpoint.
-///
-/// # Examples
-///
-/// ```json
-/// {
-///   "source": "System",
-///   "lifetime": "Persistent",
-///   "priority": "High",
-///   "title": "Update Available",
-///   "message": "Version 2.0 is ready to install",
-///   "requires_response": false
-/// }
-/// ```
-#[derive(Debug, Deserialize)]
-pub struct CreateNotificationRequest {
-    /// Source of the notification
-    pub source: NotificationSource,
-    /// Lifetime behavior (Persistent or Ephemeral)
-    pub lifetime: NotificationLifetime,
-    /// Priority level (Low, Normal, High, Urgent)
-    pub priority: NotificationPriority,
-    /// Notification title
-    pub title: String,
-    /// Notification message body
-    pub message: String,
-    /// Whether a response is required from the user
-    pub requires_response: bool,
-}
-
-/// Request body for updating a notification.
-///
-/// Both fields are optional. Used by the `PUT /notifications/{id}` endpoint
-/// to modify an existing notification's status and/or response.
-///
-/// # Examples
-///
-/// ```json
-/// {
-///   "status": "Dismissed"
-/// }
-/// ```
-///
-/// ```json
-/// {
-///   "response": "Approved"
-/// }
-/// ```
-#[derive(Debug, Deserialize)]
-pub struct UpdateNotificationRequest {
-    /// New status for the notification
-    pub status: Option<NotificationStatus>,
-    /// User's response text
-    pub response: Option<String>,
-}
-
 // === Error Handling ===
 
 /// API error types that can be returned from handlers.
