@@ -147,10 +147,7 @@ impl WrapCommand {
 
 /// List all active tmux sessions.
 async fn list_sessions(client: &WrapClient, json: bool) -> Result<()> {
-    let response = client
-        .list_sessions()
-        .await
-        .context("Failed to list sessions")?;
+    let response = client.list_sessions().await.context("Failed to list sessions")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);
@@ -175,10 +172,8 @@ async fn list_sessions(client: &WrapClient, json: bool) -> Result<()> {
 
 /// Kill a tmux session by name.
 async fn kill_session(client: &WrapClient, name: &str, json: bool) -> Result<()> {
-    let response = client
-        .kill_session(name)
-        .await
-        .context(format!("Failed to kill session '{}'", name))?;
+    let response =
+        client.kill_session(name).await.context(format!("Failed to kill session '{}'", name))?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);

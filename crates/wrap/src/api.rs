@@ -77,10 +77,7 @@ pub fn create_router() -> Router {
         .route("/health", axum::routing::get(health_check))
         .route("/launch", axum::routing::post(launch_session))
         .route("/sessions", axum::routing::get(list_sessions))
-        .route(
-            "/sessions/{name}",
-            axum::routing::get(get_session).delete(kill_session),
-        )
+        .route("/sessions/{name}", axum::routing::get(get_session).delete(kill_session))
 }
 
 /// Health check endpoint handler.
@@ -299,10 +296,8 @@ async fn list_sessions() -> Result<Json<SessionListResponse>, ApiError> {
         ApiError::Internal(e)
     })?;
 
-    let sessions: Vec<SessionInfo> = session_names
-        .into_iter()
-        .map(|name| SessionInfo { name, active: true })
-        .collect();
+    let sessions: Vec<SessionInfo> =
+        session_names.into_iter().map(|name| SessionInfo { name, active: true }).collect();
 
     let count = sessions.len();
 
