@@ -1,5 +1,7 @@
 # agentd
 
+[![CI](https://github.com/geoffjay/agentd/actions/workflows/ci.yml/badge.svg)](https://github.com/geoffjay/agentd/actions/workflows/ci.yml)
+
 A modular daemon system for managing notifications, interactive questions, and system monitoring on macOS.
 
 ## Overview
