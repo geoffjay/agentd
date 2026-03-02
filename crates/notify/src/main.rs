@@ -7,7 +7,7 @@
 //! # Features
 //!
 //! - SQLite-based persistent notification storage
-//! - REST API on `http://127.0.0.1:3000`
+//! - REST API on `http://127.0.0.1:17004` (dev default)
 //! - Automatic cleanup of expired notifications every 5 minutes
 //! - Structured logging with tracing
 //! - Graceful shutdown support
@@ -57,7 +57,7 @@
 //! cargo run -p agentd-notify
 //!
 //! # In another terminal, test the API
-//! curl http://localhost:3000/health
+//! curl http://localhost:17004/health
 //! ```
 
 mod api;
@@ -79,7 +79,7 @@ use tracing::{info, warn};
 /// 2. Initializes the SQLite storage backend
 /// 3. Spawns a background task for cleaning up expired notifications
 /// 4. Creates and configures the Axum HTTP router
-/// 5. Starts the HTTP server on `127.0.0.1:3000`
+/// 5. Starts the HTTP server on `127.0.0.1:17004` (dev default)
 ///
 /// # Returns
 ///

@@ -76,7 +76,7 @@
 //!
 //! ## Configuration
 //!
-//! The service listens on port 3000 by default and stores data in:
+//! The service listens on port 17004 by default (dev) or 7004 (production) and stores data in:
 //! `~/.local/share/agentd/notifications.db`
 
 pub mod api;

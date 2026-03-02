@@ -7,8 +7,8 @@ This guide covers installation of the agentd system on macOS.
 The agentd system consists of:
 
 - **agent** - Command-line interface for interacting with services
-- **agentd-notify** - Notification service (REST API on port 3000)
-- **agentd-ask** - Ask service for interactive questions (REST API on port 3001)
+- **agentd-notify** - Notification service (REST API on port 17004 dev / 7004 prod)
+- **agentd-ask** - Ask service for interactive questions (REST API on port 17001 dev / 7001 prod)
 - **agentd-hook** - Hook service for shell integration
 - **agentd-monitor** - Monitoring service
 
@@ -31,7 +31,7 @@ Choose one of two installation methods:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/agentd.git
+git clone https://github.com/geoffjay/agentd.git
 cd agentd
 
 # Fix /usr/local permissions (one-time setup)
@@ -203,11 +203,19 @@ launchctl list com.geoffjay.agentd-notify
 
 ### Service Ports
 
-Default ports for services:
-- **agentd-notify**: 3000
-- **agentd-ask**: 3001
+Each service uses a development port (17xxx) by default when started with `cargo run`,
+and a production port (7xxx) when running as a LaunchAgent:
 
-Ports can be configured via environment variables in the plist files.
+| Service | Dev Port | Prod Port |
+|---------|----------|-----------|
+| agentd-ask | 17001 | 7001 |
+| agentd-hook | 17002 | 7002 |
+| agentd-monitor | 17003 | 7003 |
+| agentd-notify | 17004 | 7004 |
+| agentd-wrap | 17005 | 7005 |
+| agentd-orchestrator | 17006 | 7006 |
+
+All ports are configurable via the `PORT` environment variable.
 
 ### Custom Installation Location
 
@@ -281,8 +289,8 @@ export PATH="$HOME/.local/bin:$PATH"
 
 4. Verify port availability:
    ```bash
-   lsof -i :3000
-   lsof -i :3001
+   lsof -i :17004
+   lsof -i :17001
    ```
 
 ### Service Keeps Restarting
@@ -306,8 +314,8 @@ Common issues:
 
 2. Check if port is listening:
    ```bash
-   curl http://localhost:3000/health
-   curl http://localhost:3001/health
+   curl http://localhost:17004/health
+   curl http://localhost:17001/health
    ```
 
 3. Restart services:
@@ -375,8 +383,8 @@ After installation:
 
 2. Check service health:
    ```bash
-   curl http://localhost:3000/health
-   curl http://localhost:3001/health
+   curl http://localhost:17004/health
+   curl http://localhost:17001/health
    ```
 
 3. View logs to ensure services are running:

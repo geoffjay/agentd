@@ -43,7 +43,7 @@ use uuid::Uuid;
 /// Ask service subcommands.
 ///
 /// Each variant corresponds to a specific operation on the ask service.
-/// All commands communicate with the ask service REST API on port 3001.
+/// All commands communicate with the ask service REST API on port 7001.
 #[derive(Subcommand)]
 pub enum AskCommand {
     /// Trigger all checks in the ask service.

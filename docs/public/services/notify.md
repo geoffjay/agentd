@@ -5,7 +5,7 @@ The notify service is a pure API daemon that manages notifications. It exposes a
 ## Base URL
 
 ```
-http://127.0.0.1:3030
+http://127.0.0.1:17004
 ```
 
 ## Endpoints
@@ -245,7 +245,7 @@ Notifications are stored in SQLite at:
 ### Create a system notification
 
 ```bash
-curl -X POST http://127.0.0.1:3030/notifications \
+curl -X POST http://127.0.0.1:17004/notifications \
   -H "Content-Type: application/json" \
   -d '{
     "source": "System",
@@ -260,7 +260,7 @@ curl -X POST http://127.0.0.1:3030/notifications \
 ### Create an ephemeral notification from agent hook
 
 ```bash
-curl -X POST http://127.0.0.1:3030/notifications \
+curl -X POST http://127.0.0.1:17004/notifications \
   -H "Content-Type: application/json" \
   -d '{
     "source": {"AgentHook": {"agent_id": "git-agent", "hook_type": "pre-commit"}},
@@ -275,13 +275,13 @@ curl -X POST http://127.0.0.1:3030/notifications \
 ### Get actionable notifications
 
 ```bash
-curl http://127.0.0.1:3030/notifications/actionable
+curl http://127.0.0.1:17004/notifications/actionable
 ```
 
 ### Mark notification as viewed
 
 ```bash
-curl -X PUT http://127.0.0.1:3030/notifications/{id} \
+curl -X PUT http://127.0.0.1:17004/notifications/{id} \
   -H "Content-Type: application/json" \
   -d '{"status": "Viewed"}'
 ```
@@ -289,7 +289,7 @@ curl -X PUT http://127.0.0.1:3030/notifications/{id} \
 ### Respond to a notification
 
 ```bash
-curl -X PUT http://127.0.0.1:3030/notifications/{id} \
+curl -X PUT http://127.0.0.1:17004/notifications/{id} \
   -H "Content-Type: application/json" \
   -d '{"status": "Responded", "response": "User approved the request"}'
 ```
@@ -300,4 +300,4 @@ curl -X PUT http://127.0.0.1:3030/notifications/{id} \
 cargo run -p agentd-notify
 ```
 
-The service will start on `http://127.0.0.1:3030`
+The service will start on `http://127.0.0.1:17004`

@@ -28,7 +28,7 @@
 //! use ask::notification_client::NotificationClient;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = NotificationClient::new("http://localhost:3000".to_string());
+//! let client = NotificationClient::new("http://localhost:17004".to_string());
 //!
 //! match client.health_check().await {
 //!     Ok(true) => println!("Notification service is healthy"),
@@ -46,7 +46,7 @@
 //! use uuid::Uuid;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = NotificationClient::new("http://localhost:3000".to_string());
+//! let client = NotificationClient::new("http://localhost:17004".to_string());
 //! let question_id = Uuid::new_v4();
 //!
 //! let notification = client.create_tmux_session_question(question_id).await?;
@@ -80,7 +80,7 @@ use uuid::Uuid;
 /// ```no_run
 /// use ask::notification_client::NotificationClient;
 ///
-/// let client = NotificationClient::new("http://localhost:3000".to_string());
+/// let client = NotificationClient::new("http://localhost:17004".to_string());
 /// let client_clone = client.clone(); // Cheap clone
 /// ```
 #[derive(Clone)]
@@ -94,7 +94,7 @@ impl NotificationClient {
     ///
     /// # Arguments
     ///
-    /// - `base_url` - The base URL of the notification service (e.g., "http://localhost:3000")
+    /// - `base_url` - The base URL of the notification service (e.g., "http://localhost:17004")
     ///
     /// # Returns
     ///
@@ -105,7 +105,7 @@ impl NotificationClient {
     /// ```
     /// use ask::notification_client::NotificationClient;
     ///
-    /// let client = NotificationClient::new("http://localhost:3000".to_string());
+    /// let client = NotificationClient::new("http://localhost:17004".to_string());
     /// ```
     pub fn new(base_url: String) -> Self {
         Self { client: Client::new(), base_url }
@@ -142,7 +142,7 @@ impl NotificationClient {
     /// use uuid::Uuid;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = NotificationClient::new("http://localhost:3000".to_string());
+    /// let client = NotificationClient::new("http://localhost:17004".to_string());
     ///
     /// let request = CreateNotificationRequest {
     ///     source: NotificationSource::AskService { request_id: Uuid::new_v4() },
@@ -218,7 +218,7 @@ impl NotificationClient {
     /// use uuid::Uuid;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = NotificationClient::new("http://localhost:3000".to_string());
+    /// let client = NotificationClient::new("http://localhost:17004".to_string());
     /// let notification_id = Uuid::new_v4();
     ///
     /// let request = UpdateNotificationRequest {
@@ -313,7 +313,7 @@ impl NotificationClient {
     /// use ask::notification_client::NotificationClient;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = NotificationClient::new("http://localhost:3000".to_string());
+    /// let client = NotificationClient::new("http://localhost:17004".to_string());
     ///
     /// match client.health_check().await {
     ///     Ok(true) => println!("Service is healthy"),
@@ -361,7 +361,7 @@ impl NotificationClient {
     /// use uuid::Uuid;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = NotificationClient::new("http://localhost:3000".to_string());
+    /// let client = NotificationClient::new("http://localhost:17004".to_string());
     /// let question_id = Uuid::new_v4();
     ///
     /// let notification = client.create_tmux_session_question(question_id).await?;
@@ -394,8 +394,8 @@ mod tests {
 
     #[test]
     fn test_notification_client_new() {
-        let client = NotificationClient::new("http://localhost:3000".to_string());
-        assert_eq!(client.base_url, "http://localhost:3000");
+        let client = NotificationClient::new("http://localhost:17004".to_string());
+        assert_eq!(client.base_url, "http://localhost:17004");
     }
 
     // Integration tests with mockito
