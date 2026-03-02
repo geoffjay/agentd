@@ -35,7 +35,7 @@
     <source name="ticker" type="timer" interval="1" />
 
     <source name="agent_stream" type="websocket"
-            url="${var.ws_base}/ws/stream" />
+            url="${var.ws_base}/stream" />
   </data>
 
   <!-- Main layout -->

@@ -64,7 +64,9 @@ impl ConnectionRegistry {
     }
 
     /// Send a user message (prompt) to a connected agent.
-    #[allow(dead_code)]
+    ///
+    /// Uses the Claude Code SDK `stream-json` input format:
+    /// `{"type": "user", "message": {"role": "user", "content": "..."}}`
     pub async fn send_user_message(&self, agent_id: &Uuid, content: &str) -> anyhow::Result<()> {
         let connections = self.connections.read().await;
         let conn = connections
@@ -73,7 +75,10 @@ impl ConnectionRegistry {
 
         let msg = serde_json::json!({
             "type": "user",
-            "content": content,
+            "message": {
+                "role": "user",
+                "content": content,
+            }
         });
         conn.tx
             .send(serde_json::to_string(&msg)? + "\n")
@@ -254,30 +259,62 @@ async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &Connect
     }
 }
 
-/// Axum handler for the multiplexed agent stream at /ws/stream.
+/// Axum handler for the multiplexed stream at /stream.
 ///
-/// Clients connecting here receive all agent messages from all connected agents,
-/// each tagged with an `agent_id` field. This enables a single WebSocket
-/// connection to monitor all agent activity.
-pub async fn ws_stream_handler(
+/// Clients receive all agent messages from all connected agents,
+/// each tagged with an `agent_id` field.
+pub async fn ws_stream_all_handler(
     ws: WebSocketUpgrade,
     State(registry): State<ConnectionRegistry>,
 ) -> impl IntoResponse {
-    info!("Stream WebSocket upgrade request");
-    ws.on_upgrade(move |socket| handle_stream_socket(socket, registry))
+    info!("Stream (all) WebSocket upgrade request");
+    ws.on_upgrade(move |socket| handle_stream_socket(socket, registry, None))
 }
 
-async fn handle_stream_socket(socket: WebSocket, registry: ConnectionRegistry) {
+/// Axum handler for a per-agent stream at /stream/{agent_id}.
+///
+/// Clients receive only messages from the specified agent.
+pub async fn ws_stream_agent_handler(
+    Path(agent_id): Path<Uuid>,
+    ws: WebSocketUpgrade,
+    State(registry): State<ConnectionRegistry>,
+) -> impl IntoResponse {
+    info!(%agent_id, "Stream (agent) WebSocket upgrade request");
+    ws.on_upgrade(move |socket| handle_stream_socket(socket, registry, Some(agent_id)))
+}
+
+async fn handle_stream_socket(
+    socket: WebSocket,
+    registry: ConnectionRegistry,
+    filter_agent: Option<Uuid>,
+) {
     let (mut ws_sender, mut ws_receiver) = socket.split();
     let mut stream_rx = registry.subscribe_stream();
 
-    info!("Stream client connected");
+    let label = match filter_agent {
+        Some(id) => format!("agent {}", id),
+        None => "all".to_string(),
+    };
+    info!(filter = %label, "Stream client connected");
 
     // Task: forward broadcast messages to the stream client.
     let send_task = tokio::spawn(async move {
         loop {
             match stream_rx.recv().await {
                 Ok(msg) => {
+                    // If filtering by agent, parse and check agent_id.
+                    if let Some(filter_id) = filter_agent {
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&msg) {
+                            let msg_agent = parsed
+                                .get("agent_id")
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| Uuid::parse_str(s).ok());
+                            if msg_agent != Some(filter_id) {
+                                continue;
+                            }
+                        }
+                    }
+
                     if ws_sender
                         .send(Message::Text(msg.into()))
                         .await
@@ -299,7 +336,7 @@ async fn handle_stream_socket(socket: WebSocket, registry: ConnectionRegistry) {
     while let Some(Ok(msg)) = ws_receiver.next().await {
         match msg {
             Message::Close(_) => {
-                info!("Stream client disconnected");
+                info!(filter = %label, "Stream client disconnected");
                 break;
             }
             Message::Ping(_) => {} // auto-pong by axum
@@ -308,7 +345,7 @@ async fn handle_stream_socket(socket: WebSocket, registry: ConnectionRegistry) {
     }
 
     send_task.abort();
-    info!("Stream WebSocket connection ended");
+    info!(filter = %label, "Stream WebSocket connection ended");
 }
 
 async fn send_raw(

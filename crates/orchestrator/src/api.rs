@@ -2,12 +2,14 @@ use crate::manager::AgentManager;
 use crate::scheduler::api::{workflow_routes, WorkflowState};
 use crate::scheduler::Scheduler;
 use crate::types::*;
-use crate::websocket::{ws_handler, ws_stream_handler, ConnectionRegistry};
+use crate::websocket::{
+    ws_handler, ws_stream_all_handler, ws_stream_agent_handler, ConnectionRegistry,
+};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -22,9 +24,15 @@ pub struct ApiState {
 }
 
 pub fn create_router(state: ApiState) -> Router {
-    let ws_routes = Router::new()
+    // Agent SDK WebSocket (claude code connects here).
+    let ws_agent_routes = Router::new()
         .route("/ws/{agent_id}", get(ws_handler))
-        .route("/ws/stream", get(ws_stream_handler))
+        .with_state(state.registry.clone());
+
+    // Monitoring streams on a separate path to avoid route conflicts.
+    let ws_stream_routes = Router::new()
+        .route("/stream", get(ws_stream_all_handler))
+        .route("/stream/{agent_id}", get(ws_stream_agent_handler))
         .with_state(state.registry.clone());
 
     let wf_state = WorkflowState {
@@ -37,14 +45,23 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/health", get(health_check))
         .route("/agents", get(list_agents).post(create_agent))
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
+        .route("/agents/{id}/message", post(send_message))
         .with_state(state);
 
-    api_routes.merge(ws_routes).merge(wf_routes)
+    api_routes
+        .merge(ws_agent_routes)
+        .merge(ws_stream_routes)
+        .merge(wf_routes)
 }
 
 #[derive(Deserialize)]
 pub struct ListQuery {
     pub status: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct SendMessageRequest {
+    pub content: String,
 }
 
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
@@ -104,6 +121,30 @@ async fn terminate_agent(
     let agent = state.manager.terminate_agent(&id).await?;
 
     Ok(Json(AgentResponse::from(agent)))
+}
+
+/// Send a message (prompt) to a running non-interactive agent.
+async fn send_message(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<SendMessageRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify agent exists and is running.
+    let agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+    if agent.status != AgentStatus::Running {
+        return Err(ApiError::InvalidInput(format!(
+            "Agent {} is not running (status: {})",
+            id, agent.status
+        )));
+    }
+
+    state
+        .registry
+        .send_user_message(&id, &req.content)
+        .await
+        .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({ "status": "sent", "agent_id": id })))
 }
 
 // -- Error handling --

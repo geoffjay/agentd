@@ -3,6 +3,7 @@ use crate::types::{Agent, AgentConfig, AgentStatus};
 use crate::websocket::ConnectionRegistry;
 use chrono::Utc;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 use wrap::tmux::TmuxManager;
@@ -31,6 +32,12 @@ impl AgentManager {
     }
 
     /// Spawn a new agent: create DB record, tmux session, and launch claude.
+    ///
+    /// If the agent config includes a prompt, it is NOT passed via `-p` (which
+    /// would cause claude to exit after processing it). Instead, claude is
+    /// started in long-running SDK mode and the initial prompt is sent via the
+    /// WebSocket once the agent connects. This keeps the agent alive for
+    /// follow-up messages.
     pub async fn spawn_agent(&self, name: String, config: AgentConfig) -> anyhow::Result<Agent> {
         let mut agent = Agent::new(name, config);
         let session_name = format!("{}-{}", self.tmux.prefix(), agent.id);
@@ -46,13 +53,12 @@ impl AgentManager {
             return Err(anyhow::anyhow!("Failed to create tmux session: {}", e));
         }
 
-        // Build the claude command.
+        // Build the claude command (never uses -p; prompt sent via WebSocket).
         let ws_url = format!("{}/ws/{}", self.ws_base_url, agent.id);
         let claude_cmd = build_claude_command(&agent.config, &ws_url);
 
         // Send the command into the tmux session.
         if let Err(e) = self.tmux.send_command(&session_name, &claude_cmd) {
-            // Cleanup the session we just created.
             let _ = self.tmux.kill_session(&session_name);
             agent.status = AgentStatus::Failed;
             agent.updated_at = Utc::now();
@@ -71,6 +77,35 @@ impl AgentManager {
             session = %session_name,
             "Agent spawned"
         );
+
+        // If there's an initial prompt, send it via WebSocket once the agent
+        // connects (poll briefly since the tmux/claude process needs a moment).
+        if let Some(ref prompt) = agent.config.prompt {
+            let registry = self.registry.clone();
+            let agent_id = agent.id;
+            let prompt = prompt.clone();
+            tokio::spawn(async move {
+                for attempt in 1..=30 {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    if registry.is_connected(&agent_id).await {
+                        match registry.send_user_message(&agent_id, &prompt).await {
+                            Ok(_) => {
+                                info!(%agent_id, "Initial prompt sent via WebSocket");
+                                return;
+                            }
+                            Err(e) => {
+                                warn!(%agent_id, %e, "Failed to send initial prompt");
+                                return;
+                            }
+                        }
+                    }
+                    if attempt % 5 == 0 {
+                        info!(%agent_id, attempt, "Waiting for agent to connect...");
+                    }
+                }
+                warn!(%agent_id, "Agent never connected, initial prompt not sent");
+            });
+        }
 
         Ok(agent)
     }
@@ -154,9 +189,10 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
         args.push(format!("--system-prompt '{}'", system_prompt.replace('\'', "'\\''")));
     }
 
-    if let Some(ref prompt) = config.prompt {
-        args.push(format!("-p '{}'", prompt.replace('\'', "'\\''")));
-    }
+    // NOTE: -p is intentionally NOT used here. Initial prompts are sent via
+    // the WebSocket after the agent connects. Using -p causes claude to exit
+    // after processing the single prompt, making the agent unable to receive
+    // follow-up messages.
 
     let base = args.join(" ");
 
