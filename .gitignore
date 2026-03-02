@@ -15,6 +15,10 @@ Cargo.lock
 *.dll
 *.exe
 
+# Coverage
+coverage/
+build_rs_cov.profraw
+
 # IDE
 .vscode/
 .idea/

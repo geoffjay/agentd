@@ -46,7 +46,7 @@
 //! ```
 
 use crate::{tmux::TmuxManager, types::*};
-use axum::{http::StatusCode, response::IntoResponse, Json, Router};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, Json, Router};
 use tracing::{error, info};
 
 /// Creates and configures the Axum router with all API endpoints.
@@ -76,6 +76,8 @@ pub fn create_router() -> Router {
     Router::new()
         .route("/health", axum::routing::get(health_check))
         .route("/launch", axum::routing::post(launch_session))
+        .route("/sessions", axum::routing::get(list_sessions))
+        .route("/sessions/{name}", axum::routing::get(get_session).delete(kill_session))
 }
 
 /// Health check endpoint handler.
@@ -277,6 +279,90 @@ fn launch_agent(tmux: &TmuxManager, session_name: &str, req: &LaunchRequest) -> 
     Ok(())
 }
 
+/// List all active tmux sessions.
+///
+/// # Endpoint
+///
+/// `GET /sessions`
+///
+/// # Response
+///
+/// Returns HTTP 200 with a list of active sessions.
+async fn list_sessions() -> Result<Json<SessionListResponse>, ApiError> {
+    let tmux = TmuxManager::new("agentd");
+
+    let session_names = tmux.list_sessions().map_err(|e| {
+        error!("Failed to list sessions: {}", e);
+        ApiError::Internal(e)
+    })?;
+
+    let sessions: Vec<SessionInfo> =
+        session_names.into_iter().map(|name| SessionInfo { name, active: true }).collect();
+
+    let count = sessions.len();
+
+    Ok(Json(SessionListResponse { sessions, count }))
+}
+
+/// Get the status of a specific tmux session.
+///
+/// # Endpoint
+///
+/// `GET /sessions/{name}`
+///
+/// # Response
+///
+/// Returns HTTP 200 with session info if found, or HTTP 404 if not found.
+async fn get_session(Path(name): Path<String>) -> Result<Json<SessionInfo>, ApiError> {
+    let tmux = TmuxManager::new("agentd");
+
+    let exists = tmux.session_exists(&name).map_err(|e| {
+        error!("Failed to check session: {}", e);
+        ApiError::Internal(e)
+    })?;
+
+    if exists {
+        Ok(Json(SessionInfo { name, active: true }))
+    } else {
+        Err(ApiError::NotFound(format!("Session '{}' not found", name)))
+    }
+}
+
+/// Kill/terminate a specific tmux session.
+///
+/// # Endpoint
+///
+/// `DELETE /sessions/{name}`
+///
+/// # Response
+///
+/// Returns HTTP 200 with success status, or HTTP 404 if session not found.
+async fn kill_session(Path(name): Path<String>) -> Result<Json<KillSessionResponse>, ApiError> {
+    let tmux = TmuxManager::new("agentd");
+
+    // Check if session exists first
+    let exists = tmux.session_exists(&name).map_err(|e| {
+        error!("Failed to check session: {}", e);
+        ApiError::Internal(e)
+    })?;
+
+    if !exists {
+        return Err(ApiError::NotFound(format!("Session '{}' not found", name)));
+    }
+
+    tmux.kill_session(&name).map_err(|e| {
+        error!("Failed to kill session: {}", e);
+        ApiError::Internal(e)
+    })?;
+
+    info!("Killed tmux session: {}", name);
+
+    Ok(Json(KillSessionResponse {
+        success: true,
+        message: format!("Session '{}' terminated", name),
+    }))
+}
+
 // === Error Handling ===
 
 /// API error types that can be returned from handlers.
@@ -284,11 +370,13 @@ fn launch_agent(tmux: &TmuxManager, session_name: &str, req: &LaunchRequest) -> 
 /// These errors are automatically converted to appropriate HTTP responses
 /// with status codes and JSON error messages.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum ApiError {
     /// Internal server error (HTTP 500)
     Internal(anyhow::Error),
+    /// Resource not found (HTTP 404)
+    NotFound(String),
     /// Invalid input or request error (HTTP 400)
+    #[allow(dead_code)]
     InvalidInput(String),
 }
 
@@ -302,6 +390,7 @@ impl IntoResponse for ApiError {
             ApiError::Internal(e) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, format!("Internal error: {e}"))
             }
+            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             ApiError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg),
         };
 

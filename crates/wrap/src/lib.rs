@@ -34,7 +34,10 @@ pub mod tmux;
 pub mod types;
 
 pub use client::WrapClient;
-pub use types::{HealthResponse, LaunchRequest, LaunchResponse, TmuxLayout};
+pub use types::{
+    HealthResponse, KillSessionResponse, LaunchRequest, LaunchResponse, SessionInfo,
+    SessionListResponse, TmuxLayout,
+};
 
 #[cfg(test)]
 mod tests {
