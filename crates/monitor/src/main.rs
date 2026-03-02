@@ -3,14 +3,15 @@ use tracing::{info, warn};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing subscriber for logging
-    tracing_subscriber::fmt()
-        .with_target(false)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    // Initialize tracing subscriber. Set LOG_FORMAT=json for structured JSON output.
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    if std::env::var("LOG_FORMAT").as_deref() == Ok("json") {
+        tracing_subscriber::fmt().json().with_env_filter(env_filter).init();
+    } else {
+        tracing_subscriber::fmt().with_target(false).with_env_filter(env_filter).init();
+    }
 
     info!("Starting agentd-monitor daemon...");
 
