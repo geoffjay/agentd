@@ -51,6 +51,19 @@ use wrap::types::*;
 /// All commands communicate with the wrap service REST API on port 7002.
 #[derive(Subcommand)]
 pub enum WrapCommand {
+    /// List all active tmux sessions.
+    ///
+    /// Shows all tmux sessions managed by the wrap service.
+    List,
+
+    /// Kill a tmux session by name.
+    ///
+    /// Terminates the specified tmux session and any processes running in it.
+    Kill {
+        /// Session name to kill
+        name: String,
+    },
+
     /// Launch an agent in a tmux session.
     ///
     /// Creates a new tmux session and starts the specified agent with the
@@ -113,6 +126,8 @@ impl WrapCommand {
     /// Returns `Ok(())` on success, or an error if the command fails.
     pub async fn execute(&self, client: &WrapClient, json: bool) -> Result<()> {
         match self {
+            WrapCommand::List => list_sessions(client, json).await,
+            WrapCommand::Kill { name } => kill_session(client, name, json).await,
             WrapCommand::Launch { session_name, path, agent, provider, model, layout_json } => {
                 launch_agent(
                     client,
@@ -128,6 +143,52 @@ impl WrapCommand {
             }
         }
     }
+}
+
+/// List all active tmux sessions.
+async fn list_sessions(client: &WrapClient, json: bool) -> Result<()> {
+    let response = client
+        .list_sessions()
+        .await
+        .context("Failed to list sessions")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else if response.sessions.is_empty() {
+        println!("{}", "No active sessions.".yellow());
+    } else {
+        println!("{}", "Active Sessions:".blue().bold());
+        println!("{}", "=".repeat(60).cyan());
+        for session in &response.sessions {
+            println!(
+                "  {}: {}",
+                session.name.bright_white(),
+                if session.active { "active".green() } else { "inactive".red() }
+            );
+        }
+        println!("{}", "=".repeat(60).cyan());
+        println!("Total: {} session(s)", response.count);
+    }
+
+    Ok(())
+}
+
+/// Kill a tmux session by name.
+async fn kill_session(client: &WrapClient, name: &str, json: bool) -> Result<()> {
+    let response = client
+        .kill_session(name)
+        .await
+        .context(format!("Failed to kill session '{}'", name))?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else if response.success {
+        println!("{}", format!("Session '{}' terminated.", name).green().bold());
+    } else {
+        println!("{}", format!("Failed to kill session: {}", response.message).red());
+    }
+
+    Ok(())
 }
 
 /// Launch an agent in a tmux session via POST request to the API.

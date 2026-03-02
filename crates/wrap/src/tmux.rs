@@ -288,7 +288,6 @@ impl TmuxManager {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    #[allow(dead_code)]
     pub fn session_exists(&self, session_name: &str) -> anyhow::Result<bool> {
         let output =
             Command::new(get_tmux_command()).args(["has-session", "-t", session_name]).output()?;
@@ -363,7 +362,6 @@ impl TmuxManager {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    #[allow(dead_code)]
     pub fn list_sessions(&self) -> anyhow::Result<Vec<String>> {
         let output = Command::new(get_tmux_command())
             .args(["list-sessions", "-F", "#{session_name}"])

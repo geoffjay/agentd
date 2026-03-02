@@ -129,6 +129,21 @@ impl WrapClient {
         self.post("/launch", request).await
     }
 
+    /// List all active tmux sessions.
+    pub async fn list_sessions(&self) -> Result<SessionListResponse> {
+        self.get("/sessions").await
+    }
+
+    /// Get the status of a specific session by name.
+    pub async fn get_session(&self, name: &str) -> Result<SessionInfo> {
+        self.get(&format!("/sessions/{}", name)).await
+    }
+
+    /// Kill/terminate a specific session by name.
+    pub async fn kill_session(&self, name: &str) -> Result<KillSessionResponse> {
+        self.delete(&format!("/sessions/{}", name)).await
+    }
+
     /// Check the health of the wrap service.
     ///
     /// # Examples
@@ -172,6 +187,20 @@ impl WrapClient {
             .send()
             .await
             .context(format!("Failed to POST {url}"))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Request failed with status {status}: {body}");
+        }
+
+        response.json().await.context("Failed to parse response JSON")
+    }
+
+    async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let url = format!("{}{}", self.base_url, path);
+        let response =
+            self.client.delete(&url).send().await.context(format!("Failed to DELETE {url}"))?;
 
         if !response.status().is_success() {
             let status = response.status();

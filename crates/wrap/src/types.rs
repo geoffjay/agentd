@@ -62,6 +62,36 @@ pub struct HealthResponse {
     pub version: Option<String>,
 }
 
+/// Information about a single tmux session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionInfo {
+    /// Session name
+    pub name: String,
+
+    /// Whether the session is currently active
+    pub active: bool,
+}
+
+/// Response listing all active sessions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionListResponse {
+    /// List of active sessions
+    pub sessions: Vec<SessionInfo>,
+
+    /// Total number of sessions
+    pub count: usize,
+}
+
+/// Response after killing a session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KillSessionResponse {
+    /// Whether the kill was successful
+    pub success: bool,
+
+    /// Human-readable message
+    pub message: String,
+}
+
 /// Tmux layout configuration.
 ///
 /// Defines how the tmux session should be laid out (single pane, split, etc.)
@@ -160,5 +190,60 @@ mod tests {
         let json = serde_json::to_string(&layout).unwrap();
         assert!(json.contains("horizontal"));
         assert!(json.contains("3"));
+    }
+
+    #[test]
+    fn test_session_info_serialization() {
+        let session = SessionInfo { name: "my-session".to_string(), active: true };
+
+        let json = serde_json::to_string(&session).unwrap();
+        assert!(json.contains("my-session"));
+        assert!(json.contains("true"));
+
+        let deserialized: SessionInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "my-session");
+        assert!(deserialized.active);
+    }
+
+    #[test]
+    fn test_session_list_response_serialization() {
+        let response = SessionListResponse {
+            sessions: vec![
+                SessionInfo { name: "session-1".to_string(), active: true },
+                SessionInfo { name: "session-2".to_string(), active: true },
+            ],
+            count: 2,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("session-1"));
+        assert!(json.contains("session-2"));
+
+        let deserialized: SessionListResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.count, 2);
+        assert_eq!(deserialized.sessions.len(), 2);
+    }
+
+    #[test]
+    fn test_session_list_response_empty() {
+        let response = SessionListResponse { sessions: vec![], count: 0 };
+
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: SessionListResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.count, 0);
+        assert!(deserialized.sessions.is_empty());
+    }
+
+    #[test]
+    fn test_kill_session_response_serialization() {
+        let response =
+            KillSessionResponse { success: true, message: "Session terminated".to_string() };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("true"));
+        assert!(json.contains("Session terminated"));
+
+        let deserialized: KillSessionResponse = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.success);
     }
 }
