@@ -413,10 +413,10 @@ mod tests {
             .with_body(
                 r#"{
                 "id": "550e8400-e29b-41d4-a716-446655440000",
-                "source": {"AskService": {"request_id": "550e8400-e29b-41d4-a716-446655440001"}},
-                "lifetime": "Persistent",
-                "priority": "Normal",
-                "status": "Pending",
+                "source": {"type": "ask_service", "request_id": "550e8400-e29b-41d4-a716-446655440001"},
+                "lifetime": {"type": "persistent"},
+                "priority": "normal",
+                "status": "pending",
                 "title": "Test",
                 "message": "Test message",
                 "requires_response": true,
@@ -490,10 +490,10 @@ mod tests {
             .with_header("content-type", "application/json")
             .with_body(format!(r#"{{
                 "id": "{notification_id}",
-                "source": {{"AskService": {{"request_id": "550e8400-e29b-41d4-a716-446655440001"}}}},
-                "lifetime": "Persistent",
-                "priority": "Normal",
-                "status": "Responded",
+                "source": {{"type": "ask_service", "request_id": "550e8400-e29b-41d4-a716-446655440001"}},
+                "lifetime": {{"type": "persistent"}},
+                "priority": "normal",
+                "status": "responded",
                 "title": "Test",
                 "message": "Test message",
                 "requires_response": true,
@@ -553,10 +553,10 @@ mod tests {
             .with_header("content-type", "application/json")
             .with_body(format!(r#"{{
                 "id": "{notification_id}",
-                "source": {{"AskService": {{"request_id": "550e8400-e29b-41d4-a716-446655440001"}}}},
-                "lifetime": "Persistent",
-                "priority": "Normal",
-                "status": "Pending",
+                "source": {{"type": "ask_service", "request_id": "550e8400-e29b-41d4-a716-446655440001"}},
+                "lifetime": {{"type": "persistent"}},
+                "priority": "normal",
+                "status": "pending",
                 "title": "Test",
                 "message": "Test message",
                 "requires_response": true,
@@ -616,10 +616,10 @@ mod tests {
             .with_body(
                 r#"{
                 "id": "550e8400-e29b-41d4-a716-446655440000",
-                "source": {"AskService": {"request_id": "550e8400-e29b-41d4-a716-446655440001"}},
-                "lifetime": {"Ephemeral": {"expires_at": "2024-01-01T00:05:00Z"}},
-                "priority": "Normal",
-                "status": "Pending",
+                "source": {"type": "ask_service", "request_id": "550e8400-e29b-41d4-a716-446655440001"},
+                "lifetime": {"type": "ephemeral", "expires_at": "2024-01-01T00:05:00Z"},
+                "priority": "normal",
+                "status": "pending",
                 "title": "Start tmux session?",
                 "message": "No tmux sessions are currently running. Would you like to start one?",
                 "requires_response": true,

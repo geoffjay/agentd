@@ -7,7 +7,7 @@
 //! # Examples
 //!
 //! ```no_run
-//! use agentd_wrap::tmux::TmuxManager;
+//! use wrap::tmux::TmuxManager;
 //!
 //! let tmux = TmuxManager::new("agentd");
 //!
@@ -73,7 +73,7 @@ impl TmuxManager {
     /// # Examples
     ///
     /// ```
-    /// use agentd_wrap::tmux::TmuxManager;
+    /// use wrap::tmux::TmuxManager;
     ///
     /// let tmux = TmuxManager::new("agentd");
     /// ```
@@ -86,7 +86,7 @@ impl TmuxManager {
     /// # Examples
     ///
     /// ```
-    /// use agentd_wrap::tmux::TmuxManager;
+    /// use wrap::tmux::TmuxManager;
     ///
     /// let tmux = TmuxManager::new("agentd");
     /// assert_eq!(tmux.prefix(), "agentd");
@@ -122,7 +122,7 @@ impl TmuxManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_wrap::tmux::TmuxManager;
+    /// use wrap::tmux::TmuxManager;
     ///
     /// let tmux = TmuxManager::new("agentd");
     /// tmux.create_session("my-session", "/path/to/project", None)?;
@@ -188,7 +188,7 @@ impl TmuxManager {
         // Create additional panes based on layout type
         let split_flag = match layout.layout_type.as_str() {
             "horizontal" => "-h",
-            "vertical" | _ => "-v", // Default to vertical
+            _ => "-v", // Default to vertical
         };
 
         // Create panes (one less than total, since we start with one)
@@ -241,7 +241,7 @@ impl TmuxManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_wrap::tmux::TmuxManager;
+    /// use wrap::tmux::TmuxManager;
     ///
     /// let tmux = TmuxManager::new("agentd");
     /// tmux.send_command("my-session", "echo 'Hello, world!'")?;
@@ -280,7 +280,7 @@ impl TmuxManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_wrap::tmux::TmuxManager;
+    /// use wrap::tmux::TmuxManager;
     ///
     /// let tmux = TmuxManager::new("agentd");
     /// if tmux.session_exists("my-session")? {
@@ -288,6 +288,7 @@ impl TmuxManager {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
+    #[allow(dead_code)]
     pub fn session_exists(&self, session_name: &str) -> anyhow::Result<bool> {
         let output =
             Command::new(get_tmux_command()).args(["has-session", "-t", session_name]).output()?;
@@ -315,7 +316,7 @@ impl TmuxManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_wrap::tmux::TmuxManager;
+    /// use wrap::tmux::TmuxManager;
     ///
     /// let tmux = TmuxManager::new("agentd");
     /// tmux.kill_session("my-session")?;
@@ -353,7 +354,7 @@ impl TmuxManager {
     /// # Examples
     ///
     /// ```no_run
-    /// use agentd_wrap::tmux::TmuxManager;
+    /// use wrap::tmux::TmuxManager;
     ///
     /// let tmux = TmuxManager::new("agentd");
     /// let sessions = tmux.list_sessions()?;
@@ -362,6 +363,7 @@ impl TmuxManager {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
+    #[allow(dead_code)]
     pub fn list_sessions(&self) -> anyhow::Result<Vec<String>> {
         let output = Command::new(get_tmux_command())
             .args(["list-sessions", "-F", "#{session_name}"])

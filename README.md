@@ -1,6 +1,18 @@
-# agentd
+[![CI][ci-badge]][ci-url]
+[![codecov][codecov-badge]][codecov-url]
+[![MIT licensed][mit-badge]][mit-url]
+[![Apache licensed][apache-badge]][apache-url]
 
-[![CI](https://github.com/geoffjay/agentd/actions/workflows/ci.yml/badge.svg)](https://github.com/geoffjay/agentd/actions/workflows/ci.yml)
+[ci-badge]: https://github.com/geoffjay/agentd/actions/workflows/ci.yml/badge.svg
+[ci-url]: https://github.com/geoffjay/agentd/actions/workflows/ci.yml
+[codecov-badge]: https://codecov.io/gh/geoffjay/agentd/graph/badge.svg?token=knPW8TUmoJ
+[codecov-url]: https://codecov.io/gh/geoffjay/agentd
+[mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[mit-url]: https://github.com/geoffjay/agentd/blob/main/LICENSE-MIT
+[apache-badge]: https://img.shields.io/badge/License-Apache_2.0-yellowgreen.svg
+[apache-url]: https://github.com/geoffjay/agentd/blob/main/LICENSE-APACHE
+
+# agentd
 
 A modular daemon system for managing AI agents, notifications, interactive questions, and system monitoring on macOS.
 

@@ -74,6 +74,12 @@ pub struct BamlClient {
     http_client: HttpClient,
 }
 
+impl Default for BamlClient {
+    fn default() -> Self {
+        Self::new(BamlClientConfig::default())
+    }
+}
+
 impl BamlClient {
     /// Create a new BAML client with the given configuration
     pub fn new(config: BamlClientConfig) -> Self {
@@ -83,11 +89,6 @@ impl BamlClient {
             .expect("Failed to build HTTP client");
 
         Self { config, http_client }
-    }
-
-    /// Create a new BAML client with default configuration (localhost:2024)
-    pub fn default() -> Self {
-        Self::new(BamlClientConfig::default())
     }
 
     /// Call a BAML function with the given parameters

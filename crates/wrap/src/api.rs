@@ -14,7 +14,7 @@
 //! ## Creating a Router
 //!
 //! ```no_run
-//! use agentd_wrap::api::create_router;
+//! use wrap::api::create_router;
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -61,7 +61,7 @@ use tracing::{error, info};
 /// # Examples
 ///
 /// ```no_run
-/// use agentd_wrap::api::create_router;
+/// use wrap::api::create_router;
 ///
 /// #[tokio::main]
 /// async fn main() -> anyhow::Result<()> {
@@ -284,6 +284,7 @@ fn launch_agent(tmux: &TmuxManager, session_name: &str, req: &LaunchRequest) -> 
 /// These errors are automatically converted to appropriate HTTP responses
 /// with status codes and JSON error messages.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ApiError {
     /// Internal server error (HTTP 500)
     Internal(anyhow::Error),
