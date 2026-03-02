@@ -64,6 +64,8 @@ tags.temp
 baml_openapi/
 
 # Documentation
-site/
+docs/site/
+
+# td/sidecar
 .todos/
 .sidecar/
