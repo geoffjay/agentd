@@ -164,6 +164,8 @@ agent orchestrator delete-workflow <WORKFLOW_UUID>
 
 ### REST API
 
+Full API reference docs: [Orchestrator](docs/public/services/orchestrator.md) | [Notify](docs/public/services/notify.md) | [Ask](docs/public/services/ask.md) | [Wrap](docs/public/services/wrap.md)
+
 **Orchestrator Service (port 17006):**
 
 ```bash
