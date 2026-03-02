@@ -380,6 +380,8 @@ launchctl list | grep agentd
 
 ## Configuration
 
+For the complete configuration reference including all environment variables, data storage paths, and plist/systemd customization, see the **[Configuration Guide](docs/public/configuration.md)**.
+
 ### Port Configuration
 
 Each service uses a **development port** (17xxx) by default when started with `cargo run`, and a **production port** (7xxx) when running as a LaunchAgent. All ports are configurable via the `PORT` environment variable.

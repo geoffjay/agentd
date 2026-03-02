@@ -82,6 +82,12 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Getting Started: public/getting-started.md
+  - Configuration: public/configuration.md
+  - Installation: public/install.md
+  - Services:
+      - Orchestrator: public/services/orchestrator.md
+      - Notify: public/services/notify.md
 
 extra:
   social:
