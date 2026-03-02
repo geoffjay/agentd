@@ -19,6 +19,10 @@ Notification service with a REST API for creating, reading, and managing notific
 
 ## Getting Started
 
+### [Getting Started Guide](public/getting-started.md)
+
+End-to-end walkthrough from first run to managing autonomous agents — notifications, agent spawning, automated workflows, and more.
+
 ### [Installation](public/install.md)
 
 Install agentd from source, configure services, and verify everything is running.
