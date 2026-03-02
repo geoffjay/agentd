@@ -45,6 +45,8 @@ agent notify create --title "Hello" --message "agentd is working!"
 agent notify list
 ```
 
+For a complete walkthrough from first run to managing autonomous agents, see the **[Getting Started Guide](docs/public/getting-started.md)**.
+
 ## Features
 
 ### Orchestrator Service (agentd-orchestrator)
@@ -115,7 +117,7 @@ If you encounter permission errors:
 sudo chown -R $(whoami) /usr/local
 ```
 
-For detailed installation instructions, see [INSTALL.md](INSTALL.md).
+For detailed installation instructions, see [INSTALL.md](INSTALL.md). Once installed, follow the **[Getting Started Guide](docs/public/getting-started.md)** to learn the full workflow.
 
 ## Usage
 
