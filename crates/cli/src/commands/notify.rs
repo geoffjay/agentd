@@ -55,7 +55,7 @@ use uuid::Uuid;
 /// Notification management subcommands.
 ///
 /// Each variant corresponds to a specific operation on notifications. All commands
-/// communicate with the notification service REST API on port 3000.
+/// communicate with the notification service REST API on port 7004.
 #[derive(Subcommand)]
 pub enum NotifyCommand {
     /// Create a new notification via the REST API.

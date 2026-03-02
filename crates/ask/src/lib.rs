@@ -31,7 +31,7 @@
 //! Health check endpoint that returns service status and configuration.
 //!
 //! ```bash
-//! curl http://localhost:3001/health
+//! curl http://localhost:17001/health
 //! ```
 //!
 //! ## POST /trigger
@@ -41,7 +41,7 @@
 //! to start one if none are running.
 //!
 //! ```bash
-//! curl -X POST http://localhost:3001/trigger
+//! curl -X POST http://localhost:17001/trigger
 //! ```
 //!
 //! ## POST /answer
@@ -49,15 +49,15 @@
 //! Submits an answer to a pending question.
 //!
 //! ```bash
-//! curl -X POST http://localhost:3001/answer \
+//! curl -X POST http://localhost:17001/answer \
 //!   -H "Content-Type: application/json" \
 //!   -d '{"question_id": "uuid-here", "answer": "yes"}'
 //! ```
 //!
 //! # Environment Variables
 //!
-//! - `ASK_PORT` - Port to listen on (default: 3001)
-//! - `NOTIFY_SERVICE_URL` - URL of notification service (default: http://localhost:3000)
+//! - `PORT` - Port to listen on (default: 17001 dev, 7001 production)
+//! - `NOTIFY_SERVICE_URL` - URL of notification service (default: http://localhost:17004)
 //! - `RUST_LOG` - Logging level (default: info)
 //!
 //! # Examples
@@ -74,14 +74,14 @@
 //!
 //!     // Create notification client
 //!     let notification_client = NotificationClient::new(
-//!         "http://localhost:3000".to_string()
+//!         "http://localhost:17004".to_string()
 //!     );
 //!
 //!     // Create API state
 //!     let api_state = ApiState {
 //!         app_state,
 //!         notification_client,
-//!         notification_service_url: "http://localhost:3000".to_string(),
+//!         notification_service_url: "http://localhost:17004".to_string(),
 //!     };
 //!
 //!     // Create router and serve...

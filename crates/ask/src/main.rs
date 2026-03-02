@@ -8,7 +8,7 @@
 //! The following environment variables configure the service:
 //!
 //! - `PORT` - The port to bind to (default: 17001 dev, 7001 production)
-//! - `NOTIFY_SERVICE_URL` - Base URL of the notification service (default: http://localhost:3000)
+//! - `NOTIFY_SERVICE_URL` - Base URL of the notification service (default: http://localhost:17004)
 //! - `RUST_LOG` - Logging configuration (default: info)
 //!
 //! # Service Lifecycle
@@ -26,7 +26,7 @@
 //!
 //! ```bash
 //! cargo run
-//! # Starts on port 3001, connects to notification service at http://localhost:3000
+//! # Starts on port 17001, connects to notification service at http://localhost:17004
 //! ```
 //!
 //! ## Running with custom configuration

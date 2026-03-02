@@ -26,11 +26,11 @@ async fn parse_response_body(body: Body) -> Value {
 #[tokio::test]
 async fn test_health_endpoint() {
     let app_state = AppState::new();
-    let notification_client = NotificationClient::new("http://localhost:3000".to_string());
+    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
     let api_state = ApiState {
         app_state,
         notification_client,
-        notification_service_url: "http://localhost:3000".to_string(),
+        notification_service_url: "http://localhost:17004".to_string(),
     };
 
     let app = create_router(api_state);
@@ -233,11 +233,11 @@ async fn test_answer_valid_question() {
 #[tokio::test]
 async fn test_answer_nonexistent_question() {
     let app_state = AppState::new();
-    let notification_client = NotificationClient::new("http://localhost:3000".to_string());
+    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
     let api_state = ApiState {
         app_state,
         notification_client,
-        notification_service_url: "http://localhost:3000".to_string(),
+        notification_service_url: "http://localhost:17004".to_string(),
     };
 
     let app = create_router(api_state);
@@ -279,11 +279,11 @@ async fn test_answer_already_answered_question() {
     };
     app_state.add_question(question).await;
 
-    let notification_client = NotificationClient::new("http://localhost:3000".to_string());
+    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
     let api_state = ApiState {
         app_state,
         notification_client,
-        notification_service_url: "http://localhost:3000".to_string(),
+        notification_service_url: "http://localhost:17004".to_string(),
     };
 
     let app = create_router(api_state);
@@ -370,11 +370,11 @@ async fn test_answer_notification_update_fails_but_answer_succeeds() {
 #[tokio::test]
 async fn test_concurrent_trigger_requests() {
     let app_state = AppState::with_cooldown(Duration::milliseconds(100));
-    let notification_client = NotificationClient::new("http://localhost:3000".to_string());
+    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
     let api_state = ApiState {
         app_state,
         notification_client,
-        notification_service_url: "http://localhost:3000".to_string(),
+        notification_service_url: "http://localhost:17004".to_string(),
     };
 
     let app = create_router(api_state);
@@ -438,11 +438,11 @@ async fn test_health_response_structure() {
 #[tokio::test]
 async fn test_trigger_response_structure() {
     let app_state = AppState::new();
-    let notification_client = NotificationClient::new("http://localhost:3000".to_string());
+    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
     let api_state = ApiState {
         app_state,
         notification_client,
-        notification_service_url: "http://localhost:3000".to_string(),
+        notification_service_url: "http://localhost:17004".to_string(),
     };
 
     let app = create_router(api_state);
@@ -469,11 +469,11 @@ async fn test_trigger_response_structure() {
 #[tokio::test]
 async fn test_answer_with_invalid_json() {
     let app_state = AppState::new();
-    let notification_client = NotificationClient::new("http://localhost:3000".to_string());
+    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
     let api_state = ApiState {
         app_state,
         notification_client,
-        notification_service_url: "http://localhost:3000".to_string(),
+        notification_service_url: "http://localhost:17004".to_string(),
     };
 
     let app = create_router(api_state);
@@ -498,11 +498,11 @@ async fn test_answer_with_invalid_json() {
 #[tokio::test]
 async fn test_wrong_http_method() {
     let app_state = AppState::new();
-    let notification_client = NotificationClient::new("http://localhost:3000".to_string());
+    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
     let api_state = ApiState {
         app_state,
         notification_client,
-        notification_service_url: "http://localhost:3000".to_string(),
+        notification_service_url: "http://localhost:17004".to_string(),
     };
 
     let app = create_router(api_state);
@@ -520,11 +520,11 @@ async fn test_wrong_http_method() {
 #[tokio::test]
 async fn test_nonexistent_endpoint() {
     let app_state = AppState::new();
-    let notification_client = NotificationClient::new("http://localhost:3000".to_string());
+    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
     let api_state = ApiState {
         app_state,
         notification_client,
-        notification_service_url: "http://localhost:3000".to_string(),
+        notification_service_url: "http://localhost:17004".to_string(),
     };
 
     let app = create_router(api_state);

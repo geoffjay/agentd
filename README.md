@@ -15,6 +15,7 @@ A modular daemon system for managing AI agents, notifications, interactive quest
 - **agentd-wrap** - Tmux session management for launching and managing agents
 - **agentd-hook** - Shell hook integration service
 - **agentd-monitor** - System monitoring service
+- **agentd-orchestrator** - Agent lifecycle and workflow orchestration service
 
 ## Quick Start
 
@@ -391,6 +392,8 @@ Logs are written to `/usr/local/var/log/`:
 - `agentd-wrap.log` / `agentd-wrap.err`
 - `agentd-hook.log` / `agentd-hook.err`
 - `agentd-monitor.log` / `agentd-monitor.err`
+- `agentd-wrap.log` / `agentd-wrap.err`
+- `agentd-orchestrator.log` / `agentd-orchestrator.err`
 
 ### Database
 

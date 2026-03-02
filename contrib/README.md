@@ -39,11 +39,13 @@ cargo xtask install-user
 
 **Service Configuration:**
 
-Each service is configured with:
-- **notify** - Port 3000
-- **ask** - Port 3001 (configurable via `ASK_PORT`)
-- **hook** - TBD
-- **monitor** - TBD
+Each service is configured with a production port (set via `PORT` env var in the plist):
+- **ask** - Port 7001
+- **hook** - Port 7002
+- **monitor** - Port 7003
+- **notify** - Port 7004
+- **wrap** - Port 7005
+- **orchestrator** - Port 7006
 
 ### scripts/
 
