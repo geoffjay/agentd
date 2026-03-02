@@ -71,10 +71,11 @@ pub mod client;
 mod commands;
 pub mod types;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use ask::client::AskClient;
 use clap::{Parser, Subcommand};
-use commands::{AskCommand, NotifyCommand, WrapCommand};
+use cli::client::ApiClient;
+use commands::{AskCommand, NotifyCommand, OrchestratorCommand, WrapCommand};
 use notify::client::NotifyClient;
 use std::env;
 use wrap::client::WrapClient;
@@ -129,6 +130,15 @@ enum Commands {
         #[command(subcommand)]
         command: WrapCommand,
     },
+    /// Interact with the orchestrator service
+    ///
+    /// Manage AI agents and autonomous workflows. The orchestrator service
+    /// runs on port 7006 by default and handles agent lifecycle management,
+    /// workflow scheduling, and task dispatch.
+    Orchestrator {
+        #[command(subcommand)]
+        command: OrchestratorCommand,
+    },
     /// Start the hook daemon
     ///
     /// The hook daemon monitors git hooks and other system hooks, creating
@@ -179,6 +189,13 @@ async fn main() -> Result<()> {
             let url = env::var("WRAP_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7005".to_string());
             let client = WrapClient::new(url);
+            command.execute(&client, cli.json).await?;
+        }
+        Commands::Orchestrator { command } => {
+            // Use ORCHESTRATOR_SERVICE_URL env var, default to production port
+            let url = env::var("ORCHESTRATOR_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+            let client = ApiClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Hook => {

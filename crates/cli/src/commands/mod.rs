@@ -30,8 +30,10 @@
 
 pub mod ask;
 pub mod notify;
+pub mod orchestrator;
 pub mod wrap;
 
 pub use ask::AskCommand;
 pub use notify::NotifyCommand;
+pub use orchestrator::OrchestratorCommand;
 pub use wrap::WrapCommand;
