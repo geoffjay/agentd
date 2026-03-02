@@ -13,12 +13,13 @@ A modular daemon system for managing notifications, interactive questions, and s
 - **agentd-ask** - Interactive question service with tmux integration
 - **agentd-hook** - Shell hook integration service
 - **agentd-monitor** - System monitoring service
+- **agentd-orchestrator** - Agent lifecycle and workflow orchestration service
 
 ## Quick Start
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/agentd.git
+git clone https://github.com/geoffjay/agentd.git
 cd agentd
 
 # Install (creates Agent.app bundle)
@@ -101,17 +102,17 @@ agent ask answer <UUID> "yes"  # Answer a question
 
 ### REST API
 
-**Notify Service (port 3000):**
+**Notify Service (default port 17004):**
 
 ```bash
 # Health check
-curl http://localhost:3000/health
+curl http://localhost:17004/health
 
 # List notifications
-curl http://localhost:3000/notifications
+curl http://localhost:17004/notifications
 
 # Create notification
-curl -X POST http://localhost:3000/notifications \
+curl -X POST http://localhost:17004/notifications \
   -H "Content-Type: application/json" \
   -d '{
     "source": {"type": "system"},
@@ -123,17 +124,17 @@ curl -X POST http://localhost:3000/notifications \
   }'
 ```
 
-**Ask Service (port 3001):**
+**Ask Service (default port 17001):**
 
 ```bash
 # Health check
-curl http://localhost:3001/health
+curl http://localhost:17001/health
 
 # Trigger checks
-curl -X POST http://localhost:3001/trigger
+curl -X POST http://localhost:17001/trigger
 
 # Answer question
-curl -X POST http://localhost:3001/answer \
+curl -X POST http://localhost:17001/answer \
   -H "Content-Type: application/json" \
   -d '{
     "question_id": "UUID",
@@ -149,11 +150,13 @@ curl -X POST http://localhost:3001/answer \
 ├── Contents/
 │   ├── Info.plist
 │   ├── MacOS/
-│   │   ├── cli                # CLI (symlinked from /usr/local/bin/agent)
-│   │   ├── agentd-notify      # Notification service
-│   │   ├── agentd-ask         # Ask service
-│   │   ├── agentd-hook        # Hook service
-│   │   └── agentd-monitor     # Monitor service
+│   │   ├── cli                    # CLI (symlinked from /usr/local/bin/agent)
+│   │   ├── agentd-notify          # Notification service
+│   │   ├── agentd-ask             # Ask service
+│   │   ├── agentd-hook            # Hook service
+│   │   ├── agentd-monitor         # Monitor service
+│   │   ├── agentd-wrap            # Wrap service
+│   │   └── agentd-orchestrator    # Orchestrator service
 │   └── Resources/
 │
 /usr/local/bin/agent -> /Applications/Agent.app/Contents/MacOS/cli
@@ -162,9 +165,12 @@ curl -X POST http://localhost:3001/answer \
 
 ### Service Communication
 Services communicate via REST APIs:
-- agentd-notify: http://localhost:3000
-- agentd-ask: http://localhost:3001
-```
+- agentd-ask: http://localhost:17001
+- agentd-hook: http://localhost:17002
+- agentd-monitor: http://localhost:17003
+- agentd-notify: http://localhost:17004
+- agentd-wrap: http://localhost:17005
+- agentd-orchestrator: http://localhost:17006
 
 ## Development
 
@@ -175,9 +181,9 @@ Services communicate via REST APIs:
 cargo build --release
 
 # Build specific crate
-cargo build -p agentd-cli --release
-cargo build -p agentd-notify --release
-cargo build -p agentd-ask --release
+cargo build -p cli --release
+cargo build -p notify --release
+cargo build -p ask --release
 ```
 
 ### Testing
@@ -187,8 +193,8 @@ cargo build -p agentd-ask --release
 cargo test
 
 # Run tests for specific crate
-cargo test -p agentd-cli
-cargo test -p agentd-ask
+cargo test -p cli
+cargo test -p ask
 
 # Run with output
 cargo test -- --nocapture
@@ -202,14 +208,14 @@ cargo test -- --nocapture
 ### Running Services Locally
 
 ```bash
-# Terminal 1: Notify service
+# Terminal 1: Notify service (port 17004)
 cargo run -p agentd-notify
 
-# Terminal 2: Ask service
+# Terminal 2: Ask service (port 17001)
 cargo run -p agentd-ask
 
 # Terminal 3: CLI
-cargo run -p agentd-cli -- notify list
+cargo run -p cli -- notify list
 ```
 
 ### Code Quality
@@ -250,10 +256,20 @@ launchctl list | grep agentd
 
 ## Configuration
 
-### Service Ports
+### Port Configuration
 
-- **agentd-notify**: Port 3000 (configurable via environment)
-- **agentd-ask**: Port 3001 (configurable via `ASK_PORT`)
+Each service uses a **development port** (17xxx) by default when started with `cargo run`, and a **production port** (7xxx) when running as a LaunchAgent. All ports are configurable via the `PORT` environment variable.
+
+| Service | Dev Port | Prod Port | Description |
+|---------|----------|-----------|-------------|
+| agentd-ask | 17001 | 7001 | Interactive question service |
+| agentd-hook | 17002 | 7002 | Shell hook integration |
+| agentd-monitor | 17003 | 7003 | System monitoring |
+| agentd-notify | 17004 | 7004 | Notification service |
+| agentd-wrap | 17005 | 7005 | Tmux session management |
+| agentd-orchestrator | 17006 | 7006 | Agent orchestration |
+
+Production ports are set in the LaunchAgent plist files under `contrib/plists/`.
 
 ### Log Files
 
@@ -262,6 +278,8 @@ Logs are written to `/usr/local/var/log/`:
 - `agentd-ask.log` / `agentd-ask.err`
 - `agentd-hook.log` / `agentd-hook.err`
 - `agentd-monitor.log` / `agentd-monitor.err`
+- `agentd-wrap.log` / `agentd-wrap.err`
+- `agentd-orchestrator.log` / `agentd-orchestrator.err`
 
 ### Database
 
@@ -287,7 +305,7 @@ rm -f ~/Library/LaunchAgents/com.geoffjay.agentd-*.plist
 
 1. Check logs: `tail -f /usr/local/var/log/agentd-*.err`
 2. Check status: `cargo xtask service-status`
-3. Verify ports: `lsof -i :3000` and `lsof -i :3001`
+3. Verify ports: `lsof -i :17004` and `lsof -i :17001`
 
 ### Permission errors
 
@@ -301,9 +319,9 @@ sudo chown -R $(whoami) /usr/local/var
 ### Cannot connect to service
 
 ```bash
-# Test health endpoints
-curl http://localhost:3000/health
-curl http://localhost:3001/health
+# Test health endpoints (dev ports)
+curl http://localhost:17004/health
+curl http://localhost:17001/health
 
 # Restart services
 cargo xtask stop-services

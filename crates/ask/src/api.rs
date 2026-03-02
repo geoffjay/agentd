@@ -23,21 +23,21 @@
 //! ## Health Check
 //!
 //! ```bash
-//! curl http://localhost:3001/health
+//! curl http://localhost:17001/health
 //! # Returns: {"status":"ok","service":"agentd-ask","version":"0.1.0",...}
 //! ```
 //!
 //! ## Trigger Checks
 //!
 //! ```bash
-//! curl -X POST http://localhost:3001/trigger
+//! curl -X POST http://localhost:17001/trigger
 //! # Returns: {"checks_run":["tmux_sessions"],"notifications_sent":[...],...}
 //! ```
 //!
 //! ## Submit Answer
 //!
 //! ```bash
-//! curl -X POST http://localhost:3001/answer \
+//! curl -X POST http://localhost:17001/answer \
 //!   -H "Content-Type: application/json" \
 //!   -d '{"question_id":"550e8400-e29b-41d4-a716-446655440000","answer":"yes"}'
 //! # Returns: {"success":true,"message":"Answer recorded...","question_id":"..."}
@@ -82,8 +82,8 @@ use uuid::Uuid;
 ///
 /// let api_state = ApiState {
 ///     app_state: AppState::new(),
-///     notification_client: NotificationClient::new("http://localhost:3000".to_string()),
-///     notification_service_url: "http://localhost:3000".to_string(),
+///     notification_client: NotificationClient::new("http://localhost:17004".to_string()),
+///     notification_service_url: "http://localhost:17004".to_string(),
 /// };
 /// ```
 #[derive(Clone)]
@@ -114,8 +114,8 @@ pub struct ApiState {
 /// # async fn example() {
 /// let api_state = ApiState {
 ///     app_state: AppState::new(),
-///     notification_client: NotificationClient::new("http://localhost:3000".to_string()),
-///     notification_service_url: "http://localhost:3000".to_string(),
+///     notification_client: NotificationClient::new("http://localhost:17004".to_string()),
+///     notification_service_url: "http://localhost:17004".to_string(),
 /// };
 ///
 /// let router = create_router(api_state);
@@ -150,7 +150,7 @@ pub fn create_router(state: ApiState) -> Router {
 /// # Examples
 ///
 /// ```bash
-/// curl http://localhost:3001/health
+/// curl http://localhost:17001/health
 /// ```
 ///
 /// Response:
@@ -159,7 +159,7 @@ pub fn create_router(state: ApiState) -> Router {
 ///   "status": "ok",
 ///   "service": "agentd-ask",
 ///   "version": "0.1.0",
-///   "notification_service_url": "http://localhost:3000"
+///   "notification_service_url": "http://localhost:17004"
 /// }
 /// ```
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
@@ -206,7 +206,7 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
 /// # Examples
 ///
 /// ```bash
-/// curl -X POST http://localhost:3001/trigger
+/// curl -X POST http://localhost:17001/trigger
 /// ```
 ///
 /// Response when notification is sent:
@@ -360,7 +360,7 @@ async fn trigger_checks(State(state): State<ApiState>) -> Result<Json<TriggerRes
 /// # Examples
 ///
 /// ```bash
-/// curl -X POST http://localhost:3001/answer \
+/// curl -X POST http://localhost:17001/answer \
 ///   -H "Content-Type: application/json" \
 ///   -d '{
 ///     "question_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -477,8 +477,8 @@ async fn answer_question(
 /// # async fn example() {
 /// let api_state = ApiState {
 ///     app_state: AppState::new(),
-///     notification_client: NotificationClient::new("http://localhost:3000".to_string()),
-///     notification_service_url: "http://localhost:3000".to_string(),
+///     notification_client: NotificationClient::new("http://localhost:17004".to_string()),
+///     notification_service_url: "http://localhost:17004".to_string(),
 /// };
 ///
 /// let router = create_router_with_tracing(api_state);
@@ -502,14 +502,14 @@ mod tests {
     #[test]
     fn test_api_state_creation() {
         let app_state = AppState::new();
-        let notification_client = NotificationClient::new("http://localhost:3000".to_string());
+        let notification_client = NotificationClient::new("http://localhost:17004".to_string());
         let api_state = ApiState {
             app_state,
             notification_client,
-            notification_service_url: "http://localhost:3000".to_string(),
+            notification_service_url: "http://localhost:17004".to_string(),
         };
 
-        assert_eq!(api_state.notification_service_url, "http://localhost:3000");
+        assert_eq!(api_state.notification_service_url, "http://localhost:17004");
     }
 
     // More comprehensive tests would require mocking or integration testing

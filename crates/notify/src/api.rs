@@ -33,7 +33,7 @@
 //!     let router = create_router(state);
 //!
 //!     // Bind and serve
-//!     let listener = tokio::net::TcpListener::bind("127.0.0.1:3030").await?;
+//!     let listener = tokio::net::TcpListener::bind("127.0.0.1:17004").await?;
 //!     axum::serve(listener, router).await?;
 //!     Ok(())
 //! }
@@ -43,10 +43,10 @@
 //!
 //! ```bash
 //! # Health check
-//! curl http://localhost:3030/health
+//! curl http://localhost:17004/health
 //!
 //! # Create notification
-//! curl -X POST http://localhost:3030/notifications \
+//! curl -X POST http://localhost:17004/notifications \
 //!   -H "Content-Type: application/json" \
 //!   -d '{
 //!     "source": "System",
@@ -58,13 +58,13 @@
 //!   }'
 //!
 //! # List notifications
-//! curl http://localhost:3030/notifications
+//! curl http://localhost:17004/notifications
 //!
 //! # Filter by status
-//! curl "http://localhost:3030/notifications?status=pending"
+//! curl "http://localhost:17004/notifications?status=pending"
 //!
 //! # Get actionable notifications
-//! curl http://localhost:3030/notifications/actionable
+//! curl http://localhost:17004/notifications/actionable
 //! ```
 
 use crate::{storage::NotificationStorage, types::*};
@@ -134,7 +134,7 @@ pub struct ApiState {
 ///     };
 ///     let router = create_router(state);
 ///
-///     let listener = tokio::net::TcpListener::bind("127.0.0.1:3030").await?;
+///     let listener = tokio::net::TcpListener::bind("127.0.0.1:17004").await?;
 ///     axum::serve(listener, router).await?;
 ///     Ok(())
 /// }
@@ -181,7 +181,7 @@ pub fn create_router(state: ApiState) -> Router {
 /// # Examples
 ///
 /// ```bash
-/// curl http://localhost:3030/health
+/// curl http://localhost:17004/health
 /// ```
 async fn health_check() -> impl IntoResponse {
     Json(serde_json::json!({
@@ -218,10 +218,10 @@ async fn health_check() -> impl IntoResponse {
 ///
 /// ```bash
 /// # Get all notifications
-/// curl http://localhost:3030/notifications
+/// curl http://localhost:17004/notifications
 ///
 /// # Get only pending notifications
-/// curl "http://localhost:3030/notifications?status=pending"
+/// curl "http://localhost:17004/notifications?status=pending"
 /// ```
 async fn list_notifications(
     State(state): State<ApiState>,
@@ -256,7 +256,7 @@ async fn list_notifications(
 /// # Examples
 ///
 /// ```bash
-/// curl http://localhost:3030/notifications/actionable
+/// curl http://localhost:17004/notifications/actionable
 /// ```
 async fn list_actionable(
     State(state): State<ApiState>,
@@ -285,7 +285,7 @@ async fn list_actionable(
 /// # Examples
 ///
 /// ```bash
-/// curl http://localhost:3030/notifications/history
+/// curl http://localhost:17004/notifications/history
 /// ```
 async fn list_history(State(state): State<ApiState>) -> Result<Json<Vec<Notification>>, ApiError> {
     let notifications = state.storage.list_history().await?;
@@ -310,7 +310,7 @@ async fn list_history(State(state): State<ApiState>) -> Result<Json<Vec<Notifica
 /// # Example
 ///
 /// ```bash
-/// curl http://localhost:3030/notifications/count
+/// curl http://localhost:17004/notifications/count
 /// ```
 ///
 /// Response:
@@ -370,7 +370,7 @@ async fn count_notifications(
 /// # Examples
 ///
 /// ```bash
-/// curl -X POST http://localhost:3030/notifications \
+/// curl -X POST http://localhost:17004/notifications \
 ///   -H "Content-Type: application/json" \
 ///   -d '{
 ///     "source": "System",
@@ -423,7 +423,7 @@ async fn create_notification(
 /// # Examples
 ///
 /// ```bash
-/// curl http://localhost:3030/notifications/550e8400-e29b-41d4-a716-446655440000
+/// curl http://localhost:17004/notifications/550e8400-e29b-41d4-a716-446655440000
 /// ```
 async fn get_notification(
     State(state): State<ApiState>,
@@ -471,12 +471,12 @@ async fn get_notification(
 ///
 /// ```bash
 /// # Dismiss a notification
-/// curl -X PUT http://localhost:3030/notifications/550e8400-e29b-41d4-a716-446655440000 \
+/// curl -X PUT http://localhost:17004/notifications/550e8400-e29b-41d4-a716-446655440000 \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"status": "Dismissed"}'
 ///
 /// # Respond to a notification
-/// curl -X PUT http://localhost:3030/notifications/550e8400-e29b-41d4-a716-446655440000 \
+/// curl -X PUT http://localhost:17004/notifications/550e8400-e29b-41d4-a716-446655440000 \
 ///   -H "Content-Type: application/json" \
 ///   -d '{"response": "Approved"}'
 /// ```
@@ -528,7 +528,7 @@ async fn update_notification(
 /// # Examples
 ///
 /// ```bash
-/// curl -X DELETE http://localhost:3030/notifications/550e8400-e29b-41d4-a716-446655440000
+/// curl -X DELETE http://localhost:17004/notifications/550e8400-e29b-41d4-a716-446655440000
 /// ```
 async fn delete_notification(
     State(state): State<ApiState>,

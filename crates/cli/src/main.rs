@@ -1,8 +1,10 @@
 //! Command-line interface for the agentd service ecosystem.
 //!
 //! The `agent` CLI provides a unified interface for interacting with multiple services:
-//! - **Notification Service** (port 3000): Manage notifications from various sources
-//! - **Ask Service** (port 3001): Trigger checks and answer questions
+//! - **Notification Service** (port 17004): Manage notifications from various sources
+//! - **Ask Service** (port 17001): Trigger checks and answer questions
+//! - **Orchestrator Service** (port 17006): Manage agents and workflows
+//! - **Wrap Service** (port 17005): Launch agents in tmux sessions
 //! - **Hook Daemon**: Git and system hooks integration (coming soon)
 //! - **Monitor Daemon**: System monitoring and alerts (coming soon)
 //!
@@ -58,9 +60,11 @@
 //!
 //! # Service URLs
 //!
-//! The CLI connects to services running on localhost:
-//! - Notification service: `http://localhost:3000`
-//! - Ask service: `http://localhost:3001`
+//! The CLI connects to services running on localhost (default dev ports):
+//! - Notification service: `http://localhost:7004` (override with `NOTIFY_SERVICE_URL`)
+//! - Ask service: `http://localhost:7001` (override with `ASK_SERVICE_URL`)
+//! - Wrap service: `http://localhost:7005` (override with `WRAP_SERVICE_URL`)
+//! - Orchestrator service: `http://localhost:7006` (override with `ORCHESTRATOR_SERVICE_URL`)
 //!
 //! # Architecture
 //!
@@ -107,7 +111,7 @@ enum Commands {
     ///
     /// Manage notifications from various sources including agent hooks, ask service,
     /// monitor service, and system notifications. The notification service runs on
-    /// port 3000 by default.
+    /// port 7004 by default.
     Notify {
         #[command(subcommand)]
         command: NotifyCommand,
@@ -115,7 +119,7 @@ enum Commands {
     /// Interact with the ask service
     ///
     /// Trigger periodic checks and answer questions from the ask service. The ask
-    /// service runs on port 3001 by default and can create notifications when checks
+    /// service runs on port 7001 by default and can create notifications when checks
     /// require user attention.
     Ask {
         #[command(subcommand)]
@@ -158,8 +162,10 @@ enum Commands {
 ///
 /// # Service Connections
 ///
-/// - Notify commands connect to `http://localhost:3000`
-/// - Ask commands connect to `http://localhost:3001`
+/// - Notify commands connect to `http://localhost:7004`
+/// - Ask commands connect to `http://localhost:7001`
+/// - Wrap commands connect to `http://localhost:7005`
+/// - Orchestrator commands connect to `http://localhost:7006`
 ///
 /// # Error Handling
 ///
