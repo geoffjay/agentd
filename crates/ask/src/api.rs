@@ -257,11 +257,8 @@ async fn trigger_checks(State(state): State<ApiState>) -> Result<Json<TriggerRes
         }
         Err(e) => {
             warn!("tmux check failed: {}", e);
-            // Return error if tmux is not installed, but continue for other errors
-            if matches!(e, crate::error::TmuxError::NotInstalled) {
-                return Err(ApiError::TmuxError(e));
-            }
-            // For other errors, assume no sessions running
+            // For all errors (including tmux not installed), assume no sessions running
+            // This allows the service to operate gracefully in environments without tmux
             crate::types::TmuxCheckResult {
                 running: false,
                 session_count: 0,
