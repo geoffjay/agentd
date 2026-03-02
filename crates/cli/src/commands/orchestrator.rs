@@ -207,7 +207,9 @@ impl OrchestratorCommand {
     /// * `json` - If true, output raw JSON instead of formatted text
     pub async fn execute(&self, client: &ApiClient, json: bool) -> Result<()> {
         match self {
-            OrchestratorCommand::ListAgents { status } => list_agents(client, status.as_deref(), json).await,
+            OrchestratorCommand::ListAgents { status } => {
+                list_agents(client, status.as_deref(), json).await
+            }
             OrchestratorCommand::CreateAgent {
                 name,
                 working_dir,
@@ -260,7 +262,13 @@ impl OrchestratorCommand {
                 .await
             }
             OrchestratorCommand::GetWorkflow { id } => get_workflow(client, id, json).await,
-            OrchestratorCommand::UpdateWorkflow { id, name, prompt_template, poll_interval, enabled } => {
+            OrchestratorCommand::UpdateWorkflow {
+                id,
+                name,
+                prompt_template,
+                poll_interval,
+                enabled,
+            } => {
                 update_workflow(
                     client,
                     id,
@@ -286,7 +294,8 @@ async fn list_agents(client: &ApiClient, status: Option<&str>, json: bool) -> Re
         None => "/agents".to_string(),
     };
 
-    let agents: Vec<serde_json::Value> = client.get(&path).await.context("Failed to list agents")?;
+    let agents: Vec<serde_json::Value> =
+        client.get(&path).await.context("Failed to list agents")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&agents)?);
@@ -329,7 +338,8 @@ async fn create_agent(
         "system_prompt": system_prompt,
     });
 
-    let agent: serde_json::Value = client.post("/agents", &body).await.context("Failed to create agent")?;
+    let agent: serde_json::Value =
+        client.post("/agents", &body).await.context("Failed to create agent")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&agent)?);
@@ -357,17 +367,11 @@ async fn get_agent(client: &ApiClient, id: &str, json: bool) -> Result<()> {
 
 async fn delete_agent(client: &ApiClient, id: &str, json: bool) -> Result<()> {
     let path = format!("/agents/{}", id);
-    let agent: serde_json::Value = client
-        .get(&path)
-        .await
-        .context("Failed to find agent")?;
+    let agent: serde_json::Value = client.get(&path).await.context("Failed to find agent")?;
 
     // The orchestrator DELETE returns the terminated agent
-    let result: serde_json::Value = client
-        .get::<serde_json::Value>(&path)
-        .await
-        .ok()
-        .unwrap_or_default();
+    let result: serde_json::Value =
+        client.get::<serde_json::Value>(&path).await.ok().unwrap_or_default();
 
     client.delete(&path).await.context("Failed to delete agent")?;
 
@@ -417,9 +421,8 @@ async fn create_workflow(
     enabled: bool,
     json: bool,
 ) -> Result<()> {
-    let labels_vec: Vec<String> = labels
-        .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
-        .unwrap_or_default();
+    let labels_vec: Vec<String> =
+        labels.map(|l| l.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default();
 
     let body = serde_json::json!({
         "name": name,
@@ -630,11 +633,8 @@ fn display_dispatch(dispatch: &serde_json::Value) {
         println!("{}: {}", "Status".bold(), colored_status);
     }
     if let Some(prompt) = dispatch.get("prompt_sent").and_then(|v| v.as_str()) {
-        let display = if prompt.len() > 60 {
-            format!("{}...", &prompt[..57])
-        } else {
-            prompt.to_string()
-        };
+        let display =
+            if prompt.len() > 60 { format!("{}...", &prompt[..57]) } else { prompt.to_string() };
         println!("{}: {}", "Prompt".bold(), display);
     }
     if let Some(dispatched) = dispatch.get("dispatched_at").and_then(|v| v.as_str()) {

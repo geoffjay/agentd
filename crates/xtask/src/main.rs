@@ -256,9 +256,7 @@ pub fn get_prefix() -> PathBuf {
             PathBuf::from("/usr/local")
         } else {
             // Linux: default to ~/.local for user installs
-            home_dir()
-                .unwrap_or_else(|_| PathBuf::from("/usr/local"))
-                .join(".local")
+            home_dir().unwrap_or_else(|_| PathBuf::from("/usr/local")).join(".local")
         }
     })
 }

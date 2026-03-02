@@ -74,17 +74,13 @@ impl Platform for LinuxPlatform {
                 let unit_name = format!("agentd-{}.service", service.name);
                 let unit_path = unit_dir.join(&unit_name);
                 if unit_path.exists() {
-                    fs::remove_file(&unit_path)
-                        .context(format!("Failed to remove {unit_name}"))?;
+                    fs::remove_file(&unit_path).context(format!("Failed to remove {unit_name}"))?;
                     println!("  {} Removed {}", "✓".green(), unit_name);
                 }
             }
 
             // Reload daemon after removing units
-            let _ = Command::new("systemctl")
-                .arg("--user")
-                .arg("daemon-reload")
-                .status();
+            let _ = Command::new("systemctl").arg("--user").arg("daemon-reload").status();
         }
 
         Ok(())
@@ -187,11 +183,8 @@ impl Platform for LinuxPlatform {
             let unit_name = format!("agentd-{}.service", service.name);
             print!("  agentd-{}: ", service.name);
 
-            let output = Command::new("systemctl")
-                .arg("--user")
-                .arg("is-active")
-                .arg(&unit_name)
-                .output();
+            let output =
+                Command::new("systemctl").arg("--user").arg("is-active").arg(&unit_name).output();
 
             match output {
                 Ok(out) => {
@@ -223,10 +216,7 @@ impl Platform for LinuxPlatform {
 
 /// Generate a systemd user unit file for a service.
 pub fn generate_unit_file(service: &ServiceInfo, bin_path: &Path) -> String {
-    let mut env_lines = format!(
-        "Environment=RUST_LOG=info\nEnvironment=PORT={}",
-        service.port
-    );
+    let mut env_lines = format!("Environment=RUST_LOG=info\nEnvironment=PORT={}", service.port);
 
     for (key, value) in service.extra_env {
         env_lines.push_str(&format!("\nEnvironment={}={}", key, value));
@@ -268,10 +258,8 @@ fn systemd_user_dir() -> Result<PathBuf> {
 fn install_binaries(bin_dir: &Path) -> Result<()> {
     println!("{}", "Installing binaries...".blue());
 
-    fs::create_dir_all(bin_dir).context(format!(
-        "Failed to create bin directory: {}",
-        bin_dir.display()
-    ))?;
+    fs::create_dir_all(bin_dir)
+        .context(format!("Failed to create bin directory: {}", bin_dir.display()))?;
 
     // Install CLI binary
     let cli_src = Path::new("target/release/cli");
@@ -318,11 +306,7 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
                 println!("  {} agent -> {}", "✓".green(), target_path.display());
             }
             Err(e) => {
-                eprintln!(
-                    "  {} Failed to create symlink: {}",
-                    "⚠".yellow(),
-                    e
-                );
+                eprintln!("  {} Failed to create symlink: {}", "⚠".yellow(), e);
             }
         }
     }
@@ -339,8 +323,7 @@ fn install_unit_files(unit_dir: &Path, bin_dir: &Path) -> Result<()> {
         let unit_name = format!("agentd-{}.service", service.name);
         let unit_path = unit_dir.join(&unit_name);
 
-        fs::write(&unit_path, &unit_content)
-            .context(format!("Failed to write {unit_name}"))?;
+        fs::write(&unit_path, &unit_content).context(format!("Failed to write {unit_name}"))?;
         println!("  {} {}", "✓".green(), unit_name);
     }
 
@@ -377,12 +360,8 @@ mod tests {
 
     #[test]
     fn test_generate_unit_file_basic() {
-        let info = ServiceInfo {
-            name: "notify",
-            binary: "agentd-notify",
-            port: 7004,
-            extra_env: &[],
-        };
+        let info =
+            ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, extra_env: &[] };
         let bin_path = Path::new("/home/user/.local/bin/agentd-notify");
         let unit = generate_unit_file(&info, bin_path);
 

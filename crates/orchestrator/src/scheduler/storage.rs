@@ -178,14 +178,13 @@ impl SchedulerStorage {
         status: DispatchStatus,
         completed_at: Option<DateTime<Utc>>,
     ) -> Result<()> {
-        let result = sqlx::query(
-            "UPDATE dispatch_log SET status = ?, completed_at = ? WHERE id = ?",
-        )
-        .bind(status.to_string())
-        .bind(completed_at.map(|dt| dt.to_rfc3339()))
-        .bind(id.to_string())
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE dispatch_log SET status = ?, completed_at = ? WHERE id = ?")
+                .bind(status.to_string())
+                .bind(completed_at.map(|dt| dt.to_rfc3339()))
+                .bind(id.to_string())
+                .execute(&self.pool)
+                .await?;
 
         if result.rows_affected() == 0 {
             anyhow::bail!("Dispatch record not found");

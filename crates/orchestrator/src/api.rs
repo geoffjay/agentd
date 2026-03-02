@@ -3,7 +3,7 @@ use crate::scheduler::api::{workflow_routes, WorkflowState};
 use crate::scheduler::Scheduler;
 use crate::types::*;
 use crate::websocket::{
-    ws_handler, ws_stream_all_handler, ws_stream_agent_handler, ConnectionRegistry,
+    ws_handler, ws_stream_agent_handler, ws_stream_all_handler, ConnectionRegistry,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -25,9 +25,8 @@ pub struct ApiState {
 
 pub fn create_router(state: ApiState) -> Router {
     // Agent SDK WebSocket (claude code connects here).
-    let ws_agent_routes = Router::new()
-        .route("/ws/{agent_id}", get(ws_handler))
-        .with_state(state.registry.clone());
+    let ws_agent_routes =
+        Router::new().route("/ws/{agent_id}", get(ws_handler)).with_state(state.registry.clone());
 
     // Monitoring streams on a separate path to avoid route conflicts.
     let ws_stream_routes = Router::new()
@@ -35,10 +34,8 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/stream/{agent_id}", get(ws_stream_agent_handler))
         .with_state(state.registry.clone());
 
-    let wf_state = WorkflowState {
-        scheduler: state.scheduler.clone(),
-        manager: state.manager.clone(),
-    };
+    let wf_state =
+        WorkflowState { scheduler: state.scheduler.clone(), manager: state.manager.clone() };
     let wf_routes = workflow_routes(wf_state);
 
     let api_routes = Router::new()
@@ -48,10 +45,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents/{id}/message", post(send_message))
         .with_state(state);
 
-    api_routes
-        .merge(ws_agent_routes)
-        .merge(ws_stream_routes)
-        .merge(wf_routes)
+    api_routes.merge(ws_agent_routes).merge(ws_stream_routes).merge(wf_routes)
 }
 
 #[derive(Deserialize)]

@@ -23,10 +23,7 @@ pub struct WorkflowState {
 pub fn workflow_routes(state: WorkflowState) -> Router {
     Router::new()
         .route("/workflows", get(list_workflows).post(create_workflow))
-        .route(
-            "/workflows/{id}",
-            get(get_workflow).put(update_workflow).delete(delete_workflow),
-        )
+        .route("/workflows/{id}", get(get_workflow).put(update_workflow).delete(delete_workflow))
         .route("/workflows/{id}/history", get(dispatch_history))
         .with_state(state)
 }
@@ -72,9 +69,7 @@ async fn create_workflow(
     Ok((StatusCode::CREATED, Json(WorkflowResponse::from(config))))
 }
 
-async fn list_workflows(
-    State(state): State<WorkflowState>,
-) -> Result<impl IntoResponse, ApiError> {
+async fn list_workflows(State(state): State<WorkflowState>) -> Result<impl IntoResponse, ApiError> {
     let workflows = state.scheduler.storage().list_workflows().await?;
     let responses: Vec<WorkflowResponse> =
         workflows.into_iter().map(WorkflowResponse::from).collect();
@@ -85,12 +80,7 @@ async fn get_workflow(
     State(state): State<WorkflowState>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let workflow = state
-        .scheduler
-        .storage()
-        .get_workflow(&id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    let workflow = state.scheduler.storage().get_workflow(&id).await?.ok_or(ApiError::NotFound)?;
 
     Ok(Json(WorkflowResponse::from(workflow)))
 }
@@ -100,12 +90,8 @@ async fn update_workflow(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateWorkflowRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let mut workflow = state
-        .scheduler
-        .storage()
-        .get_workflow(&id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    let mut workflow =
+        state.scheduler.storage().get_workflow(&id).await?.ok_or(ApiError::NotFound)?;
 
     let was_enabled = workflow.enabled;
 
@@ -156,12 +142,7 @@ async fn dispatch_history(
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Verify workflow exists.
-    state
-        .scheduler
-        .storage()
-        .get_workflow(&id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    state.scheduler.storage().get_workflow(&id).await?.ok_or(ApiError::NotFound)?;
 
     let dispatches = state.scheduler.storage().list_dispatches(&id).await?;
     let responses: Vec<DispatchResponse> =

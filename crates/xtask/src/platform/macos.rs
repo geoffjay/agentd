@@ -116,7 +116,9 @@ impl Platform for MacOSPlatform {
         let plist_path = plist_dir.join(&plist_name);
 
         if !plist_path.exists() {
-            anyhow::bail!("Service '{service}' not installed. Run 'cargo xtask install-user' first.");
+            anyhow::bail!(
+                "Service '{service}' not installed. Run 'cargo xtask install-user' first."
+            );
         }
 
         print!("  Starting agentd-{service}... ");
@@ -212,10 +214,8 @@ pub fn generate_plist(service: &ServiceInfo, bin_path: &Path, log_dir: &Path) ->
     );
 
     for (key, value) in service.extra_env {
-        env_entries.push_str(&format!(
-            "\n        <key>{}</key>\n        <string>{}</string>",
-            key, value
-        ));
+        env_entries
+            .push_str(&format!("\n        <key>{}</key>\n        <string>{}</string>", key, value));
     }
 
     format!(
@@ -445,12 +445,8 @@ mod tests {
 
     #[test]
     fn test_generate_plist_basic() {
-        let info = ServiceInfo {
-            name: "notify",
-            binary: "agentd-notify",
-            port: 7004,
-            extra_env: &[],
-        };
+        let info =
+            ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, extra_env: &[] };
         let bin_path = Path::new("/Applications/Agent.app/Contents/MacOS/agentd-notify");
         let log_dir = Path::new("/usr/local/var/log");
         let plist = generate_plist(&info, bin_path, log_dir);
@@ -459,7 +455,7 @@ mod tests {
         assert!(plist.contains("/Applications/Agent.app/Contents/MacOS/agentd-notify"));
         assert!(plist.contains("<string>7004</string>"));
         assert!(plist.contains("RUST_LOG"));
-        assert!(plist.contains("<true/>"));  // RunAtLoad
+        assert!(plist.contains("<true/>")); // RunAtLoad
         assert!(plist.contains("agentd-notify.log"));
         assert!(plist.contains("agentd-notify.err"));
     }

@@ -61,10 +61,7 @@ impl TaskSource for GithubIssueSource {
 
         debug!(repo = %format!("{}/{}", self.owner, self.repo), "Fetching GitHub issues");
 
-        let output = tokio::process::Command::new(&args[0])
-            .args(&args[1..])
-            .output()
-            .await?;
+        let output = tokio::process::Command::new(&args[0]).args(&args[1..]).output().await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

@@ -32,11 +32,7 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(storage: SchedulerStorage, registry: ConnectionRegistry) -> Self {
-        Self {
-            storage,
-            registry,
-            runners: RwLock::new(HashMap::new()),
-        }
+        Self { storage, registry, runners: RwLock::new(HashMap::new()) }
     }
 
     pub fn storage(&self) -> &SchedulerStorage {

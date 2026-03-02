@@ -315,11 +315,7 @@ async fn handle_stream_socket(
                         }
                     }
 
-                    if ws_sender
-                        .send(Message::Text(msg.into()))
-                        .await
-                        .is_err()
-                    {
+                    if ws_sender.send(Message::Text(msg.into())).await.is_err() {
                         break;
                     }
                 }

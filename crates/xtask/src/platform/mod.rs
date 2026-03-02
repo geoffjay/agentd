@@ -25,7 +25,12 @@ pub struct ServiceInfo {
 
 /// Canonical list of all managed services.
 pub const SERVICES: &[ServiceInfo] = &[
-    ServiceInfo { name: "ask", binary: "agentd-ask", port: 7001, extra_env: &[("NOTIFY_SERVICE_URL", "http://localhost:7004")] },
+    ServiceInfo {
+        name: "ask",
+        binary: "agentd-ask",
+        port: 7001,
+        extra_env: &[("NOTIFY_SERVICE_URL", "http://localhost:7004")],
+    },
     ServiceInfo { name: "hook", binary: "agentd-hook", port: 7002, extra_env: &[] },
     ServiceInfo { name: "monitor", binary: "agentd-monitor", port: 7003, extra_env: &[] },
     ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, extra_env: &[] },

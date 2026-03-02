@@ -208,13 +208,8 @@ pub async fn notify_complete(
 
 fn create_source(config: &TaskSourceConfig) -> Box<dyn TaskSource> {
     match config {
-        TaskSourceConfig::GithubIssues { owner, repo, labels, state } => {
-            Box::new(GithubIssueSource::new(
-                owner.clone(),
-                repo.clone(),
-                labels.clone(),
-                state.clone(),
-            ))
-        }
+        TaskSourceConfig::GithubIssues { owner, repo, labels, state } => Box::new(
+            GithubIssueSource::new(owner.clone(), repo.clone(), labels.clone(), state.clone()),
+        ),
     }
 }
