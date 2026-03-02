@@ -62,10 +62,10 @@ async fn test_trigger_with_no_sessions_sends_notification() {
         .with_body(
             r#"{
             "id": "550e8400-e29b-41d4-a716-446655440000",
-            "source": {"AskService": {"request_id": "550e8400-e29b-41d4-a716-446655440001"}},
-            "lifetime": {"Ephemeral": {"expires_at": "2024-01-01T00:05:00Z"}},
-            "priority": "Normal",
-            "status": "Pending",
+            "source": {"type": "ask_service", "request_id": "550e8400-e29b-41d4-a716-446655440001"},
+            "lifetime": {"type": "ephemeral", "expires_at": "2024-01-01T00:05:00Z"},
+            "priority": "normal",
+            "status": "pending",
             "title": "Start tmux session?",
             "message": "No tmux sessions are currently running. Would you like to start one?",
             "requires_response": true,
@@ -116,10 +116,10 @@ async fn test_trigger_respects_cooldown() {
         .with_body(
             r#"{
             "id": "550e8400-e29b-41d4-a716-446655440000",
-            "source": {"AskService": {"request_id": "550e8400-e29b-41d4-a716-446655440001"}},
-            "lifetime": {"Ephemeral": {"expires_at": "2024-01-01T00:05:00Z"}},
-            "priority": "Normal",
-            "status": "Pending",
+            "source": {"type": "ask_service", "request_id": "550e8400-e29b-41d4-a716-446655440001"},
+            "lifetime": {"type": "ephemeral", "expires_at": "2024-01-01T00:05:00Z"},
+            "priority": "normal",
+            "status": "pending",
             "title": "Start tmux session?",
             "message": "No tmux sessions are currently running. Would you like to start one?",
             "requires_response": true,
@@ -172,10 +172,10 @@ async fn test_answer_valid_question() {
         .with_body(format!(
             r#"{{
             "id": "{notification_id}",
-            "source": {{"AskService": {{"request_id": "550e8400-e29b-41d4-a716-446655440001"}}}},
-            "lifetime": "Persistent",
-            "priority": "Normal",
-            "status": "Responded",
+            "source": {{"type": "ask_service", "request_id": "550e8400-e29b-41d4-a716-446655440001"}},
+            "lifetime": {{"type": "persistent"}},
+            "priority": "normal",
+            "status": "responded",
             "title": "Test",
             "message": "Test message",
             "requires_response": true,
@@ -369,13 +369,34 @@ async fn test_answer_notification_update_fails_but_answer_succeeds() {
 // Test concurrent requests to /trigger endpoint
 #[tokio::test]
 async fn test_concurrent_trigger_requests() {
+    let mut mock_server = Server::new_async().await;
+
+    let _mock = mock_server
+        .mock("POST", "/notifications")
+        .with_status(201)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "source": {"type": "ask_service", "request_id": "550e8400-e29b-41d4-a716-446655440001"},
+            "lifetime": {"type": "ephemeral", "expires_at": "2024-01-01T00:05:00Z"},
+            "priority": "normal",
+            "status": "pending",
+            "title": "Start tmux session?",
+            "message": "No tmux sessions are currently running. Would you like to start one?",
+            "requires_response": true,
+            "response": null,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#,
+        )
+        .create_async()
+        .await;
+
     let app_state = AppState::with_cooldown(Duration::milliseconds(100));
-    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
-    let api_state = ApiState {
-        app_state,
-        notification_client,
-        notification_service_url: "http://localhost:17004".to_string(),
-    };
+    let notification_client = NotificationClient::new(mock_server.url());
+    let api_state =
+        ApiState { app_state, notification_client, notification_service_url: mock_server.url() };
 
     let app = create_router(api_state);
 
@@ -437,13 +458,34 @@ async fn test_health_response_structure() {
 // Test /trigger endpoint response structure
 #[tokio::test]
 async fn test_trigger_response_structure() {
+    let mut mock_server = Server::new_async().await;
+
+    let _mock = mock_server
+        .mock("POST", "/notifications")
+        .with_status(201)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "source": {"type": "ask_service", "request_id": "550e8400-e29b-41d4-a716-446655440001"},
+            "lifetime": {"type": "ephemeral", "expires_at": "2024-01-01T00:05:00Z"},
+            "priority": "normal",
+            "status": "pending",
+            "title": "Start tmux session?",
+            "message": "No tmux sessions are currently running. Would you like to start one?",
+            "requires_response": true,
+            "response": null,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#,
+        )
+        .create_async()
+        .await;
+
     let app_state = AppState::new();
-    let notification_client = NotificationClient::new("http://localhost:17004".to_string());
-    let api_state = ApiState {
-        app_state,
-        notification_client,
-        notification_service_url: "http://localhost:17004".to_string(),
-    };
+    let notification_client = NotificationClient::new(mock_server.url());
+    let api_state =
+        ApiState { app_state, notification_client, notification_service_url: mock_server.url() };
 
     let app = create_router(api_state);
 
