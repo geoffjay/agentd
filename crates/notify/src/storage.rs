@@ -564,6 +564,7 @@ impl NotificationStorage {
     ///     Ok(())
     /// }
     /// ```
+    #[allow(dead_code)]
     pub async fn list(
         &self,
         status_filter: Option<NotificationStatus>,
@@ -715,6 +716,7 @@ impl NotificationStorage {
     ///     Ok(())
     /// }
     /// ```
+    #[allow(dead_code)]
     pub async fn list_actionable(&self) -> Result<Vec<Notification>> {
         let rows = sqlx::query(
             "SELECT * FROM notifications WHERE status IN ('Pending', 'Viewed') ORDER BY priority DESC, created_at DESC"
@@ -761,6 +763,7 @@ impl NotificationStorage {
     ///     Ok(())
     /// }
     /// ```
+    #[allow(dead_code)]
     pub async fn list_history(&self) -> Result<Vec<Notification>> {
         let rows = sqlx::query(
             "SELECT * FROM notifications WHERE status IN ('Dismissed', 'Responded', 'Expired') ORDER BY updated_at DESC"

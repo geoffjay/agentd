@@ -207,6 +207,7 @@ impl SchedulerStorage {
         Ok(count > 0)
     }
 
+    #[allow(dead_code)]
     pub async fn list_dispatches(&self, workflow_id: &Uuid) -> Result<Vec<DispatchRecord>> {
         let rows = sqlx::query(
             "SELECT * FROM dispatch_log WHERE workflow_id = ? ORDER BY dispatched_at DESC",

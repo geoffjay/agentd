@@ -163,6 +163,7 @@ impl AgentManager {
     }
 
     /// List agents with optional status filter.
+    #[allow(dead_code)]
     pub async fn list_agents(&self, status: Option<AgentStatus>) -> anyhow::Result<Vec<Agent>> {
         self.storage.list(status).await
     }
