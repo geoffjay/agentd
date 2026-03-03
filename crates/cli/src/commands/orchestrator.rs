@@ -1009,7 +1009,7 @@ mod tests {
     #[test]
     fn test_disabled_flag_semantics() {
         let disabled = false;
-        assert_eq!(!disabled, true);
+        assert!(!disabled);
         let disabled = true;
         assert!(disabled);
     }
