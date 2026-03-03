@@ -170,6 +170,48 @@ enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+    /// Apply agent and workflow templates from a YAML file or .agentd/ directory.
+    ///
+    /// Creates agents first, waits for them to start, then creates workflows
+    /// that reference those agents by name.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent apply .agentd/                                    # full project
+    /// agent apply .agentd/workflows/issue-worker.yml          # single workflow
+    /// agent apply --dry-run .agentd/                          # validate only
+    /// agent apply --wait-timeout 120 .agentd/                 # custom timeout
+    /// ```
+    Apply {
+        /// Path to a YAML template file or .agentd/ directory
+        path: std::path::PathBuf,
+        /// Validate only, don't create anything
+        #[arg(long)]
+        dry_run: bool,
+        /// Seconds to wait for agents to reach running status (default: 60)
+        #[arg(long, default_value = "60")]
+        wait_timeout: u64,
+    },
+
+    /// Teardown resources defined in a .agentd/ directory.
+    ///
+    /// Deletes workflows first, then agents (reverse of apply order).
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent teardown .agentd/
+    /// agent teardown --dry-run .agentd/
+    /// ```
+    Teardown {
+        /// Path to the .agentd/ directory
+        path: std::path::PathBuf,
+        /// Show what would be deleted without deleting
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Check the health of all agentd services.
     ///
     /// Checks all services concurrently and displays a summary table.
@@ -235,6 +277,23 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "http://localhost:7006".to_string());
             let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
+        }
+        Commands::Apply { path, dry_run, wait_timeout } => {
+            let url = env::var("ORCHESTRATOR_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+            let client = OrchestratorClient::new(url);
+            if path.is_dir() {
+                commands::apply::apply_directory(&client, &path, dry_run, wait_timeout, cli.json)
+                    .await?;
+            } else {
+                commands::apply::apply_workflow_file(&client, &path, dry_run, cli.json).await?;
+            }
+        }
+        Commands::Teardown { path, dry_run } => {
+            let url = env::var("ORCHESTRATOR_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+            let client = OrchestratorClient::new(url);
+            commands::apply::teardown_directory(&client, &path, dry_run, cli.json).await?;
         }
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

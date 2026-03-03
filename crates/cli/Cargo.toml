@@ -22,6 +22,7 @@ uuid = { version = "1.11", features = ["serde", "v4"] }
 prettytable-rs = "0.10"
 tokio-tungstenite = { version = "0.26", features = ["connect", "handshake"] }
 futures-util = "0.3"
+serde_yaml = "0.9"
 
 # Internal dependencies
 notify = { path = "../notify" }
