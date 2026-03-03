@@ -1,4 +1,5 @@
 use crate::scheduler::types::{DispatchRecord, DispatchStatus, WorkflowConfig};
+use crate::types::ToolPolicy;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::{sqlite::SqlitePool, Row};
@@ -27,6 +28,7 @@ impl SchedulerStorage {
                 prompt_template TEXT NOT NULL,
                 poll_interval_secs INTEGER NOT NULL DEFAULT 60,
                 enabled INTEGER NOT NULL DEFAULT 1,
+                tool_policy TEXT NOT NULL DEFAULT '{"mode":"allow_all"}',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -70,10 +72,12 @@ impl SchedulerStorage {
 
     pub async fn add_workflow(&self, workflow: &WorkflowConfig) -> Result<Uuid> {
         let source_config_json = serde_json::to_string(&workflow.source_config)?;
+        let tool_policy_json =
+            serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
         sqlx::query(
             r#"
-            INSERT INTO workflows (id, name, agent_id, source_type, source_config, prompt_template, poll_interval_secs, enabled, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO workflows (id, name, agent_id, source_type, source_config, prompt_template, poll_interval_secs, enabled, tool_policy, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(workflow.id.to_string())
@@ -84,6 +88,7 @@ impl SchedulerStorage {
         .bind(&workflow.prompt_template)
         .bind(workflow.poll_interval_secs as i64)
         .bind(workflow.enabled as i32)
+        .bind(&tool_policy_json)
         .bind(workflow.created_at.to_rfc3339())
         .bind(workflow.updated_at.to_rfc3339())
         .execute(&self.pool)
@@ -113,10 +118,12 @@ impl SchedulerStorage {
     }
 
     pub async fn update_workflow(&self, workflow: &WorkflowConfig) -> Result<()> {
+        let tool_policy_json =
+            serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
         let result = sqlx::query(
             r#"
             UPDATE workflows
-            SET name = ?, prompt_template = ?, poll_interval_secs = ?, enabled = ?, updated_at = ?
+            SET name = ?, prompt_template = ?, poll_interval_secs = ?, enabled = ?, tool_policy = ?, updated_at = ?
             WHERE id = ?
             "#,
         )
@@ -124,6 +131,7 @@ impl SchedulerStorage {
         .bind(&workflow.prompt_template)
         .bind(workflow.poll_interval_secs as i64)
         .bind(workflow.enabled as i32)
+        .bind(&tool_policy_json)
         .bind(workflow.updated_at.to_rfc3339())
         .bind(workflow.id.to_string())
         .execute(&self.pool)
@@ -298,6 +306,7 @@ fn row_to_workflow(row: &sqlx::sqlite::SqliteRow) -> Result<WorkflowConfig> {
     let id: String = row.get("id");
     let agent_id: String = row.get("agent_id");
     let source_config_json: String = row.get("source_config");
+    let tool_policy_json: String = row.get("tool_policy");
     let enabled: bool = row.get::<i32, _>("enabled") != 0;
     let poll_interval: i64 = row.get("poll_interval_secs");
     let created_at: String = row.get("created_at");
@@ -311,6 +320,7 @@ fn row_to_workflow(row: &sqlx::sqlite::SqliteRow) -> Result<WorkflowConfig> {
         prompt_template: row.get("prompt_template"),
         poll_interval_secs: poll_interval as u64,
         enabled,
+        tool_policy: serde_json::from_str(&tool_policy_json).unwrap_or_default(),
         created_at: DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&updated_at)?.with_timezone(&Utc),
     })
@@ -369,6 +379,7 @@ mod tests {
             prompt_template: "Fix: {{title}}".to_string(),
             poll_interval_secs: 60,
             enabled: true,
+            tool_policy: Default::default(),
             created_at: now,
             updated_at: now,
         }
