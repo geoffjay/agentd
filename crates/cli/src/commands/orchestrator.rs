@@ -50,6 +50,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use colored::*;
+use futures_util::StreamExt;
 use serde::Deserialize;
 
 use cli::client::ApiClient;
@@ -129,6 +130,38 @@ pub enum OrchestratorCommand {
     DeleteAgent {
         /// Agent ID (UUID)
         id: String,
+    },
+
+    /// Stream real-time output from agents via WebSocket.
+    ///
+    /// Connects to the orchestrator's monitoring WebSocket endpoint and
+    /// displays agent output with formatted, colored messages.
+    ///
+    /// # Examples
+    ///
+    /// Watch output from a specific agent:
+    ///
+    ///   agent orchestrator stream 550e8400-e29b-41d4-a716-446655440000
+    ///
+    /// Watch output from all agents:
+    ///
+    ///   agent orchestrator stream --all
+    ///
+    /// Stream raw JSON (for piping):
+    ///
+    ///   agent orchestrator stream --all --json
+    Stream {
+        /// Agent ID to stream (omit for --all)
+        #[arg(conflicts_with = "all")]
+        id: Option<String>,
+
+        /// Stream output from all connected agents
+        #[arg(long, conflicts_with = "id")]
+        all: bool,
+
+        /// Show keep-alive and debug messages
+        #[arg(long)]
+        verbose: bool,
     },
 
     /// List all workflows.
@@ -281,6 +314,9 @@ impl OrchestratorCommand {
             }
             OrchestratorCommand::GetAgent { id } => get_agent(client, id, json).await,
             OrchestratorCommand::DeleteAgent { id } => delete_agent(client, id, json).await,
+            OrchestratorCommand::Stream { id, all, verbose } => {
+                stream_agents(client, id.as_deref(), *all, *verbose, json).await
+            }
             OrchestratorCommand::ListWorkflows => list_workflows(client, json).await,
             OrchestratorCommand::CreateWorkflow {
                 name,
@@ -669,6 +705,222 @@ async fn workflow_history(client: &ApiClient, id: &str, json: bool) -> Result<()
     Ok(())
 }
 
+// -- Stream --
+
+/// Stream real-time agent output via WebSocket.
+///
+/// Connects to the orchestrator's monitoring WebSocket and displays
+/// formatted messages until the user presses Ctrl+C.
+async fn stream_agents(
+    _client: &ApiClient,
+    id: Option<&str>,
+    all: bool,
+    verbose: bool,
+    json: bool,
+) -> Result<()> {
+    if id.is_none() && !all {
+        bail!("Either an agent ID or --all must be provided.");
+    }
+
+    // Build the WebSocket URL from the orchestrator's base URL
+    let base_url = std::env::var("ORCHESTRATOR_SERVICE_URL")
+        .unwrap_or_else(|_| "http://localhost:7006".to_string());
+
+    let ws_base = base_url
+        .replace("http://", "ws://")
+        .replace("https://", "wss://");
+
+    let ws_url = match id {
+        Some(agent_id) => format!("{}/stream/{}", ws_base, agent_id),
+        None => format!("{}/stream", ws_base),
+    };
+
+    if !json {
+        let target = match id {
+            Some(agent_id) => format!("agent {}", agent_id),
+            None => "all agents".to_string(),
+        };
+        eprintln!(
+            "{}",
+            format!("Connecting to stream ({})...", target).cyan()
+        );
+        eprintln!(
+            "{}",
+            "Press Ctrl+C to disconnect.".bright_black()
+        );
+        eprintln!();
+    }
+
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url)
+        .await
+        .context("Failed to connect to orchestrator WebSocket. Is the orchestrator running?")?;
+
+    let (_, mut read) = ws_stream.split();
+
+    loop {
+        tokio::select! {
+            msg = read.next() => {
+                match msg {
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
+                        if json {
+                            println!("{}", text);
+                        } else {
+                            format_stream_message(&text, verbose);
+                        }
+                    }
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => {
+                        if !json {
+                            eprintln!("{}", "Stream closed by server.".yellow());
+                        }
+                        break;
+                    }
+                    Some(Err(e)) => {
+                        if !json {
+                            eprintln!("{}", format!("WebSocket error: {}", e).red());
+                        }
+                        break;
+                    }
+                    None => {
+                        if !json {
+                            eprintln!("{}", "Stream ended.".yellow());
+                        }
+                        break;
+                    }
+                    _ => {} // Ping/Pong/Binary — ignore
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                if !json {
+                    eprintln!();
+                    eprintln!("{}", "Disconnected.".yellow());
+                }
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Format and display a single stream-JSON message with colors.
+fn format_stream_message(text: &str, verbose: bool) {
+    let msg: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(_) => {
+            println!("{}", text.bright_black());
+            return;
+        }
+    };
+
+    let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let agent_id = msg
+        .get("agent_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let agent_short = if agent_id.len() > 8 {
+        &agent_id[..8]
+    } else {
+        agent_id
+    };
+    let prefix = format!("[{}]", agent_short).bright_black();
+
+    match msg_type {
+        "assistant" => {
+            // Extract content from the message
+            if let Some(message) = msg.get("message") {
+                if let Some(content) = message.get("content") {
+                    // Content can be a string or an array of content blocks
+                    if let Some(text) = content.as_str() {
+                        for line in text.lines() {
+                            println!("{} {}", prefix, line);
+                        }
+                    } else if let Some(blocks) = content.as_array() {
+                        for block in blocks {
+                            if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+                                for line in text.lines() {
+                                    println!("{} {}", prefix, line);
+                                }
+                            } else if block.get("type").and_then(|v| v.as_str())
+                                == Some("tool_use")
+                            {
+                                let tool = block
+                                    .get("name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("unknown");
+                                println!(
+                                    "{} {}",
+                                    prefix,
+                                    format!("🔧 Using tool: {}", tool).yellow()
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "result" => {
+            let is_error = msg.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+            let result_text = msg
+                .get("result")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if is_error {
+                println!(
+                    "{} {}",
+                    prefix,
+                    format!("❌ Error: {}", result_text).red()
+                );
+            } else {
+                let display = if result_text.is_empty() {
+                    "✅ Task completed".to_string()
+                } else if result_text.len() > 120 {
+                    format!("✅ {}", &result_text[..117])
+                } else {
+                    format!("✅ {}", result_text)
+                };
+                println!("{} {}", prefix, display.green());
+            }
+        }
+        "system" => {
+            if verbose {
+                let subtype = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
+                println!(
+                    "{} {}",
+                    prefix,
+                    format!("[system:{}]", subtype).bright_black()
+                );
+            }
+        }
+        "control_request" => {
+            if let Some(request) = msg.get("request") {
+                let tool_name = request
+                    .get("tool_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                println!(
+                    "{} {}",
+                    prefix,
+                    format!("⚡ Permission request: {}", tool_name).yellow()
+                );
+            }
+        }
+        "keep_alive" => {
+            if verbose {
+                println!("{} {}", prefix, "♥ keep-alive".bright_black());
+            }
+        }
+        _ => {
+            if verbose {
+                println!(
+                    "{} {}",
+                    prefix,
+                    format!("[{}] {}", msg_type, text).bright_black()
+                );
+            }
+        }
+    }
+}
+
 // -- Display helpers --
 
 fn display_agent(agent: &serde_json::Value) {
@@ -1048,5 +1300,152 @@ mod tests {
         } else {
             panic!("Expected CreateWorkflow variant");
         }
+    }
+
+    /// Verify stream subcommand parses with agent ID.
+    #[test]
+    fn test_stream_by_id() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "stream",
+            "550e8400-e29b-41d4-a716-446655440000",
+        ])
+        .expect("Should parse stream with ID");
+
+        if let OrchestratorCommand::Stream { id, all, verbose } = cli.command {
+            assert_eq!(
+                id,
+                Some("550e8400-e29b-41d4-a716-446655440000".to_string())
+            );
+            assert!(!all);
+            assert!(!verbose);
+        } else {
+            panic!("Expected Stream variant");
+        }
+    }
+
+    /// Verify stream --all parses correctly.
+    #[test]
+    fn test_stream_all() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from(["test", "stream", "--all"])
+            .expect("Should parse stream --all");
+
+        if let OrchestratorCommand::Stream { id, all, .. } = cli.command {
+            assert_eq!(id, None);
+            assert!(all);
+        } else {
+            panic!("Expected Stream variant");
+        }
+    }
+
+    /// Verify stream ID and --all conflict.
+    #[test]
+    fn test_stream_id_and_all_conflict() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let result = Cli::try_parse_from([
+            "test",
+            "stream",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--all",
+        ]);
+
+        assert!(result.is_err(), "ID and --all should conflict");
+    }
+
+    /// Verify format_stream_message handles assistant messages.
+    #[test]
+    fn test_format_assistant_message() {
+        let msg = serde_json::json!({
+            "type": "assistant",
+            "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+            "message": {
+                "role": "assistant",
+                "content": "I'll analyze the code."
+            }
+        });
+        // Should not panic
+        format_stream_message(&serde_json::to_string(&msg).unwrap(), false);
+    }
+
+    /// Verify format_stream_message handles result messages.
+    #[test]
+    fn test_format_result_message() {
+        let msg = serde_json::json!({
+            "type": "result",
+            "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+            "is_error": false,
+            "result": "Fixed the bug in main.rs"
+        });
+        // Should not panic
+        format_stream_message(&serde_json::to_string(&msg).unwrap(), false);
+    }
+
+    /// Verify format_stream_message handles error results.
+    #[test]
+    fn test_format_error_result_message() {
+        let msg = serde_json::json!({
+            "type": "result",
+            "agent_id": "abc12345",
+            "is_error": true,
+            "result": "Failed to compile"
+        });
+        format_stream_message(&serde_json::to_string(&msg).unwrap(), false);
+    }
+
+    /// Verify format_stream_message suppresses keep_alive without verbose.
+    #[test]
+    fn test_format_keepalive_suppressed() {
+        let msg = serde_json::json!({
+            "type": "keep_alive",
+            "agent_id": "abc12345"
+        });
+        // Should not print anything (no panic)
+        format_stream_message(&serde_json::to_string(&msg).unwrap(), false);
+    }
+
+    /// Verify format_stream_message handles tool_use content blocks.
+    #[test]
+    fn test_format_tool_use_message() {
+        let msg = serde_json::json!({
+            "type": "assistant",
+            "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Let me read the file."},
+                    {"type": "tool_use", "name": "Read", "input": {"path": "src/main.rs"}}
+                ]
+            }
+        });
+        format_stream_message(&serde_json::to_string(&msg).unwrap(), false);
+    }
+
+    /// Verify format_stream_message handles invalid JSON gracefully.
+    #[test]
+    fn test_format_invalid_json() {
+        format_stream_message("not valid json {{{", false);
     }
 }
