@@ -33,7 +33,7 @@ use crate::scheduler::types::{
 };
 use crate::types::{
     AgentResponse, CreateAgentRequest, HealthResponse, PaginatedResponse, SendMessageRequest,
-    SendMessageResponse,
+    SendMessageResponse, ToolPolicy,
 };
 
 /// Typed HTTP client for the orchestrator service.
@@ -109,6 +109,16 @@ impl OrchestratorClient {
         request: &SendMessageRequest,
     ) -> Result<SendMessageResponse> {
         self.post(&format!("/agents/{}/message", id), request).await
+    }
+
+    /// Get the tool policy for an agent.
+    pub async fn get_agent_policy(&self, id: &Uuid) -> Result<ToolPolicy> {
+        self.get(&format!("/agents/{}/policy", id)).await
+    }
+
+    /// Update the tool policy for an agent.
+    pub async fn update_agent_policy(&self, id: &Uuid, policy: &ToolPolicy) -> Result<ToolPolicy> {
+        self.put(&format!("/agents/{}/policy", id), policy).await
     }
 
     // -- Workflow operations --

@@ -58,7 +58,9 @@ use orchestrator::scheduler::types::{
     CreateWorkflowRequest, DispatchResponse, TaskSourceConfig, UpdateWorkflowRequest,
     WorkflowResponse,
 };
-use orchestrator::types::{AgentResponse, AgentStatus, CreateAgentRequest, SendMessageRequest};
+use orchestrator::types::{
+    AgentResponse, AgentStatus, CreateAgentRequest, SendMessageRequest, ToolPolicy,
+};
 
 /// Orchestrator service management subcommands.
 ///
@@ -146,6 +148,12 @@ pub enum OrchestratorCommand {
         /// Attach to the tmux session after creating the agent
         #[arg(long)]
         attach: bool,
+
+        /// Tool policy as JSON (default: allow all tools)
+        ///
+        /// Examples: '{"mode":"allow_all"}', '{"mode":"deny_list","tools":["Bash"]}'
+        #[arg(long)]
+        tool_policy: Option<String>,
     },
 
     /// Get details of a specific agent.
@@ -237,6 +245,47 @@ pub enum OrchestratorCommand {
         /// Show keep-alive and debug messages
         #[arg(long)]
         verbose: bool,
+    },
+
+    /// Get the tool policy for an agent.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent orchestrator get-policy 550e8400-e29b-41d4-a716-446655440000
+    /// ```
+    GetPolicy {
+        /// Agent ID (UUID)
+        id: String,
+    },
+
+    /// Set the tool policy for an agent.
+    ///
+    /// The policy controls which tools the agent is allowed to use.
+    ///
+    /// # Examples
+    ///
+    /// Allow all tools (default):
+    ///
+    ///   agent orchestrator set-policy <ID> '{"mode":"allow_all"}'
+    ///
+    /// Only allow Read and Grep:
+    ///
+    ///   agent orchestrator set-policy <ID> '{"mode":"allow_list","tools":["Read","Grep"]}'
+    ///
+    /// Block Bash and Write:
+    ///
+    ///   agent orchestrator set-policy <ID> '{"mode":"deny_list","tools":["Bash","Write"]}'
+    ///
+    /// Deny all tools:
+    ///
+    ///   agent orchestrator set-policy <ID> '{"mode":"deny_all"}'
+    SetPolicy {
+        /// Agent ID (UUID)
+        id: String,
+
+        /// Policy as JSON (e.g. '{"mode":"allow_list","tools":["Read","Grep"]}')
+        policy: String,
     },
 
     /// Check the health of the orchestrator service.
@@ -386,6 +435,7 @@ impl OrchestratorCommand {
                 worktree,
                 system_prompt,
                 attach,
+                tool_policy,
             } => {
                 create_agent(
                     client,
@@ -400,6 +450,7 @@ impl OrchestratorCommand {
                     *worktree,
                     system_prompt.as_deref(),
                     *attach,
+                    tool_policy.as_deref(),
                     json,
                 )
                 .await
@@ -414,6 +465,10 @@ impl OrchestratorCommand {
             }
             OrchestratorCommand::Stream { id, all, verbose } => {
                 stream_agents(id.as_deref(), *all, *verbose, json).await
+            }
+            OrchestratorCommand::GetPolicy { id } => get_policy(client, id, json).await,
+            OrchestratorCommand::SetPolicy { id, policy } => {
+                set_policy(client, id, policy, json).await
             }
             OrchestratorCommand::Health => orchestrator_health(client, json).await,
             OrchestratorCommand::ListWorkflows => list_workflows(client, json).await,
@@ -507,6 +562,7 @@ async fn create_agent(
     worktree: bool,
     system_prompt: Option<&str>,
     attach: bool,
+    tool_policy_json: Option<&str>,
     json: bool,
 ) -> Result<()> {
     // Resolve working directory: use provided value or default to $PWD
@@ -514,6 +570,12 @@ async fn create_agent(
 
     // Resolve prompt from --prompt, --prompt-file, or --stdin
     let resolved_prompt = resolve_agent_prompt(prompt, prompt_file, stdin)?;
+
+    // Parse tool policy from JSON string, default to AllowAll
+    let tool_policy: ToolPolicy = match tool_policy_json {
+        Some(s) => serde_json::from_str(s).context("Invalid tool policy JSON. Example: '{\"mode\":\"allow_list\",\"tools\":[\"Read\",\"Grep\"]}'")?,
+        None => Default::default(),
+    };
 
     let request = CreateAgentRequest {
         name: name.to_string(),
@@ -524,7 +586,7 @@ async fn create_agent(
         prompt: resolved_prompt,
         worktree,
         system_prompt: system_prompt.map(|s| s.to_string()),
-        tool_policy: Default::default(),
+        tool_policy,
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -860,6 +922,75 @@ fn format_stream_message(text: &str, verbose: bool) {
     }
 }
 
+// -- Policy --
+
+async fn get_policy(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+    let policy = client.get_agent_policy(&uuid).await.context("Failed to get agent policy")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&policy)?);
+    } else {
+        display_policy(&policy);
+    }
+
+    Ok(())
+}
+
+async fn set_policy(
+    client: &OrchestratorClient,
+    id: &str,
+    policy_json: &str,
+    json: bool,
+) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+    let policy: ToolPolicy = serde_json::from_str(policy_json).context(
+        "Invalid tool policy JSON. Example: '{\"mode\":\"allow_list\",\"tools\":[\"Read\",\"Grep\"]}'",
+    )?;
+
+    let updated = client
+        .update_agent_policy(&uuid, &policy)
+        .await
+        .context("Failed to update agent policy")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&updated)?);
+    } else {
+        println!("{}", "Policy updated successfully!".green().bold());
+        println!();
+        display_policy(&updated);
+    }
+
+    Ok(())
+}
+
+fn display_policy(policy: &ToolPolicy) {
+    match policy {
+        ToolPolicy::AllowAll => {
+            println!("{}: {}", "Mode".bold(), "allow_all".green());
+            println!("{}: all tools permitted", "Effect".bold());
+        }
+        ToolPolicy::DenyAll => {
+            println!("{}: {}", "Mode".bold(), "deny_all".red());
+            println!("{}: no tools permitted", "Effect".bold());
+        }
+        ToolPolicy::AllowList { tools } => {
+            println!("{}: {}", "Mode".bold(), "allow_list".yellow());
+            println!("{}: only these tools permitted:", "Effect".bold());
+            for tool in tools {
+                println!("  - {}", tool.cyan());
+            }
+        }
+        ToolPolicy::DenyList { tools } => {
+            println!("{}: {}", "Mode".bold(), "deny_list".yellow());
+            println!("{}: all tools except these:", "Effect".bold());
+            for tool in tools {
+                println!("  - {}", tool.red());
+            }
+        }
+    }
+}
+
 // -- Health --
 
 async fn orchestrator_health(client: &OrchestratorClient, json: bool) -> Result<()> {
@@ -1169,6 +1300,17 @@ fn display_agent(agent: &AgentResponse) {
     }
     println!("{}: {}", "Working Dir".bold(), agent.config.working_dir);
     println!("{}: {}", "Shell".bold(), agent.config.shell);
+    let policy_display = match &agent.config.tool_policy {
+        ToolPolicy::AllowAll => "allow_all".green().to_string(),
+        ToolPolicy::DenyAll => "deny_all".red().to_string(),
+        ToolPolicy::AllowList { tools } => {
+            format!("{} [{}]", "allow_list".yellow(), tools.join(", "))
+        }
+        ToolPolicy::DenyList { tools } => {
+            format!("{} [{}]", "deny_list".yellow(), tools.join(", "))
+        }
+    };
+    println!("{}: {}", "Tool Policy".bold(), policy_display);
     println!("{}: {}", "Created".bold(), agent.created_at);
 }
 
