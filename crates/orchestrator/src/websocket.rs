@@ -1,4 +1,5 @@
-use crate::types::ToolPolicy;
+use crate::approvals::ApprovalRegistry;
+use crate::types::{ApprovalDecision, ToolPolicy};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -33,6 +34,8 @@ pub struct ConnectionRegistry {
     policies: Arc<RwLock<HashMap<Uuid, ToolPolicy>>>,
     /// Broadcast channel for the multiplexed agent stream.
     stream_tx: broadcast::Sender<String>,
+    /// In-memory store of pending human tool approvals.
+    pub approvals: ApprovalRegistry,
 }
 
 impl Default for ConnectionRegistry {
@@ -49,7 +52,13 @@ impl ConnectionRegistry {
             result_callbacks: Arc::new(RwLock::new(Vec::new())),
             policies: Arc::new(RwLock::new(HashMap::new())),
             stream_tx,
+            approvals: ApprovalRegistry::new(300), // 5-minute default timeout
         }
+    }
+
+    /// Broadcast a raw JSON string to all /stream subscribers.
+    pub fn broadcast(&self, msg: String) {
+        let _ = self.stream_tx.send(msg);
     }
 
     /// Subscribe to the multiplexed agent message stream.
@@ -237,64 +246,74 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
 /// Handle control requests from claude code (e.g., tool permission requests).
 /// Evaluates tool requests against the agent's tool policy.
 async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &ConnectionRegistry) {
-    let request_id = msg.get("request_id").and_then(|v| v.as_str()).unwrap_or("");
+    let request_id = msg
+        .get("request_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     let request = match msg.get("request") {
         Some(r) => r,
         None => return,
     };
 
-    let subtype = request.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
+    let subtype = request
+        .get("subtype")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     match subtype {
         "can_use_tool" => {
-            let tool_name = request.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let input = request.get("input").cloned().unwrap_or(Value::Object(Default::default()));
+            let tool_name = request
+                .get("tool_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let input = request
+                .get("input")
+                .cloned()
+                .unwrap_or(Value::Object(Default::default()));
 
             let policy = registry.get_policy(agent_id).await;
-            let allowed = policy.evaluate(tool_name);
-            let policy_mode = match &policy {
-                ToolPolicy::AllowAll => "allow_all",
-                ToolPolicy::DenyAll => "deny_all",
-                ToolPolicy::AllowList { .. } => "allow_list",
-                ToolPolicy::DenyList { .. } => "deny_list",
-            };
+            let policy_mode = policy.mode_str();
 
-            if allowed {
-                info!(%agent_id, %tool_name, decision = "allow", %policy_mode, "Tool use decision");
-
-                let response = serde_json::json!({
-                    "type": "control_response",
-                    "response": {
-                        "subtype": "success",
-                        "request_id": request_id,
-                        "response": {
-                            "behavior": "allow",
-                            "updatedInput": input,
-                        }
-                    }
-                });
-
-                if let Err(e) = send_raw(agent_id, &response, registry).await {
-                    error!(%agent_id, %e, "Failed to send control response");
+            match policy {
+                ToolPolicy::RequireApproval => {
+                    // Spawn a separate task that holds the response until a human decides.
+                    // The recv loop continues immediately so keep_alive etc. are processed.
+                    info!(%agent_id, %tool_name, %policy_mode, "Tool use requires human approval, holding...");
+                    let registry = registry.clone();
+                    let agent_id = *agent_id;
+                    tokio::spawn(async move {
+                        handle_approval_hold(
+                            agent_id,
+                            request_id,
+                            tool_name,
+                            input,
+                            registry,
+                        )
+                        .await;
+                    });
                 }
-            } else {
-                warn!(%agent_id, %tool_name, decision = "deny", %policy_mode, "Tool use decision");
-
-                let response = serde_json::json!({
-                    "type": "control_response",
-                    "response": {
-                        "subtype": "success",
-                        "request_id": request_id,
-                        "response": {
-                            "behavior": "deny",
-                            "message": format!("Tool '{}' is not allowed by agent policy", tool_name),
+                _ => {
+                    let allowed = policy.evaluate(&tool_name);
+                    if allowed {
+                        info!(%agent_id, %tool_name, decision = "allow", %policy_mode, "Tool use decision");
+                        let response = make_allow_response(&request_id, &input);
+                        if let Err(e) = send_raw(agent_id, &response, registry).await {
+                            error!(%agent_id, %e, "Failed to send control response");
+                        }
+                    } else {
+                        warn!(%agent_id, %tool_name, decision = "deny", %policy_mode, "Tool use decision");
+                        let response = make_deny_response(
+                            &request_id,
+                            &tool_name,
+                            "not allowed by agent policy",
+                        );
+                        if let Err(e) = send_raw(agent_id, &response, registry).await {
+                            error!(%agent_id, %e, "Failed to send deny response");
                         }
                     }
-                });
-
-                if let Err(e) = send_raw(agent_id, &response, registry).await {
-                    error!(%agent_id, %e, "Failed to send deny response");
                 }
             }
         }
@@ -302,6 +321,96 @@ async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &Connect
             debug!(%agent_id, %subtype, "Unhandled control request subtype");
         }
     }
+}
+
+/// Default approval timeout in seconds (5 minutes).
+const APPROVAL_TIMEOUT_SECS: u64 = 300;
+
+/// Hold a tool request pending human approval.
+///
+/// Registers the request in the ApprovalRegistry, broadcasts a `pending_approval`
+/// event on the stream, then waits for a decision (or timeout). Sends the
+/// appropriate control_response to the agent when resolved.
+async fn handle_approval_hold(
+    agent_id: Uuid,
+    request_id: String,
+    tool_name: String,
+    tool_input: Value,
+    registry: ConnectionRegistry,
+) {
+    let (approval, rx) = registry
+        .approvals
+        .register(agent_id, request_id.clone(), tool_name.clone(), tool_input.clone())
+        .await;
+
+    // Broadcast pending_approval event for stream subscribers / UIs
+    let stream_event = serde_json::json!({
+        "type": "pending_approval",
+        "agent_id": agent_id,
+        "approval_id": approval.id,
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+        "expires_at": approval.expires_at,
+    });
+    registry.broadcast(stream_event.to_string());
+
+    // Wait for human decision or timeout
+    let timeout = tokio::time::Duration::from_secs(APPROVAL_TIMEOUT_SECS);
+    let decision = tokio::time::timeout(timeout, rx).await;
+
+    match decision {
+        Ok(Ok(ApprovalDecision::Approve)) => {
+            info!(%agent_id, %tool_name, approval_id = %approval.id, "Tool approved by human");
+            let response = make_allow_response(&request_id, &tool_input);
+            if let Err(e) = send_raw(&agent_id, &response, &registry).await {
+                error!(%agent_id, %e, "Failed to send approve response");
+            }
+        }
+        Ok(Ok(ApprovalDecision::Deny)) | Ok(Err(_)) => {
+            warn!(%agent_id, %tool_name, approval_id = %approval.id, "Tool denied by human");
+            let response = make_deny_response(&request_id, &tool_name, "denied by human operator");
+            if let Err(e) = send_raw(&agent_id, &response, &registry).await {
+                error!(%agent_id, %e, "Failed to send deny response");
+            }
+        }
+        Err(_elapsed) => {
+            warn!(%agent_id, %tool_name, approval_id = %approval.id, "Approval timed out, auto-denying");
+            registry.approvals.mark_timed_out(&approval.id).await;
+            let response = make_deny_response(
+                &request_id,
+                &tool_name,
+                "approval timeout — no human decision within 5 minutes",
+            );
+            if let Err(e) = send_raw(&agent_id, &response, &registry).await {
+                error!(%agent_id, %e, "Failed to send timeout-deny response");
+            }
+        }
+    }
+}
+
+fn make_allow_response(request_id: &str, input: &Value) -> Value {
+    serde_json::json!({
+        "type": "control_response",
+        "response": {
+            "subtype": "success",
+            "request_id": request_id,
+            "response": { "behavior": "allow", "updatedInput": input }
+        }
+    })
+}
+
+fn make_deny_response(request_id: &str, tool_name: &str, reason: &str) -> Value {
+    serde_json::json!({
+        "type": "control_response",
+        "response": {
+            "subtype": "success",
+            "request_id": request_id,
+            "response": {
+                "behavior": "deny",
+                "message": format!("Tool '{}': {}", tool_name, reason),
+            }
+        }
+    })
 }
 
 /// Axum handler for the multiplexed stream at /stream.

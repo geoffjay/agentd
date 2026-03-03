@@ -59,16 +59,33 @@ pub enum ToolPolicy {
     AllowList { tools: Vec<String> },
     /// Allow everything except the listed tools.
     DenyList { tools: Vec<String> },
+    /// Hold every tool request for human approval before permitting it.
+    RequireApproval,
 }
 
 impl ToolPolicy {
     /// Evaluate whether a tool is allowed by this policy.
+    ///
+    /// Note: `RequireApproval` returns `false` here as a fallback — the actual
+    /// approval logic is handled in `websocket.rs` before `evaluate` is called.
     pub fn evaluate(&self, tool_name: &str) -> bool {
         match self {
             ToolPolicy::AllowAll => true,
             ToolPolicy::DenyAll => false,
             ToolPolicy::AllowList { tools } => tools.iter().any(|t| t == tool_name),
             ToolPolicy::DenyList { tools } => !tools.iter().any(|t| t == tool_name),
+            ToolPolicy::RequireApproval => false,
+        }
+    }
+
+    /// Returns the policy mode as a string for logging.
+    pub fn mode_str(&self) -> &'static str {
+        match self {
+            ToolPolicy::AllowAll => "allow_all",
+            ToolPolicy::DenyAll => "deny_all",
+            ToolPolicy::AllowList { .. } => "allow_list",
+            ToolPolicy::DenyList { .. } => "deny_list",
+            ToolPolicy::RequireApproval => "require_approval",
         }
     }
 }
@@ -227,6 +244,74 @@ pub struct SendMessageResponse {
     pub agent_id: Uuid,
 }
 
+// -- Tool approval types --
+
+/// Status of a pending tool approval request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalStatus {
+    Pending,
+    Approved,
+    Denied,
+    TimedOut,
+}
+
+impl std::fmt::Display for ApprovalStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ApprovalStatus::Pending => write!(f, "pending"),
+            ApprovalStatus::Approved => write!(f, "approved"),
+            ApprovalStatus::Denied => write!(f, "denied"),
+            ApprovalStatus::TimedOut => write!(f, "timed_out"),
+        }
+    }
+}
+
+impl std::str::FromStr for ApprovalStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(ApprovalStatus::Pending),
+            "approved" => Ok(ApprovalStatus::Approved),
+            "denied" => Ok(ApprovalStatus::Denied),
+            "timed_out" => Ok(ApprovalStatus::TimedOut),
+            _ => Err(anyhow::anyhow!("Unknown approval status: {}", s)),
+        }
+    }
+}
+
+/// An in-flight tool approval request awaiting human decision.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingApproval {
+    pub id: Uuid,
+    pub agent_id: Uuid,
+    /// The WebSocket request_id from the claude control_request message.
+    pub request_id: String,
+    pub tool_name: String,
+    /// Full tool input as JSON (for display in the UI/CLI).
+    pub tool_input: serde_json::Value,
+    pub status: ApprovalStatus,
+    pub created_at: DateTime<Utc>,
+    /// When the approval will auto-deny if not acted on.
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Decision to resolve a pending approval.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalDecision {
+    Approve,
+    Deny,
+}
+
+/// Request body for approval/deny endpoints (allows future extension).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ApprovalActionRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,5 +400,43 @@ mod tests {
         let policy = ToolPolicy::DenyList { tools: vec![] };
         assert!(policy.evaluate("Read"));
         assert!(policy.evaluate("Bash"));
+    }
+
+    #[test]
+    fn test_tool_policy_require_approval() {
+        let policy = ToolPolicy::RequireApproval;
+        // evaluate returns false as fallback — actual logic is in websocket.rs
+        assert!(!policy.evaluate("Bash"));
+        assert!(!policy.evaluate("Read"));
+    }
+
+    #[test]
+    fn test_tool_policy_serialization_require_approval() {
+        let policy = ToolPolicy::RequireApproval;
+        let json = serde_json::to_string(&policy).unwrap();
+        assert!(json.contains("require_approval"));
+
+        let deserialized: ToolPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ToolPolicy::RequireApproval);
+    }
+
+    #[test]
+    fn test_approval_status_display_and_parse() {
+        for (status, expected) in [
+            (ApprovalStatus::Pending, "pending"),
+            (ApprovalStatus::Approved, "approved"),
+            (ApprovalStatus::Denied, "denied"),
+            (ApprovalStatus::TimedOut, "timed_out"),
+        ] {
+            assert_eq!(status.to_string(), expected);
+            assert_eq!(expected.parse::<ApprovalStatus>().unwrap(), status);
+        }
+    }
+
+    #[test]
+    fn test_tool_policy_mode_str() {
+        assert_eq!(ToolPolicy::AllowAll.mode_str(), "allow_all");
+        assert_eq!(ToolPolicy::DenyAll.mode_str(), "deny_all");
+        assert_eq!(ToolPolicy::RequireApproval.mode_str(), "require_approval");
     }
 }

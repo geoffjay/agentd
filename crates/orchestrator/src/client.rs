@@ -32,8 +32,8 @@ use crate::scheduler::types::{
     CreateWorkflowRequest, DispatchResponse, UpdateWorkflowRequest, WorkflowResponse,
 };
 use crate::types::{
-    AgentResponse, CreateAgentRequest, HealthResponse, PaginatedResponse, SendMessageRequest,
-    SendMessageResponse, ToolPolicy,
+    AgentResponse, ApprovalActionRequest, ApprovalStatus, CreateAgentRequest, HealthResponse,
+    PaginatedResponse, PendingApproval, SendMessageRequest, SendMessageResponse, ToolPolicy,
 };
 
 /// Typed HTTP client for the orchestrator service.
@@ -119,6 +119,56 @@ impl OrchestratorClient {
     /// Update the tool policy for an agent.
     pub async fn update_agent_policy(&self, id: &Uuid, policy: &ToolPolicy) -> Result<ToolPolicy> {
         self.put(&format!("/agents/{}/policy", id), policy).await
+    }
+
+    // -- Approval operations --
+
+    /// List all pending tool approval requests.
+    pub async fn list_approvals(
+        &self,
+        status: Option<&str>,
+    ) -> Result<PaginatedResponse<PendingApproval>> {
+        let path = match status {
+            Some(s) => format!("/approvals?status={}", s),
+            None => "/approvals?status=pending".to_string(),
+        };
+        self.get(&path).await
+    }
+
+    /// List approval requests for a specific agent.
+    pub async fn list_agent_approvals(
+        &self,
+        agent_id: &Uuid,
+        status: Option<&str>,
+    ) -> Result<PaginatedResponse<PendingApproval>> {
+        let path = match status {
+            Some(s) => format!("/agents/{}/approvals?status={}", agent_id, s),
+            None => format!("/agents/{}/approvals?status=pending", agent_id),
+        };
+        self.get(&path).await
+    }
+
+    /// Get a specific approval request.
+    pub async fn get_approval(&self, id: &Uuid) -> Result<PendingApproval> {
+        self.get(&format!("/approvals/{}", id)).await
+    }
+
+    /// Approve a pending tool request.
+    pub async fn approve_tool(&self, id: &Uuid) -> Result<PendingApproval> {
+        self.post(
+            &format!("/approvals/{}/approve", id),
+            &ApprovalActionRequest::default(),
+        )
+        .await
+    }
+
+    /// Deny a pending tool request.
+    pub async fn deny_tool(&self, id: &Uuid) -> Result<PendingApproval> {
+        self.post(
+            &format!("/approvals/{}/deny", id),
+            &ApprovalActionRequest::default(),
+        )
+        .await
     }
 
     // -- Workflow operations --
