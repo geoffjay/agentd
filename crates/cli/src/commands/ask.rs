@@ -104,10 +104,7 @@ impl AskCommand {
 }
 
 async fn ask_health(client: &AskClient, json: bool) -> Result<()> {
-    let response = client
-        .health()
-        .await
-        .context("Failed to reach ask service. Is it running?")?;
+    let response = client.health().await.context("Failed to reach ask service. Is it running?")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);

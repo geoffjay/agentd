@@ -592,10 +592,7 @@ async fn respond_to_notification(
 }
 
 async fn notify_health(client: &NotifyClient, json: bool) -> Result<()> {
-    client
-        .health()
-        .await
-        .context("Failed to reach notification service. Is it running?")?;
+    client.health().await.context("Failed to reach notification service. Is it running?")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&serde_json::json!({"status": "ok"}))?);

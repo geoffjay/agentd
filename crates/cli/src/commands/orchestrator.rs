@@ -58,9 +58,7 @@ use orchestrator::scheduler::types::{
     CreateWorkflowRequest, DispatchResponse, TaskSourceConfig, UpdateWorkflowRequest,
     WorkflowResponse,
 };
-use orchestrator::types::{
-    AgentResponse, AgentStatus, CreateAgentRequest, SendMessageRequest,
-};
+use orchestrator::types::{AgentResponse, AgentStatus, CreateAgentRequest, SendMessageRequest};
 
 /// Orchestrator service management subcommands.
 ///
@@ -611,17 +609,13 @@ async fn attach_agent(
     };
 
     if agent.status != AgentStatus::Running {
-        bail!(
-            "Agent '{}' is not running (status: {}). Cannot attach.",
-            agent.name,
-            agent.status
-        );
+        bail!("Agent '{}' is not running (status: {}). Cannot attach.", agent.name, agent.status);
     }
 
-    let session = agent.tmux_session.as_deref().context(format!(
-        "Agent '{}' has no tmux session. It may have crashed.",
-        agent.name
-    ))?;
+    let session = agent
+        .tmux_session
+        .as_deref()
+        .context(format!("Agent '{}' has no tmux session. It may have crashed.", agent.name))?;
 
     if std::process::Command::new("tmux")
         .arg("-V")
@@ -649,10 +643,7 @@ async fn attach_agent(
         ),
     }
 
-    println!(
-        "{}",
-        format!("Attaching to agent '{}' (session: {})...", agent.name, session).cyan()
-    );
+    println!("{}", format!("Attaching to agent '{}' (session: {})...", agent.name, session).cyan());
 
     let exit = std::process::Command::new("tmux")
         .args(["attach-session", "-t", session])
@@ -714,10 +705,7 @@ async fn send_message_cmd(
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);
     } else {
-        println!(
-            "{}",
-            format!("Message sent to agent ({}).", response.agent_id).green().bold()
-        );
+        println!("{}", format!("Message sent to agent ({}).", response.agent_id).green().bold());
     }
 
     Ok(())
@@ -725,12 +713,7 @@ async fn send_message_cmd(
 
 // -- Stream --
 
-async fn stream_agents(
-    id: Option<&str>,
-    all: bool,
-    verbose: bool,
-    json: bool,
-) -> Result<()> {
+async fn stream_agents(id: Option<&str>, all: bool, verbose: bool, json: bool) -> Result<()> {
     if id.is_none() && !all {
         bail!("Either an agent ID or --all must be provided.");
     }
@@ -796,7 +779,10 @@ async fn stream_agents(
 fn format_stream_message(text: &str, verbose: bool) {
     let msg: serde_json::Value = match serde_json::from_str(text) {
         Ok(v) => v,
-        Err(_) => { println!("{}", text.bright_black()); return; }
+        Err(_) => {
+            println!("{}", text.bright_black());
+            return;
+        }
     };
 
     let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
@@ -809,14 +795,24 @@ fn format_stream_message(text: &str, verbose: bool) {
             if let Some(message) = msg.get("message") {
                 if let Some(content) = message.get("content") {
                     if let Some(text) = content.as_str() {
-                        for line in text.lines() { println!("{} {}", prefix, line); }
+                        for line in text.lines() {
+                            println!("{} {}", prefix, line);
+                        }
                     } else if let Some(blocks) = content.as_array() {
                         for block in blocks {
                             if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                                for line in text.lines() { println!("{} {}", prefix, line); }
-                            } else if block.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
-                                let tool = block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                                println!("{} {}", prefix, format!("🔧 Using tool: {}", tool).yellow());
+                                for line in text.lines() {
+                                    println!("{} {}", prefix, line);
+                                }
+                            } else if block.get("type").and_then(|v| v.as_str()) == Some("tool_use")
+                            {
+                                let tool =
+                                    block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                println!(
+                                    "{} {}",
+                                    prefix,
+                                    format!("🔧 Using tool: {}", tool).yellow()
+                                );
                             }
                         }
                     }
@@ -829,31 +825,46 @@ fn format_stream_message(text: &str, verbose: bool) {
             if is_error {
                 println!("{} {}", prefix, format!("❌ Error: {}", result_text).red());
             } else {
-                let display = if result_text.is_empty() { "✅ Task completed".to_string() }
-                    else if result_text.len() > 120 { format!("✅ {}", &result_text[..117]) }
-                    else { format!("✅ {}", result_text) };
+                let display = if result_text.is_empty() {
+                    "✅ Task completed".to_string()
+                } else if result_text.len() > 120 {
+                    format!("✅ {}", &result_text[..117])
+                } else {
+                    format!("✅ {}", result_text)
+                };
                 println!("{} {}", prefix, display.green());
             }
         }
-        "system" => { if verbose { let s = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or(""); println!("{} {}", prefix, format!("[system:{}]", s).bright_black()); } }
+        "system" => {
+            if verbose {
+                let s = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
+                println!("{} {}", prefix, format!("[system:{}]", s).bright_black());
+            }
+        }
         "control_request" => {
             if let Some(request) = msg.get("request") {
                 let tool = request.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown");
                 println!("{} {}", prefix, format!("⚡ Permission request: {}", tool).yellow());
             }
         }
-        "keep_alive" => { if verbose { println!("{} {}", prefix, "♥ keep-alive".bright_black()); } }
-        _ => { if verbose { println!("{} {}", prefix, format!("[{}]", msg_type).bright_black()); } }
+        "keep_alive" => {
+            if verbose {
+                println!("{} {}", prefix, "♥ keep-alive".bright_black());
+            }
+        }
+        _ => {
+            if verbose {
+                println!("{} {}", prefix, format!("[{}]", msg_type).bright_black());
+            }
+        }
     }
 }
 
 // -- Health --
 
 async fn orchestrator_health(client: &OrchestratorClient, json: bool) -> Result<()> {
-    let response = client
-        .health()
-        .await
-        .context("Failed to reach orchestrator service. Is it running?")?;
+    let response =
+        client.health().await.context("Failed to reach orchestrator service. Is it running?")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);

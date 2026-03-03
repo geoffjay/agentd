@@ -233,12 +233,24 @@ struct ServiceDef {
 }
 
 const SERVICES: &[ServiceDef] = &[
-    ServiceDef { name: "orchestrator", env_var: "ORCHESTRATOR_SERVICE_URL", default_url: "http://localhost:7006" },
-    ServiceDef { name: "notify", env_var: "NOTIFY_SERVICE_URL", default_url: "http://localhost:7004" },
+    ServiceDef {
+        name: "orchestrator",
+        env_var: "ORCHESTRATOR_SERVICE_URL",
+        default_url: "http://localhost:7006",
+    },
+    ServiceDef {
+        name: "notify",
+        env_var: "NOTIFY_SERVICE_URL",
+        default_url: "http://localhost:7004",
+    },
     ServiceDef { name: "ask", env_var: "ASK_SERVICE_URL", default_url: "http://localhost:7001" },
     ServiceDef { name: "wrap", env_var: "WRAP_SERVICE_URL", default_url: "http://localhost:7005" },
     ServiceDef { name: "hook", env_var: "HOOK_SERVICE_URL", default_url: "http://localhost:7002" },
-    ServiceDef { name: "monitor", env_var: "MONITOR_SERVICE_URL", default_url: "http://localhost:7003" },
+    ServiceDef {
+        name: "monitor",
+        env_var: "MONITOR_SERVICE_URL",
+        default_url: "http://localhost:7003",
+    },
 ];
 
 #[derive(serde::Serialize)]
@@ -253,9 +265,7 @@ struct ServiceStatus {
 }
 
 async fn check_all_services(json: bool) -> Result<()> {
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(3))
-        .build()?;
+    let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build()?;
 
     let checks: Vec<(&str, String)> = SERVICES
         .iter()
@@ -274,13 +284,29 @@ async fn check_all_services(json: bool) -> Result<()> {
         handles.push(tokio::spawn(async move {
             match client.get(&health_url).send().await {
                 Ok(resp) if resp.status().is_success() => {
-                    let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
-                    let detail = body.get("agents_active").and_then(|v| v.as_u64()).map(|n| format!("{n} agents active"));
+                    let body: serde_json::Value =
+                        resp.json().await.unwrap_or(serde_json::json!({}));
+                    let detail = body
+                        .get("agents_active")
+                        .and_then(|v| v.as_u64())
+                        .map(|n| format!("{n} agents active"));
                     ServiceStatus { name, url, healthy: true, detail, error: None }
                 }
-                Ok(resp) => ServiceStatus { name, url, healthy: false, detail: None, error: Some(format!("HTTP {}", resp.status())) },
+                Ok(resp) => ServiceStatus {
+                    name,
+                    url,
+                    healthy: false,
+                    detail: None,
+                    error: Some(format!("HTTP {}", resp.status())),
+                },
                 Err(e) => {
-                    let msg = if e.is_connect() { "connection refused".to_string() } else if e.is_timeout() { "timeout".to_string() } else { e.to_string() };
+                    let msg = if e.is_connect() {
+                        "connection refused".to_string()
+                    } else if e.is_timeout() {
+                        "timeout".to_string()
+                    } else {
+                        e.to_string()
+                    };
                     ServiceStatus { name, url, healthy: false, detail: None, error: Some(msg) }
                 }
             }
@@ -288,7 +314,9 @@ async fn check_all_services(json: bool) -> Result<()> {
     }
 
     let mut results = Vec::new();
-    for handle in handles { results.push(handle.await?); }
+    for handle in handles {
+        results.push(handle.await?);
+    }
 
     if json {
         println!("{}", serde_json::to_string_pretty(&results)?);
@@ -308,7 +336,11 @@ async fn check_all_services(json: bool) -> Result<()> {
 
         if status.healthy {
             let detail = status.detail.as_deref().unwrap_or("");
-            let detail_display = if detail.is_empty() { "ok".green().to_string() } else { format!("{}  ({})", "ok".green(), detail.cyan()) };
+            let detail_display = if detail.is_empty() {
+                "ok".green().to_string()
+            } else {
+                format!("{}  ({})", "ok".green(), detail.cyan())
+            };
             println!("  {} {} {}  {}", indicator, name_padded.bold(), url_display, detail_display);
         } else {
             let err = status.error.as_deref().unwrap_or("unknown error");
