@@ -79,9 +79,7 @@ async fn main() -> anyhow::Result<()> {
     let app = create_router(state).layer(
         tower_http::trace::TraceLayer::new_for_http()
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
-            .on_response(
-                tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO),
-            ),
+            .on_response(tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
     );
 
     // Bind and serve.

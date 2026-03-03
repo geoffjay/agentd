@@ -712,9 +712,8 @@ mod tests {
 
     #[test]
     fn test_config_builder() {
-        let config = BamlClientConfig::new("http://example.com")
-            .with_timeout(10)
-            .with_max_retries(5);
+        let config =
+            BamlClientConfig::new("http://example.com").with_timeout(10).with_max_retries(5);
         assert_eq!(config.base_url, "http://example.com");
         assert_eq!(config.timeout_secs, 10);
         assert_eq!(config.max_retries, 5);
@@ -734,20 +733,21 @@ mod tests {
             .mock("POST", "/call/CategorizeNotification")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"{
+            .with_body(
+                r#"{
                 "category": "error",
                 "priority": "high",
                 "suggested_lifetime": "persistent",
                 "reasoning": "Database error detected",
                 "suggested_action": "Check database connectivity"
-            }"#)
+            }"#,
+            )
             .create_async()
             .await;
 
         let client = client_with_url(&server.url());
-        let result = client
-            .categorize_notification("DB Error", "Connection lost", "production")
-            .await;
+        let result =
+            client.categorize_notification("DB Error", "Connection lost", "production").await;
 
         assert!(result.is_ok());
         let category = result.unwrap();
@@ -761,11 +761,8 @@ mod tests {
     #[tokio::test]
     async fn test_function_not_found() {
         let mut server = Server::new_async().await;
-        let mock = server
-            .mock("POST", "/call/NonExistentFunction")
-            .with_status(404)
-            .create_async()
-            .await;
+        let mock =
+            server.mock("POST", "/call/NonExistentFunction").with_status(404).create_async().await;
 
         let client = client_with_url(&server.url());
         let result: Result<String> = client.call_function("NonExistentFunction", &"{}").await;
@@ -804,9 +801,7 @@ mod tests {
             .await;
 
         let client = client_with_url(&server.url());
-        let result = client
-            .categorize_notification("Test", "Test", "test")
-            .await;
+        let result = client.categorize_notification("Test", "Test", "test").await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), BamlError::InvalidResponse(_)));
@@ -816,9 +811,7 @@ mod tests {
     #[tokio::test]
     async fn test_server_unreachable() {
         let client = client_with_url("http://127.0.0.1:19999");
-        let result = client
-            .categorize_notification("Test", "Test", "test")
-            .await;
+        let result = client.categorize_notification("Test", "Test", "test").await;
 
         assert!(result.is_err());
     }
@@ -859,12 +852,8 @@ mod tests {
     async fn test_no_retry_on_404() {
         let mut server = Server::new_async().await;
 
-        let mock = server
-            .mock("POST", "/call/Missing")
-            .with_status(404)
-            .expect(1)
-            .create_async()
-            .await;
+        let mock =
+            server.mock("POST", "/call/Missing").with_status(404).expect(1).create_async().await;
 
         let client = client_with_retries(&server.url(), 2);
         let result: Result<String> = client.call_function("Missing", &"{}").await;
@@ -902,7 +891,8 @@ mod tests {
         let mock = server
             .mock("POST", "/call/SummarizeNotifications")
             .with_status(200)
-            .with_body(r#"{
+            .with_body(
+                r#"{
                 "summary": "5 notifications in the last hour",
                 "key_actions": ["Review database alerts"],
                 "urgent_count": 1,
@@ -912,7 +902,8 @@ mod tests {
                 "categories": {"error": 3, "info": 2},
                 "trends": "Increasing error rate",
                 "recommendations": ["Check database"]
-            }"#)
+            }"#,
+            )
             .create_async()
             .await;
 
@@ -933,13 +924,15 @@ mod tests {
         let mock = server
             .mock("POST", "/call/AnalyzeAnswer")
             .with_status(200)
-            .with_body(r#"{
+            .with_body(
+                r#"{
                 "interpretation": "User agrees",
                 "confidence": 0.95,
                 "suggested_action": "proceed",
                 "needs_followup": false,
                 "followup_question": null
-            }"#)
+            }"#,
+            )
             .create_async()
             .await;
 
@@ -959,7 +952,8 @@ mod tests {
         let mock = server
             .mock("POST", "/call/AnalyzeShellEvent")
             .with_status(200)
-            .with_body(r#"{
+            .with_body(
+                r#"{
                 "should_notify": true,
                 "notification_title": "Build Failed",
                 "notification_message": "cargo build exited with code 1",
@@ -968,14 +962,14 @@ mod tests {
                 "metadata": {},
                 "indicates_problem": true,
                 "suggested_actions": ["Fix compilation errors"]
-            }"#)
+            }"#,
+            )
             .create_async()
             .await;
 
         let client = client_with_url(&server.url());
-        let result = client
-            .analyze_shell_event("cargo build", 1, "error[E0308]", 5000, "development")
-            .await;
+        let result =
+            client.analyze_shell_event("cargo build", 1, "error[E0308]", 5000, "development").await;
 
         assert!(result.is_ok());
         let action = result.unwrap();
