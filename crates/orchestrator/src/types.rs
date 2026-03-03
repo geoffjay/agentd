@@ -240,9 +240,7 @@ mod tests {
 
     #[test]
     fn test_tool_policy_allow_list() {
-        let policy = ToolPolicy::AllowList {
-            tools: vec!["Read".to_string(), "Grep".to_string()],
-        };
+        let policy = ToolPolicy::AllowList { tools: vec!["Read".to_string(), "Grep".to_string()] };
         assert!(policy.evaluate("Read"));
         assert!(policy.evaluate("Grep"));
         assert!(!policy.evaluate("Bash"));
@@ -251,9 +249,7 @@ mod tests {
 
     #[test]
     fn test_tool_policy_deny_list() {
-        let policy = ToolPolicy::DenyList {
-            tools: vec!["Bash".to_string(), "Write".to_string()],
-        };
+        let policy = ToolPolicy::DenyList { tools: vec!["Bash".to_string(), "Write".to_string()] };
         assert!(!policy.evaluate("Bash"));
         assert!(!policy.evaluate("Write"));
         assert!(policy.evaluate("Read"));
@@ -279,9 +275,7 @@ mod tests {
 
     #[test]
     fn test_tool_policy_serialization_deny_list() {
-        let policy = ToolPolicy::DenyList {
-            tools: vec!["Bash".to_string(), "Write".to_string()],
-        };
+        let policy = ToolPolicy::DenyList { tools: vec!["Bash".to_string(), "Write".to_string()] };
         let json = serde_json::to_string(&policy).unwrap();
         assert!(json.contains("deny_list"));
         assert!(json.contains("Bash"));
@@ -292,9 +286,7 @@ mod tests {
 
     #[test]
     fn test_tool_policy_serialization_allow_list() {
-        let policy = ToolPolicy::AllowList {
-            tools: vec!["Read".to_string()],
-        };
+        let policy = ToolPolicy::AllowList { tools: vec!["Read".to_string()] };
         let json = serde_json::to_string(&policy).unwrap();
 
         let deserialized: ToolPolicy = serde_json::from_str(&json).unwrap();

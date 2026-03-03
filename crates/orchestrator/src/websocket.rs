@@ -1,3 +1,4 @@
+use crate::types::ToolPolicy;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -5,7 +6,6 @@ use axum::{
     },
     response::IntoResponse,
 };
-use crate::types::ToolPolicy;
 use futures::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -75,12 +75,7 @@ impl ConnectionRegistry {
 
     /// Get the tool policy for an agent (defaults to AllowAll if not set).
     pub async fn get_policy(&self, agent_id: &Uuid) -> ToolPolicy {
-        self.policies
-            .read()
-            .await
-            .get(agent_id)
-            .cloned()
-            .unwrap_or_default()
+        self.policies.read().await.get(agent_id).cloned().unwrap_or_default()
     }
 
     /// Send a user message (prompt) to a connected agent.

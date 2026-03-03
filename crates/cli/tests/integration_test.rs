@@ -913,7 +913,6 @@ mod orchestrator_agent_tests {
 
         let client = ApiClient::new(server.url());
 
-
         let result: Result<PaginatedResponse, _> = client.get("/agents").await;
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -939,7 +938,6 @@ mod orchestrator_agent_tests {
 
         let client = ApiClient::new(server.url());
 
-
         let result: Result<PaginatedResponse, _> = client.get("/agents?status=running").await;
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -963,7 +961,6 @@ mod orchestrator_agent_tests {
 
         let client = ApiClient::new(server.url());
 
-
         let result: Result<PaginatedResponse, _> = client.get("/agents").await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().items.len(), 0);
@@ -986,8 +983,7 @@ mod orchestrator_agent_tests {
             .await;
 
         let client = ApiClient::new(server.url());
-        let result: Result<serde_json::Value, _> =
-            client.get(&format!("/agents/{agent_id}")).await;
+        let result: Result<serde_json::Value, _> = client.get(&format!("/agents/{agent_id}")).await;
         assert!(result.is_ok());
         let fetched = result.unwrap();
         assert_eq!(fetched["id"], agent_id);
@@ -1009,8 +1005,7 @@ mod orchestrator_agent_tests {
             .await;
 
         let client = ApiClient::new(server.url());
-        let result: Result<serde_json::Value, _> =
-            client.get(&format!("/agents/{agent_id}")).await;
+        let result: Result<serde_json::Value, _> = client.get(&format!("/agents/{agent_id}")).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("404"));
 
@@ -1255,7 +1250,6 @@ mod orchestrator_workflow_tests {
 
         let client = ApiClient::new(server.url());
 
-
         let result: Result<PaginatedResponse, _> = client.get("/workflows").await;
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -1386,7 +1380,6 @@ mod orchestrator_workflow_tests {
 
         let client = ApiClient::new(server.url());
 
-
         let result: Result<PaginatedResponse, _> =
             client.get(&format!("/workflows/{workflow_id}/history")).await;
         assert!(result.is_ok());
@@ -1413,7 +1406,6 @@ mod orchestrator_workflow_tests {
             .await;
 
         let client = ApiClient::new(server.url());
-
 
         let result: Result<PaginatedResponse, _> =
             client.get(&format!("/workflows/{workflow_id}/history")).await;
@@ -1485,7 +1477,6 @@ mod orchestrator_workflow_tests {
 
         let client = ApiClient::new(server.url());
 
-
         let result: Result<PaginatedResponse, _> = client.get("/agents").await;
         assert!(result.is_ok());
         let items = result.unwrap().items;
@@ -1539,7 +1530,6 @@ mod orchestrator_error_tests {
 
         let client = ApiClient::new(server.url());
 
-
         let result: Result<PaginatedResponse, _> = client.get("/workflows").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("500"));
@@ -1576,7 +1566,6 @@ mod orchestrator_error_tests {
             .await;
 
         let client = ApiClient::new(server.url());
-
 
         let result: Result<PaginatedResponse, _> = client.get("/agents").await;
         assert!(result.is_err(), "Should fail to parse non-paginated response");

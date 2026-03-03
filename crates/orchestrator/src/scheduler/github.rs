@@ -1,9 +1,9 @@
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::types::Task;
 use async_trait::async_trait;
-use std::sync::LazyLock;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tracing::{debug, warn};
 
 /// Resolve the absolute path to the `gh` CLI at process start.
@@ -18,11 +18,7 @@ static GH_PATH: LazyLock<String> = LazyLock::new(|| {
         return p;
     }
 
-    let candidates = [
-        "/opt/homebrew/bin/gh",
-        "/usr/local/bin/gh",
-        "/usr/bin/gh",
-    ];
+    let candidates = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"];
     for path in candidates {
         if std::path::Path::new(path).exists() {
             return path.to_string();

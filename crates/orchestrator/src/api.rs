@@ -44,10 +44,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents", get(list_agents).post(create_agent))
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
         .route("/agents/{id}/message", post(send_message))
-        .route(
-            "/agents/{id}/policy",
-            get(get_agent_policy).put(update_agent_policy),
-        )
+        .route("/agents/{id}/policy", get(get_agent_policy).put(update_agent_policy))
         .with_state(state);
 
     api_routes.merge(ws_agent_routes).merge(ws_stream_routes).merge(wf_routes)

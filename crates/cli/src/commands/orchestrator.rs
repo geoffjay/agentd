@@ -655,10 +655,8 @@ async fn resolve_agent_id(
     match (agent_id, agent_name) {
         (Some(id), _) => Ok(id.to_string()),
         (_, Some(name)) => {
-            let response: PaginatedResponse<serde_json::Value> = client
-                .get("/agents")
-                .await
-                .context("Failed to list agents for name lookup")?;
+            let response: PaginatedResponse<serde_json::Value> =
+                client.get("/agents").await.context("Failed to list agents for name lookup")?;
 
             let matches: Vec<&serde_json::Value> = response
                 .items
@@ -696,12 +694,11 @@ fn resolve_prompt_template(
 ) -> Result<String> {
     match (template, template_file) {
         (Some(t), _) => Ok(t.to_string()),
-        (_, Some(path)) => {
-            std::fs::read_to_string(path).with_context(|| {
-                format!("Failed to read prompt template file: {}", path.display())
-            })
+        (_, Some(path)) => std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read prompt template file: {}", path.display())),
+        (None, None) => {
+            bail!("Either --prompt-template or --prompt-template-file must be provided.")
         }
-        (None, None) => bail!("Either --prompt-template or --prompt-template-file must be provided."),
     }
 }
 
@@ -1024,10 +1021,7 @@ mod tests {
     fn test_disabled_flag_semantics() {
         // When --disabled is absent, disabled=false, so enabled = !disabled = true
         let disabled = false;
-        assert!(
-            !disabled,
-            "By default --disabled is false, meaning the workflow is enabled"
-        );
+        assert!(!disabled, "By default --disabled is false, meaning the workflow is enabled");
         assert_eq!(!disabled, true);
 
         // When --disabled is present, disabled=true, so enabled = !disabled = false
@@ -1051,11 +1045,16 @@ mod tests {
         let cli = Cli::try_parse_from([
             "test",
             "create-workflow",
-            "--name", "test",
-            "--agent-id", "550e8400-e29b-41d4-a716-446655440000",
-            "--owner", "acme",
-            "--repo", "widgets",
-            "--prompt-template", "Fix: {{title}}",
+            "--name",
+            "test",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--owner",
+            "acme",
+            "--repo",
+            "widgets",
+            "--prompt-template",
+            "Fix: {{title}}",
             "--disabled",
         ])
         .expect("Should parse with --disabled");
@@ -1070,11 +1069,16 @@ mod tests {
         let cli = Cli::try_parse_from([
             "test",
             "create-workflow",
-            "--name", "test",
-            "--agent-id", "550e8400-e29b-41d4-a716-446655440000",
-            "--owner", "acme",
-            "--repo", "widgets",
-            "--prompt-template", "Fix: {{title}}",
+            "--name",
+            "test",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--owner",
+            "acme",
+            "--repo",
+            "widgets",
+            "--prompt-template",
+            "Fix: {{title}}",
         ])
         .expect("Should parse without --disabled");
 
@@ -1099,12 +1103,18 @@ mod tests {
         let result = Cli::try_parse_from([
             "test",
             "create-workflow",
-            "--name", "test",
-            "--agent-id", "some-id",
-            "--agent-name", "some-name",
-            "--owner", "acme",
-            "--repo", "widgets",
-            "--prompt-template", "Fix: {{title}}",
+            "--name",
+            "test",
+            "--agent-id",
+            "some-id",
+            "--agent-name",
+            "some-name",
+            "--owner",
+            "acme",
+            "--repo",
+            "widgets",
+            "--prompt-template",
+            "Fix: {{title}}",
         ]);
 
         assert!(result.is_err(), "--agent-id and --agent-name should conflict");
@@ -1124,18 +1134,21 @@ mod tests {
         let result = Cli::try_parse_from([
             "test",
             "create-workflow",
-            "--name", "test",
-            "--agent-id", "some-id",
-            "--owner", "acme",
-            "--repo", "widgets",
-            "--prompt-template", "Fix: {{title}}",
-            "--prompt-template-file", "/tmp/template.txt",
+            "--name",
+            "test",
+            "--agent-id",
+            "some-id",
+            "--owner",
+            "acme",
+            "--repo",
+            "widgets",
+            "--prompt-template",
+            "Fix: {{title}}",
+            "--prompt-template-file",
+            "/tmp/template.txt",
         ]);
 
-        assert!(
-            result.is_err(),
-            "--prompt-template and --prompt-template-file should conflict"
-        );
+        assert!(result.is_err(), "--prompt-template and --prompt-template-file should conflict");
     }
 
     #[test]
@@ -1164,7 +1177,11 @@ mod tests {
     fn test_resolve_agent_prompt_from_file() {
         let dir = std::env::temp_dir();
         let path = dir.join("test_agent_prompt.txt");
-        std::fs::write(&path, "Review all files in src/ for security issues.\n1. SQL injection\n2. XSS").unwrap();
+        std::fs::write(
+            &path,
+            "Review all files in src/ for security issues.\n1. SQL injection\n2. XSS",
+        )
+        .unwrap();
 
         let result = resolve_agent_prompt(None, Some(&path), false);
         assert!(result.is_ok());
@@ -1215,12 +1232,8 @@ mod tests {
         }
 
         // Minimal: only --name required (working-dir defaults to None which resolves to $PWD)
-        let cli = Cli::try_parse_from([
-            "test",
-            "create-agent",
-            "--name", "my-agent",
-        ])
-        .expect("Should parse with only --name");
+        let cli = Cli::try_parse_from(["test", "create-agent", "--name", "my-agent"])
+            .expect("Should parse with only --name");
 
         if let OrchestratorCommand::CreateAgent {
             name,
@@ -1257,9 +1270,12 @@ mod tests {
         let result = Cli::try_parse_from([
             "test",
             "create-agent",
-            "--name", "test",
-            "--prompt", "inline",
-            "--prompt-file", "/tmp/prompt.txt",
+            "--name",
+            "test",
+            "--prompt",
+            "inline",
+            "--prompt-file",
+            "/tmp/prompt.txt",
         ]);
         assert!(result.is_err(), "--prompt and --prompt-file should conflict");
 
@@ -1267,8 +1283,10 @@ mod tests {
         let result = Cli::try_parse_from([
             "test",
             "create-agent",
-            "--name", "test",
-            "--prompt", "inline",
+            "--name",
+            "test",
+            "--prompt",
+            "inline",
             "--stdin",
         ]);
         assert!(result.is_err(), "--prompt and --stdin should conflict");
@@ -1277,8 +1295,10 @@ mod tests {
         let result = Cli::try_parse_from([
             "test",
             "create-agent",
-            "--name", "test",
-            "--prompt-file", "/tmp/prompt.txt",
+            "--name",
+            "test",
+            "--prompt-file",
+            "/tmp/prompt.txt",
             "--stdin",
         ]);
         assert!(result.is_err(), "--prompt-file and --stdin should conflict");
@@ -1297,7 +1317,8 @@ mod tests {
         let cli = Cli::try_parse_from([
             "test",
             "create-agent",
-            "--name", "debug",
+            "--name",
+            "debug",
             "--interactive",
             "--attach",
         ])
@@ -1345,20 +1366,20 @@ mod tests {
         let cli = Cli::try_parse_from([
             "test",
             "create-workflow",
-            "--name", "test",
-            "--agent-name", "my-agent",
-            "--owner", "acme",
-            "--repo", "widgets",
-            "--prompt-template", "Fix: {{title}}",
+            "--name",
+            "test",
+            "--agent-name",
+            "my-agent",
+            "--owner",
+            "acme",
+            "--repo",
+            "widgets",
+            "--prompt-template",
+            "Fix: {{title}}",
         ])
         .expect("Should parse with --agent-name");
 
-        if let OrchestratorCommand::CreateWorkflow {
-            agent_id,
-            agent_name,
-            ..
-        } = cli.command
-        {
+        if let OrchestratorCommand::CreateWorkflow { agent_id, agent_name, .. } = cli.command {
             assert_eq!(agent_id, None);
             assert_eq!(agent_name, Some("my-agent".to_string()));
         } else {
