@@ -1,9 +1,9 @@
-use crate::scheduler::types::{DispatchRecord, DispatchStatus, WorkflowConfig};
-use crate::types::ToolPolicy;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::{sqlite::SqlitePool, Row};
 use uuid::Uuid;
+
+use crate::scheduler::types::{DispatchRecord, DispatchStatus, WorkflowConfig};
 
 /// Persistent storage for workflows and dispatch logs.
 #[derive(Clone)]
