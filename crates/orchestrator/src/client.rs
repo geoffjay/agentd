@@ -65,10 +65,7 @@ impl OrchestratorClient {
     /// let client = OrchestratorClient::new("http://localhost:7006");
     /// ```
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            base_url: base_url.into(),
-        }
+        Self { client: reqwest::Client::new(), base_url: base_url.into() }
     }
 
     // -- Agent operations --
@@ -111,8 +108,7 @@ impl OrchestratorClient {
         id: &Uuid,
         request: &SendMessageRequest,
     ) -> Result<SendMessageResponse> {
-        self.post(&format!("/agents/{}/message", id), request)
-            .await
+        self.post(&format!("/agents/{}/message", id), request).await
     }
 
     // -- Workflow operations --
@@ -150,10 +146,7 @@ impl OrchestratorClient {
     }
 
     /// Get the dispatch history for a workflow.
-    pub async fn dispatch_history(
-        &self,
-        id: &Uuid,
-    ) -> Result<PaginatedResponse<DispatchResponse>> {
+    pub async fn dispatch_history(&self, id: &Uuid) -> Result<PaginatedResponse<DispatchResponse>> {
         self.get(&format!("/workflows/{}/history", id)).await
     }
 
@@ -161,20 +154,12 @@ impl OrchestratorClient {
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .context(format!("Failed to GET {url}"))?;
+        let response =
+            self.client.get(&url).send().await.context(format!("Failed to GET {url}"))?;
         Self::handle_response(response).await
     }
 
-    async fn post<T: Serialize, R: DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &T,
-    ) -> Result<R> {
+    async fn post<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
         let url = format!("{}{}", self.base_url, path);
         let response = self
             .client
@@ -186,11 +171,7 @@ impl OrchestratorClient {
         Self::handle_response(response).await
     }
 
-    async fn put<T: Serialize, R: DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &T,
-    ) -> Result<R> {
+    async fn put<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
         let url = format!("{}{}", self.base_url, path);
         let response = self
             .client
@@ -204,46 +185,31 @@ impl OrchestratorClient {
 
     async fn delete(&self, path: &str) -> Result<()> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .delete(&url)
-            .send()
-            .await
-            .context(format!("Failed to DELETE {url}"))?;
+        let response =
+            self.client.delete(&url).send().await.context(format!("Failed to DELETE {url}"))?;
         if response.status().is_success() {
             Ok(())
         } else {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            Err(anyhow::anyhow!(
-                "Request failed with status {status}: {error_text}"
-            ))
+            Err(anyhow::anyhow!("Request failed with status {status}: {error_text}"))
         }
     }
 
     async fn delete_with_response<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .delete(&url)
-            .send()
-            .await
-            .context(format!("Failed to DELETE {url}"))?;
+        let response =
+            self.client.delete(&url).send().await.context(format!("Failed to DELETE {url}"))?;
         Self::handle_response(response).await
     }
 
     async fn handle_response<T: DeserializeOwned>(response: reqwest::Response) -> Result<T> {
         let status = response.status();
         if status.is_success() {
-            response
-                .json::<T>()
-                .await
-                .context("Failed to parse response body")
+            response.json::<T>().await.context("Failed to parse response body")
         } else {
             let error_text = response.text().await.unwrap_or_default();
-            Err(anyhow::anyhow!(
-                "Request failed with status {status}: {error_text}"
-            ))
+            Err(anyhow::anyhow!("Request failed with status {status}: {error_text}"))
         }
     }
 }
