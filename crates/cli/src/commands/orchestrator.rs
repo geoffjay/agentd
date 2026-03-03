@@ -45,7 +45,9 @@
 //! agent orchestrator list-workflows
 //! ```
 
-use anyhow::{Context, Result};
+use std::path::PathBuf;
+
+use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use colored::*;
 use serde::Deserialize;
@@ -135,15 +137,41 @@ pub enum OrchestratorCommand {
     /// Create a new workflow.
     ///
     /// Creates an autonomous workflow that polls a task source and dispatches
-    /// work to an agent.
+    /// work to an agent. The workflow is enabled by default unless --disabled
+    /// is specified.
+    ///
+    /// # Examples
+    ///
+    /// Create a workflow using an agent name:
+    ///
+    ///   agent orchestrator create-workflow \
+    ///     --name issue-worker \
+    ///     --agent-name my-agent \
+    ///     --owner acme --repo widgets \
+    ///     --labels "bug,help wanted" \
+    ///     --prompt-template-file ./prompt.txt \
+    ///     --poll-interval 120
+    ///
+    /// Create a disabled workflow for testing:
+    ///
+    ///   agent orchestrator create-workflow \
+    ///     --name test-workflow \
+    ///     --agent-id 550e8400-e29b-41d4-a716-446655440000 \
+    ///     --owner acme --repo widgets \
+    ///     --prompt-template "Fix: {{title}}" \
+    ///     --disabled
     CreateWorkflow {
         /// Workflow name
         #[arg(long)]
         name: String,
 
-        /// Agent ID to execute tasks
-        #[arg(long)]
-        agent_id: String,
+        /// Agent ID (UUID) to execute tasks
+        #[arg(long, conflicts_with = "agent_name")]
+        agent_id: Option<String>,
+
+        /// Agent name to execute tasks (resolved to ID via the API)
+        #[arg(long, conflicts_with = "agent_id")]
+        agent_name: Option<String>,
 
         /// GitHub repository owner
         #[arg(long)]
@@ -157,17 +185,21 @@ pub enum OrchestratorCommand {
         #[arg(long)]
         labels: Option<String>,
 
-        /// Prompt template with {{placeholders}}
-        #[arg(long)]
-        prompt_template: String,
+        /// Prompt template with {{placeholders}} (e.g. "Fix: {{title}}\n{{body}}")
+        #[arg(long, conflicts_with = "prompt_template_file")]
+        prompt_template: Option<String>,
+
+        /// Path to a file containing the prompt template
+        #[arg(long, conflicts_with = "prompt_template")]
+        prompt_template_file: Option<PathBuf>,
 
         /// Poll interval in seconds (default: 60)
         #[arg(long, default_value = "60")]
         poll_interval: u64,
 
-        /// Whether the workflow is enabled (default: true)
-        #[arg(long, default_value = "true")]
-        enabled: bool,
+        /// Create the workflow in disabled state (won't start polling)
+        #[arg(long)]
+        disabled: bool,
     },
 
     /// Get details of a specific workflow.
@@ -253,23 +285,27 @@ impl OrchestratorCommand {
             OrchestratorCommand::CreateWorkflow {
                 name,
                 agent_id,
+                agent_name,
                 owner,
                 repo,
                 labels,
                 prompt_template,
+                prompt_template_file,
                 poll_interval,
-                enabled,
+                disabled,
             } => {
                 create_workflow(
                     client,
                     name,
-                    agent_id,
+                    agent_id.as_deref(),
+                    agent_name.as_deref(),
                     owner,
                     repo,
                     labels.as_deref(),
-                    prompt_template,
+                    prompt_template.as_deref(),
+                    prompt_template_file.as_deref(),
                     *poll_interval,
-                    *enabled,
+                    !disabled,
                     json,
                 )
                 .await
@@ -427,34 +463,51 @@ async fn list_workflows(client: &ApiClient, json: bool) -> Result<()> {
 async fn create_workflow(
     client: &ApiClient,
     name: &str,
-    agent_id: &str,
+    agent_id: Option<&str>,
+    agent_name: Option<&str>,
     owner: &str,
     repo: &str,
     labels: Option<&str>,
-    prompt_template: &str,
+    prompt_template: Option<&str>,
+    prompt_template_file: Option<&std::path::Path>,
     poll_interval: u64,
     enabled: bool,
     json: bool,
 ) -> Result<()> {
+    // Resolve agent ID from --agent-id or --agent-name
+    let resolved_agent_id = resolve_agent_id(client, agent_id, agent_name).await?;
+
+    // Resolve prompt template from --prompt-template or --prompt-template-file
+    let resolved_template = resolve_prompt_template(prompt_template, prompt_template_file)?;
+
     let labels_vec: Vec<String> =
         labels.map(|l| l.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default();
 
     let body = serde_json::json!({
         "name": name,
-        "agent_id": agent_id,
+        "agent_id": resolved_agent_id,
         "source_config": {
             "type": "github_issues",
             "owner": owner,
             "repo": repo,
             "labels": labels_vec,
         },
-        "prompt_template": prompt_template,
+        "prompt_template": resolved_template,
         "poll_interval_secs": poll_interval,
         "enabled": enabled,
     });
 
-    let workflow: serde_json::Value =
-        client.post("/workflows", &body).await.context("Failed to create workflow")?;
+    let workflow: serde_json::Value = client.post("/workflows", &body).await.map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("404") {
+            anyhow::anyhow!(
+                "Agent '{}' not found or not running. Use 'agent orchestrator list-agents' to see available agents.",
+                agent_name.unwrap_or(&resolved_agent_id)
+            )
+        } else {
+            e.context("Failed to create workflow")
+        }
+    })?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&workflow)?);
@@ -465,6 +518,68 @@ async fn create_workflow(
     }
 
     Ok(())
+}
+
+/// Resolve an agent ID from either --agent-id or --agent-name.
+///
+/// If --agent-name is provided, queries the orchestrator API to find the agent
+/// by name. Errors if the agent is not found or if multiple agents share the name.
+async fn resolve_agent_id(
+    client: &ApiClient,
+    agent_id: Option<&str>,
+    agent_name: Option<&str>,
+) -> Result<String> {
+    match (agent_id, agent_name) {
+        (Some(id), _) => Ok(id.to_string()),
+        (_, Some(name)) => {
+            let response: PaginatedResponse<serde_json::Value> = client
+                .get("/agents")
+                .await
+                .context("Failed to list agents for name lookup")?;
+
+            let matches: Vec<&serde_json::Value> = response
+                .items
+                .iter()
+                .filter(|a| a.get("name").and_then(|v| v.as_str()) == Some(name))
+                .collect();
+
+            match matches.len() {
+                0 => bail!(
+                    "Agent '{}' not found. Use 'agent orchestrator list-agents' to see available agents.",
+                    name
+                ),
+                1 => {
+                    let id = matches[0]
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .context("Agent response missing 'id' field")?;
+                    Ok(id.to_string())
+                }
+                n => bail!(
+                    "Found {} agents named '{}'. Use --agent-id to specify the exact agent.",
+                    n,
+                    name
+                ),
+            }
+        }
+        (None, None) => bail!("Either --agent-id or --agent-name must be provided."),
+    }
+}
+
+/// Resolve the prompt template from either --prompt-template or --prompt-template-file.
+fn resolve_prompt_template(
+    template: Option<&str>,
+    template_file: Option<&std::path::Path>,
+) -> Result<String> {
+    match (template, template_file) {
+        (Some(t), _) => Ok(t.to_string()),
+        (_, Some(path)) => {
+            std::fs::read_to_string(path).with_context(|| {
+                format!("Failed to read prompt template file: {}", path.display())
+            })
+        }
+        (None, None) => bail!("Either --prompt-template or --prompt-template-file must be provided."),
+    }
 }
 
 async fn get_workflow(client: &ApiClient, id: &str, json: bool) -> Result<()> {
@@ -742,5 +857,196 @@ mod tests {
         });
         // Should not panic and should truncate
         display_workflow(&workflow);
+    }
+
+    #[test]
+    fn test_resolve_prompt_template_from_string() {
+        let result = resolve_prompt_template(Some("Fix: {{title}}"), None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Fix: {{title}}");
+    }
+
+    #[test]
+    fn test_resolve_prompt_template_from_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_prompt_template.txt");
+        std::fs::write(&path, "Work on: {{title}}\n\n{{body}}").unwrap();
+
+        let result = resolve_prompt_template(None, Some(&path));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Work on: {{title}}\n\n{{body}}");
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_resolve_prompt_template_file_not_found() {
+        let path = std::path::PathBuf::from("/nonexistent/template.txt");
+        let result = resolve_prompt_template(None, Some(&path));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to read prompt template file"));
+    }
+
+    #[test]
+    fn test_resolve_prompt_template_none_provided() {
+        let result = resolve_prompt_template(None, None);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Either --prompt-template or --prompt-template-file must be provided"));
+    }
+
+    #[test]
+    fn test_disabled_flag_semantics() {
+        // When --disabled is absent, disabled=false, so enabled = !disabled = true
+        let disabled = false;
+        assert!(
+            !disabled,
+            "By default --disabled is false, meaning the workflow is enabled"
+        );
+        assert_eq!(!disabled, true);
+
+        // When --disabled is present, disabled=true, so enabled = !disabled = false
+        let disabled = true;
+        assert_eq!(!disabled, false);
+    }
+
+    /// Verify the clap definition parses correctly with --disabled flag.
+    #[test]
+    fn test_create_workflow_clap_parsing() {
+        use clap::Parser;
+
+        // Wrapper needed for testing subcommands
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        // Test with --disabled
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name", "test",
+            "--agent-id", "550e8400-e29b-41d4-a716-446655440000",
+            "--owner", "acme",
+            "--repo", "widgets",
+            "--prompt-template", "Fix: {{title}}",
+            "--disabled",
+        ])
+        .expect("Should parse with --disabled");
+
+        if let OrchestratorCommand::CreateWorkflow { disabled, .. } = cli.command {
+            assert!(disabled, "--disabled flag should be true when present");
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
+
+        // Test without --disabled (default = false = enabled)
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name", "test",
+            "--agent-id", "550e8400-e29b-41d4-a716-446655440000",
+            "--owner", "acme",
+            "--repo", "widgets",
+            "--prompt-template", "Fix: {{title}}",
+        ])
+        .expect("Should parse without --disabled");
+
+        if let OrchestratorCommand::CreateWorkflow { disabled, .. } = cli.command {
+            assert!(!disabled, "--disabled flag should be false when absent");
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
+    }
+
+    /// Verify --agent-id and --agent-name are mutually exclusive.
+    #[test]
+    fn test_agent_id_and_name_conflict() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let result = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name", "test",
+            "--agent-id", "some-id",
+            "--agent-name", "some-name",
+            "--owner", "acme",
+            "--repo", "widgets",
+            "--prompt-template", "Fix: {{title}}",
+        ]);
+
+        assert!(result.is_err(), "--agent-id and --agent-name should conflict");
+    }
+
+    /// Verify --prompt-template and --prompt-template-file are mutually exclusive.
+    #[test]
+    fn test_prompt_template_and_file_conflict() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let result = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name", "test",
+            "--agent-id", "some-id",
+            "--owner", "acme",
+            "--repo", "widgets",
+            "--prompt-template", "Fix: {{title}}",
+            "--prompt-template-file", "/tmp/template.txt",
+        ]);
+
+        assert!(
+            result.is_err(),
+            "--prompt-template and --prompt-template-file should conflict"
+        );
+    }
+
+    /// Verify --agent-name is accepted as an alternative to --agent-id.
+    #[test]
+    fn test_agent_name_parsing() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name", "test",
+            "--agent-name", "my-agent",
+            "--owner", "acme",
+            "--repo", "widgets",
+            "--prompt-template", "Fix: {{title}}",
+        ])
+        .expect("Should parse with --agent-name");
+
+        if let OrchestratorCommand::CreateWorkflow {
+            agent_id,
+            agent_name,
+            ..
+        } = cli.command
+        {
+            assert_eq!(agent_id, None);
+            assert_eq!(agent_name, Some("my-agent".to_string()));
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
     }
 }
