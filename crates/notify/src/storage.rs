@@ -675,10 +675,8 @@ impl NotificationStorage {
         .await?;
 
         let total: i64 = count.get("total");
-        let notifications = rows
-            .iter()
-            .map(|row| self.row_to_notification(row))
-            .collect::<Result<Vec<_>>>()?;
+        let notifications =
+            rows.iter().map(|row| self.row_to_notification(row)).collect::<Result<Vec<_>>>()?;
 
         Ok((notifications, total as usize))
     }

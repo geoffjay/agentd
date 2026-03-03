@@ -184,16 +184,14 @@ impl AgentStorage {
             .await?;
             (count, rows)
         } else {
-            let count = sqlx::query("SELECT COUNT(*) as total FROM agents")
-                .fetch_one(&self.pool)
-                .await?;
-            let rows = sqlx::query(
-                "SELECT * FROM agents ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            )
-            .bind(limit as i64)
-            .bind(offset as i64)
-            .fetch_all(&self.pool)
-            .await?;
+            let count =
+                sqlx::query("SELECT COUNT(*) as total FROM agents").fetch_one(&self.pool).await?;
+            let rows =
+                sqlx::query("SELECT * FROM agents ORDER BY created_at DESC LIMIT ? OFFSET ?")
+                    .bind(limit as i64)
+                    .bind(offset as i64)
+                    .fetch_all(&self.pool)
+                    .await?;
             (count, rows)
         };
 

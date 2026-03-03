@@ -83,7 +83,8 @@ async fn list_workflows(
     let limit = clamp_limit(params.limit);
     let offset = params.offset.unwrap_or(0);
 
-    let (workflows, total) = state.scheduler.storage().list_workflows_paginated(limit, offset).await?;
+    let (workflows, total) =
+        state.scheduler.storage().list_workflows_paginated(limit, offset).await?;
     let items: Vec<WorkflowResponse> = workflows.into_iter().map(WorkflowResponse::from).collect();
     Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
@@ -160,8 +161,8 @@ async fn dispatch_history(
     let limit = clamp_limit(params.limit);
     let offset = params.offset.unwrap_or(0);
 
-    let (dispatches, total) = state.scheduler.storage().list_dispatches_paginated(&id, limit, offset).await?;
-    let items: Vec<DispatchResponse> =
-        dispatches.into_iter().map(DispatchResponse::from).collect();
+    let (dispatches, total) =
+        state.scheduler.storage().list_dispatches_paginated(&id, limit, offset).await?;
+    let items: Vec<DispatchResponse> = dispatches.into_iter().map(DispatchResponse::from).collect();
     Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
