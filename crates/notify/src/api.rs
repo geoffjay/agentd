@@ -411,7 +411,8 @@ async fn create_notification(
 
     metrics::counter!("notifications_created_total",
         "priority" => format!("{:?}", notification.priority).to_lowercase()
-    ).increment(1);
+    )
+    .increment(1);
 
     Ok((StatusCode::CREATED, Json(notification)))
 }

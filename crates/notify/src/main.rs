@@ -159,17 +159,11 @@ async fn main() -> anyhow::Result<()> {
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
-    let app = create_router(api_state)
-        .merge(metrics_router)
-        .layer(
-            tower_http::trace::TraceLayer::new_for_http()
-                .make_span_with(
-                    tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO),
-                )
-                .on_response(
-                    tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO),
-                ),
-        );
+    let app = create_router(api_state).merge(metrics_router).layer(
+        tower_http::trace::TraceLayer::new_for_http()
+            .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+            .on_response(tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
+    );
 
     // Bind to address (use PORT env var, default 17004 for dev, 7004 for production)
     let port = env::var("PORT").unwrap_or_else(|_| "17004".to_string());
