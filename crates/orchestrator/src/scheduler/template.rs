@@ -1,9 +1,8 @@
 use crate::scheduler::types::Task;
 
 /// Known template variables that will be replaced during rendering.
-pub const KNOWN_VARIABLES: &[&str] = &[
-    "title", "body", "url", "labels", "assignee", "source_id", "metadata",
-];
+pub const KNOWN_VARIABLES: &[&str] =
+    &["title", "body", "url", "labels", "assignee", "source_id", "metadata"];
 
 /// Validate a prompt template, returning any warnings or errors.
 ///
@@ -165,7 +164,8 @@ mod tests {
 
     #[test]
     fn test_validate_all_known_variables() {
-        let template = "{{title}} {{body}} {{url}} {{labels}} {{assignee}} {{source_id}} {{metadata}}";
+        let template =
+            "{{title}} {{body}} {{url}} {{labels}} {{assignee}} {{source_id}} {{metadata}}";
         let warnings = validate_template(template);
         assert!(warnings.is_empty());
     }

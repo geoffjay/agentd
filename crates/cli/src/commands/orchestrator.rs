@@ -1211,10 +1211,8 @@ async fn validate_template_cmd(
 
     let content = match (template, file) {
         (Some(t), _) => t.to_string(),
-        (_, Some(path)) => {
-            std::fs::read_to_string(path)
-                .with_context(|| format!("Failed to read template file: {}", path.display()))?
-        }
+        (_, Some(path)) => std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read template file: {}", path.display()))?,
         (None, None) => bail!("Either a template string or --file must be provided."),
     };
 

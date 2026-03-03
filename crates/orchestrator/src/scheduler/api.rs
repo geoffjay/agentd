@@ -44,7 +44,9 @@ async fn create_workflow(
     let warnings = validate_template(&req.prompt_template);
     let errors: Vec<&String> = warnings
         .iter()
-        .filter(|w| w.contains("Unknown template variable") || w.contains("Unclosed") || w.contains("empty"))
+        .filter(|w| {
+            w.contains("Unknown template variable") || w.contains("Unclosed") || w.contains("empty")
+        })
         .collect();
     if !errors.is_empty() {
         return Err(ApiError::InvalidInput(format!(
