@@ -1302,6 +1302,7 @@ async fn create_workflow(
         prompt_template: resolved_template,
         poll_interval_secs: poll_interval,
         enabled,
+        tool_policy: Default::default(),
     };
 
     let workflow = client.create_workflow(&request).await.map_err(|e| {
@@ -1355,6 +1356,7 @@ async fn update_workflow(
         prompt_template: prompt_template.map(|s| s.to_string()),
         poll_interval_secs: poll_interval,
         enabled,
+        tool_policy: None,
     };
 
     let workflow =
@@ -1592,6 +1594,7 @@ mod tests {
             prompt_template: "Fix: {{title}}".to_string(),
             poll_interval_secs: 60,
             enabled: true,
+            tool_policy: Default::default(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };

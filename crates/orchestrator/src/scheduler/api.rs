@@ -76,6 +76,7 @@ async fn create_workflow(
         prompt_template: req.prompt_template,
         poll_interval_secs: req.poll_interval_secs,
         enabled: req.enabled,
+        tool_policy: req.tool_policy,
         created_at: now,
         updated_at: now,
     };
@@ -133,6 +134,9 @@ async fn update_workflow(
     }
     if let Some(enabled) = req.enabled {
         workflow.enabled = enabled;
+    }
+    if let Some(policy) = req.tool_policy {
+        workflow.tool_policy = policy;
     }
     workflow.updated_at = Utc::now();
 
