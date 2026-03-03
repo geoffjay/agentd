@@ -213,6 +213,20 @@ pub struct HealthResponse {
     pub agents_active: usize,
 }
 
+/// Request body for POST /agents/{id}/message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendMessageRequest {
+    pub content: String,
+}
+
+/// Response body for POST /agents/{id}/message.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendMessageResponse {
+    pub status: String,
+    pub agent_id: Uuid,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

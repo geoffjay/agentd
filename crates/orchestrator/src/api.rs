@@ -57,11 +57,6 @@ pub struct ListQuery {
     pub offset: Option<usize>,
 }
 
-#[derive(Deserialize)]
-pub struct SendMessageRequest {
-    pub content: String,
-}
-
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
     let active = state.manager.registry().connected_count().await;
     Json(HealthResponse { status: "ok".to_string(), agents_active: active })
