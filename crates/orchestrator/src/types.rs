@@ -41,6 +41,42 @@ impl std::str::FromStr for AgentStatus {
     }
 }
 
+/// Policy controlling which tools an agent is allowed to use.
+///
+/// When a Claude Code agent requests permission to use a tool (via the
+/// `can_use_tool` control request), this policy is evaluated to decide
+/// whether to allow or deny the request.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum ToolPolicy {
+    /// Allow all tools without restriction (default).
+    AllowAll,
+    /// Deny all tool usage.
+    DenyAll,
+    /// Only allow the listed tools; deny everything else.
+    AllowList { tools: Vec<String> },
+    /// Allow everything except the listed tools.
+    DenyList { tools: Vec<String> },
+}
+
+impl Default for ToolPolicy {
+    fn default() -> Self {
+        ToolPolicy::AllowAll
+    }
+}
+
+impl ToolPolicy {
+    /// Evaluate whether a tool is allowed by this policy.
+    pub fn evaluate(&self, tool_name: &str) -> bool {
+        match self {
+            ToolPolicy::AllowAll => true,
+            ToolPolicy::DenyAll => false,
+            ToolPolicy::AllowList { tools } => tools.iter().any(|t| t == tool_name),
+            ToolPolicy::DenyList { tools } => !tools.iter().any(|t| t == tool_name),
+        }
+    }
+}
+
 /// Configuration for spawning an agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
@@ -64,6 +100,9 @@ pub struct AgentConfig {
     /// System prompt to use for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    /// Tool-use policy for this agent.
+    #[serde(default)]
+    pub tool_policy: ToolPolicy,
 }
 
 fn default_shell() -> String {
@@ -120,6 +159,9 @@ pub struct CreateAgentRequest {
     /// System prompt to use for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    /// Tool-use policy for this agent.
+    #[serde(default)]
+    pub tool_policy: ToolPolicy,
 }
 
 /// Response body for agent endpoints.
@@ -173,4 +215,103 @@ pub fn clamp_limit(limit: Option<usize>) -> usize {
 pub struct HealthResponse {
     pub status: String,
     pub agents_active: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tool_policy_allow_all() {
+        let policy = ToolPolicy::AllowAll;
+        assert!(policy.evaluate("Bash"));
+        assert!(policy.evaluate("Read"));
+        assert!(policy.evaluate("Write"));
+        assert!(policy.evaluate("anything"));
+    }
+
+    #[test]
+    fn test_tool_policy_deny_all() {
+        let policy = ToolPolicy::DenyAll;
+        assert!(!policy.evaluate("Bash"));
+        assert!(!policy.evaluate("Read"));
+        assert!(!policy.evaluate("anything"));
+    }
+
+    #[test]
+    fn test_tool_policy_allow_list() {
+        let policy = ToolPolicy::AllowList {
+            tools: vec!["Read".to_string(), "Grep".to_string()],
+        };
+        assert!(policy.evaluate("Read"));
+        assert!(policy.evaluate("Grep"));
+        assert!(!policy.evaluate("Bash"));
+        assert!(!policy.evaluate("Write"));
+    }
+
+    #[test]
+    fn test_tool_policy_deny_list() {
+        let policy = ToolPolicy::DenyList {
+            tools: vec!["Bash".to_string(), "Write".to_string()],
+        };
+        assert!(!policy.evaluate("Bash"));
+        assert!(!policy.evaluate("Write"));
+        assert!(policy.evaluate("Read"));
+        assert!(policy.evaluate("Grep"));
+    }
+
+    #[test]
+    fn test_tool_policy_default_is_allow_all() {
+        let policy = ToolPolicy::default();
+        assert_eq!(policy, ToolPolicy::AllowAll);
+        assert!(policy.evaluate("anything"));
+    }
+
+    #[test]
+    fn test_tool_policy_serialization_allow_all() {
+        let policy = ToolPolicy::AllowAll;
+        let json = serde_json::to_string(&policy).unwrap();
+        assert!(json.contains("allow_all"));
+
+        let deserialized: ToolPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ToolPolicy::AllowAll);
+    }
+
+    #[test]
+    fn test_tool_policy_serialization_deny_list() {
+        let policy = ToolPolicy::DenyList {
+            tools: vec!["Bash".to_string(), "Write".to_string()],
+        };
+        let json = serde_json::to_string(&policy).unwrap();
+        assert!(json.contains("deny_list"));
+        assert!(json.contains("Bash"));
+
+        let deserialized: ToolPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, policy);
+    }
+
+    #[test]
+    fn test_tool_policy_serialization_allow_list() {
+        let policy = ToolPolicy::AllowList {
+            tools: vec!["Read".to_string()],
+        };
+        let json = serde_json::to_string(&policy).unwrap();
+
+        let deserialized: ToolPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, policy);
+    }
+
+    #[test]
+    fn test_tool_policy_empty_allow_list_denies_all() {
+        let policy = ToolPolicy::AllowList { tools: vec![] };
+        assert!(!policy.evaluate("Read"));
+        assert!(!policy.evaluate("Bash"));
+    }
+
+    #[test]
+    fn test_tool_policy_empty_deny_list_allows_all() {
+        let policy = ToolPolicy::DenyList { tools: vec![] };
+        assert!(policy.evaluate("Read"));
+        assert!(policy.evaluate("Bash"));
+    }
 }
