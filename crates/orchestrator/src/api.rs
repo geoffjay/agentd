@@ -45,6 +45,11 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
         .route("/agents/{id}/message", post(send_message))
         .route("/agents/{id}/policy", get(get_agent_policy).put(update_agent_policy))
+        .route("/agents/{id}/approvals", get(list_agent_approvals))
+        .route("/approvals", get(list_all_approvals))
+        .route("/approvals/{id}", get(get_approval))
+        .route("/approvals/{id}/approve", post(approve_tool))
+        .route("/approvals/{id}/deny", post(deny_tool))
         .with_state(state);
 
     api_routes.merge(ws_agent_routes).merge(ws_stream_routes).merge(wf_routes)
@@ -173,6 +178,103 @@ async fn update_agent_policy(
     info!(agent_id = %id, ?policy, "Agent tool policy updated");
 
     Ok(Json(policy))
+}
+
+// -- Tool approval endpoints --
+
+#[derive(Deserialize)]
+struct ApprovalListQuery {
+    status: Option<String>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
+
+async fn list_all_approvals(
+    State(state): State<ApiState>,
+    Query(query): Query<ApprovalListQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let status_filter = query
+        .status
+        .as_deref()
+        .map(|s| s.parse::<ApprovalStatus>())
+        .transpose()
+        .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+
+    let mut approvals = state.registry.approvals.list(None, status_filter.as_ref()).await;
+    approvals.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    let total = approvals.len();
+    let limit = clamp_limit(query.limit);
+    let offset = query.offset.unwrap_or(0);
+    let items: Vec<PendingApproval> = approvals.into_iter().skip(offset).take(limit).collect();
+
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
+}
+
+async fn get_approval(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let approval = state.registry.approvals.get(&id).await.ok_or(ApiError::NotFound)?;
+    Ok(Json(approval))
+}
+
+async fn approve_tool(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(_req): Json<ApprovalActionRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let approval = state
+        .registry
+        .approvals
+        .resolve(&id, ApprovalDecision::Approve)
+        .await
+        .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+
+    info!(approval_id = %id, agent_id = %approval.agent_id, tool = %approval.tool_name, "Tool approved via API");
+    Ok(Json(approval))
+}
+
+async fn deny_tool(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(_req): Json<ApprovalActionRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let approval = state
+        .registry
+        .approvals
+        .resolve(&id, ApprovalDecision::Deny)
+        .await
+        .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+
+    info!(approval_id = %id, agent_id = %approval.agent_id, tool = %approval.tool_name, "Tool denied via API");
+    Ok(Json(approval))
+}
+
+async fn list_agent_approvals(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<ApprovalListQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify agent exists
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let status_filter = query
+        .status
+        .as_deref()
+        .map(|s| s.parse::<ApprovalStatus>())
+        .transpose()
+        .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+
+    let mut approvals = state.registry.approvals.list(Some(&id), status_filter.as_ref()).await;
+    approvals.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    let total = approvals.len();
+    let limit = clamp_limit(query.limit);
+    let offset = query.offset.unwrap_or(0);
+    let items: Vec<PendingApproval> = approvals.into_iter().skip(offset).take(limit).collect();
+
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
 
 // -- Error handling --

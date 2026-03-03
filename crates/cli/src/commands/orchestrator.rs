@@ -59,7 +59,8 @@ use orchestrator::scheduler::types::{
     WorkflowResponse,
 };
 use orchestrator::types::{
-    AgentResponse, AgentStatus, CreateAgentRequest, SendMessageRequest, ToolPolicy,
+    AgentResponse, AgentStatus, ApprovalStatus, CreateAgentRequest, PendingApproval,
+    SendMessageRequest, ToolPolicy,
 };
 
 /// Orchestrator service management subcommands.
@@ -299,6 +300,44 @@ pub enum OrchestratorCommand {
     /// ```
     Health,
 
+    /// List pending tool approval requests.
+    ///
+    /// Shows tool requests that are waiting for human approval.
+    ///
+    /// # Examples
+    ///
+    ///   agent orchestrator list-approvals
+    ///   agent orchestrator list-approvals --agent-id <ID>
+    ListApprovals {
+        /// Filter by agent ID
+        #[arg(long)]
+        agent_id: Option<String>,
+
+        /// Filter by status (pending, approved, denied, timed_out)
+        #[arg(long, default_value = "pending")]
+        status: String,
+    },
+
+    /// Approve a pending tool request.
+    ///
+    /// # Examples
+    ///
+    ///   agent orchestrator approve <APPROVAL_ID>
+    Approve {
+        /// Approval ID (UUID)
+        id: String,
+    },
+
+    /// Deny a pending tool request.
+    ///
+    /// # Examples
+    ///
+    ///   agent orchestrator deny <APPROVAL_ID>
+    Deny {
+        /// Approval ID (UUID)
+        id: String,
+    },
+
     /// List all workflows.
     ListWorkflows,
 
@@ -471,6 +510,11 @@ impl OrchestratorCommand {
                 set_policy(client, id, policy, json).await
             }
             OrchestratorCommand::Health => orchestrator_health(client, json).await,
+            OrchestratorCommand::ListApprovals { agent_id, status } => {
+                list_approvals(client, agent_id.as_deref(), status, json).await
+            }
+            OrchestratorCommand::Approve { id } => approve_cmd(client, id, json).await,
+            OrchestratorCommand::Deny { id } => deny_cmd(client, id, json).await,
             OrchestratorCommand::ListWorkflows => list_workflows(client, json).await,
             OrchestratorCommand::CreateWorkflow {
                 name,
@@ -988,7 +1032,88 @@ fn display_policy(policy: &ToolPolicy) {
                 println!("  - {}", tool.red());
             }
         }
+        ToolPolicy::RequireApproval => {
+            println!("{}: {}", "Mode".bold(), "require_approval".bright_yellow());
+            println!("{}: every tool request requires human approval", "Effect".bold());
+        }
     }
+}
+
+// -- Approvals --
+
+async fn list_approvals(
+    client: &OrchestratorClient,
+    agent_id: Option<&str>,
+    status: &str,
+    json: bool,
+) -> Result<()> {
+    let response = match agent_id {
+        Some(id) => {
+            let uuid = parse_uuid(id)?;
+            client.list_agent_approvals(&uuid, Some(status)).await?
+        }
+        None => client.list_approvals(Some(status)).await?,
+    };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response.items)?);
+    } else if response.items.is_empty() {
+        println!("{}", "No approval requests found.".yellow());
+    } else {
+        println!("{}", "Pending Approvals:".blue().bold());
+        println!("{}", "=".repeat(80).cyan());
+        for approval in &response.items {
+            display_approval(approval);
+            println!("{}", "-".repeat(80).cyan());
+        }
+        println!("Total: {} approval(s)", response.total);
+    }
+    Ok(())
+}
+
+async fn approve_cmd(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+    let approval = client.approve_tool(&uuid).await.context("Failed to approve tool request")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&approval)?);
+    } else {
+        println!(
+            "{}",
+            format!("Approved: {} (tool: {})", approval.id, approval.tool_name).green().bold()
+        );
+    }
+    Ok(())
+}
+
+async fn deny_cmd(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+    let approval = client.deny_tool(&uuid).await.context("Failed to deny tool request")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&approval)?);
+    } else {
+        println!(
+            "{}",
+            format!("Denied: {} (tool: {})", approval.id, approval.tool_name).red().bold()
+        );
+    }
+    Ok(())
+}
+
+fn display_approval(approval: &PendingApproval) {
+    println!("{}: {}", "Approval ID".bold(), approval.id);
+    println!("{}: {}", "Agent ID".bold(), approval.agent_id);
+    println!("{}: {}", "Tool".bold(), approval.tool_name.yellow());
+    let status_display = match approval.status {
+        ApprovalStatus::Pending => "pending".yellow().to_string(),
+        ApprovalStatus::Approved => "approved".green().to_string(),
+        ApprovalStatus::Denied => "denied".red().to_string(),
+        ApprovalStatus::TimedOut => "timed_out".bright_red().to_string(),
+    };
+    println!("{}: {}", "Status".bold(), status_display);
+    println!("{}: {}", "Requested".bold(), approval.created_at);
+    println!("{}: {}", "Expires".bold(), approval.expires_at);
 }
 
 // -- Health --
@@ -1309,6 +1434,7 @@ fn display_agent(agent: &AgentResponse) {
         ToolPolicy::DenyList { tools } => {
             format!("{} [{}]", "deny_list".yellow(), tools.join(", "))
         }
+        ToolPolicy::RequireApproval => "require_approval".bright_yellow().to_string(),
     };
     println!("{}: {}", "Tool Policy".bold(), policy_display);
     println!("{}: {}", "Created".bold(), agent.created_at);
