@@ -48,8 +48,21 @@
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::*;
+use serde::Deserialize;
 
 use cli::client::ApiClient;
+
+/// Paginated response wrapper returned by list endpoints.
+#[derive(Debug, Deserialize)]
+struct PaginatedResponse<T> {
+    items: Vec<T>,
+    #[allow(dead_code)]
+    total: u64,
+    #[allow(dead_code)]
+    limit: u64,
+    #[allow(dead_code)]
+    offset: u64,
+}
 
 /// Orchestrator service management subcommands.
 ///
@@ -294,8 +307,9 @@ async fn list_agents(client: &ApiClient, status: Option<&str>, json: bool) -> Re
         None => "/agents".to_string(),
     };
 
-    let agents: Vec<serde_json::Value> =
+    let response: PaginatedResponse<serde_json::Value> =
         client.get(&path).await.context("Failed to list agents")?;
+    let agents = response.items;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&agents)?);
@@ -388,8 +402,9 @@ async fn delete_agent(client: &ApiClient, id: &str, json: bool) -> Result<()> {
 // -- Workflow operations --
 
 async fn list_workflows(client: &ApiClient, json: bool) -> Result<()> {
-    let workflows: Vec<serde_json::Value> =
+    let response: PaginatedResponse<serde_json::Value> =
         client.get("/workflows").await.context("Failed to list workflows")?;
+    let workflows = response.items;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&workflows)?);
@@ -518,8 +533,9 @@ async fn delete_workflow(client: &ApiClient, id: &str, json: bool) -> Result<()>
 
 async fn workflow_history(client: &ApiClient, id: &str, json: bool) -> Result<()> {
     let path = format!("/workflows/{}/history", id);
-    let dispatches: Vec<serde_json::Value> =
+    let response: PaginatedResponse<serde_json::Value> =
         client.get(&path).await.context("Failed to get workflow history")?;
+    let dispatches = response.items;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&dispatches)?);
