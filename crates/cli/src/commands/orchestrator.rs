@@ -423,6 +423,7 @@ async fn create_agent(
         prompt: resolved_prompt,
         worktree,
         system_prompt: system_prompt.map(|s| s.to_string()),
+        tool_policy: Default::default(),
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -706,49 +707,6 @@ fn parse_uuid(id: &str) -> Result<Uuid> {
     id.parse::<Uuid>().with_context(|| format!("Invalid UUID: '{id}'"))
 }
 
-/// Resolve the working directory from the provided value or default to $PWD.
-fn resolve_working_dir(working_dir: Option<&str>) -> Result<String> {
-    match working_dir {
-        Some(dir) => Ok(dir.to_string()),
-        None => std::env::current_dir()
-            .context("Failed to determine current directory")
-            .map(|p| p.to_string_lossy().to_string()),
-    }
-}
-
-/// Resolve the agent prompt from --prompt, --prompt-file, or --stdin.
-///
-/// Returns `None` if no prompt source was provided (all three are optional).
-fn resolve_agent_prompt(
-    prompt: Option<&str>,
-    prompt_file: Option<&std::path::Path>,
-    stdin: bool,
-) -> Result<Option<String>> {
-    match (prompt, prompt_file, stdin) {
-        (Some(p), _, _) => Ok(Some(p.to_string())),
-        (_, Some(path), _) => {
-            let content = std::fs::read_to_string(path)
-                .with_context(|| format!("Failed to read prompt file: {}", path.display()))?;
-            if content.trim().is_empty() {
-                bail!("Prompt file is empty: {}", path.display());
-            }
-            Ok(Some(content))
-        }
-        (_, _, true) => {
-            use std::io::Read;
-            let mut content = String::new();
-            std::io::stdin()
-                .read_to_string(&mut content)
-                .context("Failed to read prompt from stdin")?;
-            if content.trim().is_empty() {
-                bail!("No prompt provided on stdin");
-            }
-            Ok(Some(content))
-        }
-        (None, None, false) => Ok(None),
-    }
-}
-
 /// Resolve an agent ID from either --agent-id or --agent-name.
 ///
 /// If --agent-name is provided, queries the orchestrator API to find the agent
@@ -882,6 +840,7 @@ mod tests {
                 prompt: None,
                 worktree: false,
                 system_prompt: None,
+                tool_policy: Default::default(),
             },
             tmux_session: Some("agentd-orch-abc123".to_string()),
             created_at: Utc::now(),
@@ -1152,75 +1111,6 @@ mod tests {
         assert!(result.is_err(), "--prompt-template and --prompt-template-file should conflict");
     }
 
-    #[test]
-    fn test_resolve_working_dir_provided() {
-        let result = resolve_working_dir(Some("/tmp/project"));
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "/tmp/project");
-    }
-
-    #[test]
-    fn test_resolve_working_dir_defaults_to_pwd() {
-        let result = resolve_working_dir(None);
-        assert!(result.is_ok());
-        let pwd = std::env::current_dir().unwrap().to_string_lossy().to_string();
-        assert_eq!(result.unwrap(), pwd);
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_from_string() {
-        let result = resolve_agent_prompt(Some("Fix the bug"), None, false);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some("Fix the bug".to_string()));
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_from_file() {
-        let dir = std::env::temp_dir();
-        let path = dir.join("test_agent_prompt.txt");
-        std::fs::write(
-            &path,
-            "Review all files in src/ for security issues.\n1. SQL injection\n2. XSS",
-        )
-        .unwrap();
-
-        let result = resolve_agent_prompt(None, Some(&path), false);
-        assert!(result.is_ok());
-        let prompt = result.unwrap().unwrap();
-        assert!(prompt.contains("SQL injection"));
-        assert!(prompt.contains("XSS"));
-
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_file_not_found() {
-        let path = std::path::PathBuf::from("/nonexistent/prompt.txt");
-        let result = resolve_agent_prompt(None, Some(&path), false);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to read prompt file"));
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_file_empty() {
-        let dir = std::env::temp_dir();
-        let path = dir.join("test_agent_prompt_empty.txt");
-        std::fs::write(&path, "   \n  ").unwrap();
-
-        let result = resolve_agent_prompt(None, Some(&path), false);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Prompt file is empty"));
-
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_none() {
-        let result = resolve_agent_prompt(None, None, false);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), None);
-    }
-
     /// Verify create-agent clap parsing with new flags.
     #[test]
     fn test_create_agent_clap_defaults() {
@@ -1386,73 +1276,5 @@ mod tests {
         } else {
             panic!("Expected CreateWorkflow variant");
         }
-    }
-
-    #[test]
-    fn test_create_agent_clap_defaults() {
-        use clap::Parser;
-
-        #[derive(Parser)]
-        struct Cli {
-            #[command(subcommand)]
-            command: OrchestratorCommand,
-        }
-
-        let cli = Cli::try_parse_from(["test", "create-agent", "--name", "my-agent"])
-            .expect("Should parse with only --name");
-
-        if let OrchestratorCommand::CreateAgent {
-            name,
-            working_dir,
-            prompt,
-            prompt_file,
-            stdin,
-            attach,
-            ..
-        } = cli.command
-        {
-            assert_eq!(name, "my-agent");
-            assert_eq!(working_dir, None);
-            assert_eq!(prompt, None);
-            assert_eq!(prompt_file, None);
-            assert!(!stdin);
-            assert!(!attach);
-        } else {
-            panic!("Expected CreateAgent variant");
-        }
-    }
-
-    #[test]
-    fn test_create_agent_prompt_conflicts() {
-        use clap::Parser;
-
-        #[derive(Parser)]
-        struct Cli {
-            #[command(subcommand)]
-            command: OrchestratorCommand,
-        }
-
-        let result = Cli::try_parse_from([
-            "test",
-            "create-agent",
-            "--name",
-            "test",
-            "--prompt",
-            "inline",
-            "--prompt-file",
-            "/tmp/prompt.txt",
-        ]);
-        assert!(result.is_err(), "--prompt and --prompt-file should conflict");
-
-        let result = Cli::try_parse_from([
-            "test",
-            "create-agent",
-            "--name",
-            "test",
-            "--prompt",
-            "inline",
-            "--stdin",
-        ]);
-        assert!(result.is_err(), "--prompt and --stdin should conflict");
     }
 }
