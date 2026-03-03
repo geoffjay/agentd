@@ -51,6 +51,15 @@ use wrap::types::*;
 /// All commands communicate with the wrap service REST API on port 7002.
 #[derive(Subcommand)]
 pub enum WrapCommand {
+    /// Check the health of the wrap service.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent wrap health
+    /// ```
+    Health,
+
     /// List all active tmux sessions.
     ///
     /// Shows all tmux sessions managed by the wrap service.
@@ -126,6 +135,7 @@ impl WrapCommand {
     /// Returns `Ok(())` on success, or an error if the command fails.
     pub async fn execute(&self, client: &WrapClient, json: bool) -> Result<()> {
         match self {
+            WrapCommand::Health => wrap_health(client, json).await,
             WrapCommand::List => list_sessions(client, json).await,
             WrapCommand::Kill { name } => kill_session(client, name, json).await,
             WrapCommand::Launch { session_name, path, agent, provider, model, layout_json } => {
@@ -143,6 +153,25 @@ impl WrapCommand {
             }
         }
     }
+}
+
+/// Check the health of the wrap service.
+async fn wrap_health(client: &WrapClient, json: bool) -> Result<()> {
+    client
+        .health()
+        .await
+        .context("Failed to reach wrap service. Is it running?")?;
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({"status": "ok"}))?
+        );
+    } else {
+        println!("{} {}", "wrap:".bold(), "ok".green().bold());
+    }
+
+    Ok(())
 }
 
 /// List all active tmux sessions.

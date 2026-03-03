@@ -59,6 +59,15 @@ pub enum AskCommand {
     /// ```
     Trigger,
 
+    /// Check the health of the ask service.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent ask health
+    /// ```
+    Health,
+
     /// Answer a specific question from the ask service.
     ///
     /// Questions are identified by UUID and typically correspond to
@@ -91,6 +100,7 @@ impl AskCommand {
     /// Returns `Ok(())` on success, or an error if the command fails.
     pub async fn execute(&self, client: &AskClient, json: bool) -> Result<()> {
         match self {
+            AskCommand::Health => health(client, json).await,
             AskCommand::Trigger => trigger_checks(client, json).await,
             AskCommand::Answer { question_id, answer } => {
                 answer_question(client, question_id, answer, json).await
@@ -193,6 +203,22 @@ async fn answer_question(
         println!("{}", "✓ Answer submitted successfully!".green().bold());
         println!();
         println!("{}: {}", "Message".bold(), response.message);
+    }
+
+    Ok(())
+}
+
+/// Check the health of the ask service.
+async fn health(client: &AskClient, json: bool) -> Result<()> {
+    let response = client
+        .health()
+        .await
+        .context("Failed to reach ask service. Is it running?")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        println!("{} {}", "ask:".bold(), "ok".green().bold());
     }
 
     Ok(())

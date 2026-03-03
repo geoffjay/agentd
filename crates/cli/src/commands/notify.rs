@@ -58,6 +58,15 @@ use uuid::Uuid;
 /// communicate with the notification service REST API on port 7004.
 #[derive(Subcommand)]
 pub enum NotifyCommand {
+    /// Check the health of the notification service.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent notify health
+    /// ```
+    Health,
+
     /// Create a new notification via the REST API.
     ///
     /// # Examples
@@ -197,6 +206,7 @@ impl NotifyCommand {
     /// Returns `Ok(())` on success, or an error if the command fails.
     pub async fn execute(&self, client: &NotifyClient, json: bool) -> Result<()> {
         match self {
+            NotifyCommand::Health => notify_health(client, json).await,
             NotifyCommand::Create {
                 source,
                 lifetime,
@@ -582,6 +592,25 @@ async fn respond_to_notification(
         println!("{}", "Response submitted successfully!".green().bold());
         println!();
         display_notification(&notification);
+    }
+
+    Ok(())
+}
+
+/// Check the health of the notification service.
+async fn notify_health(client: &NotifyClient, json: bool) -> Result<()> {
+    client
+        .health()
+        .await
+        .context("Failed to reach notification service. Is it running?")?;
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({"status": "ok"}))?
+        );
+    } else {
+        println!("{} {}", "notify:".bold(), "ok".green().bold());
     }
 
     Ok(())

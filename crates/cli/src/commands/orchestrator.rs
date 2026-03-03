@@ -72,6 +72,17 @@ struct PaginatedResponse<T> {
 /// All commands communicate with the orchestrator service REST API.
 #[derive(Subcommand)]
 pub enum OrchestratorCommand {
+    /// Check the health of the orchestrator service.
+    ///
+    /// Shows the service status and active agent count.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent orchestrator health
+    /// ```
+    Health,
+
     /// List all managed agents.
     ///
     /// Returns all agents tracked by the orchestrator, optionally filtered
@@ -252,6 +263,7 @@ impl OrchestratorCommand {
     /// * `json` - If true, output raw JSON instead of formatted text
     pub async fn execute(&self, client: &ApiClient, json: bool) -> Result<()> {
         match self {
+            OrchestratorCommand::Health => orchestrator_health(client, json).await,
             OrchestratorCommand::ListAgents { status } => {
                 list_agents(client, status.as_deref(), json).await
             }
@@ -333,6 +345,32 @@ impl OrchestratorCommand {
             OrchestratorCommand::WorkflowHistory { id } => workflow_history(client, id, json).await,
         }
     }
+}
+
+// -- Health --
+
+async fn orchestrator_health(client: &ApiClient, json: bool) -> Result<()> {
+    let response: serde_json::Value = client
+        .get("/health")
+        .await
+        .context("Failed to reach orchestrator service. Is it running?")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        let agents_active = response
+            .get("agents_active")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        println!(
+            "{} {} ({} agents active)",
+            "orchestrator:".bold(),
+            "ok".green().bold(),
+            agents_active.to_string().cyan()
+        );
+    }
+
+    Ok(())
 }
 
 // -- Agent operations --
