@@ -79,7 +79,6 @@ use anyhow::Result;
 use ask::client::AskClient;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
-use cli::client::ApiClient;
 use colored::*;
 use commands::{AskCommand, NotifyCommand, OrchestratorCommand, WrapCommand};
 use notify::client::NotifyClient;
