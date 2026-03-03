@@ -117,11 +117,7 @@ impl OrchestratorClient {
     }
 
     /// Update the tool policy for an agent.
-    pub async fn update_agent_policy(
-        &self,
-        id: &Uuid,
-        policy: &ToolPolicy,
-    ) -> Result<ToolPolicy> {
+    pub async fn update_agent_policy(&self, id: &Uuid, policy: &ToolPolicy) -> Result<ToolPolicy> {
         self.put(&format!("/agents/{}/policy", id), policy).await
     }
 

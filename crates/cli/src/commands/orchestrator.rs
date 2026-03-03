@@ -926,10 +926,7 @@ fn format_stream_message(text: &str, verbose: bool) {
 
 async fn get_policy(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
     let uuid = parse_uuid(id)?;
-    let policy = client
-        .get_agent_policy(&uuid)
-        .await
-        .context("Failed to get agent policy")?;
+    let policy = client.get_agent_policy(&uuid).await.context("Failed to get agent policy")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&policy)?);
@@ -1306,8 +1303,12 @@ fn display_agent(agent: &AgentResponse) {
     let policy_display = match &agent.config.tool_policy {
         ToolPolicy::AllowAll => "allow_all".green().to_string(),
         ToolPolicy::DenyAll => "deny_all".red().to_string(),
-        ToolPolicy::AllowList { tools } => format!("{} [{}]", "allow_list".yellow(), tools.join(", ")),
-        ToolPolicy::DenyList { tools } => format!("{} [{}]", "deny_list".yellow(), tools.join(", ")),
+        ToolPolicy::AllowList { tools } => {
+            format!("{} [{}]", "allow_list".yellow(), tools.join(", "))
+        }
+        ToolPolicy::DenyList { tools } => {
+            format!("{} [{}]", "deny_list".yellow(), tools.join(", "))
+        }
     };
     println!("{}: {}", "Tool Policy".bold(), policy_display);
     println!("{}: {}", "Created".bold(), agent.created_at);
