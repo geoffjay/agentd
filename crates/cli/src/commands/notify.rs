@@ -341,7 +341,7 @@ async fn list_notifications(
     actionable: bool,
     json: bool,
 ) -> Result<()> {
-    let notifications = if actionable {
+    let response = if actionable {
         client
             .list_actionable_notifications()
             .await
@@ -358,16 +358,21 @@ async fn list_notifications(
     };
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&notifications)?);
+        println!("{}", serde_json::to_string_pretty(&response)?);
         return Ok(());
     }
 
-    if notifications.is_empty() {
+    if response.items.is_empty() {
         println!("{}", "No notifications found.".yellow());
         return Ok(());
     }
 
-    println!("{}", format!("Found {} notification(s)", notifications.len()).cyan().bold());
+    println!(
+        "{}",
+        format!("Showing {}/{} notification(s)", response.items.len(), response.total)
+            .cyan()
+            .bold()
+    );
     println!();
 
     let mut table = Table::new();
@@ -381,7 +386,7 @@ async fn list_notifications(
         Cell::new("Requires Response").style_spec("Fb"),
     ]));
 
-    for notification in notifications {
+    for notification in response.items {
         let priority_text = format_priority_plain(notification.priority);
         let priority_style = get_priority_style(notification.priority);
 

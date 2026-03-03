@@ -59,8 +59,8 @@
 //!     let client = NotifyClient::new("http://localhost:7004");
 //!
 //!     // List notifications
-//!     let notifications = client.list_notifications().await?;
-//!     println!("Found {} notifications", notifications.len());
+//!     let response = client.list_notifications().await?;
+//!     println!("Found {} notifications", response.total);
 //!
 //!     Ok(())
 //! }

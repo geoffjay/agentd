@@ -73,9 +73,7 @@ impl AgentManager {
         self.storage.update(&agent).await?;
 
         // Register the agent's tool policy with the WebSocket registry.
-        self.registry
-            .set_policy(agent.id, agent.config.tool_policy.clone())
-            .await;
+        self.registry.set_policy(agent.id, agent.config.tool_policy.clone()).await;
 
         info!(
             agent_id = %agent.id,
@@ -168,8 +166,19 @@ impl AgentManager {
     }
 
     /// List agents with optional status filter.
+    #[allow(dead_code)]
     pub async fn list_agents(&self, status: Option<AgentStatus>) -> anyhow::Result<Vec<Agent>> {
         self.storage.list(status).await
+    }
+
+    /// List agents with pagination.
+    pub async fn list_agents_paginated(
+        &self,
+        status: Option<AgentStatus>,
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<(Vec<Agent>, usize)> {
+        self.storage.list_paginated(status, limit, offset).await
     }
 
     /// Update an agent record in storage.

@@ -207,6 +207,7 @@ impl SchedulerStorage {
         Ok(count > 0)
     }
 
+    #[allow(dead_code)]
     pub async fn list_dispatches(&self, workflow_id: &Uuid) -> Result<Vec<DispatchRecord>> {
         let rows = sqlx::query(
             "SELECT * FROM dispatch_log WHERE workflow_id = ? ORDER BY dispatched_at DESC",
@@ -216,6 +217,51 @@ impl SchedulerStorage {
         .await?;
 
         rows.iter().map(row_to_dispatch).collect()
+    }
+
+    /// List workflows with pagination.
+    pub async fn list_workflows_paginated(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<WorkflowConfig>, usize)> {
+        let count =
+            sqlx::query("SELECT COUNT(*) as total FROM workflows").fetch_one(&self.pool).await?;
+        let rows = sqlx::query("SELECT * FROM workflows ORDER BY created_at DESC LIMIT ? OFFSET ?")
+            .bind(limit as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let total: i64 = count.get("total");
+        let workflows = rows.iter().map(row_to_workflow).collect::<Result<Vec<_>>>()?;
+        Ok((workflows, total as usize))
+    }
+
+    /// List dispatch history with pagination.
+    pub async fn list_dispatches_paginated(
+        &self,
+        workflow_id: &Uuid,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<DispatchRecord>, usize)> {
+        let count = sqlx::query("SELECT COUNT(*) as total FROM dispatch_log WHERE workflow_id = ?")
+            .bind(workflow_id.to_string())
+            .fetch_one(&self.pool)
+            .await?;
+
+        let rows = sqlx::query(
+            "SELECT * FROM dispatch_log WHERE workflow_id = ? ORDER BY dispatched_at DESC LIMIT ? OFFSET ?",
+        )
+        .bind(workflow_id.to_string())
+        .bind(limit as i64)
+        .bind(offset as i64)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let total: i64 = count.get("total");
+        let dispatches = rows.iter().map(row_to_dispatch).collect::<Result<Vec<_>>>()?;
+        Ok((dispatches, total as usize))
     }
 
     /// Find the active (Dispatched) dispatch for a given agent.
