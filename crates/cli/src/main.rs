@@ -77,7 +77,8 @@ pub mod types;
 
 use anyhow::Result;
 use ask::client::AskClient;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 use cli::client::ApiClient;
 use commands::{AskCommand, NotifyCommand, OrchestratorCommand, WrapCommand};
 use notify::client::NotifyClient;
@@ -143,6 +144,32 @@ enum Commands {
         #[command(subcommand)]
         command: OrchestratorCommand,
     },
+    /// Generate shell completion scripts.
+    ///
+    /// Outputs a completion script for the specified shell to stdout.
+    /// Redirect the output to the appropriate file for your shell.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// # Bash
+    /// agent completions bash > ~/.local/share/bash-completion/completions/agent
+    ///
+    /// # Zsh
+    /// agent completions zsh > ~/.zfunc/_agent
+    ///
+    /// # Fish
+    /// agent completions fish > ~/.config/fish/completions/agent.fish
+    ///
+    /// # PowerShell
+    /// agent completions powershell > _agent.ps1
+    /// ```
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+
     /// Start the hook daemon
     ///
     /// The hook daemon monitors git hooks and other system hooks, creating
@@ -203,6 +230,10 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "http://localhost:7006".to_string());
             let client = ApiClient::new(url);
             command.execute(&client, cli.json).await?;
+        }
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "agent", &mut std::io::stdout());
         }
         Commands::Hook => {
             println!("Starting hook daemon...");
