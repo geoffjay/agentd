@@ -155,6 +155,9 @@ impl WorkflowRunner {
                 busy.active_dispatch_id = Some(record.id);
             }
 
+            // Apply the workflow's tool policy to the agent before dispatching.
+            self.registry.set_policy(self.config.agent_id, self.config.tool_policy.clone()).await;
+
             // Send prompt to agent.
             if let Err(e) = self.registry.send_user_message(&self.config.agent_id, &prompt).await {
                 error!(

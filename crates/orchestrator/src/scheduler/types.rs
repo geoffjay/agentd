@@ -1,3 +1,4 @@
+use crate::types::ToolPolicy;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -35,6 +36,10 @@ pub struct WorkflowConfig {
     /// Whether the workflow is active.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Tool policy applied to the agent when dispatching tasks from this workflow.
+    /// Defaults to AllowAll (no restrictions).
+    #[serde(default)]
+    pub tool_policy: ToolPolicy,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -134,6 +139,9 @@ pub struct CreateWorkflowRequest {
     pub poll_interval_secs: u64,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Tool policy to apply to the agent when dispatching tasks.
+    #[serde(default)]
+    pub tool_policy: ToolPolicy,
 }
 
 /// Request body for updating a workflow.
@@ -143,6 +151,8 @@ pub struct UpdateWorkflowRequest {
     pub prompt_template: Option<String>,
     pub poll_interval_secs: Option<u64>,
     pub enabled: Option<bool>,
+    /// Update the tool policy for the workflow's agent.
+    pub tool_policy: Option<ToolPolicy>,
 }
 
 /// Response body for workflow endpoints.
@@ -155,6 +165,7 @@ pub struct WorkflowResponse {
     pub prompt_template: String,
     pub poll_interval_secs: u64,
     pub enabled: bool,
+    pub tool_policy: ToolPolicy,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -169,6 +180,7 @@ impl From<WorkflowConfig> for WorkflowResponse {
             prompt_template: w.prompt_template,
             poll_interval_secs: w.poll_interval_secs,
             enabled: w.enabled,
+            tool_policy: w.tool_policy,
             created_at: w.created_at,
             updated_at: w.updated_at,
         }
