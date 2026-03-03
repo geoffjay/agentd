@@ -683,3 +683,304 @@ impl BamlClient {
             .await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::BamlError;
+    use mockito::Server;
+
+    fn client_with_url(url: &str) -> BamlClient {
+        let config = BamlClientConfig::new(url).with_timeout(5).with_max_retries(0);
+        BamlClient::new(config)
+    }
+
+    fn client_with_retries(url: &str, retries: u32) -> BamlClient {
+        let config = BamlClientConfig::new(url).with_timeout(5).with_max_retries(retries);
+        BamlClient::new(config)
+    }
+
+    // -- Config tests --
+
+    #[test]
+    fn test_default_config() {
+        let config = BamlClientConfig::default();
+        assert_eq!(config.base_url, "http://localhost:2024");
+        assert_eq!(config.timeout_secs, 30);
+        assert_eq!(config.max_retries, 2);
+    }
+
+    #[test]
+    fn test_config_builder() {
+        let config = BamlClientConfig::new("http://example.com")
+            .with_timeout(10)
+            .with_max_retries(5);
+        assert_eq!(config.base_url, "http://example.com");
+        assert_eq!(config.timeout_secs, 10);
+        assert_eq!(config.max_retries, 5);
+    }
+
+    #[test]
+    fn test_default_client() {
+        let _client = BamlClient::default();
+    }
+
+    // -- call_function success --
+
+    #[tokio::test]
+    async fn test_call_function_success() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/call/CategorizeNotification")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{
+                "category": "error",
+                "priority": "high",
+                "suggested_lifetime": "persistent",
+                "reasoning": "Database error detected",
+                "suggested_action": "Check database connectivity"
+            }"#)
+            .create_async()
+            .await;
+
+        let client = client_with_url(&server.url());
+        let result = client
+            .categorize_notification("DB Error", "Connection lost", "production")
+            .await;
+
+        assert!(result.is_ok());
+        let category = result.unwrap();
+        assert_eq!(category.category, "error");
+        assert_eq!(category.priority, "high");
+        mock.assert_async().await;
+    }
+
+    // -- Error handling --
+
+    #[tokio::test]
+    async fn test_function_not_found() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/call/NonExistentFunction")
+            .with_status(404)
+            .create_async()
+            .await;
+
+        let client = client_with_url(&server.url());
+        let result: Result<String> = client.call_function("NonExistentFunction", &"{}").await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BamlError::FunctionNotFound { .. }));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_server_error_500() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/call/TestFunc")
+            .with_status(500)
+            .with_body("Internal server error")
+            .create_async()
+            .await;
+
+        let client = client_with_url(&server.url());
+        let result: Result<String> = client.call_function("TestFunc", &"{}").await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BamlError::ServerError { status: 500, .. }));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_invalid_json_response() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/call/CategorizeNotification")
+            .with_status(200)
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let client = client_with_url(&server.url());
+        let result = client
+            .categorize_notification("Test", "Test", "test")
+            .await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BamlError::InvalidResponse(_)));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_server_unreachable() {
+        let client = client_with_url("http://127.0.0.1:19999");
+        let result = client
+            .categorize_notification("Test", "Test", "test")
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    // -- Retry logic --
+
+    #[tokio::test]
+    async fn test_retry_on_server_error() {
+        let mut server = Server::new_async().await;
+
+        // First call returns 500, second returns 200
+        let fail_mock = server
+            .mock("POST", "/call/TestFunc")
+            .with_status(500)
+            .with_body("temporary error")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let success_mock = server
+            .mock("POST", "/call/TestFunc")
+            .with_status(200)
+            .with_body("\"success\"")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let client = client_with_retries(&server.url(), 1);
+        let result: Result<String> = client.call_function("TestFunc", &"{}").await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "success");
+        fail_mock.assert_async().await;
+        success_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_no_retry_on_404() {
+        let mut server = Server::new_async().await;
+
+        let mock = server
+            .mock("POST", "/call/Missing")
+            .with_status(404)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let client = client_with_retries(&server.url(), 2);
+        let result: Result<String> = client.call_function("Missing", &"{}").await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BamlError::FunctionNotFound { .. }));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_exhausts_retries() {
+        let mut server = Server::new_async().await;
+
+        let mock = server
+            .mock("POST", "/call/TestFunc")
+            .with_status(500)
+            .with_body("persistent error")
+            .expect(3) // initial + 2 retries
+            .create_async()
+            .await;
+
+        let client = client_with_retries(&server.url(), 2);
+        let result: Result<String> = client.call_function("TestFunc", &"{}").await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BamlError::ServerError { .. }));
+        mock.assert_async().await;
+    }
+
+    // -- Domain method tests --
+
+    #[tokio::test]
+    async fn test_summarize_notifications() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/call/SummarizeNotifications")
+            .with_status(200)
+            .with_body(r#"{
+                "summary": "5 notifications in the last hour",
+                "key_actions": ["Review database alerts"],
+                "urgent_count": 1,
+                "high_count": 2,
+                "normal_count": 1,
+                "low_count": 1,
+                "categories": {"error": 3, "info": 2},
+                "trends": "Increasing error rate",
+                "recommendations": ["Check database"]
+            }"#)
+            .create_async()
+            .await;
+
+        let client = client_with_url(&server.url());
+        let notifications = vec!["Alert 1".to_string(), "Alert 2".to_string()];
+        let result = client.summarize_notifications(&notifications, "last hour").await;
+
+        assert!(result.is_ok());
+        let digest = result.unwrap();
+        assert_eq!(digest.urgent_count, 1);
+        assert_eq!(digest.high_count, 2);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_analyze_answer() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/call/AnalyzeAnswer")
+            .with_status(200)
+            .with_body(r#"{
+                "interpretation": "User agrees",
+                "confidence": 0.95,
+                "suggested_action": "proceed",
+                "needs_followup": false,
+                "followup_question": null
+            }"#)
+            .create_async()
+            .await;
+
+        let client = client_with_url(&server.url());
+        let result = client.analyze_answer("Start tmux?", "yes", "yes_no").await;
+
+        assert!(result.is_ok());
+        let analysis = result.unwrap();
+        assert_eq!(analysis.confidence, 0.95);
+        assert!(!analysis.needs_followup);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_analyze_shell_event() {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/call/AnalyzeShellEvent")
+            .with_status(200)
+            .with_body(r#"{
+                "should_notify": true,
+                "notification_title": "Build Failed",
+                "notification_message": "cargo build exited with code 1",
+                "priority": "high",
+                "reasoning": "Build failure detected",
+                "metadata": {},
+                "indicates_problem": true,
+                "suggested_actions": ["Fix compilation errors"]
+            }"#)
+            .create_async()
+            .await;
+
+        let client = client_with_url(&server.url());
+        let result = client
+            .analyze_shell_event("cargo build", 1, "error[E0308]", 5000, "development")
+            .await;
+
+        assert!(result.is_ok());
+        let action = result.unwrap();
+        assert!(action.should_notify);
+        assert!(action.indicates_problem);
+        mock.assert_async().await;
+    }
+}

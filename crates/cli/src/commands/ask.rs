@@ -197,3 +197,54 @@ async fn answer_question(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ask::types::{AnswerResponse, TriggerResponse};
+
+    #[test]
+    fn test_trigger_response_json_deserialization() {
+        let json = r#"{
+            "checks_run": ["tmux_sessions"],
+            "notifications_sent": [],
+            "results": {
+                "tmux_sessions": {
+                    "running": true,
+                    "session_count": 2
+                }
+            }
+        }"#;
+
+        let response: TriggerResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.checks_run, vec!["tmux_sessions"]);
+        assert!(response.notifications_sent.is_empty());
+        assert!(response.results.tmux_sessions.running);
+        assert_eq!(response.results.tmux_sessions.session_count, 2);
+    }
+
+    #[test]
+    fn test_answer_request_serialization() {
+        let request = AnswerRequest {
+            question_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap(),
+            answer: "yes".to_string(),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("550e8400"));
+        assert!(json.contains("yes"));
+    }
+
+    #[test]
+    fn test_answer_response_deserialization() {
+        let json = r#"{
+            "success": true,
+            "message": "Answer recorded",
+            "question_id": "550e8400-e29b-41d4-a716-446655440000"
+        }"#;
+
+        let response: AnswerResponse = serde_json::from_str(json).unwrap();
+        assert!(response.success);
+        assert_eq!(response.message, "Answer recorded");
+    }
+}
