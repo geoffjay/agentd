@@ -131,6 +131,30 @@ pub enum OrchestratorCommand {
         id: String,
     },
 
+    /// Attach to a running agent's tmux session.
+    ///
+    /// Looks up the agent, verifies it is running, and execs into its
+    /// tmux session for interactive debugging.
+    ///
+    /// # Examples
+    ///
+    /// Attach by agent ID:
+    ///
+    ///   agent orchestrator attach 550e8400-e29b-41d4-a716-446655440000
+    ///
+    /// Attach by agent name:
+    ///
+    ///   agent orchestrator attach --name my-agent
+    Attach {
+        /// Agent ID (UUID)
+        #[arg(conflicts_with = "name")]
+        id: Option<String>,
+
+        /// Agent name (resolves to first matching running agent)
+        #[arg(long, conflicts_with = "id")]
+        name: Option<String>,
+    },
+
     /// List all workflows.
     ListWorkflows,
 
@@ -281,6 +305,9 @@ impl OrchestratorCommand {
             }
             OrchestratorCommand::GetAgent { id } => get_agent(client, id, json).await,
             OrchestratorCommand::DeleteAgent { id } => delete_agent(client, id, json).await,
+            OrchestratorCommand::Attach { id, name } => {
+                attach_agent(client, id.as_deref(), name.as_deref()).await
+            }
             OrchestratorCommand::ListWorkflows => list_workflows(client, json).await,
             OrchestratorCommand::CreateWorkflow {
                 name,
@@ -430,6 +457,113 @@ async fn delete_agent(client: &ApiClient, id: &str, json: bool) -> Result<()> {
     } else {
         let name = result.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
         println!("{}", format!("Agent '{}' ({}) terminated.", name, id).green().bold());
+    }
+
+    Ok(())
+}
+
+// -- Attach --
+
+/// Attach to a running agent's tmux session.
+///
+/// Resolves the agent by ID or name, verifies it is running and has a tmux
+/// session, then execs into the session.
+async fn attach_agent(
+    client: &ApiClient,
+    id: Option<&str>,
+    name: Option<&str>,
+) -> Result<()> {
+    // Resolve the agent — either by ID directly or by name lookup
+    let agent: serde_json::Value = match (id, name) {
+        (Some(agent_id), _) => {
+            let path = format!("/agents/{}", agent_id);
+            client.get(&path).await.context(
+                "Agent not found. Use 'agent orchestrator list-agents' to see available agents.",
+            )?
+        }
+        (_, Some(agent_name)) => {
+            let resolved = resolve_agent_id(client, None, Some(agent_name)).await?;
+            let path = format!("/agents/{}", resolved);
+            client.get(&path).await.context("Failed to get agent")?
+        }
+        (None, None) => {
+            bail!("Either an agent ID or --name must be provided.");
+        }
+    };
+
+    let agent_name = agent
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let agent_id = agent
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    // Verify agent is running
+    let status = agent
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    if status != "running" {
+        bail!(
+            "Agent '{}' is not running (status: {}). Cannot attach.",
+            agent_name,
+            status
+        );
+    }
+
+    // Get the tmux session name
+    let session = agent
+        .get("tmux_session")
+        .and_then(|v| v.as_str())
+        .context(format!(
+            "Agent '{}' has no tmux session. It may have crashed.",
+            agent_name
+        ))?;
+
+    // Verify tmux is installed
+    if std::process::Command::new("tmux")
+        .arg("-V")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        bail!("tmux is required but not found. Install with: brew install tmux");
+    }
+
+    // Verify session exists
+    let session_check = std::process::Command::new("tmux")
+        .args(["has-session", "-t", session])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    match session_check {
+        Ok(s) if s.success() => {}
+        _ => {
+            bail!(
+                "Tmux session '{}' no longer exists. Agent '{}' ({}) may have crashed.",
+                session,
+                agent_name,
+                agent_id
+            );
+        }
+    }
+
+    println!(
+        "{}",
+        format!("Attaching to agent '{}' (session: {})...", agent_name, session).cyan()
+    );
+
+    let exit = std::process::Command::new("tmux")
+        .args(["attach-session", "-t", session])
+        .status()
+        .context("Failed to exec tmux attach-session")?;
+
+    if !exit.success() {
+        bail!("tmux attach-session exited with status: {}", exit);
     }
 
     Ok(())
@@ -1047,6 +1181,100 @@ mod tests {
             assert_eq!(agent_name, Some("my-agent".to_string()));
         } else {
             panic!("Expected CreateWorkflow variant");
+        }
+    }
+
+    /// Verify attach subcommand parses with agent ID.
+    #[test]
+    fn test_attach_by_id() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "attach",
+            "550e8400-e29b-41d4-a716-446655440000",
+        ])
+        .expect("Should parse attach with ID");
+
+        if let OrchestratorCommand::Attach { id, name } = cli.command {
+            assert_eq!(id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
+            assert_eq!(name, None);
+        } else {
+            panic!("Expected Attach variant");
+        }
+    }
+
+    /// Verify attach subcommand parses with --name.
+    #[test]
+    fn test_attach_by_name() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from(["test", "attach", "--name", "my-agent"])
+            .expect("Should parse attach with --name");
+
+        if let OrchestratorCommand::Attach { id, name } = cli.command {
+            assert_eq!(id, None);
+            assert_eq!(name, Some("my-agent".to_string()));
+        } else {
+            panic!("Expected Attach variant");
+        }
+    }
+
+    /// Verify --name and positional ID conflict.
+    #[test]
+    fn test_attach_id_and_name_conflict() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let result = Cli::try_parse_from([
+            "test",
+            "attach",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--name",
+            "my-agent",
+        ]);
+
+        assert!(result.is_err(), "ID and --name should conflict");
+    }
+
+    /// Verify attach requires either ID or --name.
+    #[test]
+    fn test_attach_no_args() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        // No ID or --name: should still parse (both are optional at clap level,
+        // validation happens at runtime)
+        let cli = Cli::try_parse_from(["test", "attach"])
+            .expect("Should parse attach with no args");
+
+        if let OrchestratorCommand::Attach { id, name } = cli.command {
+            assert_eq!(id, None);
+            assert_eq!(name, None);
+        } else {
+            panic!("Expected Attach variant");
         }
     }
 }
