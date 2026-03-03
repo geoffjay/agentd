@@ -131,6 +131,33 @@ pub enum OrchestratorCommand {
         id: String,
     },
 
+    /// Send a message/prompt to a running agent.
+    ///
+    /// Sends a prompt to a non-interactive agent via the orchestrator API.
+    /// The agent must be running and connected via WebSocket.
+    ///
+    /// # Examples
+    ///
+    /// Send a prompt directly:
+    ///
+    ///   agent orchestrator send-message <AGENT_ID> "Fix the failing tests"
+    ///
+    /// Read a multi-line prompt from stdin:
+    ///
+    ///   echo "Review the code" | agent orchestrator send-message <AGENT_ID> --stdin
+    SendMessage {
+        /// Agent ID (UUID)
+        id: String,
+
+        /// Message content (prompt to send to the agent)
+        #[arg(conflicts_with = "stdin")]
+        message: Option<String>,
+
+        /// Read message from stdin (supports multi-line prompts)
+        #[arg(long, conflicts_with = "message")]
+        stdin: bool,
+    },
+
     /// List all workflows.
     ListWorkflows,
 
@@ -281,6 +308,9 @@ impl OrchestratorCommand {
             }
             OrchestratorCommand::GetAgent { id } => get_agent(client, id, json).await,
             OrchestratorCommand::DeleteAgent { id } => delete_agent(client, id, json).await,
+            OrchestratorCommand::SendMessage { id, message, stdin } => {
+                send_message(client, id, message.as_deref(), *stdin, json).await
+            }
             OrchestratorCommand::ListWorkflows => list_workflows(client, json).await,
             OrchestratorCommand::CreateWorkflow {
                 name,
@@ -430,6 +460,73 @@ async fn delete_agent(client: &ApiClient, id: &str, json: bool) -> Result<()> {
     } else {
         let name = result.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
         println!("{}", format!("Agent '{}' ({}) terminated.", name, id).green().bold());
+    }
+
+    Ok(())
+}
+
+// -- Send message --
+
+/// Send a message/prompt to a running agent.
+async fn send_message(
+    client: &ApiClient,
+    id: &str,
+    message: Option<&str>,
+    stdin: bool,
+    json: bool,
+) -> Result<()> {
+    // Resolve the message content from args or stdin
+    let content = match (message, stdin) {
+        (Some(msg), _) => msg.to_string(),
+        (_, true) => {
+            use std::io::Read;
+            let mut buf = String::new();
+            std::io::stdin()
+                .read_to_string(&mut buf)
+                .context("Failed to read message from stdin")?;
+            if buf.trim().is_empty() {
+                bail!("No message provided on stdin");
+            }
+            buf
+        }
+        (None, false) => {
+            bail!("Either a message argument or --stdin must be provided.");
+        }
+    };
+
+    let path = format!("/agents/{}/message", id);
+    let body = serde_json::json!({ "content": content });
+
+    let response: serde_json::Value = client.post(&path, &body).await.map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("404") {
+            anyhow::anyhow!(
+                "Agent '{}' not found. Use 'agent orchestrator list-agents' to see available agents.",
+                id
+            )
+        } else if msg.contains("409") {
+            anyhow::anyhow!(
+                "Agent '{}' is not running. Only running agents can receive messages.",
+                id
+            )
+        } else {
+            e.context("Failed to send message")
+        }
+    })?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        let agent_id = response
+            .get("agent_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(id);
+        println!(
+            "{}",
+            format!("Message sent to agent ({}).", agent_id)
+                .green()
+                .bold()
+        );
     }
 
     Ok(())
@@ -1048,5 +1145,86 @@ mod tests {
         } else {
             panic!("Expected CreateWorkflow variant");
         }
+    }
+
+    /// Verify send-message parses with ID and message.
+    #[test]
+    fn test_send_message_with_args() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "send-message",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "Fix the failing tests",
+        ])
+        .expect("Should parse send-message with ID and message");
+
+        if let OrchestratorCommand::SendMessage { id, message, stdin } = cli.command {
+            assert_eq!(id, "550e8400-e29b-41d4-a716-446655440000");
+            assert_eq!(message, Some("Fix the failing tests".to_string()));
+            assert!(!stdin);
+        } else {
+            panic!("Expected SendMessage variant");
+        }
+    }
+
+    /// Verify send-message parses with --stdin.
+    #[test]
+    fn test_send_message_with_stdin() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "send-message",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--stdin",
+        ])
+        .expect("Should parse send-message with --stdin");
+
+        if let OrchestratorCommand::SendMessage { id, message, stdin } = cli.command {
+            assert_eq!(id, "550e8400-e29b-41d4-a716-446655440000");
+            assert_eq!(message, None);
+            assert!(stdin);
+        } else {
+            panic!("Expected SendMessage variant");
+        }
+    }
+
+    /// Verify message and --stdin conflict.
+    #[test]
+    fn test_send_message_args_and_stdin_conflict() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let result = Cli::try_parse_from([
+            "test",
+            "send-message",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "inline message",
+            "--stdin",
+        ]);
+
+        assert!(
+            result.is_err(),
+            "message and --stdin should conflict"
+        );
     }
 }
