@@ -253,9 +253,15 @@ async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &Connect
 
             let policy = registry.get_policy(agent_id).await;
             let allowed = policy.evaluate(tool_name);
+            let policy_mode = match &policy {
+                ToolPolicy::AllowAll => "allow_all",
+                ToolPolicy::DenyAll => "deny_all",
+                ToolPolicy::AllowList { .. } => "allow_list",
+                ToolPolicy::DenyList { .. } => "deny_list",
+            };
 
             if allowed {
-                info!(%agent_id, %tool_name, decision = "allow", "Tool use decision");
+                info!(%agent_id, %tool_name, decision = "allow", %policy_mode, "Tool use decision");
 
                 let response = serde_json::json!({
                     "type": "control_response",
@@ -273,7 +279,7 @@ async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &Connect
                     error!(%agent_id, %e, "Failed to send control response");
                 }
             } else {
-                warn!(%agent_id, %tool_name, decision = "deny", "Tool use decision");
+                warn!(%agent_id, %tool_name, decision = "deny", %policy_mode, "Tool use decision");
 
                 let response = serde_json::json!({
                     "type": "control_response",
