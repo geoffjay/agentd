@@ -50,10 +50,24 @@ mod types;
 
 use anyhow::Result;
 use api::{create_router_with_tracing, ApiState};
+use axum::{extract::State, response::IntoResponse, routing::get};
+use metrics_exporter_prometheus::PrometheusHandle;
 use notification_client::NotificationClient;
 use state::AppState;
 use std::env;
 use tracing::{error, info, warn};
+
+fn init_metrics() -> PrometheusHandle {
+    let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
+    let handle = builder.install_recorder().expect("failed to install metrics recorder");
+    metrics::gauge!("service_info", "version" => env!("CARGO_PKG_VERSION"), "service" => "ask")
+        .set(1.0);
+    handle
+}
+
+async fn metrics_handler(State(handle): State<PrometheusHandle>) -> impl IntoResponse {
+    handle.render()
+}
 
 /// Service entry point.
 ///
@@ -126,8 +140,13 @@ async fn main() -> Result<()> {
         notification_service_url: notify_service_url,
     };
 
-    // Create router with tracing middleware
-    let app = create_router_with_tracing(api_state);
+    // Initialize Prometheus metrics
+    let metrics_handle = init_metrics();
+
+    // Create router with tracing middleware and metrics endpoint
+    let metrics_router =
+        axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
+    let app = create_router_with_tracing(api_state).merge(metrics_router);
 
     // Bind to address
     let addr = format!("0.0.0.0:{port}");

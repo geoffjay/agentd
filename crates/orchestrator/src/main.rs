@@ -6,7 +6,9 @@ mod types;
 mod websocket;
 
 use api::{create_router, ApiState};
+use axum::{extract::State, response::IntoResponse, routing::get};
 use manager::AgentManager;
+use metrics_exporter_prometheus::PrometheusHandle;
 use scheduler::storage::SchedulerStorage;
 use scheduler::Scheduler;
 use std::env;
@@ -15,6 +17,18 @@ use storage::AgentStorage;
 use tracing::info;
 use websocket::ConnectionRegistry;
 use wrap::tmux::TmuxManager;
+
+fn init_metrics() -> PrometheusHandle {
+    let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
+    let handle = builder.install_recorder().expect("failed to install metrics recorder");
+    metrics::gauge!("service_info", "version" => env!("CARGO_PKG_VERSION"), "service" => "orchestrator")
+        .set(1.0);
+    handle
+}
+
+async fn metrics_handler(State(handle): State<PrometheusHandle>) -> impl IntoResponse {
+    handle.render()
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -74,13 +88,25 @@ async fn main() -> anyhow::Result<()> {
     // Resume any enabled workflows from the database.
     scheduler.resume_workflows().await?;
 
-    // Build router with request tracing middleware.
+    // Initialize Prometheus metrics
+    let metrics_handle = init_metrics();
+
+    // Build router with metrics endpoint and request tracing middleware.
     let state = ApiState { manager, registry, scheduler: scheduler.clone() };
-    let app = create_router(state).layer(
-        tower_http::trace::TraceLayer::new_for_http()
-            .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
-            .on_response(tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
-    );
+    let metrics_router =
+        axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
+
+    let app = create_router(state)
+        .merge(metrics_router)
+        .layer(
+            tower_http::trace::TraceLayer::new_for_http()
+                .make_span_with(
+                    tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO),
+                )
+                .on_response(
+                    tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO),
+                ),
+        );
 
     // Bind and serve.
     let addr = format!("127.0.0.1:{}", port);
