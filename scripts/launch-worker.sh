@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-API="http://127.0.0.1:17006"
+API="${ORCHESTRATOR_URL:-http://127.0.0.1:17006}"
 LABEL="agent"
 INTERVAL=60
 OWNER="geoffjay"

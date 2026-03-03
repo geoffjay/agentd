@@ -51,6 +51,8 @@ pub fn create_router(state: ApiState) -> Router {
 #[derive(Deserialize)]
 pub struct ListQuery {
     pub status: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -74,10 +76,13 @@ async fn list_agents(
         .transpose()
         .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
 
-    let agents = state.manager.list_agents(status_filter).await?;
-    let responses: Vec<AgentResponse> = agents.into_iter().map(AgentResponse::from).collect();
+    let limit = clamp_limit(query.limit);
+    let offset = query.offset.unwrap_or(0);
 
-    Ok(Json(responses))
+    let (agents, total) = state.manager.list_agents_paginated(status_filter, limit, offset).await?;
+    let items: Vec<AgentResponse> = agents.into_iter().map(AgentResponse::from).collect();
+
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
 
 async fn create_agent(

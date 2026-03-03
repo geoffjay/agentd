@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-API="http://127.0.0.1:17006"
+API="${ORCHESTRATOR_URL:-http://127.0.0.1:17006}"
 
 echo "==> Checking orchestrator health..."
 health=$(curl -sf "$API/health") || {

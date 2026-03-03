@@ -226,13 +226,16 @@ async fn health_check() -> impl IntoResponse {
 async fn list_notifications(
     State(state): State<ApiState>,
     axum::extract::Query(params): axum::extract::Query<ListParams>,
-) -> Result<Json<Vec<Notification>>, ApiError> {
+) -> Result<Json<PaginatedResponse<Notification>>, ApiError> {
     let status = params
         .status
         .map(|s| s.parse::<NotificationStatus>().map_err(|e| ApiError::InvalidInput(e.to_string())))
         .transpose()?;
-    let notifications = state.storage.list(status).await?;
-    Ok(Json(notifications))
+    let limit = clamp_limit(params.limit);
+    let offset = params.offset.unwrap_or(0);
+
+    let (items, total) = state.storage.list_paginated(status, limit, offset).await?;
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
 
 /// Lists actionable notifications.
@@ -260,9 +263,13 @@ async fn list_notifications(
 /// ```
 async fn list_actionable(
     State(state): State<ApiState>,
-) -> Result<Json<Vec<Notification>>, ApiError> {
-    let notifications = state.storage.list_actionable().await?;
-    Ok(Json(notifications))
+    axum::extract::Query(params): axum::extract::Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<Notification>>, ApiError> {
+    let limit = clamp_limit(params.limit);
+    let offset = params.offset.unwrap_or(0);
+
+    let (items, total) = state.storage.list_actionable_paginated(limit, offset).await?;
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
 
 /// Lists notification history.
@@ -287,9 +294,15 @@ async fn list_actionable(
 /// ```bash
 /// curl http://localhost:17004/notifications/history
 /// ```
-async fn list_history(State(state): State<ApiState>) -> Result<Json<Vec<Notification>>, ApiError> {
-    let notifications = state.storage.list_history().await?;
-    Ok(Json(notifications))
+async fn list_history(
+    State(state): State<ApiState>,
+    axum::extract::Query(params): axum::extract::Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<Notification>>, ApiError> {
+    let limit = clamp_limit(params.limit);
+    let offset = params.offset.unwrap_or(0);
+
+    let (items, total) = state.storage.list_history_paginated(limit, offset).await?;
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
 
 /// Returns the count of notifications grouped by status.
@@ -547,6 +560,19 @@ async fn delete_notification(
 struct ListParams {
     /// Optional status filter (case-insensitive)
     status: Option<String>,
+    /// Maximum number of items to return (default: 50, max: 200)
+    limit: Option<usize>,
+    /// Number of items to skip (default: 0)
+    offset: Option<usize>,
+}
+
+/// Pagination query parameters for endpoints without other filters.
+#[derive(Debug, Deserialize)]
+struct PaginationParams {
+    /// Maximum number of items to return (default: 50, max: 200)
+    limit: Option<usize>,
+    /// Number of items to skip (default: 0)
+    offset: Option<usize>,
 }
 
 // === Error Handling ===

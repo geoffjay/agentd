@@ -149,6 +149,25 @@ impl From<Agent> for AgentResponse {
     }
 }
 
+/// Paginated response envelope for list endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginatedResponse<T> {
+    pub items: Vec<T>,
+    pub total: usize,
+    pub limit: usize,
+    pub offset: usize,
+}
+
+/// Default page size.
+pub const DEFAULT_PAGE_LIMIT: usize = 50;
+/// Maximum page size.
+pub const MAX_PAGE_LIMIT: usize = 200;
+
+/// Clamp a requested limit to valid bounds.
+pub fn clamp_limit(limit: Option<usize>) -> usize {
+    limit.unwrap_or(DEFAULT_PAGE_LIMIT).clamp(1, MAX_PAGE_LIMIT)
+}
+
 /// Health check response.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HealthResponse {
