@@ -132,7 +132,7 @@ async fn send_message(
     // Verify agent exists and is running.
     let agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
     if agent.status != AgentStatus::Running {
-        return Err(ApiError::InvalidInput(format!(
+        return Err(ApiError::AgentNotRunning(format!(
             "Agent {} is not running (status: {})",
             id, agent.status
         )));
@@ -180,12 +180,26 @@ async fn update_agent_policy(
 
 // -- Error handling --
 
+/// API error types for the orchestrator service.
+///
+/// # HTTP Status Mapping
+///
+/// - `NotFound` -> 404 Not Found
+/// - `InvalidInput` -> 400 Bad Request
+/// - `AgentNotRunning` -> 409 Conflict
+/// - `Internal` -> 500 Internal Server Error
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
-    #[error("Not found")]
+    /// Resource not found (HTTP 404)
+    #[error("not found")]
     NotFound,
-    #[error("Invalid input: {0}")]
+    /// Invalid input or request (HTTP 400)
+    #[error("invalid input: {0}")]
     InvalidInput(String),
+    /// Agent is not in the expected state (HTTP 409)
+    #[error("agent not running: {0}")]
+    AgentNotRunning(String),
+    /// Internal server error (HTTP 500)
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -195,6 +209,7 @@ impl IntoResponse for ApiError {
         let (status, message) = match &self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
             ApiError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            ApiError::AgentNotRunning(_) => (StatusCode::CONFLICT, self.to_string()),
             ApiError::Internal(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         };
 
