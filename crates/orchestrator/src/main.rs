@@ -18,12 +18,15 @@ use wrap::tmux::TmuxManager;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    // Initialize tracing subscriber. Set LOG_FORMAT=json for structured JSON output.
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    if std::env::var("LOG_FORMAT").as_deref() == Ok("json") {
+        tracing_subscriber::fmt().json().with_env_filter(env_filter).init();
+    } else {
+        tracing_subscriber::fmt().with_env_filter(env_filter).init();
+    }
 
     info!("Starting agentd-orchestrator service...");
 
@@ -71,9 +74,13 @@ async fn main() -> anyhow::Result<()> {
     // Resume any enabled workflows from the database.
     scheduler.resume_workflows().await?;
 
-    // Build router.
+    // Build router with request tracing middleware.
     let state = ApiState { manager, registry, scheduler: scheduler.clone() };
-    let app = create_router(state);
+    let app = create_router(state).layer(
+        tower_http::trace::TraceLayer::new_for_http()
+            .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+            .on_response(tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
+    );
 
     // Bind and serve.
     let addr = format!("127.0.0.1:{}", port);

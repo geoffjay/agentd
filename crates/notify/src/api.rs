@@ -581,39 +581,33 @@ struct PaginationParams {
 ///
 /// These errors are automatically converted to appropriate HTTP responses
 /// with status codes and JSON error messages.
-#[derive(Debug)]
+///
+/// # HTTP Status Mapping
+///
+/// - `Database` -> 500 Internal Server Error
+/// - `NotFound` -> 404 Not Found
+/// - `InvalidInput` -> 400 Bad Request
+#[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     /// Database operation error (HTTP 500)
-    Database(anyhow::Error),
+    #[error("database error: {0}")]
+    Database(#[from] anyhow::Error),
     /// Resource not found error (HTTP 404)
+    #[error("not found: {0}")]
     NotFound(String),
     /// Invalid input or request error (HTTP 400)
+    #[error("invalid input: {0}")]
     InvalidInput(String),
 }
 
 impl IntoResponse for ApiError {
-    /// Converts the error into an HTTP response.
-    ///
-    /// Maps each error variant to an appropriate HTTP status code and JSON
-    /// error message in the format: `{"error": "message"}`.
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            ApiError::Database(e) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {e}"))
-            }
-            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            ApiError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg),
+        let (status, message) = match &self {
+            ApiError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ApiError::NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            ApiError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
         };
 
         (status, Json(serde_json::json!({ "error": message }))).into_response()
-    }
-}
-
-impl From<anyhow::Error> for ApiError {
-    /// Converts any `anyhow::Error` into an `ApiError::Database`.
-    ///
-    /// This allows using `?` operator with database operations in handlers.
-    fn from(err: anyhow::Error) -> Self {
-        ApiError::Database(err)
     }
 }

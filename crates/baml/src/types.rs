@@ -291,3 +291,166 @@ pub struct CommandInsight {
     /// Whether user typically cares about this command's completion
     pub user_cares_about_completion: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_notification_category_serde() {
+        let category = NotificationCategory {
+            category: "error".to_string(),
+            priority: "high".to_string(),
+            suggested_lifetime: "persistent".to_string(),
+            reasoning: "Critical issue".to_string(),
+            suggested_action: Some("Investigate".to_string()),
+        };
+
+        let json = serde_json::to_string(&category).unwrap();
+        let deserialized: NotificationCategory = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.category, "error");
+        assert_eq!(deserialized.priority, "high");
+        assert_eq!(deserialized.suggested_action, Some("Investigate".to_string()));
+    }
+
+    #[test]
+    fn test_notification_category_optional_field() {
+        let json = r#"{
+            "category": "info",
+            "priority": "low",
+            "suggested_lifetime": "ephemeral",
+            "reasoning": "FYI",
+            "suggested_action": null
+        }"#;
+        let category: NotificationCategory = serde_json::from_str(json).unwrap();
+        assert!(category.suggested_action.is_none());
+    }
+
+    #[test]
+    fn test_notification_digest_serde() {
+        let digest = NotificationDigest {
+            summary: "5 alerts".to_string(),
+            key_actions: vec!["Review".to_string()],
+            urgent_count: 1,
+            high_count: 2,
+            normal_count: 1,
+            low_count: 1,
+            categories: HashMap::from([("error".to_string(), 3)]),
+            trends: "Increasing".to_string(),
+            recommendations: vec!["Check logs".to_string()],
+        };
+
+        let json = serde_json::to_string(&digest).unwrap();
+        let deserialized: NotificationDigest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.urgent_count, 1);
+        assert_eq!(deserialized.categories.get("error"), Some(&3));
+    }
+
+    #[test]
+    fn test_system_question_serde() {
+        let question = SystemQuestion {
+            question_text: "Start tmux?".to_string(),
+            suggested_responses: vec!["yes".to_string(), "no".to_string()],
+            reasoning: "No sessions running".to_string(),
+            urgency: "normal".to_string(),
+            follow_up_actions: HashMap::from([("yes".to_string(), "start session".to_string())]),
+            help_text: None,
+        };
+
+        let json = serde_json::to_string(&question).unwrap();
+        let deserialized: SystemQuestion = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.question_text, "Start tmux?");
+        assert_eq!(deserialized.suggested_responses.len(), 2);
+    }
+
+    #[test]
+    fn test_answer_analysis_serde() {
+        let analysis = AnswerAnalysis {
+            interpretation: "User agrees".to_string(),
+            confidence: 0.95,
+            suggested_action: "proceed".to_string(),
+            needs_followup: false,
+            followup_question: None,
+        };
+
+        let json = serde_json::to_string(&analysis).unwrap();
+        let deserialized: AnswerAnalysis = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.confidence, 0.95);
+        assert!(!deserialized.needs_followup);
+    }
+
+    #[test]
+    fn test_log_analysis_serde() {
+        let analysis = LogAnalysis {
+            has_errors: true,
+            error_summary: "Connection timeouts".to_string(),
+            affected_services: vec!["db".to_string()],
+            suggested_actions: vec!["Restart".to_string()],
+            severity: "error".to_string(),
+            root_cause: "Network".to_string(),
+            requires_immediate_attention: true,
+            impact_assessment: "High".to_string(),
+        };
+
+        let json = serde_json::to_string(&analysis).unwrap();
+        let deserialized: LogAnalysis = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.has_errors);
+        assert!(deserialized.requires_immediate_attention);
+    }
+
+    #[test]
+    fn test_command_intent_serde() {
+        let intent = CommandIntent {
+            action: "list".to_string(),
+            parameters: HashMap::from([("status".to_string(), "pending".to_string())]),
+            confidence: 0.9,
+            requires_confirmation: false,
+            execution_summary: "List pending items".to_string(),
+            warnings: None,
+        };
+
+        let json = serde_json::to_string(&intent).unwrap();
+        let deserialized: CommandIntent = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.action, "list");
+        assert_eq!(deserialized.confidence, 0.9);
+    }
+
+    #[test]
+    fn test_hook_action_serde() {
+        let action = HookAction {
+            should_notify: true,
+            notification_title: "Build Failed".to_string(),
+            notification_message: "Error in main.rs".to_string(),
+            priority: "high".to_string(),
+            reasoning: "Build failure".to_string(),
+            metadata: HashMap::new(),
+            indicates_problem: true,
+            suggested_actions: Some(vec!["Fix errors".to_string()]),
+        };
+
+        let json = serde_json::to_string(&action).unwrap();
+        let deserialized: HookAction = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.should_notify);
+        assert!(deserialized.indicates_problem);
+    }
+
+    #[test]
+    fn test_baml_error_display() {
+        use crate::error::BamlError;
+
+        let err = BamlError::FunctionNotFound { function_name: "TestFunc".to_string() };
+        assert!(err.to_string().contains("TestFunc"));
+
+        let err = BamlError::ServerError { status: 500, message: "fail".to_string() };
+        assert!(err.to_string().contains("500"));
+
+        let err = BamlError::Timeout { timeout_secs: 30 };
+        assert!(err.to_string().contains("30"));
+
+        let err = BamlError::InvalidResponse("bad json".to_string());
+        assert!(err.to_string().contains("bad json"));
+
+        let err = BamlError::ConfigError("bad config".to_string());
+        assert!(err.to_string().contains("bad config"));
+    }
+}

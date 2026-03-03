@@ -19,6 +19,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 axum = "0.8"
+tower-http = { version = "0.6", features = ["trace"] }
 chrono = "0.4"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 reqwest = { version = "0.12", features = ["json"] }

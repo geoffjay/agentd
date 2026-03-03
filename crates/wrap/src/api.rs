@@ -365,44 +365,35 @@ async fn kill_session(Path(name): Path<String>) -> Result<Json<KillSessionRespon
 
 // === Error Handling ===
 
-/// API error types that can be returned from handlers.
+/// API error types for the wrap service.
 ///
-/// These errors are automatically converted to appropriate HTTP responses
-/// with status codes and JSON error messages.
-#[derive(Debug)]
+/// # HTTP Status Mapping
+///
+/// - `Internal` -> 500 Internal Server Error
+/// - `NotFound` -> 404 Not Found
+/// - `InvalidInput` -> 400 Bad Request
+#[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     /// Internal server error (HTTP 500)
-    Internal(anyhow::Error),
+    #[error("internal error: {0}")]
+    Internal(#[from] anyhow::Error),
     /// Resource not found (HTTP 404)
+    #[error("not found: {0}")]
     NotFound(String),
     /// Invalid input or request error (HTTP 400)
+    #[error("invalid input: {0}")]
     #[allow(dead_code)]
     InvalidInput(String),
 }
 
 impl IntoResponse for ApiError {
-    /// Converts the error into an HTTP response.
-    ///
-    /// Maps each error variant to an appropriate HTTP status code and JSON
-    /// error message in the format: `{"error": "message"}`.
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match self {
-            ApiError::Internal(e) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("Internal error: {e}"))
-            }
-            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            ApiError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg),
+        let (status, message) = match &self {
+            ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ApiError::NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            ApiError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
         };
 
         (status, Json(serde_json::json!({ "error": message }))).into_response()
-    }
-}
-
-impl From<anyhow::Error> for ApiError {
-    /// Converts any `anyhow::Error` into an `ApiError::Internal`.
-    ///
-    /// This allows using `?` operator with operations in handlers.
-    fn from(err: anyhow::Error) -> Self {
-        ApiError::Internal(err)
     }
 }

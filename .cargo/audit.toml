@@ -1,0 +1,5 @@
+[advisories]
+ignore = [
+    # Marvin Attack in `rsa` crate - transitive dep via sqlx-mysql, which we don't use
+    "RUSTSEC-2023-0071",
+]

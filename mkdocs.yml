@@ -90,6 +90,8 @@ nav:
       - Notify: public/services/notify.md
       - Ask: public/services/ask.md
       - Wrap: public/services/wrap.md
+  - Development:
+      - Error Handling & Logging: public/error-handling.md
 
 extra:
   social:
