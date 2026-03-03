@@ -1073,19 +1073,14 @@ async fn list_approvals(
 
 async fn approve_cmd(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
     let uuid = parse_uuid(id)?;
-    let approval = client
-        .approve_tool(&uuid)
-        .await
-        .context("Failed to approve tool request")?;
+    let approval = client.approve_tool(&uuid).await.context("Failed to approve tool request")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&approval)?);
     } else {
         println!(
             "{}",
-            format!("Approved: {} (tool: {})", approval.id, approval.tool_name)
-                .green()
-                .bold()
+            format!("Approved: {} (tool: {})", approval.id, approval.tool_name).green().bold()
         );
     }
     Ok(())
@@ -1093,19 +1088,14 @@ async fn approve_cmd(client: &OrchestratorClient, id: &str, json: bool) -> Resul
 
 async fn deny_cmd(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
     let uuid = parse_uuid(id)?;
-    let approval = client
-        .deny_tool(&uuid)
-        .await
-        .context("Failed to deny tool request")?;
+    let approval = client.deny_tool(&uuid).await.context("Failed to deny tool request")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&approval)?);
     } else {
         println!(
             "{}",
-            format!("Denied: {} (tool: {})", approval.id, approval.tool_name)
-                .red()
-                .bold()
+            format!("Denied: {} (tool: {})", approval.id, approval.tool_name).red().bold()
         );
     }
     Ok(())

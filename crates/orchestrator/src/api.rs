@@ -200,11 +200,7 @@ async fn list_all_approvals(
         .transpose()
         .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
 
-    let mut approvals = state
-        .registry
-        .approvals
-        .list(None, status_filter.as_ref())
-        .await;
+    let mut approvals = state.registry.approvals.list(None, status_filter.as_ref()).await;
     approvals.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
     let total = approvals.len();
@@ -270,11 +266,7 @@ async fn list_agent_approvals(
         .transpose()
         .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
 
-    let mut approvals = state
-        .registry
-        .approvals
-        .list(Some(&id), status_filter.as_ref())
-        .await;
+    let mut approvals = state.registry.approvals.list(Some(&id), status_filter.as_ref()).await;
     approvals.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
     let total = approvals.len();

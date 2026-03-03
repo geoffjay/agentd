@@ -155,20 +155,12 @@ impl OrchestratorClient {
 
     /// Approve a pending tool request.
     pub async fn approve_tool(&self, id: &Uuid) -> Result<PendingApproval> {
-        self.post(
-            &format!("/approvals/{}/approve", id),
-            &ApprovalActionRequest::default(),
-        )
-        .await
+        self.post(&format!("/approvals/{}/approve", id), &ApprovalActionRequest::default()).await
     }
 
     /// Deny a pending tool request.
     pub async fn deny_tool(&self, id: &Uuid) -> Result<PendingApproval> {
-        self.post(
-            &format!("/approvals/{}/deny", id),
-            &ApprovalActionRequest::default(),
-        )
-        .await
+        self.post(&format!("/approvals/{}/deny", id), &ApprovalActionRequest::default()).await
     }
 
     // -- Workflow operations --

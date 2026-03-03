@@ -31,10 +31,7 @@ pub struct ApprovalRegistry {
 impl ApprovalRegistry {
     /// Create a new registry with the given default timeout for pending approvals.
     pub fn new(default_timeout_secs: u64) -> Self {
-        Self {
-            entries: Arc::new(RwLock::new(HashMap::new())),
-            default_timeout_secs,
-        }
+        Self { entries: Arc::new(RwLock::new(HashMap::new())), default_timeout_secs }
     }
 
     /// Register a new pending approval and return the record + decision receiver.
@@ -61,13 +58,10 @@ impl ApprovalRegistry {
             expires_at: now + chrono::Duration::seconds(self.default_timeout_secs as i64),
         };
         let id = approval.id;
-        self.entries.write().await.insert(
-            id,
-            ApprovalEntry {
-                approval: approval.clone(),
-                tx: Some(tx),
-            },
-        );
+        self.entries
+            .write()
+            .await
+            .insert(id, ApprovalEntry { approval: approval.clone(), tx: Some(tx) });
         (approval, rx)
     }
 
@@ -81,9 +75,8 @@ impl ApprovalRegistry {
         decision: ApprovalDecision,
     ) -> anyhow::Result<PendingApproval> {
         let mut entries = self.entries.write().await;
-        let entry = entries
-            .get_mut(id)
-            .ok_or_else(|| anyhow::anyhow!("Approval {} not found", id))?;
+        let entry =
+            entries.get_mut(id).ok_or_else(|| anyhow::anyhow!("Approval {} not found", id))?;
 
         if entry.tx.is_none() {
             anyhow::bail!("Approval {} has already been resolved", id);
@@ -165,10 +158,7 @@ mod tests {
         assert_eq!(approval.tool_name, "Bash");
 
         // Resolve it
-        let resolved = registry
-            .resolve(&approval.id, ApprovalDecision::Approve)
-            .await
-            .unwrap();
+        let resolved = registry.resolve(&approval.id, ApprovalDecision::Approve).await.unwrap();
         assert_eq!(resolved.status, ApprovalStatus::Approved);
 
         // Receiver should get the decision
@@ -188,10 +178,7 @@ mod tests {
             )
             .await;
 
-        let resolved = registry
-            .resolve(&approval.id, ApprovalDecision::Deny)
-            .await
-            .unwrap();
+        let resolved = registry.resolve(&approval.id, ApprovalDecision::Deny).await.unwrap();
         assert_eq!(resolved.status, ApprovalStatus::Denied);
 
         let decision = rx.await.unwrap();
@@ -210,14 +197,9 @@ mod tests {
             )
             .await;
 
-        registry
-            .resolve(&approval.id, ApprovalDecision::Approve)
-            .await
-            .unwrap();
+        registry.resolve(&approval.id, ApprovalDecision::Approve).await.unwrap();
 
-        let result = registry
-            .resolve(&approval.id, ApprovalDecision::Deny)
-            .await;
+        let result = registry.resolve(&approval.id, ApprovalDecision::Deny).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already been resolved"));
     }
@@ -225,9 +207,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_not_found() {
         let registry = ApprovalRegistry::new(300);
-        let result = registry
-            .resolve(&Uuid::new_v4(), ApprovalDecision::Approve)
-            .await;
+        let result = registry.resolve(&Uuid::new_v4(), ApprovalDecision::Approve).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
     }
@@ -256,12 +236,10 @@ mod tests {
         let agent1 = Uuid::new_v4();
         let agent2 = Uuid::new_v4();
 
-        let (a1, _) = registry
-            .register(agent1, "r1".into(), "Bash".into(), serde_json::json!({}))
-            .await;
-        let (_a2, _) = registry
-            .register(agent2, "r2".into(), "Read".into(), serde_json::json!({}))
-            .await;
+        let (a1, _) =
+            registry.register(agent1, "r1".into(), "Bash".into(), serde_json::json!({})).await;
+        let (_a2, _) =
+            registry.register(agent2, "r2".into(), "Read".into(), serde_json::json!({})).await;
 
         // Resolve the first one
         registry.resolve(&a1.id, ApprovalDecision::Approve).await.unwrap();

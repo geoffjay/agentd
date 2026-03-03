@@ -246,33 +246,20 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
 /// Handle control requests from claude code (e.g., tool permission requests).
 /// Evaluates tool requests against the agent's tool policy.
 async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &ConnectionRegistry) {
-    let request_id = msg
-        .get("request_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let request_id = msg.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
     let request = match msg.get("request") {
         Some(r) => r,
         None => return,
     };
 
-    let subtype = request
-        .get("subtype")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let subtype = request.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
 
     match subtype {
         "can_use_tool" => {
-            let tool_name = request
-                .get("tool_name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string();
-            let input = request
-                .get("input")
-                .cloned()
-                .unwrap_or(Value::Object(Default::default()));
+            let tool_name =
+                request.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+            let input = request.get("input").cloned().unwrap_or(Value::Object(Default::default()));
 
             let policy = registry.get_policy(agent_id).await;
             let policy_mode = policy.mode_str();
@@ -285,14 +272,8 @@ async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &Connect
                     let registry = registry.clone();
                     let agent_id = *agent_id;
                     tokio::spawn(async move {
-                        handle_approval_hold(
-                            agent_id,
-                            request_id,
-                            tool_name,
-                            input,
-                            registry,
-                        )
-                        .await;
+                        handle_approval_hold(agent_id, request_id, tool_name, input, registry)
+                            .await;
                     });
                 }
                 _ => {
