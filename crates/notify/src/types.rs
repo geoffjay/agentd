@@ -588,6 +588,43 @@ pub struct CountResponse {
     pub by_status: Vec<StatusCount>,
 }
 
+/// Paginated response envelope for list endpoints.
+///
+/// Wraps a list of items with pagination metadata.
+///
+/// # JSON Example
+///
+/// ```json
+/// {
+///   "items": [...],
+///   "total": 150,
+///   "limit": 20,
+///   "offset": 0
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginatedResponse<T> {
+    /// The items in this page.
+    pub items: Vec<T>,
+    /// Total number of items matching the query (across all pages).
+    pub total: usize,
+    /// Maximum items per page.
+    pub limit: usize,
+    /// Offset from the start.
+    pub offset: usize,
+}
+
+/// Default page size when `limit` is not specified.
+pub const DEFAULT_PAGE_LIMIT: usize = 50;
+
+/// Maximum allowed page size.
+pub const MAX_PAGE_LIMIT: usize = 200;
+
+/// Clamp a requested limit to valid bounds.
+pub fn clamp_limit(limit: Option<usize>) -> usize {
+    limit.unwrap_or(DEFAULT_PAGE_LIMIT).min(MAX_PAGE_LIMIT).max(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

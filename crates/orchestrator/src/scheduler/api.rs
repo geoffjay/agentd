@@ -2,17 +2,24 @@ use crate::api::ApiError;
 use crate::manager::AgentManager;
 use crate::scheduler::types::*;
 use crate::scheduler::Scheduler;
-use crate::types::AgentStatus;
+use crate::types::{clamp_limit, AgentStatus, PaginatedResponse};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
     Json, Router,
 };
 use chrono::Utc;
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
+
+#[derive(Deserialize)]
+struct PaginationParams {
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
 
 #[derive(Clone)]
 pub struct WorkflowState {
@@ -69,11 +76,16 @@ async fn create_workflow(
     Ok((StatusCode::CREATED, Json(WorkflowResponse::from(config))))
 }
 
-async fn list_workflows(State(state): State<WorkflowState>) -> Result<impl IntoResponse, ApiError> {
-    let workflows = state.scheduler.storage().list_workflows().await?;
-    let responses: Vec<WorkflowResponse> =
-        workflows.into_iter().map(WorkflowResponse::from).collect();
-    Ok(Json(responses))
+async fn list_workflows(
+    State(state): State<WorkflowState>,
+    Query(params): Query<PaginationParams>,
+) -> Result<impl IntoResponse, ApiError> {
+    let limit = clamp_limit(params.limit);
+    let offset = params.offset.unwrap_or(0);
+
+    let (workflows, total) = state.scheduler.storage().list_workflows_paginated(limit, offset).await?;
+    let items: Vec<WorkflowResponse> = workflows.into_iter().map(WorkflowResponse::from).collect();
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
 
 async fn get_workflow(
@@ -140,12 +152,16 @@ async fn delete_workflow(
 async fn dispatch_history(
     State(state): State<WorkflowState>,
     Path(id): Path<Uuid>,
+    Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Verify workflow exists.
     state.scheduler.storage().get_workflow(&id).await?.ok_or(ApiError::NotFound)?;
 
-    let dispatches = state.scheduler.storage().list_dispatches(&id).await?;
-    let responses: Vec<DispatchResponse> =
+    let limit = clamp_limit(params.limit);
+    let offset = params.offset.unwrap_or(0);
+
+    let (dispatches, total) = state.scheduler.storage().list_dispatches_paginated(&id, limit, offset).await?;
+    let items: Vec<DispatchResponse> =
         dispatches.into_iter().map(DispatchResponse::from).collect();
-    Ok(Json(responses))
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }

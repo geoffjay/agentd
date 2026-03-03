@@ -13,8 +13,8 @@
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! let client = NotifyClient::new("http://localhost:7004");
-//! let notifications = client.list_notifications().await?;
-//! println!("Found {} notifications", notifications.len());
+//! let response = client.list_notifications().await?;
+//! println!("Found {} notifications", response.total);
 //! # Ok(())
 //! # }
 //! ```
@@ -99,7 +99,7 @@ impl NotifyClient {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn list_notifications(&self) -> Result<Vec<Notification>> {
+    pub async fn list_notifications(&self) -> Result<PaginatedResponse<Notification>> {
         self.get("/notifications").await
     }
 
@@ -123,7 +123,7 @@ impl NotifyClient {
     pub async fn list_notifications_by_status(
         &self,
         status: NotificationStatus,
-    ) -> Result<Vec<Notification>> {
+    ) -> Result<PaginatedResponse<Notification>> {
         let status_str = format!("{status:?}").to_lowercase();
         self.get(&format!("/notifications?status={status_str}")).await
     }
@@ -142,7 +142,7 @@ impl NotifyClient {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn list_actionable_notifications(&self) -> Result<Vec<Notification>> {
+    pub async fn list_actionable_notifications(&self) -> Result<PaginatedResponse<Notification>> {
         self.get("/notifications/actionable").await
     }
 

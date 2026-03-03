@@ -160,6 +160,48 @@ impl AgentStorage {
 
         rows.iter().map(row_to_agent).collect()
     }
+
+    /// List agents with pagination.
+    pub async fn list_paginated(
+        &self,
+        status_filter: Option<AgentStatus>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Agent>, usize)> {
+        let (count_row, data_rows) = if let Some(status) = status_filter {
+            let status_str = status.to_string();
+            let count = sqlx::query("SELECT COUNT(*) as total FROM agents WHERE status = ?")
+                .bind(&status_str)
+                .fetch_one(&self.pool)
+                .await?;
+            let rows = sqlx::query(
+                "SELECT * FROM agents WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            )
+            .bind(&status_str)
+            .bind(limit as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await?;
+            (count, rows)
+        } else {
+            let count = sqlx::query("SELECT COUNT(*) as total FROM agents")
+                .fetch_one(&self.pool)
+                .await?;
+            let rows = sqlx::query(
+                "SELECT * FROM agents ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            )
+            .bind(limit as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await?;
+            (count, rows)
+        };
+
+        let total: i64 = count_row.get("total");
+        let agents = data_rows.iter().map(row_to_agent).collect::<Result<Vec<_>>>()?;
+
+        Ok((agents, total as usize))
+    }
 }
 
 fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {

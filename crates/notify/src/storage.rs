@@ -583,6 +583,106 @@ impl NotificationStorage {
         rows.iter().map(|row| self.row_to_notification(row)).collect()
     }
 
+    /// Lists notifications with pagination.
+    ///
+    /// Returns a page of notifications with a total count.
+    pub async fn list_paginated(
+        &self,
+        status_filter: Option<NotificationStatus>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Notification>, usize)> {
+        let (count_row, data_rows) = if let Some(status) = status_filter {
+            let status_str = format!("{status:?}");
+            let count = sqlx::query("SELECT COUNT(*) as total FROM notifications WHERE status = ?")
+                .bind(&status_str)
+                .fetch_one(&self.pool)
+                .await?;
+            let rows = sqlx::query(
+                "SELECT * FROM notifications WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            )
+            .bind(&status_str)
+            .bind(limit as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await?;
+            (count, rows)
+        } else {
+            let count = sqlx::query("SELECT COUNT(*) as total FROM notifications")
+                .fetch_one(&self.pool)
+                .await?;
+            let rows = sqlx::query(
+                "SELECT * FROM notifications ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            )
+            .bind(limit as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await?;
+            (count, rows)
+        };
+
+        let total: i64 = count_row.get("total");
+        let notifications = data_rows
+            .iter()
+            .map(|row| self.row_to_notification(row))
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok((notifications, total as usize))
+    }
+
+    /// Lists actionable notifications with pagination.
+    pub async fn list_actionable_paginated(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Notification>, usize)> {
+        // For actionable, we need to filter in Rust due to is_actionable() check,
+        // so we fetch all matching from DB and paginate in memory.
+        let rows = sqlx::query(
+            "SELECT * FROM notifications WHERE status IN ('Pending', 'Viewed') ORDER BY priority DESC, created_at DESC"
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut notifications: Vec<Notification> =
+            rows.iter().map(|row| self.row_to_notification(row)).collect::<Result<Vec<_>>>()?;
+        notifications.retain(|n| n.is_actionable());
+
+        let total = notifications.len();
+        let items = notifications.into_iter().skip(offset).take(limit).collect();
+
+        Ok((items, total))
+    }
+
+    /// Lists notification history with pagination.
+    pub async fn list_history_paginated(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Notification>, usize)> {
+        let count = sqlx::query(
+            "SELECT COUNT(*) as total FROM notifications WHERE status IN ('Dismissed', 'Responded', 'Expired')"
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let rows = sqlx::query(
+            "SELECT * FROM notifications WHERE status IN ('Dismissed', 'Responded', 'Expired') ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+        )
+        .bind(limit as i64)
+        .bind(offset as i64)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let total: i64 = count.get("total");
+        let notifications = rows
+            .iter()
+            .map(|row| self.row_to_notification(row))
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok((notifications, total as usize))
+    }
+
     /// Lists all actionable notifications.
     ///
     /// Returns notifications that can still be acted upon: those with Pending or

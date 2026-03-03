@@ -166,6 +166,16 @@ impl AgentManager {
     pub async fn list_agents(&self, status: Option<AgentStatus>) -> anyhow::Result<Vec<Agent>> {
         self.storage.list(status).await
     }
+
+    /// List agents with pagination.
+    pub async fn list_agents_paginated(
+        &self,
+        status: Option<AgentStatus>,
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<(Vec<Agent>, usize)> {
+        self.storage.list_paginated(status, limit, offset).await
+    }
 }
 
 fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
