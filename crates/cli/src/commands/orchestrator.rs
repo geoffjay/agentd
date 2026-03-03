@@ -50,6 +50,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use colored::*;
+use futures_util::StreamExt;
 use uuid::Uuid;
 
 use orchestrator::client::OrchestratorClient;
@@ -57,7 +58,9 @@ use orchestrator::scheduler::types::{
     CreateWorkflowRequest, DispatchResponse, TaskSourceConfig, UpdateWorkflowRequest,
     WorkflowResponse,
 };
-use orchestrator::types::{AgentResponse, AgentStatus, CreateAgentRequest};
+use orchestrator::types::{
+    AgentResponse, AgentStatus, CreateAgentRequest, SendMessageRequest,
+};
 
 /// Orchestrator service management subcommands.
 ///
@@ -158,6 +161,96 @@ pub enum OrchestratorCommand {
         /// Agent ID (UUID)
         id: String,
     },
+
+    /// Attach to a running agent's tmux session.
+    ///
+    /// Looks up the agent, verifies it is running, and execs into its
+    /// tmux session for interactive debugging.
+    ///
+    /// # Examples
+    ///
+    /// Attach by agent ID:
+    ///
+    ///   agent orchestrator attach 550e8400-e29b-41d4-a716-446655440000
+    ///
+    /// Attach by agent name:
+    ///
+    ///   agent orchestrator attach --name my-agent
+    Attach {
+        /// Agent ID (UUID)
+        #[arg(conflicts_with = "name")]
+        id: Option<String>,
+
+        /// Agent name (resolves to first matching running agent)
+        #[arg(long, conflicts_with = "id")]
+        name: Option<String>,
+    },
+
+    /// Send a message/prompt to a running agent.
+    ///
+    /// Sends a prompt to a non-interactive agent via the orchestrator API.
+    /// The agent must be running and connected via WebSocket.
+    ///
+    /// # Examples
+    ///
+    /// Send a prompt directly:
+    ///
+    ///   agent orchestrator send-message <AGENT_ID> "Fix the failing tests"
+    ///
+    /// Read a multi-line prompt from stdin:
+    ///
+    ///   echo "Review the code" | agent orchestrator send-message <AGENT_ID> --stdin
+    SendMessage {
+        /// Agent ID (UUID)
+        id: String,
+
+        /// Message content (prompt to send to the agent)
+        #[arg(conflicts_with = "msg_stdin")]
+        message: Option<String>,
+
+        /// Read message from stdin (supports multi-line prompts)
+        #[arg(long = "stdin", conflicts_with = "message")]
+        msg_stdin: bool,
+    },
+
+    /// Stream real-time output from agents via WebSocket.
+    ///
+    /// Connects to the orchestrator's monitoring WebSocket endpoint and
+    /// displays agent output with formatted, colored messages.
+    ///
+    /// # Examples
+    ///
+    /// Watch output from a specific agent:
+    ///
+    ///   agent orchestrator stream 550e8400-e29b-41d4-a716-446655440000
+    ///
+    /// Watch output from all agents:
+    ///
+    ///   agent orchestrator stream --all
+    Stream {
+        /// Agent ID to stream (omit for --all)
+        #[arg(conflicts_with = "all")]
+        id: Option<String>,
+
+        /// Stream output from all connected agents
+        #[arg(long, conflicts_with = "id")]
+        all: bool,
+
+        /// Show keep-alive and debug messages
+        #[arg(long)]
+        verbose: bool,
+    },
+
+    /// Check the health of the orchestrator service.
+    ///
+    /// Shows the service status and active agent count.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent orchestrator health
+    /// ```
+    Health,
 
     /// List all workflows.
     ListWorkflows,
@@ -315,6 +408,16 @@ impl OrchestratorCommand {
             }
             OrchestratorCommand::GetAgent { id } => get_agent(client, id, json).await,
             OrchestratorCommand::DeleteAgent { id } => delete_agent(client, id, json).await,
+            OrchestratorCommand::Attach { id, name } => {
+                attach_agent(client, id.as_deref(), name.as_deref()).await
+            }
+            OrchestratorCommand::SendMessage { id, message, msg_stdin } => {
+                send_message_cmd(client, id, message.as_deref(), *msg_stdin, json).await
+            }
+            OrchestratorCommand::Stream { id, all, verbose } => {
+                stream_agents(id.as_deref(), *all, *verbose, json).await
+            }
+            OrchestratorCommand::Health => orchestrator_health(client, json).await,
             OrchestratorCommand::ListWorkflows => list_workflows(client, json).await,
             OrchestratorCommand::CreateWorkflow {
                 name,
@@ -481,6 +584,286 @@ async fn delete_agent(client: &OrchestratorClient, id: &str, json: bool) -> Resu
         println!("{}", serde_json::to_string_pretty(&agent)?);
     } else {
         println!("{}", format!("Agent '{}' ({}) terminated.", agent.name, agent.id).green().bold());
+    }
+
+    Ok(())
+}
+
+// -- Attach --
+
+async fn attach_agent(
+    client: &OrchestratorClient,
+    id: Option<&str>,
+    name: Option<&str>,
+) -> Result<()> {
+    let agent = match (id, name) {
+        (Some(agent_id), _) => {
+            let uuid = parse_uuid(agent_id)?;
+            client.get_agent(&uuid).await.context(
+                "Agent not found. Use 'agent orchestrator list-agents' to see available agents.",
+            )?
+        }
+        (_, Some(agent_name)) => {
+            let resolved = resolve_agent_id(client, None, Some(agent_name)).await?;
+            client.get_agent(&resolved).await.context("Failed to get agent")?
+        }
+        (None, None) => bail!("Either an agent ID or --name must be provided."),
+    };
+
+    if agent.status != AgentStatus::Running {
+        bail!(
+            "Agent '{}' is not running (status: {}). Cannot attach.",
+            agent.name,
+            agent.status
+        );
+    }
+
+    let session = agent.tmux_session.as_deref().context(format!(
+        "Agent '{}' has no tmux session. It may have crashed.",
+        agent.name
+    ))?;
+
+    if std::process::Command::new("tmux")
+        .arg("-V")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        bail!("tmux is required but not found. Install with: brew install tmux");
+    }
+
+    let session_check = std::process::Command::new("tmux")
+        .args(["has-session", "-t", session])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+
+    match session_check {
+        Ok(s) if s.success() => {}
+        _ => bail!(
+            "Tmux session '{}' no longer exists. Agent '{}' ({}) may have crashed.",
+            session,
+            agent.name,
+            agent.id
+        ),
+    }
+
+    println!(
+        "{}",
+        format!("Attaching to agent '{}' (session: {})...", agent.name, session).cyan()
+    );
+
+    let exit = std::process::Command::new("tmux")
+        .args(["attach-session", "-t", session])
+        .status()
+        .context("Failed to exec tmux attach-session")?;
+
+    if !exit.success() {
+        bail!("tmux attach-session exited with status: {}", exit);
+    }
+
+    Ok(())
+}
+
+// -- Send message --
+
+async fn send_message_cmd(
+    client: &OrchestratorClient,
+    id: &str,
+    message: Option<&str>,
+    stdin: bool,
+    json: bool,
+) -> Result<()> {
+    let content = match (message, stdin) {
+        (Some(msg), _) => msg.to_string(),
+        (_, true) => {
+            use std::io::Read;
+            let mut buf = String::new();
+            std::io::stdin()
+                .read_to_string(&mut buf)
+                .context("Failed to read message from stdin")?;
+            if buf.trim().is_empty() {
+                bail!("No message provided on stdin");
+            }
+            buf
+        }
+        (None, false) => bail!("Either a message argument or --stdin must be provided."),
+    };
+
+    let uuid = parse_uuid(id)?;
+    let request = SendMessageRequest { content };
+
+    let response = client.send_message(&uuid, &request).await.map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("404") {
+            anyhow::anyhow!(
+                "Agent '{}' not found. Use 'agent orchestrator list-agents' to see available agents.",
+                id
+            )
+        } else if msg.contains("409") {
+            anyhow::anyhow!(
+                "Agent '{}' is not running. Only running agents can receive messages.",
+                id
+            )
+        } else {
+            e.context("Failed to send message")
+        }
+    })?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        println!(
+            "{}",
+            format!("Message sent to agent ({}).", response.agent_id).green().bold()
+        );
+    }
+
+    Ok(())
+}
+
+// -- Stream --
+
+async fn stream_agents(
+    id: Option<&str>,
+    all: bool,
+    verbose: bool,
+    json: bool,
+) -> Result<()> {
+    if id.is_none() && !all {
+        bail!("Either an agent ID or --all must be provided.");
+    }
+
+    let base_url = std::env::var("ORCHESTRATOR_SERVICE_URL")
+        .unwrap_or_else(|_| "http://localhost:7006".to_string());
+    let ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://");
+
+    let ws_url = match id {
+        Some(agent_id) => format!("{}/stream/{}", ws_base, agent_id),
+        None => format!("{}/stream", ws_base),
+    };
+
+    if !json {
+        let target = id.map(|a| format!("agent {}", a)).unwrap_or_else(|| "all agents".to_string());
+        eprintln!("{}", format!("Connecting to stream ({})...", target).cyan());
+        eprintln!("{}", "Press Ctrl+C to disconnect.".bright_black());
+        eprintln!();
+    }
+
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url)
+        .await
+        .context("Failed to connect to orchestrator WebSocket. Is the orchestrator running?")?;
+
+    let (_, mut read) = ws_stream.split();
+
+    loop {
+        tokio::select! {
+            msg = read.next() => {
+                match msg {
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
+                        if json {
+                            println!("{}", text);
+                        } else {
+                            format_stream_message(&text, verbose);
+                        }
+                    }
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => {
+                        if !json { eprintln!("{}", "Stream closed by server.".yellow()); }
+                        break;
+                    }
+                    Some(Err(e)) => {
+                        if !json { eprintln!("{}", format!("WebSocket error: {}", e).red()); }
+                        break;
+                    }
+                    None => {
+                        if !json { eprintln!("{}", "Stream ended.".yellow()); }
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                if !json { eprintln!(); eprintln!("{}", "Disconnected.".yellow()); }
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn format_stream_message(text: &str, verbose: bool) {
+    let msg: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(_) => { println!("{}", text.bright_black()); return; }
+    };
+
+    let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let agent_id = msg.get("agent_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let agent_short = if agent_id.len() > 8 { &agent_id[..8] } else { agent_id };
+    let prefix = format!("[{}]", agent_short).bright_black();
+
+    match msg_type {
+        "assistant" => {
+            if let Some(message) = msg.get("message") {
+                if let Some(content) = message.get("content") {
+                    if let Some(text) = content.as_str() {
+                        for line in text.lines() { println!("{} {}", prefix, line); }
+                    } else if let Some(blocks) = content.as_array() {
+                        for block in blocks {
+                            if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+                                for line in text.lines() { println!("{} {}", prefix, line); }
+                            } else if block.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
+                                let tool = block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                println!("{} {}", prefix, format!("🔧 Using tool: {}", tool).yellow());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "result" => {
+            let is_error = msg.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+            let result_text = msg.get("result").and_then(|v| v.as_str()).unwrap_or("");
+            if is_error {
+                println!("{} {}", prefix, format!("❌ Error: {}", result_text).red());
+            } else {
+                let display = if result_text.is_empty() { "✅ Task completed".to_string() }
+                    else if result_text.len() > 120 { format!("✅ {}", &result_text[..117]) }
+                    else { format!("✅ {}", result_text) };
+                println!("{} {}", prefix, display.green());
+            }
+        }
+        "system" => { if verbose { let s = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or(""); println!("{} {}", prefix, format!("[system:{}]", s).bright_black()); } }
+        "control_request" => {
+            if let Some(request) = msg.get("request") {
+                let tool = request.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                println!("{} {}", prefix, format!("⚡ Permission request: {}", tool).yellow());
+            }
+        }
+        "keep_alive" => { if verbose { println!("{} {}", prefix, "♥ keep-alive".bright_black()); } }
+        _ => { if verbose { println!("{} {}", prefix, format!("[{}]", msg_type).bright_black()); } }
+    }
+}
+
+// -- Health --
+
+async fn orchestrator_health(client: &OrchestratorClient, json: bool) -> Result<()> {
+    let response = client
+        .health()
+        .await
+        .context("Failed to reach orchestrator service. Is it running?")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        println!(
+            "{} {} ({} agents active)",
+            "orchestrator:".bold(),
+            "ok".green().bold(),
+            response.agents_active.to_string().cyan()
+        );
     }
 
     Ok(())
