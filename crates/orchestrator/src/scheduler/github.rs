@@ -1,9 +1,37 @@
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::types::Task;
 use async_trait::async_trait;
+use std::sync::LazyLock;
 use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::{debug, warn};
+
+/// Resolve the absolute path to the `gh` CLI at process start.
+///
+/// macOS GUI apps inherit a minimal PATH that typically doesn't include
+/// Homebrew or other user-installed binary directories. We probe common
+/// locations so the orchestrator works whether launched from a terminal or
+/// from an app bundle.
+static GH_PATH: LazyLock<String> = LazyLock::new(|| {
+    // Prefer an explicit override.
+    if let Ok(p) = std::env::var("GH_PATH") {
+        return p;
+    }
+
+    let candidates = [
+        "/opt/homebrew/bin/gh",
+        "/usr/local/bin/gh",
+        "/usr/bin/gh",
+    ];
+    for path in candidates {
+        if std::path::Path::new(path).exists() {
+            return path.to_string();
+        }
+    }
+
+    // Fall back to bare name and let the OS resolve it.
+    "gh".to_string()
+});
 
 /// Fetches GitHub Issues via the `gh` CLI.
 pub struct GithubIssueSource {
@@ -43,7 +71,7 @@ struct GhAssignee {
 impl TaskSource for GithubIssueSource {
     async fn fetch_tasks(&self) -> anyhow::Result<Vec<Task>> {
         let mut args = vec![
-            "gh".to_string(),
+            GH_PATH.clone(),
             "issue".to_string(),
             "list".to_string(),
             "--json".to_string(),
