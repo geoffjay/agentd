@@ -119,14 +119,15 @@ impl ApprovalRegistry {
             .await
             .values()
             .filter(|e| {
-                agent_id.map_or(true, |id| &e.approval.agent_id == id)
-                    && status_filter.map_or(true, |s| &e.approval.status == s)
+                agent_id.is_none_or(|id| &e.approval.agent_id == id)
+                    && status_filter.is_none_or(|s| &e.approval.status == s)
             })
             .map(|e| e.approval.clone())
             .collect()
     }
 
     /// Remove resolved (non-pending) approvals older than the given duration.
+    #[allow(dead_code)]
     pub async fn purge_resolved(&self, older_than: chrono::Duration) {
         let cutoff = Utc::now() - older_than;
         let mut entries = self.entries.write().await;

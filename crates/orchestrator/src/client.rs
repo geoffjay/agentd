@@ -32,8 +32,8 @@ use crate::scheduler::types::{
     CreateWorkflowRequest, DispatchResponse, UpdateWorkflowRequest, WorkflowResponse,
 };
 use crate::types::{
-    AgentResponse, ApprovalActionRequest, ApprovalStatus, CreateAgentRequest, HealthResponse,
-    PaginatedResponse, PendingApproval, SendMessageRequest, SendMessageResponse, ToolPolicy,
+    AgentResponse, ApprovalActionRequest, CreateAgentRequest, HealthResponse, PaginatedResponse,
+    PendingApproval, SendMessageRequest, SendMessageResponse, ToolPolicy,
 };
 
 /// Typed HTTP client for the orchestrator service.
