@@ -44,10 +44,7 @@ fn print_help() {
     println!("{}", "Installation:".cyan());
     println!("  {} - Install for current user", "install-user".green());
     println!("  {} - System-wide install (requires sudo)", "install".green());
-    println!(
-        "  {} - Generate & install shell completions",
-        "install-completions".green()
-    );
+    println!("  {} - Generate & install shell completions", "install-completions".green());
     println!("  {} - Uninstall all components", "uninstall".green());
     println!();
     println!("{}", "Service Management:".cyan());
@@ -110,10 +107,7 @@ fn install_user() -> Result<()> {
     // Install shell completions
     println!();
     if let Err(e) = install_completions() {
-        eprintln!(
-            "{}",
-            format!("Warning: Failed to install shell completions: {}", e).yellow()
-        );
+        eprintln!("{}", format!("Warning: Failed to install shell completions: {}", e).yellow());
     }
 
     println!();
@@ -229,10 +223,7 @@ fn restart_service(service: &str) -> Result<()> {
 }
 
 fn install_completions() -> Result<()> {
-    println!(
-        "{}",
-        "Installing shell completions...".blue().bold()
-    );
+    println!("{}", "Installing shell completions...".blue().bold());
     println!();
 
     let bin_dir = get_prefix().join("bin");
@@ -247,10 +238,7 @@ fn install_completions() -> Result<()> {
         if release_bin.exists() {
             release_bin.to_string_lossy().to_string()
         } else {
-            println!(
-                "{}",
-                "agent binary not found. Building...".yellow()
-            );
+            println!("{}", "agent binary not found. Building...".yellow());
             build_release()?;
             "target/release/cli".to_string()
         }
@@ -299,18 +287,17 @@ fn install_completions() -> Result<()> {
             .context("Failed to generate fish completions")?;
         if output.status.success() {
             fs::write(fish_dir.join("agent.fish"), &output.stdout)?;
-            println!(
-                "  {} fish → {}",
-                "✓".green(),
-                fish_dir.join("agent.fish").display()
-            );
+            println!("  {} fish → {}", "✓".green(), fish_dir.join("agent.fish").display());
         }
     }
 
     println!();
     println!("{}", "✓ Shell completions installed!".green().bold());
     println!();
-    println!("{}", "Note: You may need to restart your shell or source the completions.".bright_black());
+    println!(
+        "{}",
+        "Note: You may need to restart your shell or source the completions.".bright_black()
+    );
     println!(
         "{}",
         "For zsh, ensure ~/.zfunc is in your fpath: fpath=(~/.zfunc $fpath)".bright_black()
