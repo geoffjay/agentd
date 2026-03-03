@@ -170,6 +170,32 @@ enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+    /// Apply a YAML workflow template file or directory.
+    ///
+    /// Reads YAML workflow templates that reference agents by name
+    /// (not UUID) and creates the workflows via the orchestrator API.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// # Apply a single workflow template
+    /// agent apply .agentd/workflows/issue-worker.yml
+    ///
+    /// # Apply all templates in a directory
+    /// agent apply .agentd/workflows/
+    ///
+    /// # Dry-run (validate only)
+    /// agent apply --dry-run .agentd/workflows/issue-worker.yml
+    /// ```
+    Apply {
+        /// Path to a YAML template file or directory of templates
+        path: std::path::PathBuf,
+
+        /// Validate only, don't create anything
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Check the health of all agentd services.
     ///
     /// Checks all services concurrently and displays a summary table.
@@ -235,6 +261,16 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "http://localhost:7006".to_string());
             let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
+        }
+        Commands::Apply { path, dry_run } => {
+            let url = env::var("ORCHESTRATOR_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+            let client = OrchestratorClient::new(url);
+            if path.is_dir() {
+                commands::apply::apply_directory(&client, &path, dry_run, cli.json).await?;
+            } else {
+                commands::apply::apply_workflow(&client, &path, dry_run, cli.json).await?;
+            }
         }
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
