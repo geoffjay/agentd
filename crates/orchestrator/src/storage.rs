@@ -1,4 +1,4 @@
-use crate::types::{Agent, AgentConfig, AgentStatus};
+use crate::types::{Agent, AgentConfig, AgentStatus, ToolPolicy};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use directories::ProjectDirs;
@@ -57,6 +57,7 @@ impl AgentStorage {
                 worktree INTEGER NOT NULL DEFAULT 0,
                 system_prompt TEXT,
                 tmux_session TEXT,
+                tool_policy TEXT NOT NULL DEFAULT '{"mode":"allow_all"}',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -75,8 +76,8 @@ impl AgentStorage {
     pub async fn add(&self, agent: &Agent) -> Result<Uuid> {
         sqlx::query(
             r#"
-            INSERT INTO agents (id, name, status, working_dir, user, shell, interactive, prompt, worktree, system_prompt, tmux_session, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO agents (id, name, status, working_dir, user, shell, interactive, prompt, worktree, system_prompt, tmux_session, tool_policy, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(agent.id.to_string())
@@ -90,6 +91,7 @@ impl AgentStorage {
         .bind(agent.config.worktree)
         .bind(agent.config.system_prompt.as_deref())
         .bind(agent.tmux_session.as_deref())
+        .bind(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default())
         .bind(agent.created_at.to_rfc3339())
         .bind(agent.updated_at.to_rfc3339())
         .execute(&self.pool)
@@ -114,12 +116,13 @@ impl AgentStorage {
         let result = sqlx::query(
             r#"
             UPDATE agents
-            SET status = ?, tmux_session = ?, updated_at = ?
+            SET status = ?, tmux_session = ?, tool_policy = ?, updated_at = ?
             WHERE id = ?
             "#,
         )
         .bind(agent.status.to_string())
         .bind(agent.tmux_session.as_deref())
+        .bind(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default())
         .bind(agent.updated_at.to_rfc3339())
         .bind(agent.id.to_string())
         .execute(&self.pool)
@@ -211,6 +214,8 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {
     let worktree: bool = row.get::<i32, _>("worktree") != 0;
     let system_prompt: Option<String> = row.get("system_prompt");
     let tmux_session: Option<String> = row.get("tmux_session");
+    let tool_policy_str: String = row.get("tool_policy");
+    let tool_policy: ToolPolicy = serde_json::from_str(&tool_policy_str).unwrap_or_default();
     let created_at: String = row.get("created_at");
     let updated_at: String = row.get("updated_at");
 
@@ -226,6 +231,7 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {
             prompt,
             worktree,
             system_prompt,
+            tool_policy,
         },
         tmux_session,
         created_at: DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc),
@@ -256,6 +262,7 @@ mod tests {
                 prompt: None,
                 worktree: false,
                 system_prompt: None,
+                tool_policy: ToolPolicy::default(),
             },
         )
     }

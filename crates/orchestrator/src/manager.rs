@@ -72,6 +72,9 @@ impl AgentManager {
         agent.updated_at = Utc::now();
         self.storage.update(&agent).await?;
 
+        // Register the agent's tool policy with the WebSocket registry.
+        self.registry.set_policy(agent.id, agent.config.tool_policy.clone()).await;
+
         info!(
             agent_id = %agent.id,
             session = %session_name,
@@ -176,6 +179,11 @@ impl AgentManager {
         offset: usize,
     ) -> anyhow::Result<(Vec<Agent>, usize)> {
         self.storage.list_paginated(status, limit, offset).await
+    }
+
+    /// Update an agent record in storage.
+    pub async fn update_agent(&self, agent: &Agent) -> anyhow::Result<()> {
+        self.storage.update(agent).await
     }
 }
 

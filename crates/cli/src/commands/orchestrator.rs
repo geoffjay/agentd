@@ -364,24 +364,15 @@ impl OrchestratorCommand {
                 .await
             }
             OrchestratorCommand::DeleteWorkflow { id } => delete_workflow(client, id, json).await,
-            OrchestratorCommand::WorkflowHistory { id } => {
-                workflow_history(client, id, json).await
-            }
+            OrchestratorCommand::WorkflowHistory { id } => workflow_history(client, id, json).await,
         }
     }
 }
 
 // -- Agent operations --
 
-async fn list_agents(
-    client: &OrchestratorClient,
-    status: Option<&str>,
-    json: bool,
-) -> Result<()> {
-    let response = client
-        .list_agents(status)
-        .await
-        .context("Failed to list agents")?;
+async fn list_agents(client: &OrchestratorClient, status: Option<&str>, json: bool) -> Result<()> {
+    let response = client.list_agents(status).await.context("Failed to list agents")?;
     let agents = response.items;
 
     if json {
@@ -434,10 +425,7 @@ async fn create_agent(
         system_prompt: system_prompt.map(|s| s.to_string()),
     };
 
-    let agent = client
-        .create_agent(&request)
-        .await
-        .context("Failed to create agent")?;
+    let agent = client.create_agent(&request).await.context("Failed to create agent")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&agent)?);
@@ -472,10 +460,7 @@ async fn create_agent(
 
 async fn get_agent(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
     let uuid = parse_uuid(id)?;
-    let agent = client
-        .get_agent(&uuid)
-        .await
-        .context("Failed to get agent")?;
+    let agent = client.get_agent(&uuid).await.context("Failed to get agent")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&agent)?);
@@ -489,32 +474,64 @@ async fn get_agent(client: &OrchestratorClient, id: &str, json: bool) -> Result<
 async fn delete_agent(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
     let uuid = parse_uuid(id)?;
 
-    let agent = client
-        .terminate_agent(&uuid)
-        .await
-        .context("Failed to terminate agent")?;
+    let agent = client.terminate_agent(&uuid).await.context("Failed to terminate agent")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&agent)?);
     } else {
-        println!(
-            "{}",
-            format!("Agent '{}' ({}) terminated.", agent.name, agent.id)
-                .green()
-                .bold()
-        );
+        println!("{}", format!("Agent '{}' ({}) terminated.", agent.name, agent.id).green().bold());
     }
 
     Ok(())
 }
 
+/// Resolve the working directory from the provided value or default to $PWD.
+fn resolve_working_dir(working_dir: Option<&str>) -> Result<String> {
+    match working_dir {
+        Some(dir) => Ok(dir.to_string()),
+        None => std::env::current_dir()
+            .context("Failed to determine current directory")
+            .map(|p| p.to_string_lossy().to_string()),
+    }
+}
+
+/// Resolve the agent prompt from --prompt, --prompt-file, or --stdin.
+///
+/// Returns `None` if no prompt source was provided (all three are optional).
+fn resolve_agent_prompt(
+    prompt: Option<&str>,
+    prompt_file: Option<&std::path::Path>,
+    stdin: bool,
+) -> Result<Option<String>> {
+    match (prompt, prompt_file, stdin) {
+        (Some(p), _, _) => Ok(Some(p.to_string())),
+        (_, Some(path), _) => {
+            let content = std::fs::read_to_string(path)
+                .with_context(|| format!("Failed to read prompt file: {}", path.display()))?;
+            if content.trim().is_empty() {
+                bail!("Prompt file is empty: {}", path.display());
+            }
+            Ok(Some(content))
+        }
+        (_, _, true) => {
+            use std::io::Read;
+            let mut content = String::new();
+            std::io::stdin()
+                .read_to_string(&mut content)
+                .context("Failed to read prompt from stdin")?;
+            if content.trim().is_empty() {
+                bail!("No prompt provided on stdin");
+            }
+            Ok(Some(content))
+        }
+        (None, None, false) => Ok(None),
+    }
+}
+
 // -- Workflow operations --
 
 async fn list_workflows(client: &OrchestratorClient, json: bool) -> Result<()> {
-    let response = client
-        .list_workflows()
-        .await
-        .context("Failed to list workflows")?;
+    let response = client.list_workflows().await.context("Failed to list workflows")?;
     let workflows = response.items;
 
     if json {
@@ -555,9 +572,8 @@ async fn create_workflow(
     // Resolve prompt template from --prompt-template or --prompt-template-file
     let resolved_template = resolve_prompt_template(prompt_template, prompt_template_file)?;
 
-    let labels_vec: Vec<String> = labels
-        .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
-        .unwrap_or_default();
+    let labels_vec: Vec<String> =
+        labels.map(|l| l.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default();
 
     let request = CreateWorkflowRequest {
         name: name.to_string(),
@@ -597,10 +613,7 @@ async fn create_workflow(
 
 async fn get_workflow(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
     let uuid = parse_uuid(id)?;
-    let workflow = client
-        .get_workflow(&uuid)
-        .await
-        .context("Failed to get workflow")?;
+    let workflow = client.get_workflow(&uuid).await.context("Failed to get workflow")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&workflow)?);
@@ -629,10 +642,8 @@ async fn update_workflow(
         enabled,
     };
 
-    let workflow = client
-        .update_workflow(&uuid, &request)
-        .await
-        .context("Failed to update workflow")?;
+    let workflow =
+        client.update_workflow(&uuid, &request).await.context("Failed to update workflow")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&workflow)?);
@@ -651,27 +662,15 @@ async fn delete_workflow(client: &OrchestratorClient, id: &str, json: bool) -> R
     if json {
         // Fetch before deleting to show it
         if let Ok(workflow) = client.get_workflow(&uuid).await {
-            client
-                .delete_workflow(&uuid)
-                .await
-                .context("Failed to delete workflow")?;
+            client.delete_workflow(&uuid).await.context("Failed to delete workflow")?;
             println!("{}", serde_json::to_string_pretty(&workflow)?);
         } else {
-            client
-                .delete_workflow(&uuid)
-                .await
-                .context("Failed to delete workflow")?;
+            client.delete_workflow(&uuid).await.context("Failed to delete workflow")?;
             println!("{{}}");
         }
     } else {
-        client
-            .delete_workflow(&uuid)
-            .await
-            .context("Failed to delete workflow")?;
-        println!(
-            "{}",
-            format!("Workflow {} deleted.", id).green().bold()
-        );
+        client.delete_workflow(&uuid).await.context("Failed to delete workflow")?;
+        println!("{}", format!("Workflow {} deleted.", id).green().bold());
     }
 
     Ok(())
@@ -679,10 +678,8 @@ async fn delete_workflow(client: &OrchestratorClient, id: &str, json: bool) -> R
 
 async fn workflow_history(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
     let uuid = parse_uuid(id)?;
-    let response = client
-        .dispatch_history(&uuid)
-        .await
-        .context("Failed to get workflow history")?;
+    let response =
+        client.dispatch_history(&uuid).await.context("Failed to get workflow history")?;
     let dispatches = response.items;
 
     if json {
@@ -706,8 +703,7 @@ async fn workflow_history(client: &OrchestratorClient, id: &str, json: bool) -> 
 
 /// Parse a string as a UUID, providing a user-friendly error message.
 fn parse_uuid(id: &str) -> Result<Uuid> {
-    id.parse::<Uuid>()
-        .with_context(|| format!("Invalid UUID: '{id}'"))
+    id.parse::<Uuid>().with_context(|| format!("Invalid UUID: '{id}'"))
 }
 
 /// Resolve the working directory from the provided value or default to $PWD.
@@ -765,16 +761,11 @@ async fn resolve_agent_id(
     match (agent_id, agent_name) {
         (Some(id), _) => parse_uuid(id),
         (_, Some(name)) => {
-            let response = client
-                .list_agents(None)
-                .await
-                .context("Failed to list agents for name lookup")?;
+            let response =
+                client.list_agents(None).await.context("Failed to list agents for name lookup")?;
 
-            let matches: Vec<&AgentResponse> = response
-                .items
-                .iter()
-                .filter(|a| a.name == name)
-                .collect();
+            let matches: Vec<&AgentResponse> =
+                response.items.iter().filter(|a| a.name == name).collect();
 
             match matches.len() {
                 0 => bail!(
@@ -800,9 +791,8 @@ fn resolve_prompt_template(
 ) -> Result<String> {
     match (template, template_file) {
         (Some(t), _) => Ok(t.to_string()),
-        (_, Some(path)) => std::fs::read_to_string(path).with_context(|| {
-            format!("Failed to read prompt template file: {}", path.display())
-        }),
+        (_, Some(path)) => std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read prompt template file: {}", path.display())),
         (None, None) => {
             bail!("Either --prompt-template or --prompt-template-file must be provided.")
         }
@@ -834,11 +824,7 @@ fn display_workflow(workflow: &WorkflowResponse) {
     println!("{}: {}", "ID".bold(), workflow.id);
     println!("{}: {}", "Name".bold(), workflow.name.bright_white());
     println!("{}: {}", "Agent ID".bold(), workflow.agent_id);
-    let status = if workflow.enabled {
-        "enabled".green()
-    } else {
-        "disabled".red()
-    };
+    let status = if workflow.enabled { "enabled".green() } else { "disabled".red() };
     println!("{}: {}", "Status".bold(), status);
     println!("{}: {}s", "Poll Interval".bold(), workflow.poll_interval_secs);
     match &workflow.source_config {
@@ -848,11 +834,8 @@ fn display_workflow(workflow: &WorkflowResponse) {
         }
     }
     let template = &workflow.prompt_template;
-    let display = if template.len() > 60 {
-        format!("{}...", &template[..57])
-    } else {
-        template.clone()
-    };
+    let display =
+        if template.len() > 60 { format!("{}...", &template[..57]) } else { template.clone() };
     println!("{}: {}", "Prompt Template".bold(), display);
     println!("{}: {}", "Created".bold(), workflow.created_at);
 }
@@ -871,11 +854,7 @@ fn display_dispatch(dispatch: &DispatchResponse) {
     };
     println!("{}: {}", "Status".bold(), colored_status);
     let prompt = &dispatch.prompt_sent;
-    let display = if prompt.len() > 60 {
-        format!("{}...", &prompt[..57])
-    } else {
-        prompt.clone()
-    };
+    let display = if prompt.len() > 60 { format!("{}...", &prompt[..57]) } else { prompt.clone() };
     println!("{}: {}", "Prompt".bold(), display);
     println!("{}: {}", "Dispatched".bold(), dispatch.dispatched_at);
     if let Some(completed) = &dispatch.completed_at {
@@ -977,10 +956,7 @@ mod tests {
     fn test_resolve_working_dir_defaults_to_pwd() {
         let result = resolve_working_dir(None);
         assert!(result.is_ok());
-        let pwd = std::env::current_dir()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let pwd = std::env::current_dir().unwrap().to_string_lossy().to_string();
         assert_eq!(result.unwrap(), pwd);
     }
 
@@ -1010,10 +986,7 @@ mod tests {
         let path = std::path::PathBuf::from("/nonexistent/prompt.txt");
         let result = resolve_agent_prompt(None, Some(&path), false);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Failed to read prompt file"));
+        assert!(result.unwrap_err().to_string().contains("Failed to read prompt file"));
     }
 
     #[test]
@@ -1024,10 +997,7 @@ mod tests {
 
         let result = resolve_agent_prompt(None, Some(&path), false);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Prompt file is empty"));
+        assert!(result.unwrap_err().to_string().contains("Prompt file is empty"));
 
         std::fs::remove_file(&path).ok();
     }
@@ -1064,10 +1034,7 @@ mod tests {
         let path = std::path::PathBuf::from("/nonexistent/template.txt");
         let result = resolve_prompt_template(None, Some(&path));
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Failed to read prompt template file"));
+        assert!(result.unwrap_err().to_string().contains("Failed to read prompt template file"));
     }
 
     #[test]
@@ -1085,7 +1052,7 @@ mod tests {
         let disabled = false;
         assert_eq!(!disabled, true);
         let disabled = true;
-        assert_eq!(!disabled, false);
+        assert!(disabled);
     }
 
     /// Verify the clap definition parses correctly with --disabled flag.
@@ -1151,10 +1118,7 @@ mod tests {
             "Fix: {{title}}",
         ]);
 
-        assert!(
-            result.is_err(),
-            "--agent-id and --agent-name should conflict"
-        );
+        assert!(result.is_err(), "--agent-id and --agent-name should conflict");
     }
 
     /// Verify --prompt-template and --prompt-template-file are mutually exclusive.
@@ -1185,10 +1149,208 @@ mod tests {
             "/tmp/template.txt",
         ]);
 
-        assert!(
-            result.is_err(),
-            "--prompt-template and --prompt-template-file should conflict"
-        );
+        assert!(result.is_err(), "--prompt-template and --prompt-template-file should conflict");
+    }
+
+    #[test]
+    fn test_resolve_working_dir_provided() {
+        let result = resolve_working_dir(Some("/tmp/project"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "/tmp/project");
+    }
+
+    #[test]
+    fn test_resolve_working_dir_defaults_to_pwd() {
+        let result = resolve_working_dir(None);
+        assert!(result.is_ok());
+        let pwd = std::env::current_dir().unwrap().to_string_lossy().to_string();
+        assert_eq!(result.unwrap(), pwd);
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_from_string() {
+        let result = resolve_agent_prompt(Some("Fix the bug"), None, false);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some("Fix the bug".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_from_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_agent_prompt.txt");
+        std::fs::write(
+            &path,
+            "Review all files in src/ for security issues.\n1. SQL injection\n2. XSS",
+        )
+        .unwrap();
+
+        let result = resolve_agent_prompt(None, Some(&path), false);
+        assert!(result.is_ok());
+        let prompt = result.unwrap().unwrap();
+        assert!(prompt.contains("SQL injection"));
+        assert!(prompt.contains("XSS"));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_file_not_found() {
+        let path = std::path::PathBuf::from("/nonexistent/prompt.txt");
+        let result = resolve_agent_prompt(None, Some(&path), false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to read prompt file"));
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_file_empty() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_agent_prompt_empty.txt");
+        std::fs::write(&path, "   \n  ").unwrap();
+
+        let result = resolve_agent_prompt(None, Some(&path), false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Prompt file is empty"));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_none() {
+        let result = resolve_agent_prompt(None, None, false);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
+    }
+
+    /// Verify create-agent clap parsing with new flags.
+    #[test]
+    fn test_create_agent_clap_defaults() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        // Minimal: only --name required (working-dir defaults to None which resolves to $PWD)
+        let cli = Cli::try_parse_from(["test", "create-agent", "--name", "my-agent"])
+            .expect("Should parse with only --name");
+
+        if let OrchestratorCommand::CreateAgent {
+            name,
+            working_dir,
+            prompt,
+            prompt_file,
+            stdin,
+            attach,
+            ..
+        } = cli.command
+        {
+            assert_eq!(name, "my-agent");
+            assert_eq!(working_dir, None, "working_dir should default to None");
+            assert_eq!(prompt, None);
+            assert_eq!(prompt_file, None);
+            assert!(!stdin);
+            assert!(!attach);
+        } else {
+            panic!("Expected CreateAgent variant");
+        }
+    }
+
+    #[test]
+    fn test_create_agent_prompt_conflicts() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        // --prompt and --prompt-file conflict
+        let result = Cli::try_parse_from([
+            "test",
+            "create-agent",
+            "--name",
+            "test",
+            "--prompt",
+            "inline",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+        ]);
+        assert!(result.is_err(), "--prompt and --prompt-file should conflict");
+
+        // --prompt and --stdin conflict
+        let result = Cli::try_parse_from([
+            "test",
+            "create-agent",
+            "--name",
+            "test",
+            "--prompt",
+            "inline",
+            "--stdin",
+        ]);
+        assert!(result.is_err(), "--prompt and --stdin should conflict");
+
+        // --prompt-file and --stdin conflict
+        let result = Cli::try_parse_from([
+            "test",
+            "create-agent",
+            "--name",
+            "test",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+            "--stdin",
+        ]);
+        assert!(result.is_err(), "--prompt-file and --stdin should conflict");
+    }
+
+    #[test]
+    fn test_create_agent_attach_flag() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-agent",
+            "--name",
+            "debug",
+            "--interactive",
+            "--attach",
+        ])
+        .expect("Should parse with --attach");
+
+        if let OrchestratorCommand::CreateAgent { attach, interactive, .. } = cli.command {
+            assert!(attach);
+            assert!(interactive);
+        } else {
+            panic!("Expected CreateAgent variant");
+        }
+    }
+
+    #[test]
+    fn test_build_agent_body_omits_nulls() {
+        // Simulate the body-building logic from create_agent
+        let mut body = serde_json::Map::new();
+        body.insert("name".to_string(), serde_json::json!("test"));
+        body.insert("working_dir".to_string(), serde_json::json!("/tmp"));
+        body.insert("shell".to_string(), serde_json::json!("zsh"));
+        body.insert("interactive".to_string(), serde_json::json!(false));
+        body.insert("worktree".to_string(), serde_json::json!(false));
+
+        // Optional fields NOT inserted (user, prompt, system_prompt)
+        let value = serde_json::Value::Object(body);
+
+        assert!(value.get("user").is_none(), "user should be omitted");
+        assert!(value.get("prompt").is_none(), "prompt should be omitted");
+        assert!(value.get("system_prompt").is_none(), "system_prompt should be omitted");
+        assert!(value.get("name").is_some(), "name should be present");
+        assert!(value.get("working_dir").is_some(), "working_dir should be present");
     }
 
     /// Verify --agent-name is accepted as an alternative to --agent-id.
@@ -1218,12 +1380,7 @@ mod tests {
         ])
         .expect("Should parse with --agent-name");
 
-        if let OrchestratorCommand::CreateWorkflow {
-            agent_id,
-            agent_name,
-            ..
-        } = cli.command
-        {
+        if let OrchestratorCommand::CreateWorkflow { agent_id, agent_name, .. } = cli.command {
             assert_eq!(agent_id, None);
             assert_eq!(agent_name, Some("my-agent".to_string()));
         } else {

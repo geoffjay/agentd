@@ -1,3 +1,4 @@
+use crate::types::ToolPolicy;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -28,6 +29,8 @@ pub type ResultCallback = Arc<dyn Fn(Uuid, bool) + Send + Sync>;
 pub struct ConnectionRegistry {
     connections: Arc<RwLock<HashMap<Uuid, AgentConnection>>>,
     result_callbacks: Arc<RwLock<Vec<ResultCallback>>>,
+    /// Per-agent tool policies (set during agent creation).
+    policies: Arc<RwLock<HashMap<Uuid, ToolPolicy>>>,
     /// Broadcast channel for the multiplexed agent stream.
     stream_tx: broadcast::Sender<String>,
 }
@@ -44,6 +47,7 @@ impl ConnectionRegistry {
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             result_callbacks: Arc::new(RwLock::new(Vec::new())),
+            policies: Arc::new(RwLock::new(HashMap::new())),
             stream_tx,
         }
     }
@@ -60,7 +64,18 @@ impl ConnectionRegistry {
 
     pub async fn unregister(&self, agent_id: &Uuid) {
         self.connections.write().await.remove(agent_id);
+        self.policies.write().await.remove(agent_id);
         info!(%agent_id, "Agent WebSocket unregistered");
+    }
+
+    /// Set the tool policy for an agent (called during agent creation).
+    pub async fn set_policy(&self, agent_id: Uuid, policy: ToolPolicy) {
+        self.policies.write().await.insert(agent_id, policy);
+    }
+
+    /// Get the tool policy for an agent (defaults to AllowAll if not set).
+    pub async fn get_policy(&self, agent_id: &Uuid) -> ToolPolicy {
+        self.policies.read().await.get(agent_id).cloned().unwrap_or_default()
     }
 
     /// Send a user message (prompt) to a connected agent.
@@ -220,7 +235,7 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
 }
 
 /// Handle control requests from claude code (e.g., tool permission requests).
-/// Auto-allows all tool usage requests.
+/// Evaluates tool requests against the agent's tool policy.
 async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &ConnectionRegistry) {
     let request_id = msg.get("request_id").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -235,22 +250,46 @@ async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &Connect
         "can_use_tool" => {
             let tool_name = request.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown");
             let input = request.get("input").cloned().unwrap_or(Value::Object(Default::default()));
-            debug!(%agent_id, %tool_name, "Auto-allowing tool use");
 
-            let response = serde_json::json!({
-                "type": "control_response",
-                "response": {
-                    "subtype": "success",
-                    "request_id": request_id,
+            let policy = registry.get_policy(agent_id).await;
+            let allowed = policy.evaluate(tool_name);
+
+            if allowed {
+                info!(%agent_id, %tool_name, decision = "allow", "Tool use decision");
+
+                let response = serde_json::json!({
+                    "type": "control_response",
                     "response": {
-                        "behavior": "allow",
-                        "updatedInput": input,
+                        "subtype": "success",
+                        "request_id": request_id,
+                        "response": {
+                            "behavior": "allow",
+                            "updatedInput": input,
+                        }
                     }
-                }
-            });
+                });
 
-            if let Err(e) = send_raw(agent_id, &response, registry).await {
-                error!(%agent_id, %e, "Failed to send control response");
+                if let Err(e) = send_raw(agent_id, &response, registry).await {
+                    error!(%agent_id, %e, "Failed to send control response");
+                }
+            } else {
+                warn!(%agent_id, %tool_name, decision = "deny", "Tool use decision");
+
+                let response = serde_json::json!({
+                    "type": "control_response",
+                    "response": {
+                        "subtype": "success",
+                        "request_id": request_id,
+                        "response": {
+                            "behavior": "deny",
+                            "message": format!("Tool '{}' is not allowed by agent policy", tool_name),
+                        }
+                    }
+                });
+
+                if let Err(e) = send_raw(agent_id, &response, registry).await {
+                    error!(%agent_id, %e, "Failed to send deny response");
+                }
             }
         }
         _ => {

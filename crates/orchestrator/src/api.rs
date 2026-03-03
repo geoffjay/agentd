@@ -14,6 +14,7 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use tracing::info;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -43,6 +44,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents", get(list_agents).post(create_agent))
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
         .route("/agents/{id}/message", post(send_message))
+        .route("/agents/{id}/policy", get(get_agent_policy).put(update_agent_policy))
         .with_state(state);
 
     api_routes.merge(ws_agent_routes).merge(ws_stream_routes).merge(wf_routes)
@@ -93,6 +95,7 @@ async fn create_agent(
         prompt: req.prompt,
         worktree: req.worktree,
         system_prompt: req.system_prompt,
+        tool_policy: req.tool_policy,
     };
 
     let agent = state.manager.spawn_agent(req.name, config).await?;
@@ -140,6 +143,37 @@ async fn send_message(
         .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
 
     Ok(Json(serde_json::json!({ "status": "sent", "agent_id": id })))
+}
+
+/// Get the tool policy for a specific agent.
+async fn get_agent_policy(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+    Ok(Json(agent.config.tool_policy))
+}
+
+/// Update the tool policy for a specific agent.
+async fn update_agent_policy(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(policy): Json<ToolPolicy>,
+) -> Result<impl IntoResponse, ApiError> {
+    let mut agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    agent.config.tool_policy = policy.clone();
+    agent.updated_at = chrono::Utc::now();
+
+    // Update in database.
+    state.manager.update_agent(&agent).await?;
+
+    // Update in the live WebSocket registry.
+    state.registry.set_policy(id, policy.clone()).await;
+
+    info!(agent_id = %id, ?policy, "Agent tool policy updated");
+
+    Ok(Json(policy))
 }
 
 // -- Error handling --
