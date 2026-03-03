@@ -24,6 +24,7 @@ prettytable-rs = "0.10"
 notify = { path = "../notify" }
 ask = { path = "../ask" }
 wrap = { path = "../wrap" }
+orchestrator = { path = "../orchestrator" }
 
 [dev-dependencies]
 mockito = "1.2"

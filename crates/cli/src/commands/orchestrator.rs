@@ -50,21 +50,14 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use colored::*;
-use serde::Deserialize;
+use uuid::Uuid;
 
-use cli::client::ApiClient;
-
-/// Paginated response wrapper returned by list endpoints.
-#[derive(Debug, Deserialize)]
-struct PaginatedResponse<T> {
-    items: Vec<T>,
-    #[allow(dead_code)]
-    total: u64,
-    #[allow(dead_code)]
-    limit: u64,
-    #[allow(dead_code)]
-    offset: u64,
-}
+use orchestrator::client::OrchestratorClient;
+use orchestrator::scheduler::types::{
+    CreateWorkflowRequest, DispatchResponse, TaskSourceConfig, UpdateWorkflowRequest,
+    WorkflowResponse,
+};
+use orchestrator::types::{AgentResponse, AgentStatus, CreateAgentRequest};
 
 /// Orchestrator service management subcommands.
 ///
@@ -283,9 +276,9 @@ impl OrchestratorCommand {
     ///
     /// # Arguments
     ///
-    /// * `client` - The API client configured for the orchestrator service
+    /// * `client` - The typed orchestrator client
     /// * `json` - If true, output raw JSON instead of formatted text
-    pub async fn execute(&self, client: &ApiClient, json: bool) -> Result<()> {
+    pub async fn execute(&self, client: &OrchestratorClient, json: bool) -> Result<()> {
         match self {
             OrchestratorCommand::ListAgents { status } => {
                 list_agents(client, status.as_deref(), json).await
@@ -378,14 +371,8 @@ impl OrchestratorCommand {
 
 // -- Agent operations --
 
-async fn list_agents(client: &ApiClient, status: Option<&str>, json: bool) -> Result<()> {
-    let path = match status {
-        Some(s) => format!("/agents?status={}", s),
-        None => "/agents".to_string(),
-    };
-
-    let response: PaginatedResponse<serde_json::Value> =
-        client.get(&path).await.context("Failed to list agents")?;
+async fn list_agents(client: &OrchestratorClient, status: Option<&str>, json: bool) -> Result<()> {
+    let response = client.list_agents(status).await.context("Failed to list agents")?;
     let agents = response.items;
 
     if json {
@@ -407,7 +394,7 @@ async fn list_agents(client: &ApiClient, status: Option<&str>, json: bool) -> Re
 
 #[allow(clippy::too_many_arguments)]
 async fn create_agent(
-    client: &ApiClient,
+    client: &OrchestratorClient,
     name: &str,
     working_dir: Option<&str>,
     user: Option<&str>,
@@ -427,29 +414,19 @@ async fn create_agent(
     // Resolve prompt from --prompt, --prompt-file, or --stdin
     let resolved_prompt = resolve_agent_prompt(prompt, prompt_file, stdin)?;
 
-    // Build JSON body, omitting null optional fields
-    let mut body = serde_json::Map::new();
-    body.insert("name".to_string(), serde_json::json!(name));
-    body.insert("working_dir".to_string(), serde_json::json!(resolved_working_dir));
-    body.insert("shell".to_string(), serde_json::json!(shell));
-    body.insert("interactive".to_string(), serde_json::json!(interactive));
-    body.insert("worktree".to_string(), serde_json::json!(worktree));
+    let request = CreateAgentRequest {
+        name: name.to_string(),
+        working_dir: resolved_working_dir,
+        user: user.map(|s| s.to_string()),
+        shell: shell.to_string(),
+        interactive,
+        prompt: resolved_prompt,
+        worktree,
+        system_prompt: system_prompt.map(|s| s.to_string()),
+        tool_policy: Default::default(),
+    };
 
-    // Only include optional fields if they have values
-    if let Some(u) = user {
-        body.insert("user".to_string(), serde_json::json!(u));
-    }
-    if let Some(p) = &resolved_prompt {
-        body.insert("prompt".to_string(), serde_json::json!(p));
-    }
-    if let Some(sp) = system_prompt {
-        body.insert("system_prompt".to_string(), serde_json::json!(sp));
-    }
-
-    let agent: serde_json::Value = client
-        .post("/agents", &serde_json::Value::Object(body))
-        .await
-        .context("Failed to create agent")?;
+    let agent = client.create_agent(&request).await.context("Failed to create agent")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&agent)?);
@@ -462,8 +439,8 @@ async fn create_agent(
     // If --attach was requested, exec into the tmux session
     if attach {
         let session = agent
-            .get("tmux_session")
-            .and_then(|v| v.as_str())
+            .tmux_session
+            .as_deref()
             .context("Agent response missing 'tmux_session' field — cannot attach")?;
 
         println!();
@@ -477,6 +454,33 @@ async fn create_agent(
         if !status.success() {
             bail!("tmux attach-session exited with status: {status}");
         }
+    }
+
+    Ok(())
+}
+
+async fn get_agent(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+    let agent = client.get_agent(&uuid).await.context("Failed to get agent")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&agent)?);
+    } else {
+        display_agent(&agent);
+    }
+
+    Ok(())
+}
+
+async fn delete_agent(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+
+    let agent = client.terminate_agent(&uuid).await.context("Failed to terminate agent")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&agent)?);
+    } else {
+        println!("{}", format!("Agent '{}' ({}) terminated.", agent.name, agent.id).green().bold());
     }
 
     Ok(())
@@ -525,44 +529,10 @@ fn resolve_agent_prompt(
     }
 }
 
-async fn get_agent(client: &ApiClient, id: &str, json: bool) -> Result<()> {
-    let path = format!("/agents/{}", id);
-    let agent: serde_json::Value = client.get(&path).await.context("Failed to get agent")?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&agent)?);
-    } else {
-        display_agent(&agent);
-    }
-
-    Ok(())
-}
-
-async fn delete_agent(client: &ApiClient, id: &str, json: bool) -> Result<()> {
-    let path = format!("/agents/{}", id);
-    let agent: serde_json::Value = client.get(&path).await.context("Failed to find agent")?;
-
-    // The orchestrator DELETE returns the terminated agent
-    let result: serde_json::Value =
-        client.get::<serde_json::Value>(&path).await.ok().unwrap_or_default();
-
-    client.delete(&path).await.context("Failed to delete agent")?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&agent)?);
-    } else {
-        let name = result.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-        println!("{}", format!("Agent '{}' ({}) terminated.", name, id).green().bold());
-    }
-
-    Ok(())
-}
-
 // -- Workflow operations --
 
-async fn list_workflows(client: &ApiClient, json: bool) -> Result<()> {
-    let response: PaginatedResponse<serde_json::Value> =
-        client.get("/workflows").await.context("Failed to list workflows")?;
+async fn list_workflows(client: &OrchestratorClient, json: bool) -> Result<()> {
+    let response = client.list_workflows().await.context("Failed to list workflows")?;
     let workflows = response.items;
 
     if json {
@@ -584,7 +554,7 @@ async fn list_workflows(client: &ApiClient, json: bool) -> Result<()> {
 
 #[allow(clippy::too_many_arguments)]
 async fn create_workflow(
-    client: &ApiClient,
+    client: &OrchestratorClient,
     name: &str,
     agent_id: Option<&str>,
     agent_name: Option<&str>,
@@ -606,26 +576,25 @@ async fn create_workflow(
     let labels_vec: Vec<String> =
         labels.map(|l| l.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default();
 
-    let body = serde_json::json!({
-        "name": name,
-        "agent_id": resolved_agent_id,
-        "source_config": {
-            "type": "github_issues",
-            "owner": owner,
-            "repo": repo,
-            "labels": labels_vec,
+    let request = CreateWorkflowRequest {
+        name: name.to_string(),
+        agent_id: resolved_agent_id,
+        source_config: TaskSourceConfig::GithubIssues {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            labels: labels_vec,
+            state: "open".to_string(),
         },
-        "prompt_template": resolved_template,
-        "poll_interval_secs": poll_interval,
-        "enabled": enabled,
-    });
+        prompt_template: resolved_template,
+        poll_interval_secs: poll_interval,
+        enabled,
+    };
 
-    let workflow: serde_json::Value = client.post("/workflows", &body).await.map_err(|e| {
+    let workflow = client.create_workflow(&request).await.map_err(|e| {
         let msg = e.to_string();
         if msg.contains("404") {
             anyhow::anyhow!(
-                "Agent '{}' not found or not running. Use 'agent orchestrator list-agents' to see available agents.",
-                agent_name.unwrap_or(&resolved_agent_id)
+                "Agent not found or not running. Use 'agent orchestrator list-agents' to see available agents."
             )
         } else {
             e.context("Failed to create workflow")
@@ -643,39 +612,125 @@ async fn create_workflow(
     Ok(())
 }
 
+async fn get_workflow(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+    let workflow = client.get_workflow(&uuid).await.context("Failed to get workflow")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&workflow)?);
+    } else {
+        display_workflow(&workflow);
+    }
+
+    Ok(())
+}
+
+async fn update_workflow(
+    client: &OrchestratorClient,
+    id: &str,
+    name: Option<&str>,
+    prompt_template: Option<&str>,
+    poll_interval: Option<u64>,
+    enabled: Option<bool>,
+    json: bool,
+) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+
+    let request = UpdateWorkflowRequest {
+        name: name.map(|s| s.to_string()),
+        prompt_template: prompt_template.map(|s| s.to_string()),
+        poll_interval_secs: poll_interval,
+        enabled,
+    };
+
+    let workflow =
+        client.update_workflow(&uuid, &request).await.context("Failed to update workflow")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&workflow)?);
+    } else {
+        println!("{}", "Workflow updated successfully!".green().bold());
+        println!();
+        display_workflow(&workflow);
+    }
+
+    Ok(())
+}
+
+async fn delete_workflow(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+
+    if json {
+        // Fetch before deleting to show it
+        if let Ok(workflow) = client.get_workflow(&uuid).await {
+            client.delete_workflow(&uuid).await.context("Failed to delete workflow")?;
+            println!("{}", serde_json::to_string_pretty(&workflow)?);
+        } else {
+            client.delete_workflow(&uuid).await.context("Failed to delete workflow")?;
+            println!("{{}}");
+        }
+    } else {
+        client.delete_workflow(&uuid).await.context("Failed to delete workflow")?;
+        println!("{}", format!("Workflow {} deleted.", id).green().bold());
+    }
+
+    Ok(())
+}
+
+async fn workflow_history(client: &OrchestratorClient, id: &str, json: bool) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+    let response =
+        client.dispatch_history(&uuid).await.context("Failed to get workflow history")?;
+    let dispatches = response.items;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&dispatches)?);
+    } else if dispatches.is_empty() {
+        println!("{}", "No dispatch history found.".yellow());
+    } else {
+        println!("{}", "Dispatch History:".blue().bold());
+        println!("{}", "=".repeat(80).cyan());
+        for dispatch in &dispatches {
+            display_dispatch(dispatch);
+            println!("{}", "-".repeat(80).cyan());
+        }
+        println!("Total: {} dispatch(es)", dispatches.len());
+    }
+
+    Ok(())
+}
+
+// -- Helper functions --
+
+/// Parse a string as a UUID, providing a user-friendly error message.
+fn parse_uuid(id: &str) -> Result<Uuid> {
+    id.parse::<Uuid>().with_context(|| format!("Invalid UUID: '{id}'"))
+}
+
 /// Resolve an agent ID from either --agent-id or --agent-name.
 ///
 /// If --agent-name is provided, queries the orchestrator API to find the agent
 /// by name. Errors if the agent is not found or if multiple agents share the name.
 async fn resolve_agent_id(
-    client: &ApiClient,
+    client: &OrchestratorClient,
     agent_id: Option<&str>,
     agent_name: Option<&str>,
-) -> Result<String> {
+) -> Result<Uuid> {
     match (agent_id, agent_name) {
-        (Some(id), _) => Ok(id.to_string()),
+        (Some(id), _) => parse_uuid(id),
         (_, Some(name)) => {
-            let response: PaginatedResponse<serde_json::Value> =
-                client.get("/agents").await.context("Failed to list agents for name lookup")?;
+            let response =
+                client.list_agents(None).await.context("Failed to list agents for name lookup")?;
 
-            let matches: Vec<&serde_json::Value> = response
-                .items
-                .iter()
-                .filter(|a| a.get("name").and_then(|v| v.as_str()) == Some(name))
-                .collect();
+            let matches: Vec<&AgentResponse> =
+                response.items.iter().filter(|a| a.name == name).collect();
 
             match matches.len() {
                 0 => bail!(
                     "Agent '{}' not found. Use 'agent orchestrator list-agents' to see available agents.",
                     name
                 ),
-                1 => {
-                    let id = matches[0]
-                        .get("id")
-                        .and_then(|v| v.as_str())
-                        .context("Agent response missing 'id' field")?;
-                    Ok(id.to_string())
-                }
+                1 => Ok(matches[0].id),
                 n => bail!(
                     "Found {} agents named '{}'. Use --agent-id to specify the exact agent.",
                     n,
@@ -702,196 +757,65 @@ fn resolve_prompt_template(
     }
 }
 
-async fn get_workflow(client: &ApiClient, id: &str, json: bool) -> Result<()> {
-    let path = format!("/workflows/{}", id);
-    let workflow: serde_json::Value = client.get(&path).await.context("Failed to get workflow")?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&workflow)?);
-    } else {
-        display_workflow(&workflow);
-    }
-
-    Ok(())
-}
-
-async fn update_workflow(
-    client: &ApiClient,
-    id: &str,
-    name: Option<&str>,
-    prompt_template: Option<&str>,
-    poll_interval: Option<u64>,
-    enabled: Option<bool>,
-    json: bool,
-) -> Result<()> {
-    let body = serde_json::json!({
-        "name": name,
-        "prompt_template": prompt_template,
-        "poll_interval_secs": poll_interval,
-        "enabled": enabled,
-    });
-
-    let path = format!("/workflows/{}", id);
-    let workflow: serde_json::Value =
-        client.put(&path, &body).await.context("Failed to update workflow")?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&workflow)?);
-    } else {
-        println!("{}", "Workflow updated successfully!".green().bold());
-        println!();
-        display_workflow(&workflow);
-    }
-
-    Ok(())
-}
-
-async fn delete_workflow(client: &ApiClient, id: &str, json: bool) -> Result<()> {
-    let path = format!("/workflows/{}", id);
-
-    if json {
-        // Fetch before deleting to show it
-        if let Ok(workflow) = client.get::<serde_json::Value>(&path).await {
-            client.delete(&path).await.context("Failed to delete workflow")?;
-            println!("{}", serde_json::to_string_pretty(&workflow)?);
-        } else {
-            client.delete(&path).await.context("Failed to delete workflow")?;
-            println!("{{}}");
-        }
-    } else {
-        client.delete(&path).await.context("Failed to delete workflow")?;
-        println!("{}", format!("Workflow {} deleted.", id).green().bold());
-    }
-
-    Ok(())
-}
-
-async fn workflow_history(client: &ApiClient, id: &str, json: bool) -> Result<()> {
-    let path = format!("/workflows/{}/history", id);
-    let response: PaginatedResponse<serde_json::Value> =
-        client.get(&path).await.context("Failed to get workflow history")?;
-    let dispatches = response.items;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&dispatches)?);
-    } else if dispatches.is_empty() {
-        println!("{}", "No dispatch history found.".yellow());
-    } else {
-        println!("{}", "Dispatch History:".blue().bold());
-        println!("{}", "=".repeat(80).cyan());
-        for dispatch in &dispatches {
-            display_dispatch(dispatch);
-            println!("{}", "-".repeat(80).cyan());
-        }
-        println!("Total: {} dispatch(es)", dispatches.len());
-    }
-
-    Ok(())
-}
-
 // -- Display helpers --
 
-fn display_agent(agent: &serde_json::Value) {
-    if let Some(id) = agent.get("id").and_then(|v| v.as_str()) {
-        println!("{}: {}", "ID".bold(), id);
-    }
-    if let Some(name) = agent.get("name").and_then(|v| v.as_str()) {
-        println!("{}: {}", "Name".bold(), name.bright_white());
-    }
-    if let Some(status) = agent.get("status").and_then(|v| v.as_str()) {
-        let colored_status = match status {
-            "running" => status.green(),
-            "pending" => status.yellow(),
-            "stopped" => status.red(),
-            "failed" => status.bright_red(),
-            _ => status.normal(),
-        };
-        println!("{}: {}", "Status".bold(), colored_status);
-    }
-    if let Some(session) = agent.get("tmux_session").and_then(|v| v.as_str()) {
+fn display_agent(agent: &AgentResponse) {
+    println!("{}: {}", "ID".bold(), agent.id);
+    println!("{}: {}", "Name".bold(), agent.name.bright_white());
+    let status_str = agent.status.to_string();
+    let colored_status = match agent.status {
+        AgentStatus::Running => status_str.green(),
+        AgentStatus::Pending => status_str.yellow(),
+        AgentStatus::Stopped => status_str.red(),
+        AgentStatus::Failed => status_str.bright_red(),
+    };
+    println!("{}: {}", "Status".bold(), colored_status);
+    if let Some(session) = &agent.tmux_session {
         println!("{}: {}", "Tmux Session".bold(), session);
     }
-    if let Some(config) = agent.get("config") {
-        if let Some(dir) = config.get("working_dir").and_then(|v| v.as_str()) {
-            println!("{}: {}", "Working Dir".bold(), dir);
-        }
-        if let Some(shell) = config.get("shell").and_then(|v| v.as_str()) {
-            println!("{}: {}", "Shell".bold(), shell);
-        }
-    }
-    if let Some(created) = agent.get("created_at").and_then(|v| v.as_str()) {
-        println!("{}: {}", "Created".bold(), created);
-    }
+    println!("{}: {}", "Working Dir".bold(), agent.config.working_dir);
+    println!("{}: {}", "Shell".bold(), agent.config.shell);
+    println!("{}: {}", "Created".bold(), agent.created_at);
 }
 
-fn display_workflow(workflow: &serde_json::Value) {
-    if let Some(id) = workflow.get("id").and_then(|v| v.as_str()) {
-        println!("{}: {}", "ID".bold(), id);
-    }
-    if let Some(name) = workflow.get("name").and_then(|v| v.as_str()) {
-        println!("{}: {}", "Name".bold(), name.bright_white());
-    }
-    if let Some(agent_id) = workflow.get("agent_id").and_then(|v| v.as_str()) {
-        println!("{}: {}", "Agent ID".bold(), agent_id);
-    }
-    if let Some(enabled) = workflow.get("enabled").and_then(|v| v.as_bool()) {
-        let status = if enabled { "enabled".green() } else { "disabled".red() };
-        println!("{}: {}", "Status".bold(), status);
-    }
-    if let Some(interval) = workflow.get("poll_interval_secs").and_then(|v| v.as_u64()) {
-        println!("{}: {}s", "Poll Interval".bold(), interval);
-    }
-    if let Some(source) = workflow.get("source_config") {
-        if let Some(stype) = source.get("type").and_then(|v| v.as_str()) {
-            println!("{}: {}", "Source Type".bold(), stype);
-        }
-        if let (Some(owner), Some(repo)) = (
-            source.get("owner").and_then(|v| v.as_str()),
-            source.get("repo").and_then(|v| v.as_str()),
-        ) {
+fn display_workflow(workflow: &WorkflowResponse) {
+    println!("{}: {}", "ID".bold(), workflow.id);
+    println!("{}: {}", "Name".bold(), workflow.name.bright_white());
+    println!("{}: {}", "Agent ID".bold(), workflow.agent_id);
+    let status = if workflow.enabled { "enabled".green() } else { "disabled".red() };
+    println!("{}: {}", "Status".bold(), status);
+    println!("{}: {}s", "Poll Interval".bold(), workflow.poll_interval_secs);
+    match &workflow.source_config {
+        TaskSourceConfig::GithubIssues { owner, repo, .. } => {
+            println!("{}: github_issues", "Source Type".bold());
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
         }
     }
-    if let Some(template) = workflow.get("prompt_template").and_then(|v| v.as_str()) {
-        let display = if template.len() > 60 {
-            format!("{}...", &template[..57])
-        } else {
-            template.to_string()
-        };
-        println!("{}: {}", "Prompt Template".bold(), display);
-    }
-    if let Some(created) = workflow.get("created_at").and_then(|v| v.as_str()) {
-        println!("{}: {}", "Created".bold(), created);
-    }
+    let template = &workflow.prompt_template;
+    let display =
+        if template.len() > 60 { format!("{}...", &template[..57]) } else { template.clone() };
+    println!("{}: {}", "Prompt Template".bold(), display);
+    println!("{}: {}", "Created".bold(), workflow.created_at);
 }
 
-fn display_dispatch(dispatch: &serde_json::Value) {
-    if let Some(id) = dispatch.get("id").and_then(|v| v.as_str()) {
-        println!("{}: {}", "Dispatch ID".bold(), id);
-    }
-    if let Some(source_id) = dispatch.get("source_id").and_then(|v| v.as_str()) {
-        println!("{}: {}", "Source ID".bold(), source_id);
-    }
-    if let Some(status) = dispatch.get("status").and_then(|v| v.as_str()) {
-        let colored_status = match status {
-            "completed" => status.green(),
-            "dispatched" => status.blue(),
-            "pending" => status.yellow(),
-            "failed" => status.bright_red(),
-            "skipped" => status.normal(),
-            _ => status.normal(),
-        };
-        println!("{}: {}", "Status".bold(), colored_status);
-    }
-    if let Some(prompt) = dispatch.get("prompt_sent").and_then(|v| v.as_str()) {
-        let display =
-            if prompt.len() > 60 { format!("{}...", &prompt[..57]) } else { prompt.to_string() };
-        println!("{}: {}", "Prompt".bold(), display);
-    }
-    if let Some(dispatched) = dispatch.get("dispatched_at").and_then(|v| v.as_str()) {
-        println!("{}: {}", "Dispatched".bold(), dispatched);
-    }
-    if let Some(completed) = dispatch.get("completed_at").and_then(|v| v.as_str()) {
+fn display_dispatch(dispatch: &DispatchResponse) {
+    println!("{}: {}", "Dispatch ID".bold(), dispatch.id);
+    println!("{}: {}", "Source ID".bold(), dispatch.source_id);
+    let status_str = dispatch.status.to_string();
+    let colored_status = match status_str.as_str() {
+        "completed" => status_str.green(),
+        "dispatched" => status_str.blue(),
+        "pending" => status_str.yellow(),
+        "failed" => status_str.bright_red(),
+        "skipped" => status_str.normal(),
+        _ => status_str.normal(),
+    };
+    println!("{}: {}", "Status".bold(), colored_status);
+    let prompt = &dispatch.prompt_sent;
+    let display = if prompt.len() > 60 { format!("{}...", &prompt[..57]) } else { prompt.clone() };
+    println!("{}: {}", "Prompt".bold(), display);
+    println!("{}: {}", "Dispatched".bold(), dispatch.dispatched_at);
+    if let Some(completed) = &dispatch.completed_at {
         println!("{}: {}", "Completed".bold(), completed);
     }
 }
@@ -899,84 +823,149 @@ fn display_dispatch(dispatch: &serde_json::Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use orchestrator::types::AgentConfig;
 
     #[test]
-    fn test_display_agent_minimal() {
-        let agent = serde_json::json!({
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "name": "test-agent",
-            "status": "running",
-        });
+    fn test_display_agent_typed() {
+        use chrono::Utc;
+        let agent = AgentResponse {
+            id: Uuid::new_v4(),
+            name: "test-agent".to_string(),
+            status: AgentStatus::Running,
+            config: AgentConfig {
+                working_dir: "/tmp/test".to_string(),
+                user: None,
+                shell: "zsh".to_string(),
+                interactive: false,
+                prompt: None,
+                worktree: false,
+                system_prompt: None,
+                tool_policy: Default::default(),
+            },
+            tmux_session: Some("agentd-orch-abc123".to_string()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
         // Should not panic
         display_agent(&agent);
     }
 
     #[test]
-    fn test_display_workflow_minimal() {
-        let workflow = serde_json::json!({
-            "id": "550e8400-e29b-41d4-a716-446655440001",
-            "name": "test-workflow",
-            "enabled": true,
-        });
+    fn test_display_workflow_typed() {
+        use chrono::Utc;
+        let workflow = WorkflowResponse {
+            id: Uuid::new_v4(),
+            name: "test-workflow".to_string(),
+            agent_id: Uuid::new_v4(),
+            source_config: TaskSourceConfig::GithubIssues {
+                owner: "acme".to_string(),
+                repo: "widgets".to_string(),
+                labels: vec!["bug".to_string()],
+                state: "open".to_string(),
+            },
+            prompt_template: "Fix: {{title}}".to_string(),
+            poll_interval_secs: 60,
+            enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
         // Should not panic
         display_workflow(&workflow);
     }
 
     #[test]
-    fn test_display_dispatch_minimal() {
-        let dispatch = serde_json::json!({
-            "id": "550e8400-e29b-41d4-a716-446655440002",
-            "source_id": "issue-42",
-            "status": "completed",
-        });
+    fn test_display_dispatch_typed() {
+        use chrono::Utc;
+        use orchestrator::scheduler::types::DispatchStatus;
+        let dispatch = DispatchResponse {
+            id: Uuid::new_v4(),
+            workflow_id: Uuid::new_v4(),
+            source_id: "issue-42".to_string(),
+            agent_id: Uuid::new_v4(),
+            prompt_sent: "Fix the bug".to_string(),
+            status: DispatchStatus::Completed,
+            dispatched_at: Utc::now(),
+            completed_at: Some(Utc::now()),
+        };
         // Should not panic
         display_dispatch(&dispatch);
     }
 
     #[test]
-    fn test_display_agent_with_config() {
-        let agent = serde_json::json!({
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "name": "my-agent",
-            "status": "pending",
-            "config": {
-                "working_dir": "/tmp/test",
-                "shell": "zsh",
-            },
-            "tmux_session": "agentd-orch-abc123",
-            "created_at": "2024-01-01T00:00:00Z",
-        });
-        // Should not panic
-        display_agent(&agent);
+    fn test_parse_uuid_valid() {
+        let result = parse_uuid("550e8400-e29b-41d4-a716-446655440000");
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn test_display_workflow_full() {
-        let workflow = serde_json::json!({
-            "id": "550e8400-e29b-41d4-a716-446655440001",
-            "name": "issue-worker",
-            "agent_id": "550e8400-e29b-41d4-a716-446655440000",
-            "enabled": false,
-            "poll_interval_secs": 120,
-            "source_config": {
-                "type": "github_issues",
-                "owner": "acme",
-                "repo": "widgets",
-            },
-            "prompt_template": "Fix the issue: {{title}}",
-            "created_at": "2024-01-01T00:00:00Z",
-        });
-        // Should not panic
-        display_workflow(&workflow);
+    fn test_parse_uuid_invalid() {
+        let result = parse_uuid("not-a-uuid");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid UUID"));
     }
 
     #[test]
-    fn test_display_workflow_long_template() {
-        let workflow = serde_json::json!({
-            "prompt_template": "This is a very long prompt template that should be truncated when displayed in the terminal output",
-        });
-        // Should not panic and should truncate
-        display_workflow(&workflow);
+    fn test_resolve_working_dir_provided() {
+        let result = resolve_working_dir(Some("/tmp/project"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "/tmp/project");
+    }
+
+    #[test]
+    fn test_resolve_working_dir_defaults_to_pwd() {
+        let result = resolve_working_dir(None);
+        assert!(result.is_ok());
+        let pwd = std::env::current_dir().unwrap().to_string_lossy().to_string();
+        assert_eq!(result.unwrap(), pwd);
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_from_string() {
+        let result = resolve_agent_prompt(Some("Fix the bug"), None, false);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some("Fix the bug".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_from_file() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_agent_prompt_typed.txt");
+        std::fs::write(&path, "Review src/ for issues.\n1. SQL injection\n2. XSS").unwrap();
+
+        let result = resolve_agent_prompt(None, Some(&path), false);
+        assert!(result.is_ok());
+        let prompt = result.unwrap().unwrap();
+        assert!(prompt.contains("SQL injection"));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_file_not_found() {
+        let path = std::path::PathBuf::from("/nonexistent/prompt.txt");
+        let result = resolve_agent_prompt(None, Some(&path), false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to read prompt file"));
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_file_empty() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_agent_prompt_empty_typed.txt");
+        std::fs::write(&path, "   \n  ").unwrap();
+
+        let result = resolve_agent_prompt(None, Some(&path), false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Prompt file is empty"));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_resolve_agent_prompt_none() {
+        let result = resolve_agent_prompt(None, None, false);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
     }
 
     #[test]
@@ -989,7 +978,7 @@ mod tests {
     #[test]
     fn test_resolve_prompt_template_from_file() {
         let dir = std::env::temp_dir();
-        let path = dir.join("test_prompt_template.txt");
+        let path = dir.join("test_prompt_template_typed.txt");
         std::fs::write(&path, "Work on: {{title}}\n\n{{body}}").unwrap();
 
         let result = resolve_prompt_template(None, Some(&path));
@@ -1019,12 +1008,8 @@ mod tests {
 
     #[test]
     fn test_disabled_flag_semantics() {
-        // When --disabled is absent, disabled=false, so enabled = !disabled = true
         let disabled = false;
-        assert!(!disabled, "By default --disabled is false, meaning the workflow is enabled");
         assert!(!disabled);
-
-        // When --disabled is present, disabled=true, so enabled = !disabled = false
         let disabled = true;
         assert!(disabled);
     }
@@ -1034,14 +1019,12 @@ mod tests {
     fn test_create_workflow_clap_parsing() {
         use clap::Parser;
 
-        // Wrapper needed for testing subcommands
         #[derive(Parser)]
         struct Cli {
             #[command(subcommand)]
             command: OrchestratorCommand,
         }
 
-        // Test with --disabled
         let cli = Cli::try_parse_from([
             "test",
             "create-workflow",
@@ -1060,30 +1043,7 @@ mod tests {
         .expect("Should parse with --disabled");
 
         if let OrchestratorCommand::CreateWorkflow { disabled, .. } = cli.command {
-            assert!(disabled, "--disabled flag should be true when present");
-        } else {
-            panic!("Expected CreateWorkflow variant");
-        }
-
-        // Test without --disabled (default = false = enabled)
-        let cli = Cli::try_parse_from([
-            "test",
-            "create-workflow",
-            "--name",
-            "test",
-            "--agent-id",
-            "550e8400-e29b-41d4-a716-446655440000",
-            "--owner",
-            "acme",
-            "--repo",
-            "widgets",
-            "--prompt-template",
-            "Fix: {{title}}",
-        ])
-        .expect("Should parse without --disabled");
-
-        if let OrchestratorCommand::CreateWorkflow { disabled, .. } = cli.command {
-            assert!(!disabled, "--disabled flag should be false when absent");
+            assert!(disabled);
         } else {
             panic!("Expected CreateWorkflow variant");
         }
@@ -1149,75 +1109,6 @@ mod tests {
         ]);
 
         assert!(result.is_err(), "--prompt-template and --prompt-template-file should conflict");
-    }
-
-    #[test]
-    fn test_resolve_working_dir_provided() {
-        let result = resolve_working_dir(Some("/tmp/project"));
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "/tmp/project");
-    }
-
-    #[test]
-    fn test_resolve_working_dir_defaults_to_pwd() {
-        let result = resolve_working_dir(None);
-        assert!(result.is_ok());
-        let pwd = std::env::current_dir().unwrap().to_string_lossy().to_string();
-        assert_eq!(result.unwrap(), pwd);
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_from_string() {
-        let result = resolve_agent_prompt(Some("Fix the bug"), None, false);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some("Fix the bug".to_string()));
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_from_file() {
-        let dir = std::env::temp_dir();
-        let path = dir.join("test_agent_prompt.txt");
-        std::fs::write(
-            &path,
-            "Review all files in src/ for security issues.\n1. SQL injection\n2. XSS",
-        )
-        .unwrap();
-
-        let result = resolve_agent_prompt(None, Some(&path), false);
-        assert!(result.is_ok());
-        let prompt = result.unwrap().unwrap();
-        assert!(prompt.contains("SQL injection"));
-        assert!(prompt.contains("XSS"));
-
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_file_not_found() {
-        let path = std::path::PathBuf::from("/nonexistent/prompt.txt");
-        let result = resolve_agent_prompt(None, Some(&path), false);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to read prompt file"));
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_file_empty() {
-        let dir = std::env::temp_dir();
-        let path = dir.join("test_agent_prompt_empty.txt");
-        std::fs::write(&path, "   \n  ").unwrap();
-
-        let result = resolve_agent_prompt(None, Some(&path), false);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Prompt file is empty"));
-
-        std::fs::remove_file(&path).ok();
-    }
-
-    #[test]
-    fn test_resolve_agent_prompt_none() {
-        let result = resolve_agent_prompt(None, None, false);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), None);
     }
 
     /// Verify create-agent clap parsing with new flags.

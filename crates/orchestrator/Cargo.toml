@@ -40,6 +40,9 @@ chrono = { version = "0.4", features = ["serde"] }
 directories = "6.0.0"
 futures = "0.3"
 
+# HTTP client (for OrchestratorClient)
+reqwest = { version = "0.12", features = ["json"] }
+
 # Tmux management (reuse from wrap crate)
 wrap = { path = "../wrap" }
 

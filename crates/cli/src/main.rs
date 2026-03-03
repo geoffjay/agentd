@@ -78,9 +78,9 @@ pub mod types;
 use anyhow::Result;
 use ask::client::AskClient;
 use clap::{Parser, Subcommand};
-use cli::client::ApiClient;
 use commands::{AskCommand, NotifyCommand, OrchestratorCommand, WrapCommand};
 use notify::client::NotifyClient;
+use orchestrator::client::OrchestratorClient;
 use std::env;
 use wrap::client::WrapClient;
 
@@ -201,7 +201,7 @@ async fn main() -> Result<()> {
             // Use ORCHESTRATOR_SERVICE_URL env var, default to production port
             let url = env::var("ORCHESTRATOR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7006".to_string());
-            let client = ApiClient::new(url);
+            let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Hook => {
