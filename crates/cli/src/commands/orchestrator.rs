@@ -1022,11 +1022,11 @@ mod tests {
         // When --disabled is absent, disabled=false, so enabled = !disabled = true
         let disabled = false;
         assert!(!disabled, "By default --disabled is false, meaning the workflow is enabled");
-        assert_eq!(!disabled, true);
+        assert!(!disabled);
 
         // When --disabled is present, disabled=true, so enabled = !disabled = false
         let disabled = true;
-        assert_eq!(!disabled, false);
+        assert!(disabled);
     }
 
     /// Verify the clap definition parses correctly with --disabled flag.

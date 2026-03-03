@@ -48,8 +48,10 @@ impl std::str::FromStr for AgentStatus {
 /// whether to allow or deny the request.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ToolPolicy {
     /// Allow all tools without restriction (default).
+    #[default]
     AllowAll,
     /// Deny all tool usage.
     DenyAll,
@@ -57,12 +59,6 @@ pub enum ToolPolicy {
     AllowList { tools: Vec<String> },
     /// Allow everything except the listed tools.
     DenyList { tools: Vec<String> },
-}
-
-impl Default for ToolPolicy {
-    fn default() -> Self {
-        ToolPolicy::AllowAll
-    }
 }
 
 impl ToolPolicy {
