@@ -72,8 +72,7 @@ impl SchedulerStorage {
 
     pub async fn add_workflow(&self, workflow: &WorkflowConfig) -> Result<Uuid> {
         let source_config_json = serde_json::to_string(&workflow.source_config)?;
-        let tool_policy_json =
-            serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
+        let tool_policy_json = serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
         sqlx::query(
             r#"
             INSERT INTO workflows (id, name, agent_id, source_type, source_config, prompt_template, poll_interval_secs, enabled, tool_policy, created_at, updated_at)
@@ -118,8 +117,7 @@ impl SchedulerStorage {
     }
 
     pub async fn update_workflow(&self, workflow: &WorkflowConfig) -> Result<()> {
-        let tool_policy_json =
-            serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
+        let tool_policy_json = serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
         let result = sqlx::query(
             r#"
             UPDATE workflows
