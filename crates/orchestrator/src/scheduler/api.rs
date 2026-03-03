@@ -1,5 +1,6 @@
 use crate::api::ApiError;
 use crate::manager::AgentManager;
+use crate::scheduler::template::validate_template;
 use crate::scheduler::types::*;
 use crate::scheduler::Scheduler;
 use crate::types::{clamp_limit, AgentStatus, PaginatedResponse};
@@ -39,6 +40,21 @@ async fn create_workflow(
     State(state): State<WorkflowState>,
     Json(req): Json<CreateWorkflowRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Validate the prompt template
+    let warnings = validate_template(&req.prompt_template);
+    let errors: Vec<&String> = warnings
+        .iter()
+        .filter(|w| {
+            w.contains("Unknown template variable") || w.contains("Unclosed") || w.contains("empty")
+        })
+        .collect();
+    if !errors.is_empty() {
+        return Err(ApiError::InvalidInput(format!(
+            "Invalid prompt template: {}",
+            errors.iter().map(|e| e.as_str()).collect::<Vec<_>>().join("; ")
+        )));
+    }
+
     // Validate that the agent exists and is running.
     let agent = state
         .manager
