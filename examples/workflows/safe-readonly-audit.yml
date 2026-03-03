@@ -1,0 +1,48 @@
+# Safe Read-Only Audit Workflow
+#
+# Runs periodic security audits on the codebase using a restricted agent
+# that can only read files. Uses RequireApproval for any unexpected tool use.
+#
+# Usage:
+#   agent orchestrator create-workflow \
+#     --name security-audit \
+#     --agent-name auditor \
+#     --owner myorg --repo myrepo \
+#     --labels "security,audit" \
+#     --prompt-template-file examples/workflows/safe-readonly-audit.yml
+
+name: security-audit
+source:
+  type: github_issues
+  owner: myorg
+  repo: myrepo
+  labels:
+    - security
+    - audit
+  state: open
+
+poll_interval_secs: 600
+enabled: true
+
+# Tool policy: deny all tools by default, require human approval
+# for each tool the agent wants to use
+tool_policy:
+  mode: require_approval
+
+prompt_template: |
+  Perform a security audit based on the following request:
+
+  {{title}}
+
+  Details:
+  {{body}}
+
+  Focus areas:
+  - Authentication and authorization flaws
+  - Input validation gaps
+  - Secrets or credentials in code
+  - Dependency vulnerabilities
+  - Error handling that leaks information
+
+  Report findings with severity (critical/high/medium/low),
+  affected files, and recommended fixes.

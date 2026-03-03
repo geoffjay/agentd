@@ -1,0 +1,50 @@
+# GitHub Issue Triage Workflow
+#
+# Automatically triages new GitHub issues by analyzing their content
+# and adding appropriate labels and priority assessments.
+#
+# Usage:
+#   agent orchestrator create-workflow \
+#     --name issue-triage \
+#     --agent-name triage-agent \
+#     --owner myorg --repo myrepo \
+#     --labels "needs-triage" \
+#     --prompt-template-file examples/workflows/github-issue-triage.yml \
+#     --poll-interval 120
+
+name: issue-triage
+source:
+  type: github_issues
+  owner: myorg
+  repo: myrepo
+  labels:
+    - needs-triage
+  state: open
+
+poll_interval_secs: 120
+enabled: true
+
+# Tool policy: read-only access for safe triage
+tool_policy:
+  mode: allow_list
+  tools:
+    - Read
+    - Grep
+    - Glob
+    - WebFetch
+
+prompt_template: |
+  You are a GitHub issue triage assistant. Analyze the following issue and provide:
+  1. A severity assessment (critical, high, medium, low)
+  2. Suggested labels (bug, feature, docs, security, performance)
+  3. A brief summary of the issue
+
+  Issue #{{source_id}}: {{title}}
+
+  {{body}}
+
+  URL: {{url}}
+  Current labels: {{labels}}
+  Assignee: {{assignee}}
+
+  Please respond with your triage assessment in a structured format.

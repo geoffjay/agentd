@@ -338,6 +338,24 @@ pub enum OrchestratorCommand {
         id: String,
     },
 
+    /// Validate a workflow prompt template.
+    ///
+    /// Checks for unknown variables, unclosed placeholders, and empty templates.
+    ///
+    /// # Examples
+    ///
+    ///   agent orchestrator validate-template "Fix: {{title}}\n{{body}}"
+    ///   agent orchestrator validate-template --file ./my-template.txt
+    ValidateTemplate {
+        /// Template string to validate
+        #[arg(conflicts_with = "file")]
+        template: Option<String>,
+
+        /// Read template from a file
+        #[arg(long, conflicts_with = "template")]
+        file: Option<PathBuf>,
+    },
+
     /// List all workflows.
     ListWorkflows,
 
@@ -515,6 +533,9 @@ impl OrchestratorCommand {
             }
             OrchestratorCommand::Approve { id } => approve_cmd(client, id, json).await,
             OrchestratorCommand::Deny { id } => deny_cmd(client, id, json).await,
+            OrchestratorCommand::ValidateTemplate { template, file } => {
+                validate_template_cmd(template.as_deref(), file.as_deref(), json).await
+            }
             OrchestratorCommand::ListWorkflows => list_workflows(client, json).await,
             OrchestratorCommand::CreateWorkflow {
                 name,
@@ -1177,6 +1198,49 @@ fn resolve_agent_prompt(
         }
         (None, None, false) => Ok(None),
     }
+}
+
+// -- Validate template --
+
+async fn validate_template_cmd(
+    template: Option<&str>,
+    file: Option<&std::path::Path>,
+    json: bool,
+) -> Result<()> {
+    use orchestrator::scheduler::template::{validate_template, KNOWN_VARIABLES};
+
+    let content = match (template, file) {
+        (Some(t), _) => t.to_string(),
+        (_, Some(path)) => {
+            std::fs::read_to_string(path)
+                .with_context(|| format!("Failed to read template file: {}", path.display()))?
+        }
+        (None, None) => bail!("Either a template string or --file must be provided."),
+    };
+
+    let warnings = validate_template(&content);
+
+    if json {
+        let result = serde_json::json!({
+            "valid": warnings.is_empty(),
+            "warnings": warnings,
+            "known_variables": KNOWN_VARIABLES,
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else if warnings.is_empty() {
+        println!("{}", "Template is valid!".green().bold());
+        println!();
+        println!("{}: {}", "Known variables".bold(), KNOWN_VARIABLES.join(", "));
+    } else {
+        println!("{}", "Template warnings:".yellow().bold());
+        for warning in &warnings {
+            println!("  {} {}", "!".yellow(), warning);
+        }
+        println!();
+        println!("{}: {}", "Known variables".bold(), KNOWN_VARIABLES.join(", "));
+    }
+
+    Ok(())
 }
 
 // -- Workflow operations --

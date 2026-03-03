@@ -1,0 +1,47 @@
+# Bug Fix Agent Workflow
+#
+# Automatically fixes bugs described in GitHub issues labeled "bug" and "agent".
+# The agent has full tool access to read, edit, and test code.
+#
+# Usage:
+#   agent orchestrator create-workflow \
+#     --name bug-fixer \
+#     --agent-name fix-agent \
+#     --owner myorg --repo myrepo \
+#     --labels "bug,agent" \
+#     --prompt-template-file examples/workflows/bug-fix-agent.yml
+
+name: bug-fixer
+source:
+  type: github_issues
+  owner: myorg
+  repo: myrepo
+  labels:
+    - bug
+    - agent
+  state: open
+
+poll_interval_secs: 60
+enabled: true
+
+# Tool policy: allow all tools for full fix capability
+tool_policy:
+  mode: allow_all
+
+prompt_template: |
+  Work on the following GitHub issue:
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Instructions:
+  1. Read the issue carefully and understand the bug
+  2. Find the relevant source files
+  3. Implement the fix
+  4. Run tests to verify the fix
+  5. Create a git branch and commit with a descriptive message
+  6. Push and create a PR referencing the issue

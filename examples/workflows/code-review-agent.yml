@@ -1,0 +1,50 @@
+# Code Review Agent Workflow
+#
+# Reviews code changes referenced in GitHub issues labeled "review".
+# The agent reads source files but cannot modify them.
+#
+# Usage:
+#   agent orchestrator create-workflow \
+#     --name code-review \
+#     --agent-name reviewer \
+#     --owner myorg --repo myrepo \
+#     --labels "review" \
+#     --prompt-template-file examples/workflows/code-review-agent.yml
+
+name: code-review
+source:
+  type: github_issues
+  owner: myorg
+  repo: myrepo
+  labels:
+    - review
+  state: open
+
+poll_interval_secs: 300
+enabled: true
+
+# Tool policy: read-only tools for safe code review
+tool_policy:
+  mode: allow_list
+  tools:
+    - Read
+    - Grep
+    - Glob
+
+prompt_template: |
+  You are a code review assistant. Review the changes described in this issue.
+
+  Issue: {{title}}
+  URL: {{url}}
+
+  Description:
+  {{body}}
+
+  Focus on:
+  - Security vulnerabilities (SQL injection, XSS, auth bypass)
+  - Performance issues (N+1 queries, unnecessary allocations)
+  - Code style and maintainability
+  - Missing error handling
+  - Test coverage gaps
+
+  Provide specific, actionable feedback with file paths and line references.
