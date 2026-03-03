@@ -64,6 +64,7 @@ pub struct ListQuery {
 
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
     let active = state.manager.registry().connected_count().await;
+    metrics::gauge!("websocket_connections_active").set(active as f64);
     Json(HealthResponse { status: "ok".to_string(), agents_active: active })
 }
 
@@ -103,6 +104,8 @@ async fn create_agent(
     };
 
     let agent = state.manager.spawn_agent(req.name, config).await?;
+
+    metrics::counter!("agents_created_total").increment(1);
 
     Ok((StatusCode::CREATED, Json(AgentResponse::from(agent))))
 }

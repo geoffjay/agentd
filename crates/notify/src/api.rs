@@ -409,6 +409,11 @@ async fn create_notification(
 
     state.storage.add(&notification).await?;
 
+    metrics::counter!("notifications_created_total",
+        "priority" => format!("{:?}", notification.priority).to_lowercase()
+    )
+    .increment(1);
+
     Ok((StatusCode::CREATED, Json(notification)))
 }
 

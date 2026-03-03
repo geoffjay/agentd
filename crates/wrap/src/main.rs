@@ -63,8 +63,27 @@ mod tmux;
 mod types;
 
 use api::create_router;
+use axum::{extract::State, response::IntoResponse, routing::get};
+use metrics_exporter_prometheus::PrometheusHandle;
 use std::env;
 use tracing::info;
+
+/// Initialize Prometheus metrics recorder and return a handle for rendering.
+fn init_metrics() -> PrometheusHandle {
+    let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
+    let handle = builder.install_recorder().expect("failed to install metrics recorder");
+
+    // Register service metadata gauge
+    metrics::gauge!("service_info", "version" => env!("CARGO_PKG_VERSION"), "service" => "wrap")
+        .set(1.0);
+
+    handle
+}
+
+/// GET /metrics — render Prometheus text format.
+async fn metrics_handler(State(handle): State<PrometheusHandle>) -> impl IntoResponse {
+    handle.render()
+}
 
 /// Main entry point for the agentd-wrap service.
 ///
@@ -101,8 +120,14 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting agentd-wrap service...");
 
-    // Create API router with request tracing middleware
-    let app = create_router().layer(
+    // Initialize Prometheus metrics
+    let metrics_handle = init_metrics();
+
+    // Create API router with metrics endpoint and tracing middleware
+    let metrics_router =
+        axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
+
+    let app = create_router().merge(metrics_router).layer(
         tower_http::trace::TraceLayer::new_for_http()
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
             .on_response(tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
