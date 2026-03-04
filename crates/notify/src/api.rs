@@ -451,7 +451,7 @@ async fn get_notification(
         .storage
         .get(&id)
         .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Notification {id} not found")))?;
+        .ok_or_else(|| ApiError::NotFound)?;
 
     Ok(Json(notification))
 }
@@ -507,7 +507,7 @@ async fn update_notification(
         .storage
         .get(&id)
         .await?
-        .ok_or_else(|| ApiError::NotFound(format!("Notification {id} not found")))?;
+        .ok_or_else(|| ApiError::NotFound)?;
 
     // Apply updates
     if let Some(status) = req.status {
@@ -587,32 +587,5 @@ struct PaginationParams {
 /// These errors are automatically converted to appropriate HTTP responses
 /// with status codes and JSON error messages.
 ///
-/// # HTTP Status Mapping
-///
-/// - `Database` -> 500 Internal Server Error
-/// - `NotFound` -> 404 Not Found
-/// - `InvalidInput` -> 400 Bad Request
-#[derive(Debug, thiserror::Error)]
-pub enum ApiError {
-    /// Database operation error (HTTP 500)
-    #[error("database error: {0}")]
-    Database(#[from] anyhow::Error),
-    /// Resource not found error (HTTP 404)
-    #[error("not found: {0}")]
-    NotFound(String),
-    /// Invalid input or request error (HTTP 400)
-    #[error("invalid input: {0}")]
-    InvalidInput(String),
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            ApiError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            ApiError::NotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            ApiError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-        };
-
-        (status, Json(serde_json::json!({ "error": message }))).into_response()
-    }
-}
+// Re-export shared ApiError from agentd-common.
+pub use agentd_common::error::ApiError;
