@@ -21,9 +21,7 @@ use std::path::{Path, PathBuf};
 
 use orchestrator::client::OrchestratorClient;
 use orchestrator::scheduler::types::{CreateWorkflowRequest, TaskSourceConfig};
-use orchestrator::types::{
-    AgentResponse, AgentStatus, CreateAgentRequest, ToolPolicy,
-};
+use orchestrator::types::{AgentResponse, AgentStatus, CreateAgentRequest, ToolPolicy};
 
 // ── YAML template types ──────────────────────────────────────────────
 
@@ -134,8 +132,8 @@ fn collect_yaml_files(dir: &Path) -> Result<Vec<PathBuf>> {
         return Ok(Vec::new());
     }
     let mut files = Vec::new();
-    for entry in std::fs::read_dir(dir)
-        .with_context(|| format!("Failed to read: {}", dir.display()))?
+    for entry in
+        std::fs::read_dir(dir).with_context(|| format!("Failed to read: {}", dir.display()))?
     {
         let entry = entry?;
         let path = entry.path();
@@ -209,15 +207,9 @@ pub async fn apply_workflow_file(
     }
 
     // Resolve agent name → UUID
-    let agent = find_agent_by_name(client, &tmpl.agent)
-        .await?
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Agent '{}' not found (referenced by workflow '{}')",
-                tmpl.agent,
-                tmpl.name
-            )
-        })?;
+    let agent = find_agent_by_name(client, &tmpl.agent).await?.ok_or_else(|| {
+        anyhow::anyhow!("Agent '{}' not found (referenced by workflow '{}')", tmpl.agent, tmpl.name)
+    })?;
 
     if agent.status != AgentStatus::Running {
         bail!(
@@ -256,11 +248,7 @@ pub async fn apply_workflow_file(
     if json {
         println!("{}", serde_json::to_string_pretty(&workflow)?);
     } else {
-        println!(
-            "    {} (ID: {})",
-            "created".green(),
-            workflow.id.to_string().bright_black()
-        );
+        println!("    {} (ID: {})", "created".green(), workflow.id.to_string().bright_black());
     }
 
     Ok(())
@@ -299,9 +287,8 @@ pub async fn apply_directory(
 
     let mut agent_templates = Vec::new();
     for path in &agent_files {
-        let tmpl = parse_agent_template(path).with_context(|| {
-            format!("Validation failed for {}", path.display())
-        })?;
+        let tmpl = parse_agent_template(path)
+            .with_context(|| format!("Validation failed for {}", path.display()))?;
         if !json {
             println!("  {} agent '{}'", "ok".green(), tmpl.name);
         }
@@ -310,9 +297,8 @@ pub async fn apply_directory(
 
     let mut workflow_templates = Vec::new();
     for path in &workflow_files {
-        let tmpl = parse_workflow_template(path).with_context(|| {
-            format!("Validation failed for {}", path.display())
-        })?;
+        let tmpl = parse_workflow_template(path)
+            .with_context(|| format!("Validation failed for {}", path.display()))?;
         let _prompt = resolve_prompt(&tmpl, path)?;
         if !json {
             println!("  {} workflow '{}' (agent: {})", "ok".green(), tmpl.name, tmpl.agent);
@@ -323,9 +309,8 @@ pub async fn apply_directory(
     // If no subdirectories, treat loose files as workflows
     if !has_subdirs && !loose_files.is_empty() {
         for path in &loose_files {
-            let tmpl = parse_workflow_template(path).with_context(|| {
-                format!("Validation failed for {}", path.display())
-            })?;
+            let tmpl = parse_workflow_template(path)
+                .with_context(|| format!("Validation failed for {}", path.display()))?;
             let _prompt = resolve_prompt(&tmpl, path)?;
             if !json {
                 println!("  {} workflow '{}' (agent: {})", "ok".green(), tmpl.name, tmpl.agent);
@@ -447,10 +432,7 @@ async fn apply_agent(
     } else {
         let base = path.parent().unwrap_or(Path::new("."));
         let full = base.join(&tmpl.working_dir);
-        full.canonicalize()
-            .unwrap_or(full)
-            .to_string_lossy()
-            .to_string()
+        full.canonicalize().unwrap_or(full).to_string_lossy().to_string()
     };
 
     let request = CreateAgentRequest {
@@ -593,9 +575,7 @@ tool_policy:
         assert_eq!(tmpl.prompt.unwrap(), "Fix all the bugs");
         assert_eq!(
             tmpl.tool_policy,
-            ToolPolicy::AllowList {
-                tools: vec!["Read".into(), "Grep".into(), "Edit".into()]
-            }
+            ToolPolicy::AllowList { tools: vec!["Read".into(), "Grep".into(), "Edit".into()] }
         );
     }
 
