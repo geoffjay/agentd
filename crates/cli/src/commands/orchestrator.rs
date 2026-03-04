@@ -1154,11 +1154,8 @@ async fn orchestrator_health(client: &OrchestratorClient, json: bool) -> Result<
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);
     } else {
-        let agents_active = response
-            .details
-            .get("agents_active")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let agents_active =
+            response.details.get("agents_active").and_then(|v| v.as_u64()).unwrap_or(0);
         println!(
             "{} {} ({} agents active)",
             "orchestrator:".bold(),

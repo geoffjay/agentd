@@ -262,19 +262,15 @@ mod tests {
 
     #[test]
     fn test_build_claude_command_with_full_model_name() {
-        let config =
-            AgentConfig { model: Some("claude-sonnet-4-6".to_string()), ..base_config() };
+        let config = AgentConfig { model: Some("claude-sonnet-4-6".to_string()), ..base_config() };
         let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
         assert!(cmd.contains("--model claude-sonnet-4-6"));
     }
 
     #[test]
     fn test_build_claude_command_model_with_interactive() {
-        let config = AgentConfig {
-            model: Some("haiku".to_string()),
-            interactive: true,
-            ..base_config()
-        };
+        let config =
+            AgentConfig { model: Some("haiku".to_string()), interactive: true, ..base_config() };
         let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
         assert!(cmd.contains("--model haiku"));
         assert!(!cmd.contains("--sdk-url"));

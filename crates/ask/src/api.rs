@@ -164,11 +164,10 @@ pub fn create_router(state: ApiState) -> Router {
 /// ```
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
     Json(
-        HealthResponse::ok("agentd-ask", env!("CARGO_PKG_VERSION"))
-            .with_detail(
-                "notification_service_url",
-                serde_json::json!(state.notification_service_url),
-            ),
+        HealthResponse::ok("agentd-ask", env!("CARGO_PKG_VERSION")).with_detail(
+            "notification_service_url",
+            serde_json::json!(state.notification_service_url),
+        ),
     )
 }
 

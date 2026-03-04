@@ -184,10 +184,7 @@ pub fn create_router(state: ApiState) -> Router {
 /// curl http://localhost:17004/health
 /// ```
 async fn health_check() -> impl IntoResponse {
-    Json(agentd_common::types::HealthResponse::ok(
-        "agentd-notify",
-        env!("CARGO_PKG_VERSION"),
-    ))
+    Json(agentd_common::types::HealthResponse::ok("agentd-notify", env!("CARGO_PKG_VERSION")))
 }
 
 /// Lists all notifications with optional status filter.

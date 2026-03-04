@@ -173,8 +173,7 @@ mod tests {
 
     #[test]
     fn test_health_response_serde_with_details() {
-        let resp = HealthResponse::ok("svc", "1.0")
-            .with_detail("count", serde_json::json!(42));
+        let resp = HealthResponse::ok("svc", "1.0").with_detail("count", serde_json::json!(42));
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"count\":42"));
     }
