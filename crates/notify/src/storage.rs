@@ -68,7 +68,6 @@ use crate::types::{
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use directories::ProjectDirs;
 use sqlx::{sqlite::SqlitePool, Row};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -141,13 +140,7 @@ impl NotificationStorage {
     /// println!("Database location: {:?}", db_path);
     /// ```
     pub fn get_db_path() -> Result<PathBuf> {
-        let proj_dirs = ProjectDirs::from("", "", "agentd-notify")
-            .ok_or_else(|| anyhow::anyhow!("Failed to determine project directories"))?;
-
-        let data_dir = proj_dirs.data_dir();
-        std::fs::create_dir_all(data_dir)?;
-
-        Ok(data_dir.join("notify.db"))
+        agentd_common::storage::get_db_path("agentd-notify", "notify.db")
     }
 
     /// Creates a new notification storage instance with the default database path.
@@ -220,12 +213,9 @@ impl NotificationStorage {
     /// }
     /// ```
     pub async fn with_path(db_path: &Path) -> Result<Self> {
-        let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-        let pool = SqlitePool::connect(&db_url).await?;
-
+        let pool = agentd_common::storage::create_pool(db_path).await?;
         let storage = Self { pool };
         storage.init_schema().await?;
-
         Ok(storage)
     }
 
