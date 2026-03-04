@@ -20,81 +20,112 @@ A modular daemon system for managing AI agents, notifications, interactive quest
 
 **agentd** is a suite of services and tools designed to orchestrate AI agents and provide intelligent, context-aware notifications and interactions. It consists of:
 
-- **agent** - Command-line interface for interacting with all services
-- **agentd-orchestrator** - Agent lifecycle management, WebSocket SDK server, and workflow scheduler
-- **agentd-notify** - Notification service with REST API and SQLite storage
-- **agentd-ask** - Interactive question service with tmux integration
-- **agentd-wrap** - Tmux session management for launching and managing agents
-- **agentd-hook** - Shell hook integration service
-- **agentd-monitor** - System monitoring service
-- **agentd-orchestrator** - Agent lifecycle and workflow orchestration service
+- **agent** — Command-line interface for interacting with all services
+- **agentd-orchestrator** — Agent lifecycle management, WebSocket SDK server, workflow scheduler, and tool policy enforcement
+- **agentd-notify** — Notification service with REST API and SQLite storage
+- **agentd-ask** — Interactive question service with tmux integration
+- **agentd-wrap** — Tmux session management for launching and managing agents
+- **agentd-common** — Shared types, error handling, and utilities
+- **agentd-hook** — Shell hook integration service (planned)
+- **agentd-monitor** — System monitoring service (planned)
 
 ## Quick Start
 
 ```bash
-# Clone the repository
+# Clone and install
 git clone https://github.com/geoffjay/agentd.git
 cd agentd
-
-# Install (creates Agent.app bundle)
 cargo xtask install-user
 cargo xtask start-services
 
-# Use the CLI
-agent notify create --title "Hello" --message "agentd is working!"
-agent notify list
+# Launch agents from declarative YAML templates
+agent apply .agentd/
+
+# Or create an agent manually
+agent orchestrator create-agent --name my-agent
+
+# Monitor agent output in real-time
+agent orchestrator stream --all
+
+# Check all service health
+agent status
 ```
 
 For a complete walkthrough from first run to managing autonomous agents, see the **[Getting Started Guide](docs/public/getting-started.md)**.
 
 ## Features
 
+### Declarative YAML Templates
+
+Define agents and workflows as version-controlled YAML files in `.agentd/`:
+
+```
+.agentd/
+  agents/
+    worker.yml          # agent configuration
+  workflows/
+    issue-worker.yml    # workflow referencing agent by name
+```
+
+```bash
+agent apply .agentd/                  # create agents + workflows
+agent apply --dry-run .agentd/        # validate without creating
+agent teardown .agentd/               # delete in reverse order
+```
+
 ### Orchestrator Service (agentd-orchestrator)
 
-The orchestrator is the central service for managing AI agents and autonomous workflows.
-
-- **Agent lifecycle management** - Create, monitor, and terminate AI agents running in tmux sessions
-- **WebSocket SDK server** - Implements the Claude Code SDK protocol for programmatic agent control
-- **Autonomous workflows** - Schedule workflows that poll GitHub Issues and dispatch tasks to agents
-- **SQLite persistence** - Agent and workflow state survives restarts with automatic reconciliation
-- **Monitoring streams** - Real-time WebSocket streams for observing agent output
-- **Interactive and SDK modes** - Agents can run headless (SDK) or in interactive tmux sessions
-
-### Wrap Service (agentd-wrap)
-
-- **Tmux session management** - Launch and manage agent CLI sessions in tmux
-- **Multi-agent support** - Claude Code, OpenCode, Gemini, and other agent types
-- **Configurable layouts** - Custom tmux pane layouts via JSON configuration
-- **REST API** for launching agents with project path, model, and provider settings
-
-### Notification System (agentd-notify)
-
-- **REST API** for creating and managing notifications
-- **Multiple priority levels** (Low, Normal, High, Urgent)
-- **Ephemeral and persistent** notifications
-- **Response handling** for interactive notifications
-- **SQLite storage** for persistence
-- **Filtering and querying** (by status, priority, actionable)
-
-### Ask Service (agentd-ask)
-
-- **tmux integration** - Detects when no tmux sessions are running
-- **Smart notifications** - Asks user questions based on system state
-- **Cooldown logic** - Prevents notification spam
-- **REST API** for triggering checks and answering questions
+- **Agent lifecycle management** — Create, monitor, attach, and terminate AI agents in tmux sessions
+- **WebSocket SDK server** — Implements the Claude Code SDK protocol for programmatic agent control
+- **Autonomous workflows** — Schedule workflows that poll GitHub Issues and dispatch tasks to agents
+- **Tool policies** — Control which tools agents can use: `AllowAll`, `DenyAll`, `AllowList`, `DenyList`, `RequireApproval`
+- **Human-in-the-loop approvals** — Hold tool requests for human review with configurable timeout
+- **Real-time streaming** — Watch agent output via `agent orchestrator stream`
+- **Interactive attach** — Connect to agent tmux sessions via `agent orchestrator attach`
+- **Prompt template validation** — Validate `{{variable}}` placeholders before creating workflows
+- **SQLite persistence** — Agent and workflow state survives restarts with automatic reconciliation
+- **Prometheus metrics** — `/metrics` endpoint for observability
 
 ### CLI (agent)
 
 - **Rich terminal output** with colors and formatted tables
-- **Comprehensive commands** for all services (notify, ask, wrap, orchestrator)
-- **Agent management** - Create, list, and terminate orchestrated agents
-- **Workflow management** - Create and monitor autonomous GitHub issue workflows
+- **Declarative templates** — `agent apply` / `agent teardown` for YAML-based agent and workflow management
+- **Agent management** — create, list, get, delete, attach, send-message, stream
+- **Workflow management** — create, list, get, update, delete, history, validate-template
+- **Tool policies** — get-policy, set-policy, `--tool-policy` flag on create-agent
+- **Approval management** — list-approvals, approve, deny (for RequireApproval policy)
+- **Health monitoring** — `agent status` checks all services concurrently; per-service `health` commands
+- **Shell completions** — `agent completions bash/zsh/fish/powershell`
+- **`--json` flag** on all commands for scripting
+
+### Notification System (agentd-notify)
+
+- **REST API** for creating and managing notifications
+- **Multiple priority levels** (Low, Normal, High, Urgent) with correct sort ordering
+- **Ephemeral and persistent** notifications
+- **Response handling** for interactive notifications
+- **SQLite storage** for persistence
+- **Prometheus metrics** — notifications_created_total by priority
+
+### Wrap Service (agentd-wrap)
+
+- **Tmux session management** — Launch and manage agent CLI sessions
+- **Multi-agent support** — Claude Code, OpenCode, Gemini, and other agent types
+- **Configurable layouts** — Custom tmux pane layouts via JSON
+- **REST API** for launching, listing, and killing sessions
+
+### Ask Service (agentd-ask)
+
+- **tmux integration** — Detects when no tmux sessions are running
+- **Smart notifications** — Creates notifications based on system state
+- **Cooldown logic** — Prevents notification spam
+- **REST API** for triggering checks and answering questions
 
 ## Installation
 
 ### Prerequisites
 
-- macOS 14+ (tested)
+- macOS 14+ (tested) or Linux
 - Rust 1.75+ ([Install Rust](https://rustup.rs/))
 - Git
 - tmux (for agent session management)
@@ -102,7 +133,7 @@ The orchestrator is the central service for managing AI agents and autonomous wo
 ### Install
 
 ```bash
-# Using cargo xtask (creates Agent.app bundle)
+# Using cargo xtask (creates Agent.app bundle + shell completions)
 cargo xtask install-user
 cargo xtask start-services
 
@@ -110,139 +141,88 @@ cargo xtask start-services
 ./contrib/scripts/install.sh
 ```
 
-**Note:** Installation creates `/Applications/Agent.app` with all binaries and a symlink at `/usr/local/bin/agent`.
-
-If you encounter permission errors:
-```bash
-sudo chown -R $(whoami) /usr/local
-```
-
 For detailed installation instructions, see [INSTALL.md](INSTALL.md). Once installed, follow the **[Getting Started Guide](docs/public/getting-started.md)** to learn the full workflow.
 
 ## Usage
 
+### YAML Templates (Recommended)
+
+```bash
+# Apply a project directory (agents first, then workflows)
+agent apply .agentd/
+
+# Apply a single workflow template
+agent apply .agentd/workflows/issue-worker.yml
+
+# Validate without creating
+agent apply --dry-run .agentd/
+
+# Tear down all resources
+agent teardown .agentd/
+```
+
 ### CLI Commands
 
 ```bash
-# Notifications
-agent notify create --title "Task" --message "Remember this" --priority high
-agent notify list --actionable
-agent notify get <UUID>
-agent notify respond <UUID> "My answer"
-agent notify delete <UUID>
+# Service health
+agent status                                    # all services
+agent orchestrator health                       # single service
 
-# Ask Service
-agent ask trigger              # Trigger system checks
-agent ask answer <UUID> "yes"  # Answer a question
-
-# Wrap Service
-agent wrap launch my-project \
-  --path /path/to/project \
-  --agent claude-code \
-  --provider anthropic \
-  --model claude-sonnet-4.5
-
-# Orchestrator - Agent Management
-agent orchestrator list-agents
+# Agent management
+agent orchestrator create-agent --name my-agent
 agent orchestrator list-agents --status running
-agent orchestrator create-agent \
-  --name my-agent \
-  --working-dir /path/to/project \
-  --prompt "Analyze the codebase and suggest improvements"
-agent orchestrator get-agent <UUID>
-agent orchestrator delete-agent <UUID>
+agent orchestrator attach --name my-agent       # tmux session
+agent orchestrator stream --all                 # live output
+agent orchestrator send-message <ID> "Do this"
 
-# Orchestrator - Workflow Management
-agent orchestrator list-workflows
+# Tool policies
+agent orchestrator set-policy <ID> '{"mode":"allow_list","tools":["Read","Grep"]}'
+agent orchestrator get-policy <ID>
+
+# Approval management (for RequireApproval policy)
+agent orchestrator list-approvals
+agent orchestrator approve <APPROVAL_ID>
+agent orchestrator deny <APPROVAL_ID>
+
+# Workflows
 agent orchestrator create-workflow \
   --name issue-worker \
-  --agent-id <AGENT_UUID> \
+  --agent-name my-agent \
   --owner myorg --repo myrepo \
   --labels "agent" \
-  --prompt-template "Work on issue #{{source_id}}: {{title}}\n\n{{body}}"
-agent orchestrator workflow-history <WORKFLOW_UUID>
-agent orchestrator delete-workflow <WORKFLOW_UUID>
+  --prompt-template "Fix: {{title}}\n{{body}}"
+agent orchestrator validate-template "{{title}} {{body}}"
+agent orchestrator workflow-history <ID>
+
+# Notifications
+agent notify create --title "Task" --message "Hello" --priority high
+agent notify list --actionable
+agent notify respond <UUID> "Done"
+
+# Shell completions
+agent completions bash > ~/.local/share/bash-completion/completions/agent
+agent completions zsh > ~/.zfunc/_agent
 ```
 
 ### REST API
 
-Full API reference docs: [Orchestrator](docs/public/services/orchestrator.md) | [Notify](docs/public/services/notify.md) | [Ask](docs/public/services/ask.md) | [Wrap](docs/public/services/wrap.md)
-
-**Orchestrator Service (port 17006):**
+Full API reference: [Orchestrator](docs/public/services/orchestrator.md) | [Notify](docs/public/services/notify.md) | [Ask](docs/public/services/ask.md) | [Wrap](docs/public/services/wrap.md)
 
 ```bash
-# Health check
+# Health check (all services expose GET /health)
 curl http://localhost:17006/health
+
+# Prometheus metrics (all services expose GET /metrics)
+curl http://localhost:17006/metrics
 
 # Create an agent
 curl -X POST http://localhost:17006/agents \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-agent",
-    "working_dir": "/path/to/project",
-    "prompt": "Analyze the codebase"
-  }'
-
-# List running agents
-curl "http://localhost:17006/agents?status=running"
-
-# Send a message to a running agent
-curl -X POST http://localhost:17006/agents/<UUID>/message \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Now create issues for the gaps you found"}'
+  -d '{"name": "my-agent", "working_dir": "/path/to/project"}'
 
 # Monitor agent output (WebSocket)
-websocat ws://localhost:17006/stream/<AGENT_UUID>
-
-# List workflows
-curl http://localhost:17006/workflows
-```
-
-**Notify Service (port 17004):**
-
-```bash
-# Health check
-curl http://localhost:17004/health
-
-# List notifications
-curl http://localhost:17004/notifications
-
-# Create notification
-curl -X POST http://localhost:17004/notifications \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": {"type": "system"},
-    "lifetime": {"type": "persistent"},
-    "priority": "normal",
-    "title": "Test",
-    "message": "Hello",
-    "requires_response": false
-  }'
-```
-
-**Ask Service (port 17001):**
-
-```bash
-# Health check
-curl http://localhost:17001/health
-
-# Trigger checks
-curl -X POST http://localhost:17001/trigger
-```
-
-**Wrap Service (port 17005):**
-
-```bash
-# Launch an agent session
-curl -X POST http://localhost:17005/launch \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_name": "my-project",
-    "project_path": "/path/to/project",
-    "agent_type": "claude-code",
-    "model_provider": "anthropic",
-    "model_name": "claude-sonnet-4.5"
-  }'
+agent orchestrator stream --all    # CLI (preferred)
+websocat ws://localhost:17006/stream  # or raw WebSocket
 ```
 
 ## Architecture
@@ -252,6 +232,7 @@ curl -X POST http://localhost:17005/launch \
 ```
                      ┌─────────────────────────────────────────────────┐
                      │                 agent (CLI)                      │
+                     │  apply / status / stream / attach / approve      │
                      └──┬──────────┬──────────┬──────────┬─────────────┘
                         │          │          │          │
                         ▼          ▼          ▼          ▼
@@ -270,116 +251,49 @@ curl -X POST http://localhost:17005/launch \
                                               └────────────────┘
 ```
 
-All services communicate via REST APIs. The orchestrator additionally provides WebSocket endpoints for the Claude Code SDK protocol and real-time monitoring streams.
+All services communicate via REST APIs. The orchestrator additionally provides WebSocket endpoints for the Claude Code SDK protocol, real-time monitoring streams, and tool approval workflows.
 
-### Installed Structure (macOS)
-```
-/Applications/Agent.app/
-├── Contents/
-│   ├── Info.plist
-│   ├── MacOS/
-│   │   ├── cli                    # CLI (symlinked from /usr/local/bin/agent)
-│   │   ├── agentd-orchestrator    # Orchestrator service
-│   │   ├── agentd-notify          # Notification service
-│   │   ├── agentd-ask             # Ask service
-│   │   ├── agentd-wrap            # Wrap service
-│   │   ├── agentd-hook            # Hook service
-│   │   └── agentd-monitor         # Monitor service
-│   └── Resources/
-│
-/usr/local/bin/agent -> /Applications/Agent.app/Contents/MacOS/cli
-~/Library/LaunchAgents/com.geoffjay.agentd-*.plist
-```
+### Crate Structure
+
+| Crate | Purpose |
+|-------|---------|
+| `cli` | Command-line interface with apply/teardown, all service commands |
+| `orchestrator` | Agent lifecycle, WebSocket SDK, scheduler, tool policies, approvals |
+| `notify` | Notification CRUD with SQLite, priority ordering, expiration |
+| `ask` | System checks, tmux detection, question/answer flow |
+| `wrap` | Tmux session management, multi-agent launch |
+| `common` | Shared types (PaginatedResponse, HealthResponse, ApiError), utilities |
+| `hook` | Shell hook integration (planned) |
+| `monitor` | System monitoring (planned) |
 
 ## Development
 
 ### Building
 
 ```bash
-# Build all crates
-cargo build --release
-
-# Build specific crate
-cargo build -p cli --release
-cargo build -p orchestrator --release
-cargo build -p notify --release
+cargo build --release           # all crates
+cargo build -p cli --release    # specific crate
 ```
 
 ### Testing
 
 ```bash
-# Run all tests
-cargo test
-
-# Run tests for specific crate
-cargo test -p cli
-cargo test -p orchestrator
-cargo test -p notify
-cargo test -p ask
-
-# Run with output
-cargo test -- --nocapture
+cargo test                      # all tests
+cargo test -p cli               # specific crate
+cargo test -- --nocapture       # with output
 ```
-
-**Test Coverage:**
-- CLI: 59 tests (unit + integration + doc tests)
-- Notify: 64 tests (unit + integration + doc tests)
-- Ask: 68 tests (unit + integration)
-- Orchestrator: 28 tests (unit + integration)
-- Wrap: 27 tests (unit + integration)
-- **Total: 240+ tests**
 
 ### Running Services Locally
 
 ```bash
-# Terminal 1: Orchestrator (port 17006)
+# Start services (separate terminals or via xtask)
 cargo run -p agentd-orchestrator
-
-# Terminal 2: Notify service (port 17004)
 cargo run -p agentd-notify
-
-# Terminal 3: Ask service (port 17001)
 cargo run -p agentd-ask
 
-# Terminal 4: CLI
+# Use the CLI
 cargo run -p cli -- orchestrator list-agents
-cargo run -p cli -- notify list
-```
-
-### Code Quality
-
-```bash
-# Run clippy
-cargo clippy --all-targets --all-features
-
-# Format code
-cargo fmt
-
-# Check formatting
-cargo fmt -- --check
-```
-
-## Service Management
-
-### Using cargo xtask
-
-```bash
-cargo xtask service-status  # Check if services are running
-cargo xtask start-services  # Start all services
-cargo xtask stop-services   # Stop all services
-```
-
-### Using launchctl
-
-```bash
-# Start a service
-launchctl load ~/Library/LaunchAgents/com.geoffjay.agentd-notify.plist
-
-# Stop a service
-launchctl unload ~/Library/LaunchAgents/com.geoffjay.agentd-notify.plist
-
-# List services
-launchctl list | grep agentd
+cargo run -p cli -- apply .agentd/
 ```
 
 ## Configuration
@@ -387,8 +301,6 @@ launchctl list | grep agentd
 For the complete configuration reference including all environment variables, data storage paths, and plist/systemd customization, see the **[Configuration Guide](docs/public/configuration.md)**.
 
 ### Port Configuration
-
-Each service uses a **development port** (17xxx) by default when started with `cargo run`, and a **production port** (7xxx) when running as a LaunchAgent. All ports are configurable via the `PORT` environment variable.
 
 | Service | Dev Port | Prod Port | Description |
 |---------|----------|-----------|-------------|
@@ -399,92 +311,47 @@ Each service uses a **development port** (17xxx) by default when started with `c
 | agentd-wrap | 17005 | 7005 | Tmux session management |
 | agentd-orchestrator | 17006 | 7006 | Agent orchestration |
 
-Production ports are set in the LaunchAgent plist files under `contrib/plists/`.
+### Environment Variables
 
-### Log Files
-
-Logs are written to `/usr/local/var/log/`:
-- `agentd-orchestrator.log` / `agentd-orchestrator.err`
-- `agentd-notify.log` / `agentd-notify.err`
-- `agentd-ask.log` / `agentd-ask.err`
-- `agentd-wrap.log` / `agentd-wrap.err`
-- `agentd-hook.log` / `agentd-hook.err`
-- `agentd-monitor.log` / `agentd-monitor.err`
-- `agentd-wrap.log` / `agentd-wrap.err`
-- `agentd-orchestrator.log` / `agentd-orchestrator.err`
-
-### Database
-
-- **Notify service**: `~/Library/Application Support/agentd-notify/notify.db` (SQLite)
-- **Orchestrator**: `~/Library/Application Support/agentd-orchestrator/orchestrator.db` (SQLite)
-
-## Uninstallation
-
-```bash
-# Using cargo xtask
-cargo xtask uninstall
-
-# Or manually
-launchctl unload ~/Library/LaunchAgents/com.geoffjay.agentd-*.plist
-rm -f /usr/local/bin/agent
-rm -f /usr/local/bin/agentd-*
-rm -f ~/Library/LaunchAgents/com.geoffjay.agentd-*.plist
-```
-
-## Troubleshooting
-
-### Services won't start
-
-1. Check logs: `tail -f /usr/local/var/log/agentd-*.err`
-2. Check status: `cargo xtask service-status`
-3. Verify ports: `lsof -i :17004` and `lsof -i :17006`
-
-### Permission errors
-
-```bash
-# Fix /usr/local permissions
-sudo chown -R $(whoami) /usr/local/bin
-sudo mkdir -p /usr/local/var/log
-sudo chown -R $(whoami) /usr/local/var
-```
-
-### Cannot connect to service
-
-```bash
-# Test health endpoints (dev ports)
-curl http://localhost:17006/health   # orchestrator
-curl http://localhost:17004/health   # notify
-curl http://localhost:17001/health   # ask
-
-# Restart services
-cargo xtask stop-services
-cargo xtask start-services
-```
-
-For more troubleshooting, see [INSTALL.md](INSTALL.md).
+- `RUST_LOG` — Log level filter (default: `info`)
+- `LOG_FORMAT` — Set to `json` for structured JSON output
+- `PORT` — Override the default port for any service
+- `ORCHESTRATOR_SERVICE_URL` — Override orchestrator URL for CLI (default: `http://localhost:7006`)
 
 ## Project Status
 
-**Completed:**
+**Core Platform:**
 - ✅ Orchestrator service (agent lifecycle, WebSocket SDK, scheduler)
-- ✅ Notification service (REST API, SQLite storage)
+- ✅ Notification service (REST API, SQLite, priority ordering)
 - ✅ Ask service (tmux integration, REST API)
-- ✅ Wrap service (tmux session management, multi-agent support)
+- ✅ Wrap service (tmux session management, multi-agent)
 - ✅ CLI with commands for all services
-- ✅ Comprehensive test suite (240+ tests)
-- ✅ macOS LaunchAgent integration
-- ✅ Installation automation
+- ✅ Shared common crate (types, errors, server utilities, storage)
+
+**Agent Management:**
+- ✅ Tool policies (AllowAll, DenyAll, AllowList, DenyList, RequireApproval)
+- ✅ Human-in-the-loop tool approval with 5-minute timeout
+- ✅ Real-time agent output streaming (CLI + WebSocket)
+- ✅ Interactive tmux attach by name or ID
+- ✅ Send messages to running agents
+- ✅ Workflow prompt template validation
+
+**Declarative Templates:**
+- ✅ YAML agent templates (`.agentd/agents/*.yml`)
+- ✅ YAML workflow templates with agent name references
+- ✅ Composite `agent apply` / `agent teardown`
+- ✅ Example workflow templates in `examples/workflows/`
+
+**Observability:**
+- ✅ Prometheus `/metrics` endpoints on all services
+- ✅ Standardized HealthResponse across services
+- ✅ Shell completions (bash, zsh, fish, PowerShell)
+- ✅ Structured JSON logging (`LOG_FORMAT=json`)
 - ✅ GitHub Actions CI/CD pipeline
 
 **In Progress:**
 - 🔄 Hook service
 - 🔄 Monitor service
-
-**Planned:**
-- 📋 Additional check types for ask service
-- 📋 Web UI for notifications
-- 📋 Plugin system
-- 📋 AI integration via Ollama
 
 ## License
 
