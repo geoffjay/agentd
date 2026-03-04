@@ -299,6 +299,27 @@ cargo run -p cli -- orchestrator delete-agent <agent-id>
 
 This kills the tmux session and marks the agent as `stopped`.
 
+### Restrict tool access
+
+Control which tools an agent can use with tool policies:
+
+```bash
+# Set a read-only policy on a running agent
+agent orchestrator set-policy <agent-id> '{"mode":"allow_list","tools":["Read","Grep","Glob"]}'
+
+# Or set it at creation time
+agent orchestrator create-agent --name safe --tool-policy '{"mode":"deny_list","tools":["Bash"]}'
+
+# Require human approval for every tool use
+agent orchestrator set-policy <agent-id> '{"mode":"require_approval"}'
+
+# Then manage approvals as they come in
+agent orchestrator list-approvals
+agent orchestrator approve <approval-id>
+```
+
+See the [Tool Policies Guide](tool-policies.md) for the full reference.
+
 ---
 
 ## 4. Automated Workflows
