@@ -259,22 +259,43 @@ Press `Ctrl-b d` to detach without killing the agent.
 
 ### Monitor agent output
 
-If you have [websocat](https://github.com/vi/websocat) installed:
+Stream real-time output with colored formatting:
 
 ```bash
-websocat ws://localhost:17006/stream/<agent-id>
+# Watch a specific agent
+agent orchestrator stream <agent-id>
+
+# Watch all agents
+agent orchestrator stream --all
+
+# Raw JSON output for piping
+agent orchestrator stream --all --json
 ```
 
-This shows real-time NDJSON messages from the agent including `assistant` responses, `result` completions, and `control_request` messages.
+Press Ctrl+C to disconnect. Messages are formatted by type: assistant text, tool usage, results, and permission requests.
+
+### Attach to an agent
+
+Connect directly to the agent's tmux session for interactive debugging:
+
+```bash
+agent orchestrator attach --name my-agent
+# or by ID:
+agent orchestrator attach <agent-id>
+```
+
+Press `Ctrl-b d` to detach without killing the agent.
 
 ### Send follow-up messages
 
 After the agent completes its first task, send it more work:
 
 ```bash
-curl -s -X POST http://localhost:17006/agents/<agent-id>/message \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Now count the lines of Rust code across all crates."}'
+agent orchestrator send-message <agent-id> "Now count the lines of Rust code across all crates."
+
+# Or pipe multi-line prompts from stdin:
+echo "Review all files in src/ for security issues" | \
+  agent orchestrator send-message <agent-id> --stdin
 ```
 
 SDK-mode agents stay alive between tasks — you can keep sending messages.
@@ -448,6 +469,23 @@ cargo xtask service-status
 ```
 
 Production services use ports 7001-7006 (configured in plist/unit files), while development defaults to ports 17001-17006.
+
+### Shell completions
+
+Enable tab completion for the `agent` CLI:
+
+```bash
+# Bash
+agent completions bash > ~/.local/share/bash-completion/completions/agent
+
+# Zsh (add ~/.zfunc to fpath in .zshrc)
+agent completions zsh > ~/.zfunc/_agent
+
+# Fish
+agent completions fish > ~/.config/fish/completions/agent.fish
+```
+
+Or install all completions at once: `cargo xtask install-completions`
 
 See [Installation Guide](install.md) for detailed setup instructions.
 
