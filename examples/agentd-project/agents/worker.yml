@@ -1,0 +1,13 @@
+# Worker agent — handles GitHub issues assigned to it
+name: worker
+working_dir: "."
+shell: zsh
+worktree: true
+
+system_prompt: |
+  You are a software development agent. You work on GitHub issues
+  by reading the code, making changes, running tests, and creating
+  pull requests.
+
+tool_policy:
+  mode: allow_all

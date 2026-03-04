@@ -28,6 +28,7 @@
 //! 4. Add the module and re-export in this file
 //! 5. Add the command variant to `Commands` enum in `main.rs`
 
+pub mod apply;
 pub mod ask;
 pub mod notify;
 pub mod orchestrator;
