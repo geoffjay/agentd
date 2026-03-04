@@ -18,6 +18,8 @@ use uuid::Uuid;
 
 /// Tracks a running workflow's control handles.
 struct RunningWorkflow {
+    /// The agent this workflow dispatches to.
+    agent_id: Uuid,
     shutdown_tx: watch::Sender<bool>,
     busy: Arc<Mutex<runner::BusyState>>,
 }
@@ -42,6 +44,7 @@ impl Scheduler {
     /// Start a workflow runner as a background tokio task.
     pub async fn start_workflow(&self, config: WorkflowConfig) -> anyhow::Result<()> {
         let workflow_id = config.id;
+        let agent_id = config.agent_id;
 
         // Check if already running.
         {
@@ -62,7 +65,7 @@ impl Scheduler {
 
         // Track the runner.
         let mut runners = self.runners.write().await;
-        runners.insert(workflow_id, RunningWorkflow { shutdown_tx, busy });
+        runners.insert(workflow_id, RunningWorkflow { agent_id, shutdown_tx, busy });
 
         info!(%workflow_id, "Workflow started");
         Ok(())
@@ -82,10 +85,18 @@ impl Scheduler {
 
     /// Called when an agent produces a "result" message, to clear the busy flag
     /// and update the dispatch record.
+    ///
+    /// Only notifies the runner whose workflow is dispatched to the matching
+    /// `agent_id` — prevents the wrong runner from being notified when
+    /// multiple workflows are running concurrently with different agents.
     pub async fn notify_task_complete(&self, agent_id: Uuid, is_error: bool) {
         let runners = self.runners.read().await;
         for (_wf_id, running) in runners.iter() {
-            // Check each runner's busy state — the one with an active dispatch for this agent.
+            // Only consider runners that target the completing agent.
+            if running.agent_id != agent_id {
+                continue;
+            }
+
             let has_active = {
                 let busy = running.busy.lock().await;
                 busy.active_dispatch_id.is_some()
