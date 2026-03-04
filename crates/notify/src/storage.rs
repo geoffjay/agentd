@@ -640,7 +640,7 @@ impl NotificationStorage {
         // For actionable, we need to filter in Rust due to is_actionable() check,
         // so we fetch all matching from DB and paginate in memory.
         let rows = sqlx::query(
-            "SELECT * FROM notifications WHERE status IN ('Pending', 'Viewed') ORDER BY priority DESC, created_at DESC"
+            "SELECT * FROM notifications WHERE status IN ('Pending', 'Viewed') ORDER BY CASE priority WHEN 'Urgent' THEN 3 WHEN 'High' THEN 2 WHEN 'Normal' THEN 1 WHEN 'Low' THEN 0 ELSE 0 END DESC, created_at DESC"
         )
         .fetch_all(&self.pool)
         .await?;
@@ -719,7 +719,7 @@ impl NotificationStorage {
     #[allow(dead_code)]
     pub async fn list_actionable(&self) -> Result<Vec<Notification>> {
         let rows = sqlx::query(
-            "SELECT * FROM notifications WHERE status IN ('Pending', 'Viewed') ORDER BY priority DESC, created_at DESC"
+            "SELECT * FROM notifications WHERE status IN ('Pending', 'Viewed') ORDER BY CASE priority WHEN 'Urgent' THEN 3 WHEN 'High' THEN 2 WHEN 'Normal' THEN 1 WHEN 'Low' THEN 0 ELSE 0 END DESC, created_at DESC"
         )
         .fetch_all(&self.pool)
         .await?;
@@ -1076,5 +1076,47 @@ mod tests {
         let actionable = storage.list_actionable().await.unwrap();
         assert_eq!(actionable.len(), 1);
         assert_eq!(actionable[0].title, "High priority");
+    }
+
+    #[tokio::test]
+    async fn test_priority_ordering() {
+        let (storage, _temp) = create_test_storage().await;
+
+        // Insert notifications in wrong lexicographic order to expose the bug.
+        // Lexicographic DESC would give: Urgent > Normal > Low > High
+        // Correct DESC should give:      Urgent > High > Normal > Low
+        let priorities = [
+            (NotificationPriority::Low, "Low task"),
+            (NotificationPriority::High, "High task"),
+            (NotificationPriority::Normal, "Normal task"),
+            (NotificationPriority::Urgent, "Urgent task"),
+        ];
+
+        for (priority, title) in &priorities {
+            let n = Notification::new(
+                NotificationSource::System,
+                NotificationLifetime::Persistent,
+                *priority,
+                title.to_string(),
+                "test".to_string(),
+                true, // requires_response so it's actionable
+            );
+            storage.add(&n).await.unwrap();
+        }
+
+        let results = storage.list_actionable().await.unwrap();
+        assert_eq!(results.len(), 4);
+
+        // Verify correct priority ordering: Urgent > High > Normal > Low
+        assert_eq!(results[0].priority, NotificationPriority::Urgent);
+        assert_eq!(results[1].priority, NotificationPriority::High);
+        assert_eq!(results[2].priority, NotificationPriority::Normal);
+        assert_eq!(results[3].priority, NotificationPriority::Low);
+
+        // Also verify titles match
+        assert_eq!(results[0].title, "Urgent task");
+        assert_eq!(results[1].title, "High task");
+        assert_eq!(results[2].title, "Normal task");
+        assert_eq!(results[3].title, "Low task");
     }
 }
