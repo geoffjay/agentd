@@ -1,0 +1,39 @@
+# Issue worker workflow — polls GitHub issues and dispatches them to the worker agent.
+#
+# Replaces: workflow creation portion of scripts/launch-worker.sh
+#
+# Usage:
+#   agent apply .agentd/workflows/issue-worker.yml  # single workflow
+#   agent apply .agentd/                             # agents + workflow together
+
+name: issue-worker
+agent: worker
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - agent
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  Work on the following GitHub issue:
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Instructions:
+  1. Create a feature branch from the main branch: git checkout -b issue-{{source_id}}
+  2. Implement the changes described in the issue
+  3. Run tests to verify: cargo test
+  4. Commit with a descriptive message referencing the issue
+  5. Push and create a PR: gh pr create --repo geoffjay/agentd --title "{{title}}" --body "Closes #{{source_id}}"
+  6. Close the issue: gh issue close {{source_id}} --repo geoffjay/agentd
