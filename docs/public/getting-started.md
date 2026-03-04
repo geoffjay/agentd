@@ -220,14 +220,25 @@ Expected output:
 }
 ```
 
-Or using the CLI:
+Using the CLI:
 
 ```bash
-cargo run -p cli -- orchestrator create-agent \
+agent orchestrator create-agent \
   --name explorer \
-  --working-dir "$(pwd)" \
   --prompt "List the top-level files and give a one-sentence summary of this project."
 ```
+
+Or use a YAML template (recommended for reproducible setups):
+
+```bash
+# Apply a template file
+agent apply .agentd/agents/worker.yml
+
+# Apply an entire project directory (agents + workflows)
+agent apply .agentd/
+```
+
+See the [Template Reference](templates.md) for the full YAML schema.
 
 ### What happens under the hood
 
