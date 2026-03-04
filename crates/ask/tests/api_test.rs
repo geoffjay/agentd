@@ -451,8 +451,8 @@ async fn test_health_response_structure() {
     assert!(body.get("status").is_some());
     assert!(body.get("service").is_some());
     assert!(body.get("version").is_some());
-    assert!(body.get("notification_service_url").is_some());
-    assert_eq!(body["notification_service_url"], "http://test:9999");
+    assert!(body.get("details").is_some());
+    assert_eq!(body["details"]["notification_service_url"], "http://test:9999");
 }
 
 // Test /trigger endpoint response structure

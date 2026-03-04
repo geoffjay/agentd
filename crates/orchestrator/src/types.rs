@@ -210,12 +210,8 @@ pub use agentd_common::types::{
     clamp_limit, PaginatedResponse, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };
 
-/// Health check response.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct HealthResponse {
-    pub status: String,
-    pub agents_active: usize,
-}
+// Re-export shared HealthResponse from agentd-common.
+pub use agentd_common::types::HealthResponse;
 
 /// Request body for POST /agents/{id}/message.
 #[derive(Debug, Clone, Serialize, Deserialize)]

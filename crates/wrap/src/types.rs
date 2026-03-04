@@ -51,16 +51,8 @@ pub struct LaunchResponse {
     pub error: Option<String>,
 }
 
-/// Health check response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HealthResponse {
-    /// Service status
-    pub status: String,
-
-    /// Service version
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-}
+// Re-export shared HealthResponse from agentd-common.
+pub use agentd_common::types::HealthResponse;
 
 /// Information about a single tmux session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,14 +165,12 @@ mod tests {
 
     #[test]
     fn test_health_response_deserialization() {
-        let json = r#"{
-            "status": "ok",
-            "version": "0.1.0"
-        }"#;
-
-        let response: HealthResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(response.status, "ok");
-        assert_eq!(response.version, Some("0.1.0".to_string()));
+        let response = HealthResponse::ok("agentd-wrap", "0.1.0");
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: HealthResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.status, "ok");
+        assert_eq!(deserialized.service, "agentd-wrap");
+        assert_eq!(deserialized.version, "0.1.0");
     }
 
     #[test]

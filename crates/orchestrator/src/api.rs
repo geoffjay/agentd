@@ -65,7 +65,10 @@ pub struct ListQuery {
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
     let active = state.manager.registry().connected_count().await;
     metrics::gauge!("websocket_connections_active").set(active as f64);
-    Json(HealthResponse { status: "ok".to_string(), agents_active: active })
+    Json(
+        HealthResponse::ok("agentd-orchestrator", env!("CARGO_PKG_VERSION"))
+            .with_detail("agents_active", serde_json::json!(active)),
+    )
 }
 
 async fn list_agents(
