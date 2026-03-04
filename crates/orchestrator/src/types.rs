@@ -116,6 +116,11 @@ pub struct AgentConfig {
     /// Tool-use policy for this agent.
     #[serde(default)]
     pub tool_policy: ToolPolicy,
+    /// Model to use for the claude session.
+    /// Maps to --model flag. Accepts aliases (sonnet, opus, haiku)
+    /// or full model names (claude-sonnet-4-6).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 fn default_shell() -> String {
@@ -175,6 +180,11 @@ pub struct CreateAgentRequest {
     /// Tool-use policy for this agent.
     #[serde(default)]
     pub tool_policy: ToolPolicy,
+    /// Model to use for the claude session.
+    /// Maps to --model flag. Accepts aliases (sonnet, opus, haiku)
+    /// or full model names (claude-sonnet-4-6).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 /// Response body for agent endpoints.
@@ -414,6 +424,64 @@ mod tests {
             assert_eq!(status.to_string(), expected);
             assert_eq!(expected.parse::<ApprovalStatus>().unwrap(), status);
         }
+    }
+
+    #[test]
+    fn test_agent_config_model_serialization() {
+        let config = AgentConfig {
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: Some("opus".to_string()),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"model\":\"opus\""));
+
+        let deserialized: AgentConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.model, Some("opus".to_string()));
+    }
+
+    #[test]
+    fn test_agent_config_model_none_omitted() {
+        let config = AgentConfig {
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: None,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("model"));
+    }
+
+    #[test]
+    fn test_create_agent_request_model_field() {
+        let request = CreateAgentRequest {
+            name: "test".to_string(),
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: Some("sonnet".to_string()),
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"model\":\"sonnet\""));
+
+        let deserialized: CreateAgentRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.model, Some("sonnet".to_string()));
     }
 
     #[test]

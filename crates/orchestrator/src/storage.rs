@@ -48,6 +48,7 @@ impl AgentStorage {
                 system_prompt TEXT,
                 tmux_session TEXT,
                 tool_policy TEXT NOT NULL DEFAULT '{"mode":"allow_all"}',
+                model TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -66,8 +67,8 @@ impl AgentStorage {
     pub async fn add(&self, agent: &Agent) -> Result<Uuid> {
         sqlx::query(
             r#"
-            INSERT INTO agents (id, name, status, working_dir, user, shell, interactive, prompt, worktree, system_prompt, tmux_session, tool_policy, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO agents (id, name, status, working_dir, user, shell, interactive, prompt, worktree, system_prompt, tmux_session, tool_policy, model, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(agent.id.to_string())
@@ -82,6 +83,7 @@ impl AgentStorage {
         .bind(agent.config.system_prompt.as_deref())
         .bind(agent.tmux_session.as_deref())
         .bind(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default())
+        .bind(agent.config.model.as_deref())
         .bind(agent.created_at.to_rfc3339())
         .bind(agent.updated_at.to_rfc3339())
         .execute(&self.pool)
@@ -206,6 +208,7 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {
     let tmux_session: Option<String> = row.get("tmux_session");
     let tool_policy_str: String = row.get("tool_policy");
     let tool_policy: ToolPolicy = serde_json::from_str(&tool_policy_str).unwrap_or_default();
+    let model: Option<String> = row.get("model");
     let created_at: String = row.get("created_at");
     let updated_at: String = row.get("updated_at");
 
@@ -222,6 +225,7 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {
             worktree,
             system_prompt,
             tool_policy,
+            model,
         },
         tmux_session,
         created_at: DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc),
@@ -253,6 +257,7 @@ mod tests {
                 worktree: false,
                 system_prompt: None,
                 tool_policy: ToolPolicy::default(),
+                model: None,
             },
         )
     }

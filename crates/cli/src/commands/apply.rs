@@ -41,6 +41,8 @@ pub struct AgentTemplate {
     pub system_prompt: Option<String>,
     #[serde(default)]
     pub tool_policy: ToolPolicy,
+    /// Model to use for the claude session (e.g. sonnet, opus, haiku).
+    pub model: Option<String>,
 }
 
 fn default_working_dir() -> String {
@@ -445,6 +447,7 @@ async fn apply_agent(
         worktree: tmpl.worktree,
         system_prompt: tmpl.system_prompt.clone(),
         tool_policy: tmpl.tool_policy.clone(),
+        model: tmpl.model.clone(),
     };
 
     let agent = client.create_agent(&request).await?;
@@ -591,6 +594,30 @@ name: minimal
         assert!(!tmpl.interactive);
         assert!(!tmpl.worktree);
         assert_eq!(tmpl.tool_policy, ToolPolicy::AllowAll);
+        assert_eq!(tmpl.model, None);
+    }
+
+    #[test]
+    fn test_parse_agent_with_model() {
+        let yaml = r#"
+name: planner
+model: opus
+working_dir: "."
+system_prompt: "You are a planning agent"
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.name, "planner");
+        assert_eq!(tmpl.model, Some("opus".to_string()));
+    }
+
+    #[test]
+    fn test_parse_agent_with_full_model_name() {
+        let yaml = r#"
+name: worker
+model: claude-sonnet-4-6
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.model, Some("claude-sonnet-4-6".to_string()));
     }
 
     #[test]

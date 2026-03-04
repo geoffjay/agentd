@@ -200,6 +200,10 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
         args.push("--input-format stream-json".to_string());
     }
 
+    if let Some(ref model) = config.model {
+        args.push(format!("--model {}", model));
+    }
+
     if config.worktree {
         args.push("--worktree".to_string());
     }
@@ -218,5 +222,73 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
     match config.user.as_deref() {
         Some(user) => format!("sudo -u {} {}", user, base),
         None => base,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::ToolPolicy;
+
+    fn base_config() -> AgentConfig {
+        AgentConfig {
+            working_dir: "/tmp/test".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: None,
+        }
+    }
+
+    #[test]
+    fn test_build_claude_command_no_model() {
+        let config = base_config();
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        assert!(!cmd.contains("--model"));
+        assert!(cmd.contains("claude"));
+        assert!(cmd.contains("--sdk-url"));
+    }
+
+    #[test]
+    fn test_build_claude_command_with_model_alias() {
+        let config = AgentConfig { model: Some("opus".to_string()), ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        assert!(cmd.contains("--model opus"));
+    }
+
+    #[test]
+    fn test_build_claude_command_with_full_model_name() {
+        let config =
+            AgentConfig { model: Some("claude-sonnet-4-6".to_string()), ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        assert!(cmd.contains("--model claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn test_build_claude_command_model_with_interactive() {
+        let config = AgentConfig {
+            model: Some("haiku".to_string()),
+            interactive: true,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        assert!(cmd.contains("--model haiku"));
+        assert!(!cmd.contains("--sdk-url"));
+    }
+
+    #[test]
+    fn test_build_claude_command_model_with_sudo() {
+        let config = AgentConfig {
+            model: Some("sonnet".to_string()),
+            user: Some("deploy".to_string()),
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        assert!(cmd.starts_with("sudo -u deploy"));
+        assert!(cmd.contains("--model sonnet"));
     }
 }
