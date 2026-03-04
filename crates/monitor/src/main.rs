@@ -1,3 +1,11 @@
+//! agentd-monitor — System monitoring and alerting service.
+//!
+//! Watches system metrics and creates notifications for alerts and anomalies.
+//!
+//! **Status:** Stub — service skeleton only, not yet implemented.
+//!
+//! **Default port:** 17003 (dev) / 7003 (production)
+
 use anyhow::Result;
 use tracing::{info, warn};
 

@@ -1,3 +1,12 @@
+//! agentd-hook — Shell hook integration service.
+//!
+//! Monitors git hooks and other system hooks, creating notifications in the
+//! notify service when user intervention is required.
+//!
+//! **Status:** Stub — service skeleton only, not yet implemented.
+//!
+//! **Default port:** 17002 (dev) / 7002 (production)
+
 use anyhow::Result;
 use tracing::{info, warn};
 
