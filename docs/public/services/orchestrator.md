@@ -299,6 +299,145 @@ Returns the log of dispatched tasks with their status (`dispatched`, `completed`
 
 ---
 
+### Tool Policy
+
+Control which tools an agent can use. Policies are set at agent creation or updated via the policy endpoint.
+
+```
+GET /agents/{id}/policy
+PUT /agents/{id}/policy
+```
+
+**Policy modes:**
+
+| Mode | JSON | Effect |
+|------|------|--------|
+| Allow all | `{"mode":"allow_all"}` | No restrictions (default) |
+| Deny all | `{"mode":"deny_all"}` | Block all tools |
+| Allow list | `{"mode":"allow_list","tools":["Read","Grep"]}` | Only listed tools |
+| Deny list | `{"mode":"deny_list","tools":["Bash","Write"]}` | All except listed |
+| Require approval | `{"mode":"require_approval"}` | Human must approve each tool use |
+
+**CLI:**
+```bash
+agent orchestrator get-policy <ID>
+agent orchestrator set-policy <ID> '{"mode":"allow_list","tools":["Read","Grep"]}'
+agent orchestrator create-agent --name safe --tool-policy '{"mode":"deny_list","tools":["Bash"]}'
+```
+
+---
+
+### Tool Approval Endpoints
+
+When an agent runs with `require_approval` policy, tool requests are held pending until a human approves or denies them.
+
+```
+GET  /approvals                    # list all pending approvals
+GET  /approvals/{id}               # get single approval
+POST /approvals/{id}/approve       # approve tool request
+POST /approvals/{id}/deny          # deny tool request
+GET  /agents/{id}/approvals        # list approvals for an agent
+```
+
+**CLI:**
+```bash
+agent orchestrator list-approvals
+agent orchestrator approve <APPROVAL_ID>
+agent orchestrator deny <APPROVAL_ID>
+```
+
+Pending approvals auto-deny after 5 minutes if not acted on. Approval events are broadcast on the `/stream` WebSocket.
+
+---
+
+### Prometheus Metrics
+
+```
+GET /metrics
+```
+
+Returns Prometheus text format metrics including `service_info`, `agents_created_total`, and `websocket_connections_active`.
+
+---
+
+## CLI Commands
+
+The `agent orchestrator` subcommand provides full access to all orchestrator features:
+
+### Streaming
+
+Watch agent output in real-time with formatted, colored messages:
+
+```bash
+agent orchestrator stream <AGENT_ID>        # single agent
+agent orchestrator stream --all             # all agents
+agent orchestrator stream --all --json      # raw JSON for piping
+agent orchestrator stream --all --verbose   # include keepalive/system msgs
+```
+
+Press Ctrl+C to disconnect.
+
+### Attach
+
+Connect to an agent's tmux session for interactive debugging:
+
+```bash
+agent orchestrator attach <AGENT_ID>
+agent orchestrator attach --name my-agent
+```
+
+Verifies the agent is running and the tmux session exists before attaching.
+
+### Send Message
+
+Send a prompt to a running non-interactive agent:
+
+```bash
+agent orchestrator send-message <ID> "Fix the failing tests"
+echo "Review the code" | agent orchestrator send-message <ID> --stdin
+```
+
+### Health
+
+Check the orchestrator service status:
+
+```bash
+agent orchestrator health
+agent orchestrator health --json
+```
+
+### Validate Template
+
+Check a workflow prompt template for errors:
+
+```bash
+agent orchestrator validate-template "Fix: {{title}} {{body}}"
+agent orchestrator validate-template --file ./my-template.txt
+```
+
+Reports unknown variables, unclosed placeholders, and empty templates.
+
+### Shell Completions
+
+Generate shell completion scripts:
+
+```bash
+agent completions bash > ~/.local/share/bash-completion/completions/agent
+agent completions zsh > ~/.zfunc/_agent
+agent completions fish > ~/.config/fish/completions/agent.fish
+```
+
+### Service Status
+
+Check health of all agentd services at once:
+
+```bash
+agent status
+agent status --json
+```
+
+---
+
 ## Agent Modes
 
 ### SDK Mode (default)
@@ -349,110 +488,98 @@ Press `Ctrl-b d`.
 
 ## Usage Examples
 
+### Using YAML templates (recommended)
+
+The simplest way to launch agents and workflows:
+
+```bash
+# Apply a project directory (agents first, then workflows)
+agent apply .agentd/
+
+# Or apply individual templates
+agent apply .agentd/agents/worker.yml
+agent apply .agentd/workflows/issue-worker.yml
+
+# Validate without creating
+agent apply --dry-run .agentd/
+
+# Tear down everything
+agent teardown .agentd/
+```
+
 ### Create an agent and send it work
 
 ```bash
-# Create a long-running agent
-AGENT=$(curl -s -X POST http://127.0.0.1:17006/agents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "planner",
-    "working_dir": "/home/user/project",
-    "system_prompt": "You are a project planning agent."
-  }')
-AGENT_ID=$(echo "$AGENT" | jq -r '.id')
+# Create an agent using the CLI
+agent orchestrator create-agent \
+  --name planner \
+  --prompt "Analyze the codebase and propose improvements"
 
-# Wait a moment for it to connect, then send a task
-sleep 10
-curl -s -X POST "http://127.0.0.1:17006/agents/$AGENT_ID/message" \
-  -H 'Content-Type: application/json' \
-  -d '{"content": "Analyze the codebase and propose improvements"}'
+# Monitor the output in real-time
+agent orchestrator stream --all
 
-# Monitor the output
-websocat "ws://127.0.0.1:17006/stream/$AGENT_ID"
+# Send follow-up work
+agent orchestrator send-message <ID> "Now create issues for the gaps you found"
+
+# Attach to the tmux session for interactive debugging
+agent orchestrator attach --name planner
 ```
 
-### Send follow-up messages to a running agent
+### Create a workflow with tool restrictions
 
 ```bash
-# After the agent completes its first task, send another
-curl -s -X POST "http://127.0.0.1:17006/agents/$AGENT_ID/message" \
-  -H 'Content-Type: application/json' \
-  -d '{"content": "Now create GitHub issues for each improvement you identified"}'
+# Create a read-only code review workflow
+agent orchestrator create-workflow \
+  --name code-review \
+  --agent-name planner \
+  --owner myorg --repo myrepo \
+  --labels "review" \
+  --prompt-template "Review: {{title}}\n{{body}}" \
+  --tool-policy '{"mode":"allow_list","tools":["Read","Grep","Glob"]}'
 
-# Send a correction mid-task
-curl -s -X POST "http://127.0.0.1:17006/agents/$AGENT_ID/message" \
-  -H 'Content-Type: application/json' \
-  -d '{"content": "Use the label enhancement instead of improvement for those issues"}'
+# Validate template before creating
+agent orchestrator validate-template "Fix: {{title}} {{body}}"
 ```
 
-### Create a workflow to process GitHub issues
+### Using the REST API directly
 
 ```bash
-# First create a worker agent (no initial prompt — workflow sends tasks)
-AGENT=$(curl -s -X POST http://127.0.0.1:17006/agents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "worker",
-    "working_dir": "/home/user/project",
-    "system_prompt": "You are a worker agent. Implement the GitHub issue described in each task."
-  }')
-AGENT_ID=$(echo "$AGENT" | jq -r '.id')
-
-# Wait for agent to connect
-sleep 10
-
-# Create workflow that polls for issues labeled "agent"
-curl -s -X POST http://127.0.0.1:17006/workflows \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"name\": \"issue-worker\",
-    \"agent_id\": \"$AGENT_ID\",
-    \"source_config\": {
-      \"type\": \"github_issues\",
-      \"owner\": \"myorg\",
-      \"repo\": \"myrepo\",
-      \"labels\": [\"agent\"],
-      \"state\": \"open\"
-    },
-    \"prompt_template\": \"Work on issue #{{source_id}}: {{title}}\n\n{{body}}\n\nURL: {{url}}\",
-    \"poll_interval_secs\": 60
-  }"
-```
-
-### Spawn an interactive agent
-
-```bash
+# Create an agent
 curl -X POST http://127.0.0.1:17006/agents \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "debug-session",
-    "working_dir": "/home/user/project",
-    "interactive": true
-  }'
+  -d '{"name": "my-agent", "working_dir": "/path/to/project"}'
 
-# Then attach to work interactively
-tmux attach -t agentd-orch-{id}
+# Send a message
+curl -X POST http://127.0.0.1:17006/agents/<ID>/message \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Analyze the codebase"}'
+
+# Set a tool policy
+curl -X PUT http://127.0.0.1:17006/agents/<ID>/policy \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"deny_list","tools":["Bash","Write"]}'
 ```
 
-### Useful commands
+### Common operations
 
 ```bash
-# List running agents
-curl -s http://127.0.0.1:17006/agents?status=running | jq
+# Check all services
+agent status
 
-# Check health
-curl -s http://127.0.0.1:17006/health | jq
+# List running agents
+agent orchestrator list-agents --status running
+
+# Check orchestrator health
+agent orchestrator health
 
 # Terminate an agent
-curl -X DELETE http://127.0.0.1:17006/agents/{id}
+agent orchestrator delete-agent <ID>
 
-# Pause a workflow
-curl -s -X PUT http://127.0.0.1:17006/workflows/{id} \
-  -H 'Content-Type: application/json' -d '{"enabled": false}'
+# View workflow dispatch history
+agent orchestrator workflow-history <ID>
 
-# View dispatch history
-curl -s http://127.0.0.1:17006/workflows/{id}/history | jq
+# List pending tool approvals
+agent orchestrator list-approvals
 ```
 
 ## Startup Reconciliation
