@@ -33,15 +33,7 @@ async fn metrics_handler(State(handle): State<PrometheusHandle>) -> impl IntoRes
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing subscriber. Set LOG_FORMAT=json for structured JSON output.
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
-
-    if std::env::var("LOG_FORMAT").as_deref() == Ok("json") {
-        tracing_subscriber::fmt().json().with_env_filter(env_filter).init();
-    } else {
-        tracing_subscriber::fmt().with_env_filter(env_filter).init();
-    }
+    agentd_common::server::init_tracing();
 
     info!("Starting agentd-orchestrator service...");
 
@@ -97,11 +89,9 @@ async fn main() -> anyhow::Result<()> {
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
-    let app = create_router(state).merge(metrics_router).layer(
-        tower_http::trace::TraceLayer::new_for_http()
-            .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
-            .on_response(tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
-    );
+    let app = create_router(state)
+        .merge(metrics_router)
+        .layer(agentd_common::server::trace_layer());
 
     // Bind and serve.
     let addr = format!("127.0.0.1:{}", port);
