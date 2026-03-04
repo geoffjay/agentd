@@ -1,7 +1,6 @@
 use crate::types::{Agent, AgentConfig, AgentStatus, ToolPolicy};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use directories::ProjectDirs;
 use sqlx::{sqlite::SqlitePool, Row};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -18,13 +17,7 @@ impl AgentStorage {
     }
 
     pub fn get_db_path() -> Result<PathBuf> {
-        let proj_dirs = ProjectDirs::from("", "", "agentd-orchestrator")
-            .ok_or_else(|| anyhow::anyhow!("Failed to determine project directories"))?;
-
-        let data_dir = proj_dirs.data_dir();
-        std::fs::create_dir_all(data_dir)?;
-
-        Ok(data_dir.join("orchestrator.db"))
+        agentd_common::storage::get_db_path("agentd-orchestrator", "orchestrator.db")
     }
 
     pub async fn new() -> Result<Self> {
@@ -33,12 +26,9 @@ impl AgentStorage {
     }
 
     pub async fn with_path(db_path: &Path) -> Result<Self> {
-        let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-        let pool = SqlitePool::connect(&db_url).await?;
-
+        let pool = agentd_common::storage::create_pool(db_path).await?;
         let storage = Self { pool };
         storage.init_schema().await?;
-
         Ok(storage)
     }
 
