@@ -150,6 +150,10 @@ pub enum OrchestratorCommand {
         #[arg(long)]
         attach: bool,
 
+        /// Model to use for the claude session (e.g. sonnet, opus, haiku, claude-sonnet-4-6)
+        #[arg(long)]
+        model: Option<String>,
+
         /// Tool policy as JSON (default: allow all tools)
         ///
         /// Examples: '{"mode":"allow_all"}', '{"mode":"deny_list","tools":["Bash"]}'
@@ -492,6 +496,7 @@ impl OrchestratorCommand {
                 worktree,
                 system_prompt,
                 attach,
+                model,
                 tool_policy,
             } => {
                 create_agent(
@@ -507,6 +512,7 @@ impl OrchestratorCommand {
                     *worktree,
                     system_prompt.as_deref(),
                     *attach,
+                    model.as_deref(),
                     tool_policy.as_deref(),
                     json,
                 )
@@ -627,6 +633,7 @@ async fn create_agent(
     worktree: bool,
     system_prompt: Option<&str>,
     attach: bool,
+    model: Option<&str>,
     tool_policy_json: Option<&str>,
     json: bool,
 ) -> Result<()> {
@@ -652,6 +659,7 @@ async fn create_agent(
         worktree,
         system_prompt: system_prompt.map(|s| s.to_string()),
         tool_policy,
+        model: model.map(|s| s.to_string()),
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -1494,6 +1502,9 @@ fn display_agent(agent: &AgentResponse) {
     }
     println!("{}: {}", "Working Dir".bold(), agent.config.working_dir);
     println!("{}: {}", "Shell".bold(), agent.config.shell);
+    if let Some(ref model) = agent.config.model {
+        println!("{}: {}", "Model".bold(), model.cyan());
+    }
     let policy_display = match &agent.config.tool_policy {
         ToolPolicy::AllowAll => "allow_all".green().to_string(),
         ToolPolicy::DenyAll => "deny_all".red().to_string(),
@@ -1572,6 +1583,7 @@ mod tests {
                 worktree: false,
                 system_prompt: None,
                 tool_policy: Default::default(),
+                model: None,
             },
             tmux_session: Some("agentd-orch-abc123".to_string()),
             created_at: Utc::now(),
@@ -1874,6 +1886,56 @@ mod tests {
             assert_eq!(prompt_file, None);
             assert!(!stdin);
             assert!(!attach);
+        } else {
+            panic!("Expected CreateAgent variant");
+        }
+    }
+
+    #[test]
+    fn test_create_agent_with_model_flag() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-agent",
+            "--name",
+            "planner",
+            "--model",
+            "opus",
+            "--prompt",
+            "Plan the work",
+        ])
+        .expect("Should parse with --model");
+
+        if let OrchestratorCommand::CreateAgent { name, model, .. } = cli.command {
+            assert_eq!(name, "planner");
+            assert_eq!(model, Some("opus".to_string()));
+        } else {
+            panic!("Expected CreateAgent variant");
+        }
+    }
+
+    #[test]
+    fn test_create_agent_model_defaults_to_none() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from(["test", "create-agent", "--name", "worker"])
+            .expect("Should parse without --model");
+
+        if let OrchestratorCommand::CreateAgent { model, .. } = cli.command {
+            assert_eq!(model, None);
         } else {
             panic!("Expected CreateAgent variant");
         }
