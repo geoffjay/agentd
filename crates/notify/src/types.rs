@@ -603,7 +603,10 @@ pub struct CountResponse {
 /// }
 /// ```
 // Re-export pagination types from agentd-common.
-pub use agentd_common::types::{clamp_limit, PaginatedResponse, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT};
+#[allow(unused_imports)]
+pub use agentd_common::types::{
+    clamp_limit, PaginatedResponse, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
+};
 
 #[cfg(test)]
 mod tests {

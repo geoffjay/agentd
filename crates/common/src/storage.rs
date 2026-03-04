@@ -75,7 +75,6 @@ pub async fn create_pool(db_path: &Path) -> Result<SqlitePool> {
 /// // Use pool for test operations...
 /// // Database is cleaned up when _tmp is dropped
 /// ```
-#[cfg(any(test, feature = "test-utils"))]
 pub async fn create_test_pool() -> (SqlitePool, tempfile::TempDir) {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");

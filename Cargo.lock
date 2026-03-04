@@ -3,6 +3,27 @@
 version = 4
 
 [[package]]
+name = "agentd-common"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "directories",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -98,6 +119,7 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 name = "ask"
 version = "0.2.0"
 dependencies = [
+ "agentd-common",
  "anyhow",
  "axum",
  "chrono",
@@ -1521,6 +1543,7 @@ dependencies = [
 name = "notify"
 version = "0.2.0"
 dependencies = [
+ "agentd-common",
  "anyhow",
  "axum",
  "chrono",
@@ -1672,6 +1695,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "orchestrator"
 version = "0.2.0"
 dependencies = [
+ "agentd-common",
  "anyhow",
  "async-trait",
  "axum",
@@ -3667,6 +3691,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 name = "wrap"
 version = "0.2.0"
 dependencies = [
+ "agentd-common",
  "anyhow",
  "axum",
  "chrono",

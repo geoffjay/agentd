@@ -447,11 +447,7 @@ async fn get_notification(
     State(state): State<ApiState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Notification>, ApiError> {
-    let notification = state
-        .storage
-        .get(&id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound)?;
+    let notification = state.storage.get(&id).await?.ok_or_else(|| ApiError::NotFound)?;
 
     Ok(Json(notification))
 }
@@ -503,11 +499,7 @@ async fn update_notification(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateNotificationRequest>,
 ) -> Result<Json<Notification>, ApiError> {
-    let mut notification = state
-        .storage
-        .get(&id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound)?;
+    let mut notification = state.storage.get(&id).await?.ok_or_else(|| ApiError::NotFound)?;
 
     // Apply updates
     if let Some(status) = req.status {

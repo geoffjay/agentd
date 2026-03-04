@@ -119,9 +119,7 @@ async fn main() -> anyhow::Result<()> {
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
-    let app = create_router()
-        .merge(metrics_router)
-        .layer(agentd_common::server::trace_layer());
+    let app = create_router().merge(metrics_router).layer(agentd_common::server::trace_layer());
 
     // Bind to address (use PORT env var, default 17005 for dev)
     let port = env::var("PORT").unwrap_or_else(|_| "17005".to_string());

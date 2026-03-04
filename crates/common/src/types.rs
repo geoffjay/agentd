@@ -82,12 +82,7 @@ mod tests {
 
     #[test]
     fn test_paginated_response_serde() {
-        let response = PaginatedResponse {
-            items: vec![1, 2, 3],
-            total: 10,
-            limit: 3,
-            offset: 0,
-        };
+        let response = PaginatedResponse { items: vec![1, 2, 3], total: 10, limit: 3, offset: 0 };
         let json = serde_json::to_string(&response).unwrap();
         let deserialized: PaginatedResponse<i32> = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.items, vec![1, 2, 3]);

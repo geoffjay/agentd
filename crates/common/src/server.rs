@@ -32,14 +32,9 @@ pub fn init_tracing() {
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
 
     if std::env::var("LOG_FORMAT").as_deref() == Ok("json") {
-        tracing_subscriber::fmt()
-            .json()
-            .with_env_filter(env_filter)
-            .init();
+        tracing_subscriber::fmt().json().with_env_filter(env_filter).init();
     } else {
-        tracing_subscriber::fmt()
-            .with_env_filter(env_filter)
-            .init();
+        tracing_subscriber::fmt().with_env_filter(env_filter).init();
     }
 }
 
@@ -47,12 +42,10 @@ pub fn init_tracing() {
 ///
 /// Returns a configured `TraceLayer` that logs requests and responses at INFO level.
 /// Used by all agentd services for consistent HTTP observability.
-pub fn trace_layer() -> tower_http::trace::TraceLayer<tower_http::classify::SharedClassifier<tower_http::classify::ServerErrorsAsFailures>> {
+pub fn trace_layer() -> tower_http::trace::TraceLayer<
+    tower_http::classify::SharedClassifier<tower_http::classify::ServerErrorsAsFailures>,
+> {
     tower_http::trace::TraceLayer::new_for_http()
-        .make_span_with(
-            tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO),
-        )
-        .on_response(
-            tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO),
-        )
+        .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+        .on_response(tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO))
 }
