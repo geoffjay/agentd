@@ -105,10 +105,7 @@ pub fn create_router() -> Router {
 /// curl http://localhost:17005/health
 /// ```
 async fn health_check() -> impl IntoResponse {
-    Json(HealthResponse {
-        status: "ok".to_string(),
-        version: Some(env!("CARGO_PKG_VERSION").to_string()),
-    })
+    Json(HealthResponse::ok("agentd-wrap", env!("CARGO_PKG_VERSION")))
 }
 
 /// Launch an agent session in a tmux environment.

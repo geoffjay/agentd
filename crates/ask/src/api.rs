@@ -163,14 +163,13 @@ pub fn create_router(state: ApiState) -> Router {
 /// }
 /// ```
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
-    let response = HealthResponse {
-        status: "ok".to_string(),
-        service: "agentd-ask".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        notification_service_url: state.notification_service_url.clone(),
-    };
-
-    Json(response)
+    Json(
+        HealthResponse::ok("agentd-ask", env!("CARGO_PKG_VERSION"))
+            .with_detail(
+                "notification_service_url",
+                serde_json::json!(state.notification_service_url),
+            ),
+    )
 }
 
 /// Triggers environment checks and creates notifications if conditions are met.

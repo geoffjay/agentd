@@ -218,31 +218,8 @@ pub struct AnswerResponse {
     pub question_id: Uuid,
 }
 
-/// Response from the `/health` endpoint.
-///
-/// Provides service status and configuration information.
-///
-/// # JSON Example
-///
-/// ```json
-/// {
-///   "status": "ok",
-///   "service": "ask",
-///   "version": "0.1.0",
-///   "notification_service_url": "http://localhost:7004"
-/// }
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HealthResponse {
-    /// Service status ("ok" if healthy)
-    pub status: String,
-    /// Service name identifier
-    pub service: String,
-    /// Service version number
-    pub version: String,
-    /// URL of the notification service
-    pub notification_service_url: String,
-}
+// Re-export shared HealthResponse from agentd-common.
+pub use agentd_common::types::HealthResponse;
 
 #[cfg(test)]
 mod tests {
@@ -356,12 +333,8 @@ mod tests {
 
     #[test]
     fn test_health_response_serialization() {
-        let response = HealthResponse {
-            status: "ok".to_string(),
-            service: "ask".to_string(),
-            version: "0.1.0".to_string(),
-            notification_service_url: "http://localhost:7004".to_string(),
-        };
+        let response = HealthResponse::ok("agentd-ask", "0.1.0")
+            .with_detail("notification_service_url", serde_json::json!("http://localhost:7004"));
 
         let json = serde_json::to_string(&response).unwrap();
         let deserialized: HealthResponse = serde_json::from_str(&json).unwrap();
