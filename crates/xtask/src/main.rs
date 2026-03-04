@@ -1,3 +1,16 @@
+//! agentd xtask — Build and installation automation.
+//!
+//! Provides commands for installing agentd binaries, managing LaunchAgent/systemd
+//! service definitions, and generating shell completions.
+//!
+//! # Commands
+//!
+//! - `install-user` — Build and install all binaries for the current user
+//! - `install-completions` — Generate and install shell completions
+//! - `uninstall` — Remove all installed components
+//! - `start-services` / `stop-services` / `restart-services` — Service lifecycle
+//! - `service-status` — Check running state of all services
+
 mod platform;
 
 use anyhow::{Context, Result};
