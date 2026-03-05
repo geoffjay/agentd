@@ -8,13 +8,23 @@ describe('App', () => {
     expect(document.getElementById('root') ?? document.body).toBeTruthy()
   })
 
-  it('renders the agentd heading', () => {
+  it('renders the header with the agentd logo link', () => {
     render(<App />)
-    expect(screen.getByRole('heading', { name: /agentd/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /agentd home/i })).toBeInTheDocument()
   })
 
-  it('renders the coming soon message', () => {
+  it('renders the sidebar navigation', () => {
     render(<App />)
-    expect(screen.getByText(/coming soon/i)).toBeInTheDocument()
+    expect(screen.getByRole('navigation')).toBeInTheDocument()
+  })
+
+  it('renders the main content area', () => {
+    render(<App />)
+    expect(screen.getByRole('main')).toBeInTheDocument()
+  })
+
+  it('renders the dashboard page by default', () => {
+    render(<App />)
+    expect(screen.getByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
   })
 })
