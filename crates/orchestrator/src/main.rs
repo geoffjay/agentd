@@ -48,9 +48,13 @@ async fn main() -> anyhow::Result<()> {
     // WebSocket connection registry.
     let registry = ConnectionRegistry::new();
 
-    // Determine the port and WS base URL.
+    // Determine host, port and WS base URL.
+    // HOST defaults to 127.0.0.1 (local dev); set to 0.0.0.0 for containers.
+    let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = env::var("PORT").unwrap_or_else(|_| "17006".to_string());
-    let ws_base_url = format!("ws://127.0.0.1:{}", port);
+    // WS_BASE_URL can be overridden explicitly (e.g. for reverse-proxy setups).
+    let ws_base_url = env::var("WS_BASE_URL")
+        .unwrap_or_else(|_| format!("ws://{}:{}", host, port));
 
     // Agent manager.
     let manager = AgentManager::new(storage.clone(), tmux, registry.clone(), ws_base_url);
@@ -93,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
         create_router(state).merge(metrics_router).layer(agentd_common::server::trace_layer());
 
     // Bind and serve.
-    let addr = format!("127.0.0.1:{}", port);
+    let addr = format!("{}:{}", host, port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Orchestrator API listening on http://{}", addr);
     info!("WebSocket endpoint at ws://{}/ws/{{agent_id}}", addr);
