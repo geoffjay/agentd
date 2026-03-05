@@ -796,10 +796,7 @@ env:
 "#;
         let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(tmpl.name, "worker");
-        assert_eq!(
-            tmpl.env.get("ANTHROPIC_API_KEY"),
-            Some(&"sk-ant-test123".to_string())
-        );
+        assert_eq!(tmpl.env.get("ANTHROPIC_API_KEY"), Some(&"sk-ant-test123".to_string()));
         assert_eq!(
             tmpl.env.get("ANTHROPIC_BASE_URL"),
             Some(&"https://example.com/api".to_string())
