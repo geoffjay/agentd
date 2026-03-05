@@ -1,0 +1,47 @@
+# PR reviewer workflow — polls pull requests and dispatches reviews when labeled.
+#
+# Triggers when a PR in geoffjay/agentd has the "review-agent" label applied.
+#
+# Usage:
+#   agent apply .agentd/workflows/pull-request-reviewer.yml
+#   agent apply .agentd/  # creates agent + workflow together
+#
+# Note: requires the github_pull_requests source type to be implemented
+# in the orchestrator scheduler.
+
+name: pull-request-reviewer
+agent: reviewer
+
+source:
+  type: github_pull_requests
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - review-agent
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  Review the following pull request:
+
+  PR #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Instructions:
+  1. Fetch the full diff: gh pr diff {{source_id}} --repo geoffjay/agentd
+  2. Read the diff carefully, noting each changed file and the nature of the changes
+  3. For any files where you need more context, read the full file
+  4. Check that the changes match what the PR description claims
+  5. Evaluate against your review criteria (correctness, safety, consistency, tests, scope)
+  6. Submit your review:
+     - Approve if the changes are good
+     - Comment if you have non-blocking suggestions
+     - Request changes if there are issues that need to be fixed
+  7. Remove the "review-agent" label after review:
+     gh pr edit {{source_id}} --repo geoffjay/agentd --remove-label review-agent
