@@ -17,6 +17,7 @@
 use anyhow::{bail, Context, Result};
 use colored::*;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use orchestrator::client::OrchestratorClient;
@@ -43,6 +44,9 @@ pub struct AgentTemplate {
     pub tool_policy: ToolPolicy,
     /// Model to use for the claude session (e.g. sonnet, opus, haiku).
     pub model: Option<String>,
+    /// Environment variables to pass to the agent.
+    #[serde(default)]
+    pub env: HashMap<String, String>,
 }
 
 fn default_working_dir() -> String {
@@ -514,6 +518,7 @@ async fn apply_agent(
         system_prompt: tmpl.system_prompt.clone(),
         tool_policy: tmpl.tool_policy.clone(),
         model: tmpl.model.clone(),
+        env: tmpl.env.clone(),
     };
 
     let agent = client.create_agent(&request).await?;

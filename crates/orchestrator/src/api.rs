@@ -106,6 +106,7 @@ async fn create_agent(
         system_prompt: req.system_prompt,
         tool_policy: req.tool_policy,
         model: req.model,
+        env: req.env,
     };
 
     let agent = state.manager.spawn_agent(req.name, config).await?;

@@ -707,6 +707,7 @@ async fn create_agent(
         system_prompt: system_prompt.map(|s| s.to_string()),
         tool_policy,
         model: model.map(|s| s.to_string()),
+        env: Default::default(),
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -1689,6 +1690,7 @@ mod tests {
                 system_prompt: None,
                 tool_policy: Default::default(),
                 model: None,
+                env: Default::default(),
             },
             tmux_session: Some("agentd-orch-abc123".to_string()),
             created_at: Utc::now(),

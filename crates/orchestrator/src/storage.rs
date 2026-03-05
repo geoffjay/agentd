@@ -2,6 +2,7 @@ use crate::types::{Agent, AgentConfig, AgentStatus, ToolPolicy};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::{sqlite::SqlitePool, Row};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -49,6 +50,7 @@ impl AgentStorage {
                 tmux_session TEXT,
                 tool_policy TEXT NOT NULL DEFAULT '{"mode":"allow_all"}',
                 model TEXT,
+                env TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -67,8 +69,8 @@ impl AgentStorage {
     pub async fn add(&self, agent: &Agent) -> Result<Uuid> {
         sqlx::query(
             r#"
-            INSERT INTO agents (id, name, status, working_dir, user, shell, interactive, prompt, worktree, system_prompt, tmux_session, tool_policy, model, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO agents (id, name, status, working_dir, user, shell, interactive, prompt, worktree, system_prompt, tmux_session, tool_policy, model, env, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(agent.id.to_string())
@@ -84,6 +86,7 @@ impl AgentStorage {
         .bind(agent.tmux_session.as_deref())
         .bind(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default())
         .bind(agent.config.model.as_deref())
+        .bind(serde_json::to_string(&agent.config.env).unwrap_or_else(|_| "{}".to_string()))
         .bind(agent.created_at.to_rfc3339())
         .bind(agent.updated_at.to_rfc3339())
         .execute(&self.pool)
@@ -210,6 +213,9 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {
     let tool_policy_str: String = row.get("tool_policy");
     let tool_policy: ToolPolicy = serde_json::from_str(&tool_policy_str).unwrap_or_default();
     let model: Option<String> = row.get("model");
+    // env column may not exist in older databases (backward compatibility): default to empty map.
+    let env_str: String = row.try_get("env").unwrap_or_else(|_| "{}".to_string());
+    let env: HashMap<String, String> = serde_json::from_str(&env_str).unwrap_or_default();
     let created_at: String = row.get("created_at");
     let updated_at: String = row.get("updated_at");
 
@@ -227,6 +233,7 @@ fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {
             system_prompt,
             tool_policy,
             model,
+            env,
         },
         tmux_session,
         created_at: DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc),
@@ -259,6 +266,7 @@ mod tests {
                 system_prompt: None,
                 tool_policy: ToolPolicy::default(),
                 model: None,
+                env: HashMap::new(),
             },
         )
     }
@@ -363,5 +371,31 @@ mod tests {
         storage.add(&agent).await.unwrap();
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
         assert_eq!(retrieved.config.model, Some("haiku".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_add_with_env() {
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("env-agent");
+        agent.config.env.insert("ANTHROPIC_API_KEY".to_string(), "sk-test".to_string());
+        agent.config.env.insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
+
+        storage.add(&agent).await.unwrap();
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.env.get("ANTHROPIC_API_KEY"), Some(&"sk-test".to_string()));
+        assert_eq!(
+            retrieved.config.env.get("ANTHROPIC_BASE_URL"),
+            Some(&"https://example.com".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_add_with_empty_env() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("no-env-agent");
+
+        storage.add(&agent).await.unwrap();
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert!(retrieved.config.env.is_empty());
     }
 }

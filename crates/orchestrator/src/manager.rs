@@ -328,6 +328,7 @@ mod tests {
             system_prompt: None,
             tool_policy: ToolPolicy::default(),
             model: None,
+            env: std::collections::HashMap::new(),
         }
     }
 
