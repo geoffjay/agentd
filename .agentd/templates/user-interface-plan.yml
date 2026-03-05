@@ -1,0 +1,61 @@
+prompt: |
+  Analyze the agentd project to identify the purpose of each service created in the crates/
+  directory, this context will be used as guidance for building a user interface to exposes the
+  functionality of the agentd project. For each the service crates (ask, hook, monitor, notify,
+  orchestrator):
+
+  1. Read the crate and understand the purpose of what it is and what it's meant to offer the user
+  2. Understand the API exposed by the service
+  3. Unserstand the structure of the data that's provided to and returned from the service
+
+  Then, based on your analysis, propose enough issues for the GitHub project at
+  https://github.com/users/geoffjay/projects/5 that can be used to build a user interface that
+  enables users to interact with the agentd project. Focus on:
+
+  - Initial setup and configuration
+  - Layout of the user interface
+  - Navigation between services
+  - Displaying data from services
+  - Handling user input
+  - Handling errors
+  - Testing the user interface
+
+  Some technical requirements to follow when building the user interface:
+
+  - Use React as the frontend framework
+  - Use Vite as the build tool
+  - Use Tailwind CSS for styling
+  - Use TypeScript for type checking
+  - Use Bun for the JavaScript runtime
+  - Use Nivo for data visualization and charting
+  - There should be a sidebar navigation menu on the left side of the user interface
+  - The sidebar should be collapsible and expandable
+  - There should be a header bar at the top of the user interface that includes:
+    - A search bar for searching for content within services
+    - A button to expand and collapse the sidebar menu
+    - A button to open the settings menu
+  - The sidebar should be positioned below the header bar
+  - The application should be responsive and adapt to different screen sizes
+  - The application should be accessible and usable by people with disabilities
+  - The application should be optimized for performance and load times
+  - The header bar and sidebar should be fixed in place as the user scrolls down the page
+  - The content of the user interface should be scrollable
+
+  Some requirements to consider when building the user interface:
+
+  - There must be a way to interact with the agents that are running in the background and
+    controlled through the orchestrator service
+  - An agent view should have an input to send commands to the agent
+  - An agent view should have a log view to display the output of the agent
+
+  Inspiration:
+
+  - https://flowbite.com/application-ui/demo/
+
+  For each proposed issue, create it using:
+    gh issue create --repo geoffjay/agentd --title "..." --body "..." --label "..."
+
+  After creating each issue, add it to the project board:
+    gh project item-add 5 --owner geoffjay --url <issue-url>
+
+  Start by collection the information about the services and their APIs.
