@@ -141,8 +141,6 @@ pub fn detect_template_kind(path: &Path) -> Result<TemplateKind> {
 fn parse_agent_template(path: &Path) -> Result<AgentTemplate> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read: {}", path.display()))?;
-    // TODO: support ${VAR} substitution in env values so secrets can be
-    // sourced from the caller's environment rather than hardcoded in YAML.
     serde_yaml::from_str(&content)
         .with_context(|| format!("Failed to parse agent template: {}", path.display()))
 }
