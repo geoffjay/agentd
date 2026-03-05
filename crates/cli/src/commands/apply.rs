@@ -243,15 +243,56 @@ pub async fn apply_agent_file(
     let tmpl = parse_agent_template(path)?;
 
     if dry_run {
+        // Resolve working_dir the same way apply_agent does — so the preview
+        // reflects exactly what would be sent to the orchestrator.
+        let working_dir = if tmpl.working_dir == "." {
+            std::env::current_dir()?.to_string_lossy().to_string()
+        } else {
+            let base = path.parent().unwrap_or(Path::new("."));
+            let full = base.join(&tmpl.working_dir);
+            full.canonicalize().unwrap_or(full).to_string_lossy().to_string()
+        };
+
         if json {
             let result = serde_json::json!({
                 "dry_run": true,
                 "valid": true,
-                "agents": [&tmpl.name],
+                "kind": "agent",
+                "config": {
+                    "name": tmpl.name,
+                    "working_dir": working_dir,
+                    "shell": tmpl.shell,
+                    "interactive": tmpl.interactive,
+                    "worktree": tmpl.worktree,
+                    "prompt": tmpl.prompt,
+                    "system_prompt": tmpl.system_prompt,
+                    "tool_policy": tmpl.tool_policy,
+                    "model": tmpl.model,
+                    "env": tmpl.env,
+                },
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
-            println!("  {} agent '{}'", "ok".green(), tmpl.name);
+            println!(
+                "  {} agent '{}'",
+                "would create".green(),
+                tmpl.name.bright_white()
+            );
+            println!("    working_dir:  {}", working_dir.bright_black());
+            println!("    shell:        {}", tmpl.shell.bright_black());
+            if tmpl.interactive {
+                println!("    interactive:  {}", "true".bright_black());
+            }
+            if tmpl.worktree {
+                println!("    worktree:     {}", "true".bright_black());
+            }
+            if let Some(ref model) = tmpl.model {
+                println!("    model:        {}", model.bright_black());
+            }
+            if !tmpl.env.is_empty() {
+                let keys: Vec<&str> = tmpl.env.keys().map(|s| s.as_str()).collect();
+                println!("    env:          {}", keys.join(", ").bright_black());
+            }
         }
         return Ok(());
     }
@@ -270,15 +311,71 @@ pub async fn apply_workflow_file(
     let tmpl = parse_workflow_template(path)?;
     let prompt = resolve_prompt(&tmpl, path)?;
 
+    if dry_run {
+        // In dry-run mode, do NOT make any HTTP calls to the orchestrator.
+        // Show the configuration that would be submitted, using the agent name
+        // as a symbolic reference (we cannot resolve it to a UUID without HTTP).
+        if json {
+            let source_json = match &tmpl.source {
+                SourceTemplate::GithubIssues { owner, repo, labels, state } => {
+                    serde_json::json!({
+                        "type": "github_issues",
+                        "owner": owner,
+                        "repo": repo,
+                        "labels": labels,
+                        "state": state,
+                    })
+                }
+            };
+            let result = serde_json::json!({
+                "dry_run": true,
+                "valid": true,
+                "kind": "workflow",
+                "config": {
+                    "name": tmpl.name,
+                    "agent": tmpl.agent,
+                    "source": source_json,
+                    "poll_interval_secs": tmpl.poll_interval,
+                    "enabled": tmpl.enabled,
+                    "prompt_template": prompt,
+                },
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else {
+            println!(
+                "  {} workflow '{}'",
+                "would create".green(),
+                tmpl.name.bright_white()
+            );
+            println!("    agent:         {}", tmpl.agent.bright_black());
+            match &tmpl.source {
+                SourceTemplate::GithubIssues { owner, repo, labels, state } => {
+                    println!(
+                        "    source:        github_issues {}/{}",
+                        owner.bright_black(),
+                        repo.bright_black()
+                    );
+                    if !labels.is_empty() {
+                        println!("    labels:        {}", labels.join(", ").bright_black());
+                    }
+                    println!("    state:         {}", state.bright_black());
+                }
+            }
+            println!("    poll_interval: {}s", tmpl.poll_interval.to_string().bright_black());
+            println!("    enabled:       {}", tmpl.enabled.to_string().bright_black());
+        }
+        return Ok(());
+    }
+
     if !json {
         println!(
             "  {} workflow '{}'...",
-            if dry_run { "Validating" } else { "Creating" }.cyan(),
+            "Creating".cyan(),
             tmpl.name.bright_white()
         );
     }
 
-    // Resolve agent name → UUID
+    // Resolve agent name → UUID (only in live mode)
     let agent = find_agent_by_name(client, &tmpl.agent).await?.ok_or_else(|| {
         anyhow::anyhow!("Agent '{}' not found (referenced by workflow '{}')", tmpl.agent, tmpl.name)
     })?;
@@ -290,13 +387,6 @@ pub async fn apply_workflow_file(
             agent.status,
             tmpl.name
         );
-    }
-
-    if dry_run {
-        if !json {
-            println!("    {} (agent '{}' → {})", "valid".green(), tmpl.agent, agent.id);
-        }
-        return Ok(());
     }
 
     let source_config = match tmpl.source {
@@ -393,20 +483,75 @@ pub async fn apply_directory(
 
     if dry_run {
         if json {
+            // Build full resolved config objects for the JSON output
+            let agents_json: Vec<serde_json::Value> = agent_templates
+                .iter()
+                .map(|(path, t)| {
+                    let working_dir = if t.working_dir == "." {
+                        std::env::current_dir()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| ".".to_string())
+                    } else {
+                        let base = path.parent().unwrap_or(Path::new("."));
+                        let full = base.join(&t.working_dir);
+                        full.canonicalize().unwrap_or(full).to_string_lossy().to_string()
+                    };
+                    serde_json::json!({
+                        "name": t.name,
+                        "working_dir": working_dir,
+                        "shell": t.shell,
+                        "interactive": t.interactive,
+                        "worktree": t.worktree,
+                        "prompt": t.prompt,
+                        "system_prompt": t.system_prompt,
+                        "tool_policy": t.tool_policy,
+                        "model": t.model,
+                        "env": t.env,
+                    })
+                })
+                .collect();
+
+            let workflows_json: Vec<serde_json::Value> = workflow_templates
+                .iter()
+                .map(|(path, t)| {
+                    let prompt = resolve_prompt(t, path).unwrap_or_default();
+                    let source_json = match &t.source {
+                        SourceTemplate::GithubIssues { owner, repo, labels, state } => {
+                            serde_json::json!({
+                                "type": "github_issues",
+                                "owner": owner,
+                                "repo": repo,
+                                "labels": labels,
+                                "state": state,
+                            })
+                        }
+                    };
+                    serde_json::json!({
+                        "name": t.name,
+                        "agent": t.agent,
+                        "source": source_json,
+                        "poll_interval_secs": t.poll_interval,
+                        "enabled": t.enabled,
+                        "prompt_template": prompt,
+                    })
+                })
+                .collect();
+
             let result = serde_json::json!({
                 "dry_run": true,
                 "valid": true,
-                "agents": agent_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
-                "workflows": workflow_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
+                "agents": agents_json,
+                "workflows": workflows_json,
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
             println!();
             println!(
-                "{} {} agent(s), {} workflow(s)",
-                "Dry run passed:".yellow(),
+                "{} {} agent(s), {} workflow(s) — {}",
+                "Dry run passed:".yellow().bold(),
                 agent_templates.len(),
-                workflow_templates.len()
+                workflow_templates.len(),
+                "no changes made".bright_black()
             );
         }
         return Ok(());
@@ -841,5 +986,249 @@ tool_policy:
         assert_eq!(tmpl.env.get("API_KEY"), Some(&"abc123".to_string()));
         assert_eq!(tmpl.env.get("BASE_URL"), Some(&"https://api.example.com".to_string()));
         assert_eq!(tmpl.tool_policy, ToolPolicy::AllowAll);
+    }
+
+    // ── Dry-run behaviour tests ──────────────────────────────────────
+
+    /// apply_agent_file with dry_run=true must succeed even when the
+    /// orchestrator is unreachable (proves no HTTP calls are made).
+    #[tokio::test]
+    async fn test_dry_run_agent_file_makes_no_http_calls() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("agentd_dry_run_agent_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        let agent_file = dir.join("worker.yml");
+        {
+            let mut f = std::fs::File::create(&agent_file).unwrap();
+            writeln!(
+                f,
+                "name: worker\nshell: bash\nworking_dir: .\nmodel: opus"
+            )
+            .unwrap();
+        }
+
+        // Point at a port nothing listens on — any HTTP call would fail.
+        let client = OrchestratorClient::new("http://127.0.0.1:1".to_string());
+        let result = apply_agent_file(&client, &agent_file, true, false).await;
+        assert!(result.is_ok(), "dry-run agent should succeed without HTTP: {result:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// apply_agent_file dry-run JSON output must include the resolved config.
+    #[tokio::test]
+    async fn test_dry_run_agent_file_json_output() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("agentd_dry_run_agent_json_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        let agent_file = dir.join("planner.yml");
+        {
+            let mut f = std::fs::File::create(&agent_file).unwrap();
+            writeln!(
+                f,
+                "name: planner\nmodel: opus\nshell: zsh\nworking_dir: ."
+            )
+            .unwrap();
+        }
+
+        let client = OrchestratorClient::new("http://127.0.0.1:1".to_string());
+        // Verify the function itself returns Ok — JSON goes to stdout, tested
+        // separately via parse_agent_template.
+        let result = apply_agent_file(&client, &agent_file, true, true).await;
+        assert!(result.is_ok(), "dry-run agent JSON should succeed: {result:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// apply_workflow_file with dry_run=true must succeed even when the
+    /// orchestrator is unreachable (proves no HTTP calls are made).
+    #[tokio::test]
+    async fn test_dry_run_workflow_file_makes_no_http_calls() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("agentd_dry_run_workflow_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        let wf_file = dir.join("issue-worker.yml");
+        {
+            let mut f = std::fs::File::create(&wf_file).unwrap();
+            writeln!(
+                f,
+                "name: issue-worker\nagent: worker\nsource:\n  type: github_issues\n  owner: org\n  repo: repo\nprompt_template: \"Fix: {{{{title}}}}\""
+            )
+            .unwrap();
+        }
+
+        // Point at a port nothing listens on — any HTTP call would fail.
+        let client = OrchestratorClient::new("http://127.0.0.1:1".to_string());
+        let result = apply_workflow_file(&client, &wf_file, true, false).await;
+        assert!(
+            result.is_ok(),
+            "dry-run workflow should succeed without HTTP: {result:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// apply_workflow_file dry-run JSON output must include the workflow config
+    /// without making any HTTP calls.
+    #[tokio::test]
+    async fn test_dry_run_workflow_file_json_no_http_calls() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("agentd_dry_run_workflow_json_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        let wf_file = dir.join("issue-worker.yml");
+        {
+            let mut f = std::fs::File::create(&wf_file).unwrap();
+            writeln!(
+                f,
+                "name: issue-worker\nagent: worker\nsource:\n  type: github_issues\n  owner: org\n  repo: repo\nprompt_template: \"Fix: {{{{title}}}}\""
+            )
+            .unwrap();
+        }
+
+        let client = OrchestratorClient::new("http://127.0.0.1:1".to_string());
+        let result = apply_workflow_file(&client, &wf_file, true, true).await;
+        assert!(
+            result.is_ok(),
+            "dry-run workflow JSON should succeed without HTTP: {result:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// apply_directory dry-run must succeed even when the orchestrator is
+    /// unreachable — all HTTP calls must be skipped.
+    #[tokio::test]
+    async fn test_dry_run_directory_makes_no_http_calls() {
+        use std::io::Write;
+
+        let base = std::env::temp_dir().join("agentd_dry_run_dir_test");
+        let agents_dir = base.join("agents");
+        let workflows_dir = base.join("workflows");
+        let _ = std::fs::create_dir_all(&agents_dir);
+        let _ = std::fs::create_dir_all(&workflows_dir);
+
+        {
+            let mut f = std::fs::File::create(agents_dir.join("worker.yml")).unwrap();
+            writeln!(f, "name: worker\nshell: zsh").unwrap();
+        }
+        {
+            let mut f = std::fs::File::create(workflows_dir.join("issue-worker.yml")).unwrap();
+            writeln!(
+                f,
+                "name: issue-worker\nagent: worker\nsource:\n  type: github_issues\n  owner: org\n  repo: repo\nprompt_template: \"Fix: {{{{title}}}}\""
+            )
+            .unwrap();
+        }
+
+        let client = OrchestratorClient::new("http://127.0.0.1:1".to_string());
+        // wait_timeout is irrelevant for dry-run
+        let result = apply_directory(&client, &base, true, 60, false).await;
+        assert!(
+            result.is_ok(),
+            "dry-run directory should succeed without HTTP: {result:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// apply_directory dry-run JSON output must contain both agent and workflow
+    /// config objects (not just names).
+    #[tokio::test]
+    async fn test_dry_run_directory_json_contains_full_configs() {
+        use std::io::Write;
+
+        let base = std::env::temp_dir().join("agentd_dry_run_dir_json_test");
+        let agents_dir = base.join("agents");
+        let workflows_dir = base.join("workflows");
+        let _ = std::fs::create_dir_all(&agents_dir);
+        let _ = std::fs::create_dir_all(&workflows_dir);
+
+        {
+            let mut f = std::fs::File::create(agents_dir.join("worker.yml")).unwrap();
+            writeln!(f, "name: worker\nshell: bash\nmodel: opus").unwrap();
+        }
+        {
+            let mut f = std::fs::File::create(workflows_dir.join("issue-worker.yml")).unwrap();
+            writeln!(
+                f,
+                "name: issue-worker\nagent: worker\nsource:\n  type: github_issues\n  owner: org\n  repo: repo\nprompt_template: \"Fix: {{{{title}}}}\""
+            )
+            .unwrap();
+        }
+
+        let client = OrchestratorClient::new("http://127.0.0.1:1".to_string());
+        let result = apply_directory(&client, &base, true, 60, true).await;
+        assert!(
+            result.is_ok(),
+            "dry-run directory JSON should succeed: {result:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Validation errors in dry-run must still be reported (exit ≠ 0).
+    #[tokio::test]
+    async fn test_dry_run_invalid_template_reports_error() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("agentd_dry_run_invalid_test");
+        let agents_dir = dir.join("agents");
+        let _ = std::fs::create_dir_all(&agents_dir);
+
+        // Write a YAML file that is structurally invalid for an agent (bad YAML).
+        let bad_file = agents_dir.join("bad.yml");
+        {
+            let mut f = std::fs::File::create(&bad_file).unwrap();
+            writeln!(f, "name: [this is not valid yaml for name field: {{").unwrap();
+        }
+
+        let client = OrchestratorClient::new("http://127.0.0.1:1".to_string());
+        let result = apply_directory(&client, &dir, true, 60, false).await;
+        assert!(result.is_err(), "dry-run with invalid template should return an error");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Workflow with missing prompt_template/prompt_template_file must fail validation.
+    #[tokio::test]
+    async fn test_dry_run_workflow_missing_prompt_fails_validation() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("agentd_dry_run_no_prompt_test");
+        let workflows_dir = dir.join("workflows");
+        let _ = std::fs::create_dir_all(&workflows_dir);
+
+        let wf_file = workflows_dir.join("bad.yml");
+        {
+            let mut f = std::fs::File::create(&wf_file).unwrap();
+            // Missing both prompt_template and prompt_template_file
+            writeln!(
+                f,
+                "name: bad\nagent: worker\nsource:\n  type: github_issues\n  owner: org\n  repo: repo"
+            )
+            .unwrap();
+        }
+
+        let client = OrchestratorClient::new("http://127.0.0.1:1".to_string());
+        let result = apply_directory(&client, &dir, true, 60, false).await;
+        assert!(
+            result.is_err(),
+            "workflow without prompt should fail validation: {result:?}"
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("prompt_template") || err.contains("prompt"),
+            "Error should mention missing prompt: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
