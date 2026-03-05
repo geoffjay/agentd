@@ -185,6 +185,93 @@ impl AgentManager {
     pub async fn update_agent(&self, agent: &Agent) -> anyhow::Result<()> {
         self.storage.update(agent).await
     }
+
+    /// Change the model for an agent.
+    ///
+    /// Updates the stored config. If `restart` is true and the agent is running,
+    /// kills the current tmux session and re-launches Claude with the new model.
+    pub async fn set_model(
+        &self,
+        id: &Uuid,
+        model: Option<String>,
+        restart: bool,
+    ) -> anyhow::Result<Agent> {
+        let mut agent =
+            self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+
+        agent.config.model = model.clone();
+        agent.updated_at = Utc::now();
+        self.storage.update(&agent).await?;
+
+        info!(
+            agent_id = %id,
+            model = ?model,
+            restart,
+            "Agent model updated"
+        );
+
+        if restart && agent.status == AgentStatus::Running {
+            agent = self.restart_agent(&agent).await?;
+        }
+
+        Ok(agent)
+    }
+
+    /// Restart a running agent: kill the current tmux session and re-launch Claude.
+    ///
+    /// Preserves the agent's ID, name, and config. The prompt is NOT re-sent
+    /// since the agent is being restarted mid-lifecycle.
+    async fn restart_agent(&self, agent: &Agent) -> anyhow::Result<Agent> {
+        let mut agent = agent.clone();
+
+        // Kill the existing tmux session.
+        if let Some(ref session) = agent.tmux_session {
+            if let Err(e) = self.tmux.kill_session(session) {
+                warn!(agent_id = %agent.id, %e, "Failed to kill tmux session during restart");
+            }
+        }
+
+        // Create a new tmux session.
+        let session_name = format!("{}-{}", self.tmux.prefix(), agent.id);
+        if let Err(e) =
+            self.tmux.create_session(&session_name, &agent.config.working_dir, None)
+        {
+            agent.status = AgentStatus::Failed;
+            agent.updated_at = Utc::now();
+            let _ = self.storage.update(&agent).await;
+            return Err(anyhow::anyhow!("Failed to create tmux session on restart: {}", e));
+        }
+
+        // Build and send the claude command with the updated config.
+        let ws_url = format!("{}/ws/{}", self.ws_base_url, agent.id);
+        let claude_cmd = build_claude_command(&agent.config, &ws_url);
+
+        if let Err(e) = self.tmux.send_command(&session_name, &claude_cmd) {
+            let _ = self.tmux.kill_session(&session_name);
+            agent.status = AgentStatus::Failed;
+            agent.updated_at = Utc::now();
+            let _ = self.storage.update(&agent).await;
+            return Err(anyhow::anyhow!("Failed to launch claude on restart: {}", e));
+        }
+
+        // Update state.
+        agent.status = AgentStatus::Running;
+        agent.tmux_session = Some(session_name.clone());
+        agent.updated_at = Utc::now();
+        self.storage.update(&agent).await?;
+
+        // Re-register tool policy.
+        self.registry.set_policy(agent.id, agent.config.tool_policy.clone()).await;
+
+        info!(
+            agent_id = %agent.id,
+            session = %session_name,
+            model = ?agent.config.model,
+            "Agent restarted with new model"
+        );
+
+        Ok(agent)
+    }
 }
 
 fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
