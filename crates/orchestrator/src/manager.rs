@@ -272,6 +272,42 @@ impl AgentManager {
     }
 }
 
+/// Validate that an environment variable name is safe.
+///
+/// Only allows names matching `[A-Za-z_][A-Za-z0-9_]*`.  Names that fail
+/// this check are silently dropped from the command to prevent shell
+/// injection via malformed key names.
+fn is_valid_env_var_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Shell-escape a value using single-quote escaping.
+///
+/// Produces `'value'`, with any embedded single-quote replaced by `'\''`
+/// (close-quote, escaped-quote, reopen-quote).  This is safe for POSIX shells.
+fn shell_escape_value(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Build a list of `KEY='value'` assignment strings for safe env injection.
+///
+/// Keys that fail name validation are silently skipped.
+fn build_env_assignments(env: &std::collections::HashMap<String, String>) -> Vec<String> {
+    let mut assignments: Vec<String> = env
+        .iter()
+        .filter(|(k, _)| is_valid_env_var_name(k))
+        .map(|(k, v)| format!("{}={}", k, shell_escape_value(v)))
+        .collect();
+    // Sort for deterministic output (important for tests).
+    assignments.sort();
+    assignments
+}
+
 fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
     let mut args = vec!["claude".to_string()];
 
@@ -303,10 +339,28 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
     // follow-up messages.
 
     let base = args.join(" ");
+    let env_assignments = build_env_assignments(&config.env);
 
     match config.user.as_deref() {
-        Some(user) => format!("sudo -u {} {}", user, base),
-        None => base,
+        Some(user) => {
+            if env_assignments.is_empty() {
+                format!("sudo -u {} {}", user, base)
+            } else {
+                // Pass env vars via `env` so they survive the sudo privilege
+                // boundary regardless of sudoers env_keep configuration.
+                format!("sudo -u {} env {} {}", user, env_assignments.join(" "), base)
+            }
+        }
+        None => {
+            if env_assignments.is_empty() {
+                base
+            } else {
+                // Prefix the command with shell variable assignments.
+                // The shell running inside the tmux session interprets these
+                // as temporary env vars scoped to the claude invocation.
+                format!("{} {}", env_assignments.join(" "), base)
+            }
+        }
     }
 }
 
@@ -314,6 +368,7 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
 mod tests {
     use super::*;
     use crate::types::ToolPolicy;
+    use std::collections::HashMap;
 
     fn base_config() -> AgentConfig {
         AgentConfig {
@@ -326,7 +381,7 @@ mod tests {
             system_prompt: None,
             tool_policy: ToolPolicy::default(),
             model: None,
-            env: std::collections::HashMap::new(),
+            env: HashMap::new(),
         }
     }
 
@@ -372,5 +427,152 @@ mod tests {
         let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
         assert!(cmd.starts_with("sudo -u deploy"));
         assert!(cmd.contains("--model sonnet"));
+    }
+
+    // -- env var injection tests --
+
+    #[test]
+    fn test_build_claude_command_with_env_vars() {
+        let mut env = HashMap::new();
+        env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test123".to_string());
+        let config = AgentConfig { env, ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+
+        assert!(cmd.contains("ANTHROPIC_API_KEY='sk-ant-test123'"));
+        // Env prefix must come before claude
+        let env_pos = cmd.find("ANTHROPIC_API_KEY").unwrap();
+        let claude_pos = cmd.find("claude").unwrap();
+        assert!(env_pos < claude_pos, "env vars must appear before 'claude' in command");
+    }
+
+    #[test]
+    fn test_build_claude_command_with_env_vars_and_sudo() {
+        let mut env = HashMap::new();
+        env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test".to_string());
+        let config = AgentConfig {
+            user: Some("deploy".to_string()),
+            env,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+
+        // For sudo, env vars are injected via `env` to cross the sudo boundary
+        assert!(cmd.starts_with("sudo -u deploy env"));
+        assert!(cmd.contains("ANTHROPIC_API_KEY='sk-ant-test'"));
+        assert!(cmd.contains("claude"));
+    }
+
+    #[test]
+    fn test_build_claude_command_env_value_shell_escaped() {
+        let mut env = HashMap::new();
+        // Value contains a single quote — must be properly escaped
+        env.insert("MY_VAR".to_string(), "it's a value".to_string());
+        let config = AgentConfig { env, ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+
+        // Single-quote escaping: ' → '\''
+        assert!(cmd.contains("MY_VAR='it'\\''s a value'"));
+    }
+
+    #[test]
+    fn test_build_claude_command_invalid_env_key_rejected() {
+        let mut env = HashMap::new();
+        // Malicious key attempting shell injection
+        env.insert("BAD KEY; rm -rf /".to_string(), "value".to_string());
+        env.insert("123STARTS_WITH_DIGIT".to_string(), "v".to_string());
+        env.insert("GOOD_KEY".to_string(), "ok".to_string());
+        let config = AgentConfig { env, ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+
+        assert!(cmd.contains("GOOD_KEY='ok'"));
+        assert!(!cmd.contains("BAD KEY"));
+        assert!(!cmd.contains("rm -rf"));
+        assert!(!cmd.contains("123STARTS_WITH_DIGIT"));
+    }
+
+    #[test]
+    fn test_build_claude_command_empty_env_no_prefix() {
+        let config = base_config(); // env is empty
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+
+        // Must start directly with claude (no env prefix)
+        assert!(cmd.starts_with("claude"));
+    }
+
+    #[test]
+    fn test_build_claude_command_env_with_interactive_mode() {
+        let mut env = HashMap::new();
+        env.insert("ANTHROPIC_BASE_URL".to_string(), "https://custom.api.example.com".to_string());
+        let config = AgentConfig { interactive: true, env, ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+
+        assert!(cmd.contains("ANTHROPIC_BASE_URL='https://custom.api.example.com'"));
+        assert!(!cmd.contains("--sdk-url"));
+        assert!(cmd.contains("claude"));
+    }
+
+    #[test]
+    fn test_build_claude_command_multiple_env_vars_deterministic() {
+        let mut env = HashMap::new();
+        env.insert("ANTHROPIC_API_KEY".to_string(), "sk-key".to_string());
+        env.insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
+        env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), "tok-123".to_string());
+        let config = AgentConfig { env, ..base_config() };
+        let cmd1 = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd2 = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+
+        // Output must be deterministic (sorted) across calls
+        assert_eq!(cmd1, cmd2);
+        // All three vars must appear
+        assert!(cmd1.contains("ANTHROPIC_API_KEY="));
+        assert!(cmd1.contains("ANTHROPIC_BASE_URL="));
+        assert!(cmd1.contains("ANTHROPIC_AUTH_TOKEN="));
+    }
+
+    // -- is_valid_env_var_name tests --
+
+    #[test]
+    fn test_is_valid_env_var_name_valid() {
+        assert!(is_valid_env_var_name("ANTHROPIC_API_KEY"));
+        assert!(is_valid_env_var_name("MY_VAR"));
+        assert!(is_valid_env_var_name("_PRIVATE"));
+        assert!(is_valid_env_var_name("lower_case_ok"));
+        assert!(is_valid_env_var_name("VAR123"));
+        assert!(is_valid_env_var_name("A"));
+    }
+
+    #[test]
+    fn test_is_valid_env_var_name_invalid() {
+        assert!(!is_valid_env_var_name(""));
+        assert!(!is_valid_env_var_name("123STARTS_WITH_DIGIT"));
+        assert!(!is_valid_env_var_name("HAS SPACE"));
+        assert!(!is_valid_env_var_name("HAS-DASH"));
+        assert!(!is_valid_env_var_name("HAS=EQUALS"));
+        assert!(!is_valid_env_var_name("BAD;SEMICOLON"));
+        assert!(!is_valid_env_var_name("KEY\nNEWLINE"));
+    }
+
+    // -- shell_escape_value tests --
+
+    #[test]
+    fn test_shell_escape_value_simple() {
+        assert_eq!(shell_escape_value("hello"), "'hello'");
+        assert_eq!(shell_escape_value("sk-ant-api-key"), "'sk-ant-api-key'");
+    }
+
+    #[test]
+    fn test_shell_escape_value_with_single_quote() {
+        assert_eq!(shell_escape_value("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn test_shell_escape_value_with_special_chars() {
+        // Dollar signs, backticks etc. are safe inside single quotes
+        assert_eq!(shell_escape_value("$HOME`cmd`$(cmd)"), "'$HOME`cmd`$(cmd)'");
+    }
+
+    #[test]
+    fn test_shell_escape_value_empty() {
+        assert_eq!(shell_escape_value(""), "''");
     }
 }
