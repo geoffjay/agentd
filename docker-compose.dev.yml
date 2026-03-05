@@ -1,0 +1,139 @@
+# Docker Compose development override for agentd services
+#
+# This override file provides development-friendly configurations:
+# - Debug logging
+# - Source code volume mounts for hot reload
+# - Development ports exposed
+#
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#   docker-compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache
+#   docker-compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
+
+services:
+  # ===========================================================================
+  # Notification Service (Dev)
+  # ===========================================================================
+  notify:
+    environment:
+      - RUST_LOG=debug
+      - LOG_FORMAT=json
+      - PORT=17004
+    volumes:
+      - ./crates/notify:/app/crates/notify:ro
+      - ./crates/common:/app/crates/common:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: crates/notify
+          ignore:
+            - target/
+        - action: rebuild
+          path: crates/common
+
+  # ===========================================================================
+  # Ask Service (Dev)
+  # ===========================================================================
+  ask:
+    environment:
+      - RUST_LOG=debug
+      - LOG_FORMAT=json
+      - PORT=17001
+      - NOTIFY_SERVICE_URL=http://notify:17004
+    volumes:
+      - ./crates/ask:/app/crates/ask:ro
+      - ./crates/common:/app/crates/common:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: crates/ask
+          ignore:
+            - target/
+        - action: rebuild
+          path: crates/common
+
+  # ===========================================================================
+  # Wrap Service (Dev)
+  # ===========================================================================
+  wrap:
+    environment:
+      - RUST_LOG=debug
+      - LOG_FORMAT=json
+      - PORT=17005
+    volumes:
+      - ./crates/wrap:/app/crates/wrap:ro
+      - ./crates/common:/app/crates/common:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: crates/wrap
+          ignore:
+            - target/
+        - action: rebuild
+          path: crates/common
+
+  # ===========================================================================
+  # Orchestrator Service (Dev)
+  # ===========================================================================
+  orchestrator:
+    environment:
+      - RUST_LOG=debug
+      - LOG_FORMAT=json
+      - PORT=17006
+      - WRAP_SERVICE_URL=http://wrap:17005
+    volumes:
+      - ./crates/orchestrator:/app/crates/orchestrator:ro
+      - ./crates/wrap:/app/crates/wrap:ro
+      - ./crates/common:/app/crates/common:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: crates/orchestrator
+          ignore:
+            - target/
+        - action: rebuild
+          path: crates/wrap
+        - action: rebuild
+          path: crates/common
+
+  # ===========================================================================
+  # Hook Service (Dev)
+  # ===========================================================================
+  hook:
+    environment:
+      - RUST_LOG=debug
+      - LOG_FORMAT=json
+      - PORT=17002
+      - NOTIFY_SERVICE_URL=http://notify:17004
+    volumes:
+      - ./crates/hook:/app/crates/hook:ro
+      - ./crates/common:/app/crates/common:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: crates/hook
+          ignore:
+            - target/
+        - action: rebuild
+          path: crates/common
+
+  # ===========================================================================
+  # Monitor Service (Dev)
+  # ===========================================================================
+  monitor:
+    environment:
+      - RUST_LOG=debug
+      - LOG_FORMAT=json
+      - PORT=17003
+      - NOTIFY_SERVICE_URL=http://notify:17004
+    volumes:
+      - ./crates/monitor:/app/crates/monitor:ro
+      - ./crates/common:/app/crates/common:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: crates/monitor
+          ignore:
+            - target/
+        - action: rebuild
+          path: crates/common

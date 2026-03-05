@@ -1,0 +1,185 @@
+# Docker Compose configuration for agentd services
+#
+# This file defines all services with proper networking, health checks,
+# and volume mounts for persistent storage.
+#
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose ps                 # Check service status
+#   docker-compose logs -f            # View logs
+#   docker-compose down               # Stop all services
+#   docker-compose down -v            # Stop and remove volumes
+
+services:
+  # ===========================================================================
+  # Notification Service
+  # ===========================================================================
+  notify:
+    image: agentd:latest
+    container_name: agentd-notify
+    command: ["agentd-notify"]
+    restart: unless-stopped
+    ports:
+      - "17004:17004"
+    volumes:
+      - notify_data:/var/lib/agentd/notify
+    environment:
+      - PORT=17004
+      - RUST_LOG=${RUST_LOG:-info}
+      - LOG_FORMAT=json
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:17004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - agentd-network
+
+  # ===========================================================================
+  # Ask Service
+  # ===========================================================================
+  ask:
+    image: agentd:latest
+    container_name: agentd-ask
+    command: ["agentd-ask"]
+    restart: unless-stopped
+    ports:
+      - "17001:17001"
+    environment:
+      - PORT=17001
+      - RUST_LOG=${RUST_LOG:-info}
+      - LOG_FORMAT=json
+      - NOTIFY_SERVICE_URL=http://notify:17004
+    depends_on:
+      notify:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:17001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - agentd-network
+
+  # ===========================================================================
+  # Wrap Service (Tmux session management)
+  # ===========================================================================
+  wrap:
+    image: agentd:latest
+    container_name: agentd-wrap
+    command: ["agentd-wrap"]
+    restart: unless-stopped
+    ports:
+      - "17005:17005"
+    environment:
+      - PORT=17005
+      - RUST_LOG=${RUST_LOG:-info}
+      - LOG_FORMAT=json
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:17005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - agentd-network
+
+  # ===========================================================================
+  # Orchestrator Service (Agent lifecycle + Workflow scheduler)
+  # ===========================================================================
+  orchestrator:
+    image: agentd:latest
+    container_name: agentd-orchestrator
+    command: ["agentd-orchestrator"]
+    restart: unless-stopped
+    ports:
+      - "17006:17006"
+    volumes:
+      - orchestrator_data:/var/lib/agentd/orchestrator
+    environment:
+      - PORT=17006
+      - RUST_LOG=${RUST_LOG:-info}
+      - LOG_FORMAT=json
+      - WRAP_SERVICE_URL=http://wrap:17005
+    depends_on:
+      wrap:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:17006/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - agentd-network
+
+  # ===========================================================================
+  # Hook Service (Shell hook integration) - Stub
+  # ===========================================================================
+  hook:
+    image: agentd:latest
+    container_name: agentd-hook
+    command: ["agentd-hook"]
+    restart: unless-stopped
+    ports:
+      - "17002:17002"
+    environment:
+      - PORT=17002
+      - RUST_LOG=${RUST_LOG:-info}
+      - LOG_FORMAT=json
+      - NOTIFY_SERVICE_URL=http://notify:17004
+    depends_on:
+      - notify
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:17002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - agentd-network
+
+  # ===========================================================================
+  # Monitor Service (System monitoring) - Stub
+  # ===========================================================================
+  monitor:
+    image: agentd:latest
+    container_name: agentd-monitor
+    command: ["agentd-monitor"]
+    restart: unless-stopped
+    ports:
+      - "17003:17003"
+    environment:
+      - PORT=17003
+      - RUST_LOG=${RUST_LOG:-info}
+      - LOG_FORMAT=json
+      - NOTIFY_SERVICE_URL=http://notify:17004
+    depends_on:
+      - notify
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:17003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - agentd-network
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  agentd-network:
+    driver: bridge
+    name: agentd-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  notify_data:
+    name: agentd-notify-data
+  orchestrator_data:
+    name: agentd-orchestrator-data
