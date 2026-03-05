@@ -159,6 +159,21 @@ pub enum OrchestratorCommand {
         /// Examples: '{"mode":"allow_all"}', '{"mode":"deny_list","tools":["Bash"]}'
         #[arg(long)]
         tool_policy: Option<String>,
+
+        /// Environment variables to set for the agent (KEY=VALUE format).
+        ///
+        /// Can be specified multiple times for multiple variables.
+        /// Commonly used for ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL.
+        ///
+        /// Examples:
+        ///   --env ANTHROPIC_API_KEY=sk-ant-...
+        ///   --env ANTHROPIC_BASE_URL=https://custom-proxy.example.com
+        ///   --env ANTHROPIC_AUTH_TOKEN=my-token
+        ///
+        /// Note: values are redacted in API responses to prevent secret leakage.
+        // Future: --env-file <path> to load vars from a dotenv-style file.
+        #[arg(long = "env", value_name = "KEY=VALUE")]
+        env_vars: Vec<String>,
     },
 
     /// Get details of a specific agent.
@@ -542,6 +557,7 @@ impl OrchestratorCommand {
                 attach,
                 model,
                 tool_policy,
+                env_vars,
             } => {
                 create_agent(
                     client,
@@ -558,6 +574,7 @@ impl OrchestratorCommand {
                     *attach,
                     model.as_deref(),
                     tool_policy.as_deref(),
+                    env_vars,
                     json,
                 )
                 .await
@@ -675,6 +692,30 @@ async fn list_agents(client: &OrchestratorClient, status: Option<&str>, json: bo
     Ok(())
 }
 
+/// Parse a slice of `KEY=VALUE` strings into a `HashMap`.
+///
+/// The first `=` in each string is the delimiter, so values may themselves
+/// contain `=` (e.g. `TOKEN=abc=def` → key `TOKEN`, value `abc=def`).
+///
+/// Returns an error if any entry does not contain `=`.
+fn parse_env_vars(raw: &[String]) -> Result<std::collections::HashMap<String, String>> {
+    let mut map = std::collections::HashMap::new();
+    for entry in raw {
+        match entry.split_once('=') {
+            Some((key, value)) => {
+                map.insert(key.to_string(), value.to_string());
+            }
+            None => {
+                anyhow::bail!(
+                    "Invalid --env value {:?}: expected KEY=VALUE format (missing '=')",
+                    entry
+                );
+            }
+        }
+    }
+    Ok(map)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn create_agent(
     client: &OrchestratorClient,
@@ -691,6 +732,7 @@ async fn create_agent(
     attach: bool,
     model: Option<&str>,
     tool_policy_json: Option<&str>,
+    env_vars: &[String],
     json: bool,
 ) -> Result<()> {
     // Resolve working directory: use provided value or default to $PWD
@@ -705,6 +747,11 @@ async fn create_agent(
         None => Default::default(),
     };
 
+    // Parse --env KEY=VALUE pairs into a HashMap.
+    // Values containing '=' are handled correctly: only the first '=' is the delimiter.
+    // Entries missing '=' produce a clear error.
+    let env = parse_env_vars(env_vars)?;
+
     let request = CreateAgentRequest {
         name: name.to_string(),
         working_dir: resolved_working_dir,
@@ -716,7 +763,7 @@ async fn create_agent(
         system_prompt: system_prompt.map(|s| s.to_string()),
         tool_policy,
         model: model.map(|s| s.to_string()),
-        env: Default::default(),
+        env,
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -2121,6 +2168,153 @@ mod tests {
         if let OrchestratorCommand::CreateAgent { attach, interactive, .. } = cli.command {
             assert!(attach);
             assert!(interactive);
+        } else {
+            panic!("Expected CreateAgent variant");
+        }
+    }
+
+    // -- parse_env_vars unit tests --
+
+    #[test]
+    fn test_parse_env_vars_simple() {
+        let raw = vec!["ANTHROPIC_API_KEY=sk-ant-test".to_string()];
+        let env = parse_env_vars(&raw).unwrap();
+        assert_eq!(env.get("ANTHROPIC_API_KEY"), Some(&"sk-ant-test".to_string()));
+        assert_eq!(env.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_env_vars_multiple() {
+        let raw = vec![
+            "ANTHROPIC_API_KEY=sk-ant-test".to_string(),
+            "ANTHROPIC_BASE_URL=https://example.com".to_string(),
+            "ANTHROPIC_AUTH_TOKEN=tok-123".to_string(),
+        ];
+        let env = parse_env_vars(&raw).unwrap();
+        assert_eq!(env.len(), 3);
+        assert_eq!(env.get("ANTHROPIC_API_KEY"), Some(&"sk-ant-test".to_string()));
+        assert_eq!(env.get("ANTHROPIC_BASE_URL"), Some(&"https://example.com".to_string()));
+        assert_eq!(env.get("ANTHROPIC_AUTH_TOKEN"), Some(&"tok-123".to_string()));
+    }
+
+    #[test]
+    fn test_parse_env_vars_value_with_equals() {
+        // Value itself contains '=' — only the first '=' is the delimiter
+        let raw = vec!["TOKEN=abc=def=ghi".to_string()];
+        let env = parse_env_vars(&raw).unwrap();
+        assert_eq!(env.get("TOKEN"), Some(&"abc=def=ghi".to_string()));
+    }
+
+    #[test]
+    fn test_parse_env_vars_empty_value() {
+        // KEY= with no value is valid — value is empty string
+        let raw = vec!["MY_VAR=".to_string()];
+        let env = parse_env_vars(&raw).unwrap();
+        assert_eq!(env.get("MY_VAR"), Some(&"".to_string()));
+    }
+
+    #[test]
+    fn test_parse_env_vars_missing_equals_returns_error() {
+        let raw = vec!["ANTHROPIC_API_KEY".to_string()]; // no '='
+        let result = parse_env_vars(&raw);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("ANTHROPIC_API_KEY"), "error should mention the offending value");
+        assert!(msg.contains("KEY=VALUE"), "error should mention the expected format");
+    }
+
+    #[test]
+    fn test_parse_env_vars_empty_slice() {
+        let env = parse_env_vars(&[]).unwrap();
+        assert!(env.is_empty());
+    }
+
+    #[test]
+    fn test_parse_env_vars_url_value() {
+        // URLs contain ':' and '/' which must be preserved verbatim
+        let raw = vec!["ANTHROPIC_BASE_URL=https://proxy.example.com:8080/v1".to_string()];
+        let env = parse_env_vars(&raw).unwrap();
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL"),
+            Some(&"https://proxy.example.com:8080/v1".to_string())
+        );
+    }
+
+    // -- --env flag clap parsing tests --
+
+    #[test]
+    fn test_create_agent_env_flag_single() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-agent",
+            "--name",
+            "my-agent",
+            "--env",
+            "ANTHROPIC_API_KEY=sk-ant-test",
+        ])
+        .expect("Should parse --env flag");
+
+        if let OrchestratorCommand::CreateAgent { env_vars, .. } = cli.command {
+            assert_eq!(env_vars, vec!["ANTHROPIC_API_KEY=sk-ant-test"]);
+        } else {
+            panic!("Expected CreateAgent variant");
+        }
+    }
+
+    #[test]
+    fn test_create_agent_env_flag_multiple() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-agent",
+            "--name",
+            "my-agent",
+            "--env",
+            "ANTHROPIC_API_KEY=sk-ant-test",
+            "--env",
+            "ANTHROPIC_BASE_URL=https://example.com",
+        ])
+        .expect("Should parse multiple --env flags");
+
+        if let OrchestratorCommand::CreateAgent { env_vars, .. } = cli.command {
+            assert_eq!(env_vars.len(), 2);
+            assert!(env_vars.contains(&"ANTHROPIC_API_KEY=sk-ant-test".to_string()));
+            assert!(env_vars.contains(&"ANTHROPIC_BASE_URL=https://example.com".to_string()));
+        } else {
+            panic!("Expected CreateAgent variant");
+        }
+    }
+
+    #[test]
+    fn test_create_agent_env_flag_defaults_to_empty() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from(["test", "create-agent", "--name", "my-agent"])
+            .expect("Should parse without --env");
+
+        if let OrchestratorCommand::CreateAgent { env_vars, .. } = cli.command {
+            assert!(env_vars.is_empty(), "--env should default to empty Vec");
         } else {
             panic!("Expected CreateAgent variant");
         }
