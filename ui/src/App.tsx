@@ -1,19 +1,35 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
-
-function HomePage() {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center">
-      <h1 className="text-4xl font-bold text-primary-600">agentd</h1>
-      <p className="mt-4 text-secondary-500">Web UI — coming soon</p>
-    </div>
-  )
-}
+import { AppShell } from '@/layouts'
+import {
+  AgentsPage,
+  DashboardPage,
+  HooksPage,
+  MonitoringPage,
+  NotFoundPage,
+  NotificationsPage,
+  QuestionsPage,
+  SettingsPage,
+  WorkflowsPage,
+} from '@/pages'
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        {/* All main pages rendered inside the AppShell layout */}
+        <Route element={<AppShell />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="/agents" element={<AgentsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/questions" element={<QuestionsPage />} />
+          <Route path="/workflows" element={<WorkflowsPage />} />
+          <Route path="/monitoring" element={<MonitoringPage />} />
+          <Route path="/hooks" element={<HooksPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+
+        {/* 404 catch-all */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   )
