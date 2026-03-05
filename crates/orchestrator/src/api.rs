@@ -44,6 +44,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents", get(list_agents).post(create_agent))
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
         .route("/agents/{id}/message", post(send_message))
+        .route("/agents/{id}/model", axum::routing::put(set_agent_model))
         .route("/agents/{id}/policy", get(get_agent_policy).put(update_agent_policy))
         .route("/agents/{id}/approvals", get(list_agent_approvals))
         .route("/approvals", get(list_all_approvals))
@@ -185,6 +186,22 @@ async fn update_agent_policy(
     info!(agent_id = %id, ?policy, "Agent tool policy updated");
 
     Ok(Json(policy))
+}
+
+/// Set or change the model for an agent.
+///
+/// Updates the stored model. If `restart: true`, kills and re-launches
+/// the agent process with the new `--model` flag.
+async fn set_agent_model(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<SetModelRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let agent = state.manager.set_model(&id, req.model, req.restart).await?;
+
+    info!(agent_id = %id, model = ?agent.config.model, restart = req.restart, "Agent model changed via API");
+
+    Ok(Json(AgentResponse::from(agent)))
 }
 
 // -- Tool approval endpoints --

@@ -293,6 +293,50 @@ pub enum OrchestratorCommand {
         policy: String,
     },
 
+    /// Set or change the model for an agent.
+    ///
+    /// Updates the model in the agent's config. Use --restart to immediately
+    /// kill and re-launch the agent with the new model.
+    ///
+    /// # Examples
+    ///
+    /// Change model and restart immediately:
+    ///
+    ///   agent orchestrator set-model <ID> --model opus --restart
+    ///
+    /// Change model for next restart (no disruption):
+    ///
+    ///   agent orchestrator set-model <ID> --model sonnet
+    ///
+    /// Change by agent name:
+    ///
+    ///   agent orchestrator set-model --name worker --model opus --restart
+    ///
+    /// Clear model (inherit default):
+    ///
+    ///   agent orchestrator set-model <ID> --clear
+    SetModel {
+        /// Agent ID (UUID)
+        #[arg(conflicts_with = "name")]
+        id: Option<String>,
+
+        /// Agent name (resolves to first matching agent)
+        #[arg(long, conflicts_with = "id")]
+        name: Option<String>,
+
+        /// Model to use (e.g. sonnet, opus, haiku, claude-sonnet-4-6)
+        #[arg(long, conflicts_with = "clear")]
+        model: Option<String>,
+
+        /// Clear the model (inherit Claude Code's default)
+        #[arg(long, conflicts_with = "model")]
+        clear: bool,
+
+        /// Restart the agent process immediately with the new model
+        #[arg(long)]
+        restart: bool,
+    },
+
     /// Check the health of the orchestrator service.
     ///
     /// Shows the service status and active agent count.
@@ -532,6 +576,9 @@ impl OrchestratorCommand {
             OrchestratorCommand::GetPolicy { id } => get_policy(client, id, json).await,
             OrchestratorCommand::SetPolicy { id, policy } => {
                 set_policy(client, id, policy, json).await
+            }
+            OrchestratorCommand::SetModel { id, name, model, clear, restart } => {
+                set_model_cmd(client, id.as_deref(), name.as_deref(), model.as_deref(), *clear, *restart, json).await
             }
             OrchestratorCommand::Health => orchestrator_health(client, json).await,
             OrchestratorCommand::ListApprovals { agent_id, status } => {
@@ -1032,6 +1079,67 @@ async fn set_policy(
         println!("{}", "Policy updated successfully!".green().bold());
         println!();
         display_policy(&updated);
+    }
+
+    Ok(())
+}
+
+// -- Model --
+
+#[allow(clippy::too_many_arguments)]
+async fn set_model_cmd(
+    client: &OrchestratorClient,
+    id: Option<&str>,
+    name: Option<&str>,
+    model: Option<&str>,
+    clear: bool,
+    restart: bool,
+    json: bool,
+) -> Result<()> {
+    // Resolve agent ID
+    let agent_id = match (id, name) {
+        (Some(agent_id), _) => parse_uuid(agent_id)?,
+        (_, Some(agent_name)) => resolve_agent_id(client, None, Some(agent_name)).await?,
+        (None, None) => bail!("Either an agent ID or --name must be provided."),
+    };
+
+    // Resolve model value: --clear sets to None, otherwise use the provided model
+    let resolved_model = if clear {
+        None
+    } else {
+        match model {
+            Some(m) => Some(m.to_string()),
+            None => bail!("Either a model name or --clear must be provided."),
+        }
+    };
+
+    let agent = client
+        .set_model(&agent_id, resolved_model.clone(), restart)
+        .await
+        .context("Failed to set agent model")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&agent)?);
+    } else {
+        let model_display = agent
+            .config
+            .model
+            .as_deref()
+            .unwrap_or("(default)");
+        println!(
+            "{}",
+            format!(
+                "Model updated for agent '{}' ({}): {}",
+                agent.name, agent.id, model_display
+            )
+            .green()
+            .bold()
+        );
+        if restart {
+            println!("{}", "Agent restarted with new model.".cyan());
+        } else {
+            println!("{}", "Model will take effect on next agent restart.".yellow());
+        }
     }
 
     Ok(())
@@ -2070,5 +2178,138 @@ mod tests {
         } else {
             panic!("Expected CreateWorkflow variant");
         }
+    }
+
+    #[test]
+    fn test_set_model_by_id() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "set-model",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--model",
+            "opus",
+            "--restart",
+        ])
+        .expect("Should parse set-model with ID");
+
+        if let OrchestratorCommand::SetModel { id, name, model, clear, restart } = cli.command {
+            assert_eq!(id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
+            assert_eq!(name, None);
+            assert_eq!(model, Some("opus".to_string()));
+            assert!(!clear);
+            assert!(restart);
+        } else {
+            panic!("Expected SetModel variant");
+        }
+    }
+
+    #[test]
+    fn test_set_model_by_name() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "set-model",
+            "--name",
+            "worker",
+            "--model",
+            "sonnet",
+        ])
+        .expect("Should parse set-model with --name");
+
+        if let OrchestratorCommand::SetModel { id, name, model, restart, .. } = cli.command {
+            assert_eq!(id, None);
+            assert_eq!(name, Some("worker".to_string()));
+            assert_eq!(model, Some("sonnet".to_string()));
+            assert!(!restart);
+        } else {
+            panic!("Expected SetModel variant");
+        }
+    }
+
+    #[test]
+    fn test_set_model_clear() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "set-model",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--clear",
+        ])
+        .expect("Should parse set-model with --clear");
+
+        if let OrchestratorCommand::SetModel { id, model, clear, .. } = cli.command {
+            assert_eq!(id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
+            assert_eq!(model, None);
+            assert!(clear);
+        } else {
+            panic!("Expected SetModel variant");
+        }
+    }
+
+    #[test]
+    fn test_set_model_clear_and_model_conflict() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let result = Cli::try_parse_from([
+            "test",
+            "set-model",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--model",
+            "opus",
+            "--clear",
+        ]);
+
+        assert!(result.is_err(), "--clear and --model should conflict");
+    }
+
+    #[test]
+    fn test_set_model_id_and_name_conflict() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let result = Cli::try_parse_from([
+            "test",
+            "set-model",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--name",
+            "worker",
+            "--model",
+            "opus",
+        ]);
+
+        assert!(result.is_err(), "ID and --name should conflict");
     }
 }

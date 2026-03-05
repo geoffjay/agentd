@@ -108,13 +108,14 @@ impl AgentStorage {
         let result = sqlx::query(
             r#"
             UPDATE agents
-            SET status = ?, tmux_session = ?, tool_policy = ?, updated_at = ?
+            SET status = ?, tmux_session = ?, tool_policy = ?, model = ?, updated_at = ?
             WHERE id = ?
             "#,
         )
         .bind(agent.status.to_string())
         .bind(agent.tmux_session.as_deref())
         .bind(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default())
+        .bind(agent.config.model.as_deref())
         .bind(agent.updated_at.to_rfc3339())
         .bind(agent.id.to_string())
         .execute(&self.pool)
@@ -318,5 +319,49 @@ mod tests {
 
         let all = storage.list(None).await.unwrap();
         assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_update_persists_model() {
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("model-test");
+        assert_eq!(agent.config.model, None);
+
+        storage.add(&agent).await.unwrap();
+
+        // Set model and update
+        agent.config.model = Some("opus".to_string());
+        agent.updated_at = chrono::Utc::now();
+        storage.update(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.model, Some("opus".to_string()));
+
+        // Change model
+        agent.config.model = Some("sonnet".to_string());
+        agent.updated_at = chrono::Utc::now();
+        storage.update(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.model, Some("sonnet".to_string()));
+
+        // Clear model
+        agent.config.model = None;
+        agent.updated_at = chrono::Utc::now();
+        storage.update(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.model, None);
+    }
+
+    #[tokio::test]
+    async fn test_add_with_model() {
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("model-agent");
+        agent.config.model = Some("haiku".to_string());
+
+        storage.add(&agent).await.unwrap();
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.model, Some("haiku".to_string()));
     }
 }

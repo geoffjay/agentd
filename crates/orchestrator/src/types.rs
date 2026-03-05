@@ -223,6 +223,18 @@ pub use agentd_common::types::{
 // Re-export shared HealthResponse from agentd-common.
 pub use agentd_common::types::HealthResponse;
 
+/// Request body for PUT /agents/{id}/model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetModelRequest {
+    /// Model to use (e.g. "sonnet", "opus", "haiku", "claude-sonnet-4-6").
+    /// Use `null` to clear the model and inherit Claude Code's default.
+    pub model: Option<String>,
+    /// If true, restart the agent process immediately with the new model.
+    /// If false (default), the model change takes effect on next restart.
+    #[serde(default)]
+    pub restart: bool,
+}
+
 /// Request body for POST /agents/{id}/message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendMessageRequest {
@@ -482,6 +494,36 @@ mod tests {
 
         let deserialized: CreateAgentRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.model, Some("sonnet".to_string()));
+    }
+
+    #[test]
+    fn test_set_model_request_serialization() {
+        let request = SetModelRequest { model: Some("opus".to_string()), restart: true };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"model\":\"opus\""));
+        assert!(json.contains("\"restart\":true"));
+
+        let deserialized: SetModelRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.model, Some("opus".to_string()));
+        assert!(deserialized.restart);
+    }
+
+    #[test]
+    fn test_set_model_request_restart_defaults_false() {
+        let json = r#"{"model":"sonnet"}"#;
+        let request: SetModelRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.model, Some("sonnet".to_string()));
+        assert!(!request.restart);
+    }
+
+    #[test]
+    fn test_set_model_request_clear_model() {
+        let request = SetModelRequest { model: None, restart: false };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"model\":null"));
+
+        let deserialized: SetModelRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.model, None);
     }
 
     #[test]
