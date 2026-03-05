@@ -11,6 +11,12 @@ export interface LayoutContextValue {
   toggleSidebar: () => void
   /** Explicitly set sidebar open/closed */
   setSidebarOpen: (open: boolean) => void
+  /** Whether the global search palette is open */
+  searchOpen: boolean
+  /** Open the global search palette */
+  openSearch: () => void
+  /** Close the global search palette */
+  closeSearch: () => void
 }
 
 export const LayoutContext = createContext<LayoutContextValue | null>(null)

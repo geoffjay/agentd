@@ -1,0 +1,6 @@
+export { SearchPalette } from './SearchPalette'
+export { SearchResults, RecentSearches } from './SearchResults'
+export { SearchResultItem } from './SearchResultItem'
+export type { SearchResultItemProps } from './SearchResultItem'
+export type { SearchResultsProps } from './SearchResults'
+export type { SearchPaletteProps } from './SearchPalette'

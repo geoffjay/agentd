@@ -2,8 +2,10 @@
  * AppShell — root layout wrapper.
  *
  * Manages sidebar open/closed state (persisted to localStorage),
- * provides LayoutContext to all children, and handles Ctrl+B
- * keyboard shortcut to toggle the sidebar.
+ * global search palette visibility, provides LayoutContext to all
+ * children, and handles keyboard shortcuts:
+ *   - Ctrl+B: toggle sidebar
+ *   - Ctrl+K / Cmd+K: open search palette
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -12,6 +14,7 @@ import { LayoutContext } from './context'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 import { ContentArea } from './ContentArea'
+import { SearchPalette } from '@/components/search/SearchPalette'
 
 const STORAGE_KEY = 'agentd:sidebar:open'
 
@@ -27,6 +30,7 @@ function readPersistedSidebarState(): boolean {
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpenState] = useState<boolean>(readPersistedSidebarState)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const setSidebarOpen = useCallback((open: boolean) => {
     setSidebarOpenState(open)
@@ -41,12 +45,19 @@ export function AppShell() {
     setSidebarOpen(!sidebarOpen)
   }, [sidebarOpen, setSidebarOpen])
 
-  // Ctrl+B to toggle sidebar
+  const openSearch = useCallback(() => setSearchOpen(true), [])
+  const closeSearch = useCallback(() => setSearchOpen(false), [])
+
+  // Ctrl+B to toggle sidebar; Ctrl+K / Cmd+K to open search
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault()
         setSidebarOpen(!sidebarOpen)
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchOpen(true)
       }
     }
     document.addEventListener('keydown', handleKeyDown)
@@ -54,13 +65,16 @@ export function AppShell() {
   }, [sidebarOpen, setSidebarOpen])
 
   return (
-    <LayoutContext.Provider value={{ sidebarOpen, setSidebarOpen, toggleSidebar }}>
+    <LayoutContext.Provider
+      value={{ sidebarOpen, setSidebarOpen, toggleSidebar, searchOpen, openSearch, closeSearch }}
+    >
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
         <Header />
         <Sidebar />
         <ContentArea>
           <Outlet />
         </ContentArea>
+        <SearchPalette isOpen={searchOpen} onClose={closeSearch} />
       </div>
     </LayoutContext.Provider>
   )
