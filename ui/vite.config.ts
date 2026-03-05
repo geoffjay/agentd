@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => {
         '@/types': path.resolve(__dirname, './src/types'),
         '@/utils': path.resolve(__dirname, './src/utils'),
         '@/stores': path.resolve(__dirname, './src/stores'),
+        '@/test': path.resolve(__dirname, './src/test'),
       },
     },
     server: {
@@ -53,6 +54,20 @@ export default defineConfig(({ mode }) => {
       coverage: {
         provider: 'v8',
         reporter: ['text', 'json', 'html'],
+        // Exclude test infrastructure, config, and generated files
+        exclude: [
+          'src/test/**',
+          'src/main.tsx',
+          'src/types/env.d.ts',
+          '**/*.config.*',
+          '**/index.ts',
+        ],
+        thresholds: {
+          lines: 60,
+          functions: 60,
+          branches: 50,
+          statements: 60,
+        },
       },
     },
   }

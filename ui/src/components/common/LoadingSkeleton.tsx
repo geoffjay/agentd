@@ -20,6 +20,7 @@ export function Skeleton({ className = '' }: SkeletonProps) {
 export function CardSkeleton() {
   return (
     <div
+      role="status"
       aria-busy="true"
       aria-label="Loading…"
       className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
