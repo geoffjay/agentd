@@ -247,11 +247,50 @@ pub async fn apply_agent_file(
             let result = serde_json::json!({
                 "dry_run": true,
                 "valid": true,
-                "agents": [&tmpl.name],
+                "summary": {
+                    "agents_count": 1,
+                    "workflows_count": 0,
+                },
+                "agents": [{
+                    "name": &tmpl.name,
+                    "working_dir": &tmpl.working_dir,
+                    "shell": &tmpl.shell,
+                    "interactive": tmpl.interactive,
+                    "worktree": tmpl.worktree,
+                    "prompt": &tmpl.prompt,
+                    "system_prompt": &tmpl.system_prompt,
+                    "model": &tmpl.model,
+                    "tool_policy": serde_json::to_value(&tmpl.tool_policy).unwrap_or_default(),
+                    "env": &tmpl.env,
+                }],
+                "workflows": [],
+                "order": ["agents"],
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
-            println!("  {} agent '{}'", "ok".green(), tmpl.name);
+            println!("{}", "Dry run passed:".green().bold());
+            println!();
+            println!("{}", "Agents to create:".blue().bold());
+            println!("  {} {}", "→".green(), tmpl.name.bold());
+            println!("    working_dir: {}", tmpl.working_dir);
+            println!("    shell: {}", tmpl.shell);
+            if tmpl.worktree {
+                println!("    worktree: {}", tmpl.worktree);
+            }
+            if let Some(ref model) = tmpl.model {
+                println!("    model: {}", model);
+            }
+            if let Some(ref prompt) = tmpl.prompt {
+                println!("    prompt: {}", prompt.chars().take(60).collect::<String>());
+            }
+            if let Some(ref system_prompt) = tmpl.system_prompt {
+                println!("    system_prompt: {}", system_prompt.chars().take(60).collect::<String>());
+            }
+            if !tmpl.env.is_empty() {
+                println!("    env: {} variables", tmpl.env.len());
+            }
+            println!();
+            println!("{} Would create 1 agent(s) and 0 workflow(s)", "→".yellow());
         }
         return Ok(());
     }
@@ -293,7 +332,40 @@ pub async fn apply_workflow_file(
     }
 
     if dry_run {
-        if !json {
+        if json {
+            let source_json = match &tmpl.source {
+                SourceTemplate::GithubIssues { owner, repo, labels, state } => {
+                    serde_json::json!({
+                        "type": "github_issues",
+                        "owner": owner,
+                        "repo": repo,
+                        "labels": labels,
+                        "state": state,
+                    })
+                }
+            };
+            let result = serde_json::json!({
+                "dry_run": true,
+                "valid": true,
+                "summary": {
+                    "agents_count": 0,
+                    "workflows_count": 1,
+                },
+                "agents": [],
+                "workflows": [{
+                    "name": &tmpl.name,
+                    "agent": &tmpl.agent,
+                    "agent_id": agent.id.to_string(),
+                    "source": source_json,
+                    "poll_interval": tmpl.poll_interval,
+                    "enabled": tmpl.enabled,
+                    "tool_policy": tmpl.tool_policy.as_ref().map(|tp| serde_json::to_value(tp).unwrap_or_default()),
+                    "prompt_template": &prompt,
+                }],
+                "order": ["workflows"],
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else {
             println!("    {} (agent '{}' → {})", "valid".green(), tmpl.agent, agent.id);
         }
         return Ok(());
@@ -393,18 +465,118 @@ pub async fn apply_directory(
 
     if dry_run {
         if json {
+            // Build detailed JSON output with resolved configurations
+            let agents_json: Vec<serde_json::Value> = agent_templates
+                .iter()
+                .map(|(_, t)| {
+                    serde_json::json!({
+                        "name": t.name,
+                        "working_dir": t.working_dir,
+                        "shell": t.shell,
+                        "interactive": t.interactive,
+                        "worktree": t.worktree,
+                        "prompt": t.prompt,
+                        "system_prompt": t.system_prompt,
+                        "model": t.model,
+                        "tool_policy": serde_json::to_value(&t.tool_policy).unwrap_or_default(),
+                        "env": t.env,
+                    })
+                })
+                .collect();
+
+            let workflows_json: Vec<serde_json::Value> = workflow_templates
+                .iter()
+                .map(|(_, t)| {
+                    let source_json = match &t.source {
+                        SourceTemplate::GithubIssues { owner, repo, labels, state } => {
+                            serde_json::json!({
+                                "type": "github_issues",
+                                "owner": owner,
+                                "repo": repo,
+                                "labels": labels,
+                                "state": state,
+                            })
+                        }
+                    };
+                    serde_json::json!({
+                        "name": t.name,
+                        "agent": t.agent,
+                        "source": source_json,
+                        "poll_interval": t.poll_interval,
+                        "enabled": t.enabled,
+                        "tool_policy": t.tool_policy.as_ref().map(|tp| serde_json::to_value(tp).unwrap_or_default()),
+                        "prompt_template": t.prompt_template,
+                    })
+                })
+                .collect();
+
             let result = serde_json::json!({
                 "dry_run": true,
                 "valid": true,
-                "agents": agent_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
-                "workflows": workflow_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
+                "summary": {
+                    "agents_count": agent_templates.len(),
+                    "workflows_count": workflow_templates.len(),
+                },
+                "agents": agents_json,
+                "workflows": workflows_json,
+                "order": ["agents", "workflows"],
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
             println!();
+            println!("{}", "Dry run passed:".green().bold());
+            println!();
+
+            // Show agents that would be created
+            if !agent_templates.is_empty() {
+                println!("{}", "Agents to create:".blue().bold());
+                for (_, tmpl) in &agent_templates {
+                    println!("  {} {}", "→".green(), tmpl.name.bold());
+                    println!("    working_dir: {}", tmpl.working_dir);
+                    println!("    shell: {}", tmpl.shell);
+                    if tmpl.worktree {
+                        println!("    worktree: {}", tmpl.worktree);
+                    }
+                    if let Some(ref model) = tmpl.model {
+                        println!("    model: {}", model);
+                    }
+                    if let Some(ref prompt) = tmpl.prompt {
+                        println!("    prompt: {}", prompt.chars().take(60).collect::<String>());
+                    }
+                    if let Some(ref system_prompt) = tmpl.system_prompt {
+                        println!("    system_prompt: {}", system_prompt.chars().take(60).collect::<String>());
+                    }
+                    if !tmpl.env.is_empty() {
+                        println!("    env: {} variables", tmpl.env.len());
+                    }
+                    println!();
+                }
+            }
+
+            // Show workflows that would be created
+            if !workflow_templates.is_empty() {
+                println!("{}", "Workflows to create:".blue().bold());
+                for (_, tmpl) in &workflow_templates {
+                    println!("  {} {}", "→".green(), tmpl.name.bold());
+                    println!("    agent: {}", tmpl.agent);
+                    match &tmpl.source {
+                        SourceTemplate::GithubIssues { owner, repo, labels, state } => {
+                            println!("    source: github_issues ({}/{})", owner, repo);
+                            if !labels.is_empty() {
+                                println!("    labels: {}", labels.join(", "));
+                            }
+                            println!("    state: {}", state);
+                        }
+                    }
+                    println!("    poll_interval: {}s", tmpl.poll_interval);
+                    println!("    enabled: {}", tmpl.enabled);
+                    println!();
+                }
+            }
+
             println!(
-                "{} {} agent(s), {} workflow(s)",
-                "Dry run passed:".yellow(),
+                "{} Would create {} agent(s) and {} workflow(s)",
+                "→".yellow(),
                 agent_templates.len(),
                 workflow_templates.len()
             );
