@@ -782,4 +782,64 @@ state: closed
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn test_parse_agent_with_env() {
+        let yaml = r#"
+name: worker
+env:
+  ANTHROPIC_API_KEY: sk-ant-test123
+  ANTHROPIC_BASE_URL: https://example.com/api
+  MY_SECRET: top-secret
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.name, "worker");
+        assert_eq!(tmpl.env.get("ANTHROPIC_API_KEY"), Some(&"sk-ant-test123".to_string()));
+        assert_eq!(
+            tmpl.env.get("ANTHROPIC_BASE_URL"),
+            Some(&"https://example.com/api".to_string())
+        );
+        assert_eq!(tmpl.env.get("MY_SECRET"), Some(&"top-secret".to_string()));
+        assert_eq!(tmpl.env.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_agent_without_env_defaults_empty() {
+        let yaml = r#"name: minimal"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert!(tmpl.env.is_empty());
+    }
+
+    #[test]
+    fn test_parse_agent_with_empty_env_section() {
+        let yaml = r#"
+name: worker
+env: {}
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert!(tmpl.env.is_empty());
+    }
+
+    #[test]
+    fn test_parse_agent_env_combined_with_other_fields() {
+        let yaml = r#"
+name: planner
+model: opus
+shell: bash
+worktree: true
+env:
+  API_KEY: abc123
+  BASE_URL: https://api.example.com
+tool_policy:
+  mode: allow_all
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.name, "planner");
+        assert_eq!(tmpl.model, Some("opus".to_string()));
+        assert_eq!(tmpl.shell, "bash");
+        assert!(tmpl.worktree);
+        assert_eq!(tmpl.env.get("API_KEY"), Some(&"abc123".to_string()));
+        assert_eq!(tmpl.env.get("BASE_URL"), Some(&"https://api.example.com".to_string()));
+        assert_eq!(tmpl.tool_policy, ToolPolicy::AllowAll);
+    }
 }
