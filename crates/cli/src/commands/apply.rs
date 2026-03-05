@@ -754,10 +754,7 @@ state: closed
         assert!(matches!(detect_template_kind(agent_path).unwrap(), TemplateKind::Agent));
 
         let workflow_path = Path::new(".agentd/workflows/issue-worker.yml");
-        assert!(matches!(
-            detect_template_kind(workflow_path).unwrap(),
-            TemplateKind::Workflow
-        ));
+        assert!(matches!(detect_template_kind(workflow_path).unwrap(), TemplateKind::Workflow));
     }
 
     #[test]

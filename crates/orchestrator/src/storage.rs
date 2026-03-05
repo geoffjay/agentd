@@ -378,7 +378,10 @@ mod tests {
         let (storage, _tmp) = create_test_storage().await;
         let mut agent = test_agent("env-agent");
         agent.config.env.insert("ANTHROPIC_API_KEY".to_string(), "sk-test".to_string());
-        agent.config.env.insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
+        agent
+            .config
+            .env
+            .insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
 
         storage.add(&agent).await.unwrap();
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();

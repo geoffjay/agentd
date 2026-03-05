@@ -233,9 +233,7 @@ impl AgentManager {
 
         // Create a new tmux session.
         let session_name = format!("{}-{}", self.tmux.prefix(), agent.id);
-        if let Err(e) =
-            self.tmux.create_session(&session_name, &agent.config.working_dir, None)
-        {
+        if let Err(e) = self.tmux.create_session(&session_name, &agent.config.working_dir, None) {
             agent.status = AgentStatus::Failed;
             agent.updated_at = Utc::now();
             let _ = self.storage.update(&agent).await;
