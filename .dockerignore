@@ -1,0 +1,44 @@
+# Build artifacts
+target/
+**/target/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# CI
+.github/
+
+# Python tooling (docs only)
+.venv/
+__pycache__/
+*.pyc
+pyproject.toml
+uv.lock
+
+# Test artefacts
+*.profraw
+*.profdata
+tarpaulin.toml
+
+# Logs
+*.log
+
+# Local environment overrides
+.env
+.env.local
+
+# Compiled BAML
+baml_openapi/

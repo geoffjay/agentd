@@ -121,9 +121,11 @@ async fn main() -> anyhow::Result<()> {
 
     let app = create_router().merge(metrics_router).layer(agentd_common::server::trace_layer());
 
-    // Bind to address (use PORT env var, default 17005 for dev)
+    // Bind to address (use PORT env var, default 17005 for dev).
+    // HOST defaults to 127.0.0.1 (local dev); set to 0.0.0.0 for containers.
     let port = env::var("PORT").unwrap_or_else(|_| "17005".to_string());
-    let addr = format!("127.0.0.1:{port}");
+    let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Wrap API server listening on http://{}", addr);
 

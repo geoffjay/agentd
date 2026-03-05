@@ -296,6 +296,83 @@ cargo run -p cli -- orchestrator list-agents
 cargo run -p cli -- apply .agentd/
 ```
 
+## Docker
+
+All services ship as Docker images built from a single multi-stage `Dockerfile`.
+Each service has its own build target and is packaged separately in `docker-compose.yml`.
+
+### Quick Start
+
+```bash
+# Build and start all services (production config)
+docker compose up --build
+
+# Build and start with dev overrides (debug logging, text format)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+# Build a single image manually
+docker build --target notify -t agentd-notify .
+```
+
+### Services
+
+| Service | Image Target | Default Port | Volume |
+|---------|-------------|--------------|--------|
+| agentd-notify | `notify` | 17004 | `notify-data:/data` |
+| agentd-orchestrator | `orchestrator` | 17006 | `orchestrator-data:/data` |
+| agentd-ask | `ask` | 17001 | — |
+| agentd-wrap | `wrap` | 17005 | — |
+
+### Environment Variables (Docker)
+
+Each service reads the following variables (all have sensible defaults):
+
+| Variable | Services | Default | Description |
+|----------|----------|---------|-------------|
+| `HOST` | all | `0.0.0.0` | Bind address inside the container |
+| `PORT` | all | per-service | Port the service listens on |
+| `RUST_LOG` | all | `info` | Log level (`debug`, `info`, `warn`, `error`) |
+| `LOG_FORMAT` | all | `json` | Log format (`json` or `text`) |
+| `XDG_DATA_HOME` | notify, orchestrator | `/data` | SQLite database location |
+| `NOTIFY_SERVICE_URL` | ask | `http://notify:17004` | Notify service URL |
+| `WS_BASE_URL` | orchestrator | `ws://orchestrator:17006` | WebSocket base URL for agent callbacks |
+
+Override any variable in `docker-compose.yml` or via `-e` flags:
+
+```bash
+docker compose up -e RUST_LOG=debug -e PORT=18001
+```
+
+### Data Persistence
+
+`agentd-notify` and `agentd-orchestrator` store their SQLite databases in `/data`
+inside the container.  Named volumes are used so data survives container restarts:
+
+```yaml
+volumes:
+  notify-data:       # mounted at /data in the notify container
+  orchestrator-data: # mounted at /data in the orchestrator container
+```
+
+To reset a service's state, remove its volume:
+
+```bash
+docker compose down -v          # remove all volumes
+docker volume rm agentd_notify-data   # remove a single volume
+```
+
+### Health Checks
+
+Every service exposes a `GET /health` endpoint.  Docker polls it every 30 s with a
+5 s timeout (3 retries, 15 s start-up grace period).  The `ask` service waits for
+`notify` to be healthy before it starts.
+
+```bash
+# Check service health
+docker compose ps
+docker inspect --format '{{.State.Health.Status}}' agentd-notify-1
+```
+
 ## Configuration
 
 For the complete configuration reference including all environment variables, data storage paths, and plist/systemd customization, see the **[Configuration Guide](docs/public/configuration.md)**.
@@ -316,6 +393,7 @@ For the complete configuration reference including all environment variables, da
 - `RUST_LOG` — Log level filter (default: `info`)
 - `LOG_FORMAT` — Set to `json` for structured JSON output
 - `PORT` — Override the default port for any service
+- `HOST` — Bind address for any service (default: `127.0.0.1` locally, `0.0.0.0` in Docker)
 - `ORCHESTRATOR_SERVICE_URL` — Override orchestrator URL for CLI (default: `http://localhost:7006`)
 
 ## Project Status
@@ -348,6 +426,7 @@ For the complete configuration reference including all environment variables, da
 - ✅ Shell completions (bash, zsh, fish, PowerShell)
 - ✅ Structured JSON logging (`LOG_FORMAT=json`)
 - ✅ GitHub Actions CI/CD pipeline
+- ✅ Docker multi-stage images with docker-compose
 
 **In Progress:**
 - 🔄 Hook service
