@@ -33,7 +33,7 @@ use crate::scheduler::types::{
 };
 use crate::types::{
     AgentResponse, ApprovalActionRequest, CreateAgentRequest, HealthResponse, PaginatedResponse,
-    PendingApproval, SendMessageRequest, SendMessageResponse, ToolPolicy,
+    PendingApproval, SendMessageRequest, SendMessageResponse, SetModelRequest, ToolPolicy,
 };
 
 /// Typed HTTP client for the orchestrator service.
@@ -119,6 +119,20 @@ impl OrchestratorClient {
     /// Update the tool policy for an agent.
     pub async fn update_agent_policy(&self, id: &Uuid, policy: &ToolPolicy) -> Result<ToolPolicy> {
         self.put(&format!("/agents/{}/policy", id), policy).await
+    }
+
+    /// Set or change the model for an agent.
+    ///
+    /// If `restart` is true and the agent is running, the agent process will
+    /// be killed and re-launched with the new model.
+    pub async fn set_model(
+        &self,
+        id: &Uuid,
+        model: Option<String>,
+        restart: bool,
+    ) -> Result<AgentResponse> {
+        let request = SetModelRequest { model, restart };
+        self.put(&format!("/agents/{}/model", id), &request).await
     }
 
     // -- Approval operations --
