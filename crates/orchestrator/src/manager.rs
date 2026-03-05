@@ -449,11 +449,7 @@ mod tests {
     fn test_build_claude_command_with_env_vars_and_sudo() {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test".to_string());
-        let config = AgentConfig {
-            user: Some("deploy".to_string()),
-            env,
-            ..base_config()
-        };
+        let config = AgentConfig { user: Some("deploy".to_string()), env, ..base_config() };
         let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
 
         // For sudo, env vars are injected via `env` to cross the sudo boundary
