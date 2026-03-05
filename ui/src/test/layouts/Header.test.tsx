@@ -14,6 +14,9 @@ function makeContext(overrides: Partial<LayoutContextValue> = {}): LayoutContext
     sidebarOpen: true,
     setSidebarOpen: vi.fn(),
     toggleSidebar: vi.fn(),
+    searchOpen: false,
+    openSearch: vi.fn(),
+    closeSearch: vi.fn(),
     ...overrides,
   }
 }
@@ -83,8 +86,20 @@ describe('Header', () => {
     expect(screen.getByText('99+')).toBeInTheDocument()
   })
 
-  it('search input has an accessible label', () => {
+  it('renders the global search button', () => {
     renderHeader()
-    expect(screen.getByRole('searchbox', { name: /global search/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /global search/i })).toBeInTheDocument()
+  })
+
+  it('calls openSearch when the search button is clicked', () => {
+    const { ctx } = renderHeader()
+    fireEvent.click(screen.getByRole('button', { name: /global search/i }))
+    expect(ctx.openSearch).toHaveBeenCalledOnce()
+  })
+
+  it('search button has Ctrl+K keyboard shortcut hint', () => {
+    renderHeader()
+    const btn = screen.getByRole('button', { name: /global search/i })
+    expect(btn).toHaveAttribute('aria-keyshortcuts', 'Control+k Meta+k')
   })
 })

@@ -14,6 +14,9 @@ function makeContext(overrides: Partial<LayoutContextValue> = {}): LayoutContext
     sidebarOpen: true,
     setSidebarOpen: vi.fn(),
     toggleSidebar: vi.fn(),
+    searchOpen: false,
+    openSearch: vi.fn(),
+    closeSearch: vi.fn(),
     ...overrides,
   }
 }

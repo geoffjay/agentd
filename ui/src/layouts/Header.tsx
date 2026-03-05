@@ -1,10 +1,12 @@
 /**
  * Header — fixed top bar with sidebar toggle, logo, search, notifications, and settings.
+ *
+ * The search button opens the global SearchPalette (managed by AppShell).
+ * Ctrl+K / Cmd+K is handled at the AppShell level.
  */
 
-import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, Menu, Search, Settings, X } from 'lucide-react'
+import { Bell, Menu, Search, Settings } from 'lucide-react'
 import { useLayout } from './context'
 
 // ---------------------------------------------------------------------------
@@ -28,71 +30,26 @@ function NotificationBadge({ count }: NotificationBadgeProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Search bar
+// Search trigger button
 // ---------------------------------------------------------------------------
 
-interface SearchBarProps {
-  /** Whether the search bar is in collapsed (icon-only) mode */
-  collapsed?: boolean
-}
-
-function SearchBar({ collapsed = false }: SearchBarProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [expanded, setExpanded] = useState(false)
-
-  // Ctrl+K shortcut
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault()
-        inputRef.current?.focus()
-        setExpanded(true)
-      }
-      if (e.key === 'Escape') {
-        inputRef.current?.blur()
-        setExpanded(false)
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  if (collapsed && !expanded) {
-    return (
-      <button
-        type="button"
-        aria-label="Open search"
-        onClick={() => setExpanded(true)}
-        className="rounded-md p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
-      >
-        <Search size={20} />
-      </button>
-    )
-  }
+function SearchTrigger() {
+  const { openSearch } = useLayout()
 
   return (
-    <div className="relative flex items-center">
-      <Search size={16} className="absolute left-3 text-gray-400" aria-hidden="true" />
-      <input
-        ref={inputRef}
-        type="search"
-        placeholder="Search… (Ctrl+K)"
-        aria-label="Global search"
-        className="w-48 rounded-md border border-gray-700 bg-gray-800 py-1.5 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-500 transition-all focus:w-72 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 md:w-64"
-        onBlur={() => setExpanded(false)}
-        autoFocus={expanded}
-      />
-      {expanded && (
-        <button
-          type="button"
-          aria-label="Close search"
-          onClick={() => setExpanded(false)}
-          className="absolute right-2 text-gray-400 hover:text-white"
-        >
-          <X size={14} />
-        </button>
-      )}
-    </div>
+    <button
+      type="button"
+      aria-label="Global search"
+      aria-keyshortcuts="Control+k Meta+k"
+      onClick={openSearch}
+      className="flex items-center gap-2 rounded-md border border-gray-700 bg-gray-800 py-1.5 pl-3 pr-4 text-sm text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-300"
+    >
+      <Search size={14} aria-hidden="true" />
+      <span className="hidden md:inline">Search…</span>
+      <kbd className="hidden rounded border border-gray-600 px-1 py-0.5 text-[10px] text-gray-500 md:inline">
+        Ctrl+K
+      </kbd>
+    </button>
   )
 }
 
@@ -133,13 +90,8 @@ export function Header({ unreadCount = 0 }: HeaderProps) {
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Search — collapses to icon on small screens */}
-      <div className="hidden sm:block">
-        <SearchBar />
-      </div>
-      <div className="sm:hidden">
-        <SearchBar collapsed />
-      </div>
+      {/* Search trigger */}
+      <SearchTrigger />
 
       {/* Notification bell */}
       <Link
