@@ -578,7 +578,16 @@ impl OrchestratorCommand {
                 set_policy(client, id, policy, json).await
             }
             OrchestratorCommand::SetModel { id, name, model, clear, restart } => {
-                set_model_cmd(client, id.as_deref(), name.as_deref(), model.as_deref(), *clear, *restart, json).await
+                set_model_cmd(
+                    client,
+                    id.as_deref(),
+                    name.as_deref(),
+                    model.as_deref(),
+                    *clear,
+                    *restart,
+                    json,
+                )
+                .await
             }
             OrchestratorCommand::Health => orchestrator_health(client, json).await,
             OrchestratorCommand::ListApprovals { agent_id, status } => {
@@ -707,6 +716,7 @@ async fn create_agent(
         system_prompt: system_prompt.map(|s| s.to_string()),
         tool_policy,
         model: model.map(|s| s.to_string()),
+        env: Default::default(),
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -1121,19 +1131,12 @@ async fn set_model_cmd(
     if json {
         println!("{}", serde_json::to_string_pretty(&agent)?);
     } else {
-        let model_display = agent
-            .config
-            .model
-            .as_deref()
-            .unwrap_or("(default)");
+        let model_display = agent.config.model.as_deref().unwrap_or("(default)");
         println!(
             "{}",
-            format!(
-                "Model updated for agent '{}' ({}): {}",
-                agent.name, agent.id, model_display
-            )
-            .green()
-            .bold()
+            format!("Model updated for agent '{}' ({}): {}", agent.name, agent.id, model_display)
+                .green()
+                .bold()
         );
         if restart {
             println!("{}", "Agent restarted with new model.".cyan());
@@ -1689,6 +1692,7 @@ mod tests {
                 system_prompt: None,
                 tool_policy: Default::default(),
                 model: None,
+                env: Default::default(),
             },
             tmux_session: Some("agentd-orch-abc123".to_string()),
             created_at: Utc::now(),
@@ -2218,15 +2222,9 @@ mod tests {
             command: OrchestratorCommand,
         }
 
-        let cli = Cli::try_parse_from([
-            "test",
-            "set-model",
-            "--name",
-            "worker",
-            "--model",
-            "sonnet",
-        ])
-        .expect("Should parse set-model with --name");
+        let cli =
+            Cli::try_parse_from(["test", "set-model", "--name", "worker", "--model", "sonnet"])
+                .expect("Should parse set-model with --name");
 
         if let OrchestratorCommand::SetModel { id, name, model, restart, .. } = cli.command {
             assert_eq!(id, None);

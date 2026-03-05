@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Status of an agent managed by the orchestrator.
@@ -121,6 +122,10 @@ pub struct AgentConfig {
     /// or full model names (claude-sonnet-4-6).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Environment variables to set when launching the agent.
+    /// Commonly used for ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub env: HashMap<String, String>,
 }
 
 fn default_shell() -> String {
@@ -185,6 +190,10 @@ pub struct CreateAgentRequest {
     /// or full model names (claude-sonnet-4-6).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Environment variables to set when launching the agent.
+    /// Commonly used for ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub env: HashMap<String, String>,
 }
 
 /// Response body for agent endpoints.
@@ -202,11 +211,15 @@ pub struct AgentResponse {
 
 impl From<Agent> for AgentResponse {
     fn from(agent: Agent) -> Self {
+        // Redact env values — keys are shown, but values are replaced with "***"
+        // to avoid leaking secrets (API keys, tokens) via the REST API.
+        let mut config = agent.config;
+        config.env = config.env.into_keys().map(|k| (k, "***".to_string())).collect();
         Self {
             id: agent.id,
             name: agent.name,
             status: agent.status,
-            config: agent.config,
+            config,
             tmux_session: agent.tmux_session,
             created_at: agent.created_at,
             updated_at: agent.updated_at,
@@ -450,6 +463,7 @@ mod tests {
             system_prompt: None,
             tool_policy: ToolPolicy::default(),
             model: Some("opus".to_string()),
+            env: HashMap::new(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -470,6 +484,7 @@ mod tests {
             system_prompt: None,
             tool_policy: ToolPolicy::default(),
             model: None,
+            env: HashMap::new(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -488,12 +503,126 @@ mod tests {
             system_prompt: None,
             tool_policy: ToolPolicy::default(),
             model: Some("sonnet".to_string()),
+            env: HashMap::new(),
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
 
         let deserialized: CreateAgentRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.model, Some("sonnet".to_string()));
+    }
+
+    #[test]
+    fn test_agent_config_env_serialization() {
+        let mut env = HashMap::new();
+        env.insert("ANTHROPIC_API_KEY".to_string(), "sk-test-key".to_string());
+        env.insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
+
+        let config = AgentConfig {
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: None,
+            env: env.clone(),
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("ANTHROPIC_API_KEY"));
+        assert!(json.contains("sk-test-key"));
+
+        let deserialized: AgentConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.env, env);
+    }
+
+    #[test]
+    fn test_agent_config_env_empty_omitted() {
+        let config = AgentConfig {
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: None,
+            env: HashMap::new(),
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("\"env\""));
+
+        // Deserializing without env field gives empty map
+        let deserialized: AgentConfig = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.env.is_empty());
+    }
+
+    #[test]
+    fn test_agent_config_env_default_from_missing_field() {
+        // Backward compatibility: old JSON without env field should deserialize to empty map
+        let json = r#"{"working_dir":"/tmp","shell":"zsh","tool_policy":{"mode":"allow_all"}}"#;
+        let config: AgentConfig = serde_json::from_str(json).unwrap();
+        assert!(config.env.is_empty());
+    }
+
+    #[test]
+    fn test_create_agent_request_env_field() {
+        let mut env = HashMap::new();
+        env.insert("ANTHROPIC_API_KEY".to_string(), "sk-test".to_string());
+
+        let request = CreateAgentRequest {
+            name: "test".to_string(),
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: None,
+            env: env.clone(),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("ANTHROPIC_API_KEY"));
+
+        let deserialized: CreateAgentRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.env, env);
+    }
+
+    #[test]
+    fn test_agent_response_env_values_redacted() {
+        let mut env = HashMap::new();
+        env.insert("ANTHROPIC_API_KEY".to_string(), "sk-secret-key".to_string());
+        env.insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
+
+        let config = AgentConfig {
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: None,
+            env,
+        };
+        let agent = Agent::new("test".to_string(), config);
+        let response = AgentResponse::from(agent);
+
+        // Keys should be present, but values should be redacted
+        assert_eq!(response.config.env.get("ANTHROPIC_API_KEY"), Some(&"***".to_string()));
+        assert_eq!(response.config.env.get("ANTHROPIC_BASE_URL"), Some(&"***".to_string()));
+        // Secret value must not appear
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(!json.contains("sk-secret-key"));
     }
 
     #[test]
