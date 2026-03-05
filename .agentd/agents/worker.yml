@@ -1,7 +1,5 @@
 # Worker agent — receives GitHub issues as tasks and implements them.
 #
-# Replaces: agent creation portion of scripts/launch-worker.sh
-#
 # Usage:
 #   agent apply .agentd/agents/worker.yml
 #   agent apply .agentd/  # creates agent + workflow together
@@ -10,6 +8,7 @@ name: worker
 working_dir: "."
 shell: /bin/zsh
 worktree: false
+model: claude-sonnet-4-6
 
 system_prompt: |
   You are a worker agent for the agentd project. You will receive GitHub issues

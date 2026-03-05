@@ -286,7 +286,16 @@ async fn main() -> Result<()> {
                 commands::apply::apply_directory(&client, &path, dry_run, wait_timeout, cli.json)
                     .await?;
             } else {
-                commands::apply::apply_workflow_file(&client, &path, dry_run, cli.json).await?;
+                match commands::apply::detect_template_kind(&path)? {
+                    commands::apply::TemplateKind::Agent => {
+                        commands::apply::apply_agent_file(&client, &path, dry_run, cli.json)
+                            .await?;
+                    }
+                    commands::apply::TemplateKind::Workflow => {
+                        commands::apply::apply_workflow_file(&client, &path, dry_run, cli.json)
+                            .await?;
+                    }
+                }
             }
         }
         Commands::Teardown { path, dry_run } => {

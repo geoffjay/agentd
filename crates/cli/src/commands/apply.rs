@@ -93,6 +93,45 @@ fn default_state() -> String {
     "open".to_string()
 }
 
+/// Detected template type for a single YAML file.
+pub enum TemplateKind {
+    Agent,
+    Workflow,
+}
+
+/// Determine whether a YAML file is an agent or workflow template.
+///
+/// Uses two heuristics:
+/// 1. If the file lives under an `agents/` directory, it's an agent.
+/// 2. Otherwise, try parsing as an agent template first (which has no required
+///    `source` field), then fall back to workflow.
+pub fn detect_template_kind(path: &Path) -> Result<TemplateKind> {
+    // Heuristic: parent directory name
+    if let Some(parent) = path.parent().and_then(|p| p.file_name()) {
+        if parent == "agents" {
+            return Ok(TemplateKind::Agent);
+        }
+        if parent == "workflows" {
+            return Ok(TemplateKind::Workflow);
+        }
+    }
+
+    // Fallback: try parsing as each type
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read: {}", path.display()))?;
+    if serde_yaml::from_str::<AgentTemplate>(&content).is_ok() {
+        // Agent templates don't require `source`, so also check that the file
+        // does NOT contain the workflow-specific `source` key to avoid ambiguity.
+        if serde_yaml::from_str::<WorkflowTemplate>(&content).is_ok() {
+            return Ok(TemplateKind::Workflow);
+        }
+        return Ok(TemplateKind::Agent);
+    }
+
+    // Default to workflow (will produce a useful parse error if neither works)
+    Ok(TemplateKind::Workflow)
+}
+
 // ── Parsing helpers ──────────────────────────────────────────────────
 
 fn parse_agent_template(path: &Path) -> Result<AgentTemplate> {
@@ -187,6 +226,33 @@ async fn wait_for_agent_running(
         }
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     }
+}
+
+// ── Apply: single agent file ─────────────────────────────────────────
+
+pub async fn apply_agent_file(
+    client: &OrchestratorClient,
+    path: &Path,
+    dry_run: bool,
+    json: bool,
+) -> Result<()> {
+    let tmpl = parse_agent_template(path)?;
+
+    if dry_run {
+        if json {
+            let result = serde_json::json!({
+                "dry_run": true,
+                "valid": true,
+                "agents": [&tmpl.name],
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else {
+            println!("  {} agent '{}'", "ok".green(), tmpl.name);
+        }
+        return Ok(());
+    }
+
+    apply_agent(client, &tmpl, path, json).await
 }
 
 // ── Apply: single workflow file ──────────────────────────────────────
@@ -675,5 +741,43 @@ state: closed
                 assert_eq!(state, "closed");
             }
         }
+    }
+
+    #[test]
+    fn test_detect_template_kind_by_parent_dir() {
+        let agent_path = Path::new(".agentd/agents/worker.yml");
+        assert!(matches!(detect_template_kind(agent_path).unwrap(), TemplateKind::Agent));
+
+        let workflow_path = Path::new(".agentd/workflows/issue-worker.yml");
+        assert!(matches!(
+            detect_template_kind(workflow_path).unwrap(),
+            TemplateKind::Workflow
+        ));
+    }
+
+    #[test]
+    fn test_detect_template_kind_by_content() {
+        use std::io::Write;
+
+        let dir = std::env::temp_dir().join("agentd_apply_test");
+        let _ = std::fs::create_dir_all(&dir);
+
+        // Agent template (no `source` key)
+        let agent_file = dir.join("planner.yml");
+        let mut f = std::fs::File::create(&agent_file).unwrap();
+        writeln!(f, "name: planner\nmodel: opus\nprompt: plan things").unwrap();
+        assert!(matches!(detect_template_kind(&agent_file).unwrap(), TemplateKind::Agent));
+
+        // Workflow template (has `source` and `agent` keys)
+        let wf_file = dir.join("issue-worker.yml");
+        let mut f = std::fs::File::create(&wf_file).unwrap();
+        writeln!(
+            f,
+            "name: wf\nagent: worker\nsource:\n  type: github_issues\n  owner: o\n  repo: r\nprompt_template: hi"
+        )
+        .unwrap();
+        assert!(matches!(detect_template_kind(&wf_file).unwrap(), TemplateKind::Workflow));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

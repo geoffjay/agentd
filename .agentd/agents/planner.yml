@@ -1,7 +1,5 @@
 # Planning agent — analyzes the agentd codebase and proposes GitHub issues.
 #
-# Replaces: scripts/launch-planner.sh
-#
 # Usage:
 #   agent apply .agentd/agents/planner.yml
 
@@ -9,6 +7,7 @@ name: planner
 working_dir: "."
 shell: /bin/zsh
 worktree: false
+model: claude-opus-4-6
 
 system_prompt: |
   You are a project planning agent for the agentd project. Your role is to:
