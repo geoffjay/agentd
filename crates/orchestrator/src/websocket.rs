@@ -150,8 +150,7 @@ pub async fn ws_handler(
         return axum::http::StatusCode::CONFLICT.into_response();
     }
     info!(%agent_id, "WebSocket upgrade request");
-    ws.on_upgrade(move |socket| handle_agent_socket(socket, agent_id, registry))
-        .into_response()
+    ws.on_upgrade(move |socket| handle_agent_socket(socket, agent_id, registry)).into_response()
 }
 
 async fn handle_agent_socket(socket: WebSocket, agent_id: Uuid, registry: ConnectionRegistry) {

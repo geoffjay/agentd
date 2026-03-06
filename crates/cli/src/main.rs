@@ -316,8 +316,51 @@ async fn main() -> Result<()> {
             // TODO: Start hook daemon
         }
         Commands::Monitor => {
-            println!("Starting monitor daemon...");
-            // TODO: Start monitor daemon
+            use monitor::{
+                api::{create_router_with_tracing, ApiState},
+                config::MonitorConfig,
+                metrics_collector,
+                state::AppState,
+            };
+            use std::net::SocketAddr;
+
+            let config = MonitorConfig::from_env();
+            let port = config.port;
+            let interval_secs = config.collection_interval_secs;
+
+            println!("Starting agentd-monitor daemon on port {port}...");
+
+            let app_state = AppState::new(config);
+            let api_state = ApiState { app_state: app_state.clone() };
+            let router = create_router_with_tracing(api_state);
+
+            // Background metrics collection task
+            let bg_state = app_state.clone();
+            tokio::spawn(async move {
+                loop {
+                    let metrics = metrics_collector::collect();
+                    bg_state.push_metrics(metrics).await;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
+                }
+            });
+
+            let addr = SocketAddr::from(([0, 0, 0, 0], port));
+            let listener = tokio::net::TcpListener::bind(addr).await?;
+            println!("Monitor service listening on http://{addr}");
+
+            let shutdown_signal = async {
+                tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
+                println!("Shutting down monitor daemon...");
+            };
+
+            tokio::select! {
+                result = axum::serve(listener, router) => {
+                    if let Err(e) = result {
+                        eprintln!("Server error: {e}");
+                    }
+                }
+                _ = shutdown_signal => {}
+            }
         }
     }
 
