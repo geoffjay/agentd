@@ -44,12 +44,7 @@ impl MonitorClient {
     /// `GET /health` — check whether the service is reachable.
     pub async fn health(&self) -> Result<HealthResponse> {
         let url = format!("{}/health", self.base_url);
-        let resp = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .with_context(|| format!("GET {url}"))?;
+        let resp = self.http.get(&url).send().await.with_context(|| format!("GET {url}"))?;
 
         if !resp.status().is_success() {
             return Err(anyhow!("Health check failed: HTTP {}", resp.status()));
@@ -61,12 +56,7 @@ impl MonitorClient {
     /// `GET /metrics` — fetch the latest system metrics snapshot.
     pub async fn get_metrics(&self) -> Result<SystemMetrics> {
         let url = format!("{}/metrics", self.base_url);
-        let resp = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .with_context(|| format!("GET {url}"))?;
+        let resp = self.http.get(&url).send().await.with_context(|| format!("GET {url}"))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -80,12 +70,7 @@ impl MonitorClient {
     /// `POST /collect` — trigger an immediate collection and return the snapshot.
     pub async fn collect(&self) -> Result<CollectResponse> {
         let url = format!("{}/collect", self.base_url);
-        let resp = self
-            .http
-            .post(&url)
-            .send()
-            .await
-            .with_context(|| format!("POST {url}"))?;
+        let resp = self.http.post(&url).send().await.with_context(|| format!("POST {url}"))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -99,12 +84,7 @@ impl MonitorClient {
     /// `GET /history` — fetch all retained metric snapshots.
     pub async fn get_history(&self) -> Result<Vec<SystemMetrics>> {
         let url = format!("{}/history", self.base_url);
-        let resp = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .with_context(|| format!("GET {url}"))?;
+        let resp = self.http.get(&url).send().await.with_context(|| format!("GET {url}"))?;
 
         if !resp.status().is_success() {
             return Err(anyhow!("GET /history failed: HTTP {}", resp.status()));
@@ -116,12 +96,7 @@ impl MonitorClient {
     /// `GET /status` — fetch the current health assessment.
     pub async fn get_status(&self) -> Result<SystemStatus> {
         let url = format!("{}/status", self.base_url);
-        let resp = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .with_context(|| format!("GET {url}"))?;
+        let resp = self.http.get(&url).send().await.with_context(|| format!("GET {url}"))?;
 
         if !resp.status().is_success() {
             return Err(anyhow!("GET /status failed: HTTP {}", resp.status()));

@@ -44,11 +44,7 @@ pub fn collect() -> SystemMetrics {
     let total_mem = sys.total_memory();
     let used_mem = sys.used_memory();
     let avail_mem = sys.available_memory();
-    let mem_pct = if total_mem > 0 {
-        (used_mem as f32 / total_mem as f32) * 100.0
-    } else {
-        0.0
-    };
+    let mem_pct = if total_mem > 0 { (used_mem as f32 / total_mem as f32) * 100.0 } else { 0.0 };
 
     debug!("Memory: {}/{} bytes ({:.1}%)", used_mem, total_mem, mem_pct);
 

@@ -20,7 +20,7 @@
 
 use anyhow::Result;
 use monitor::{
-    api::{ApiState, create_router_with_tracing},
+    api::{create_router_with_tracing, ApiState},
     config::MonitorConfig,
     metrics_collector,
     state::AppState,

@@ -27,12 +27,8 @@ pub enum ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            ApiError::CollectionFailed(msg) => {
-                (StatusCode::SERVICE_UNAVAILABLE, msg.clone())
-            }
-            ApiError::NoMetricsAvailable => {
-                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-            }
+            ApiError::CollectionFailed(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
+            ApiError::NoMetricsAvailable => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
 

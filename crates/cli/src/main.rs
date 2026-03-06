@@ -317,7 +317,7 @@ async fn main() -> Result<()> {
         }
         Commands::Monitor => {
             use monitor::{
-                api::{ApiState, create_router_with_tracing},
+                api::{create_router_with_tracing, ApiState},
                 config::MonitorConfig,
                 metrics_collector,
                 state::AppState,
@@ -349,9 +349,7 @@ async fn main() -> Result<()> {
             println!("Monitor service listening on http://{addr}");
 
             let shutdown_signal = async {
-                tokio::signal::ctrl_c()
-                    .await
-                    .expect("Failed to install CTRL+C signal handler");
+                tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
                 println!("Shutting down monitor daemon...");
             };
 

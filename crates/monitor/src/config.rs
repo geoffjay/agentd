@@ -37,10 +37,7 @@ impl MonitorConfig {
     /// Construct configuration from environment variables with defaults.
     pub fn from_env() -> Self {
         Self {
-            port: env::var("PORT")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(17003),
+            port: env::var("PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(17003),
             collection_interval_secs: env::var("COLLECTION_INTERVAL_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -57,10 +54,7 @@ impl MonitorConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(90.0),
-            history_size: env::var("HISTORY_SIZE")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(120),
+            history_size: env::var("HISTORY_SIZE").ok().and_then(|v| v.parse().ok()).unwrap_or(120),
         }
     }
 }

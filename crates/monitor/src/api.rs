@@ -64,15 +64,8 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
 /// `GET /metrics` — return the latest metrics snapshot.
 ///
 /// Returns HTTP 503 if no collection has run yet.
-async fn get_metrics(
-    State(state): State<ApiState>,
-) -> Result<impl IntoResponse, ApiError> {
-    state
-        .app_state
-        .latest_metrics()
-        .await
-        .map(Json)
-        .ok_or(ApiError::NoMetricsAvailable)
+async fn get_metrics(State(state): State<ApiState>) -> Result<impl IntoResponse, ApiError> {
+    state.app_state.latest_metrics().await.map(Json).ok_or(ApiError::NoMetricsAvailable)
 }
 
 /// `POST /collect` — trigger an immediate metrics collection.
@@ -142,8 +135,7 @@ mod tests {
     #[tokio::test]
     async fn test_collect_returns_200() {
         let router = create_router(make_state());
-        let req =
-            Request::builder().method("POST").uri("/collect").body(Body::empty()).unwrap();
+        let req = Request::builder().method("POST").uri("/collect").body(Body::empty()).unwrap();
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }
