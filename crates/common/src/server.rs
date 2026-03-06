@@ -85,22 +85,14 @@ pub fn cors_layer() -> tower_http::cors::CorsLayer {
     let allow_origin = if origins.trim() == "*" {
         AllowOrigin::any()
     } else {
-        let values: Vec<HeaderValue> = origins
-            .split(',')
-            .filter_map(|s| s.trim().parse().ok())
-            .collect();
+        let values: Vec<HeaderValue> =
+            origins.split(',').filter_map(|s| s.trim().parse().ok()).collect();
         AllowOrigin::list(values)
     };
 
     CorsLayer::new()
         .allow_origin(allow_origin)
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
         .allow_headers([
             header::CONTENT_TYPE,
             header::AUTHORIZATION,
