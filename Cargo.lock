@@ -1001,12 +1001,20 @@ dependencies = [
 name = "hook"
 version = "0.2.0"
 dependencies = [
+ "agentd-common",
  "anyhow",
+ "axum",
+ "chrono",
+ "http-body-util",
  "serde",
  "serde_json",
+ "thiserror 2.0.17",
  "tokio",
+ "tower",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -1514,12 +1522,20 @@ dependencies = [
 name = "monitor"
 version = "0.2.0"
 dependencies = [
+ "agentd-common",
  "anyhow",
+ "axum",
+ "chrono",
+ "http-body-util",
  "serde",
  "serde_json",
+ "thiserror 2.0.17",
  "tokio",
+ "tower",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

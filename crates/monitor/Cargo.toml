@@ -9,10 +9,24 @@ license.workspace = true
 name = "agentd-monitor"
 path = "src/main.rs"
 
+[lib]
+name = "monitor"
+path = "src/lib.rs"
+
 [dependencies]
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["serde", "v4"] }
+agentd-common = { path = "../common" }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

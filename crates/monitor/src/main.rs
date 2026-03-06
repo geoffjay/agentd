@@ -1,17 +1,17 @@
-//! agentd-monitor — System monitoring and alerting service.
+//! agentd-monitor — System health monitoring and alerting daemon.
 //!
 //! Watches system metrics and creates notifications for alerts and anomalies.
-//!
-//! **Status:** Stub — service skeleton only, not yet implemented.
 //!
 //! **Default port:** 17003 (dev) / 7003 (production)
 
 use anyhow::Result;
+use monitor::api::{ApiState, create_router_with_tracing};
+use std::net::SocketAddr;
 use tracing::{info, warn};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing subscriber. Set LOG_FORMAT=json for structured JSON output.
+    // Initialize tracing. Set LOG_FORMAT=json for structured JSON output.
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
 
@@ -21,18 +21,30 @@ async fn main() -> Result<()> {
         tracing_subscriber::fmt().with_target(false).with_env_filter(env_filter).init();
     }
 
-    info!("Starting agentd-monitor daemon...");
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(17003);
 
-    // Set up graceful shutdown signal handler
+    info!(port, "Starting agentd-monitor daemon");
+
+    let api_state = ApiState::default();
+    let router = create_router_with_tracing(api_state);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    info!("HTTP server listening on http://{}", addr);
+
     let shutdown_signal = async {
         tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
         warn!("Shutdown signal received, stopping daemon...");
     };
 
-    // Main daemon loop
     tokio::select! {
-        _ = run_daemon() => {
-            info!("Daemon task completed");
+        result = axum::serve(listener, router) => {
+            if let Err(e) = result {
+                tracing::error!("Server error: {}", e);
+            }
         }
         _ = shutdown_signal => {
             info!("Graceful shutdown initiated");
@@ -41,12 +53,4 @@ async fn main() -> Result<()> {
 
     info!("agentd-monitor daemon stopped");
     Ok(())
-}
-
-async fn run_daemon() {
-    // Main daemon logic goes here
-    loop {
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        // TODO: Implement daemon functionality
-    }
 }
