@@ -79,9 +79,9 @@ export function useNotificationCount({
 
   // Derive counts from by_status breakdown
   const pending =
-    count?.by_status.find((s) => s.status === 'Pending')?.count ?? 0
+    count?.by_status?.find((s) => s.status === 'Pending')?.count ?? 0
   const viewed =
-    count?.by_status.find((s) => s.status === 'Viewed')?.count ?? 0
+    count?.by_status?.find((s) => s.status === 'Viewed')?.count ?? 0
   const unread = pending + viewed
 
   return {

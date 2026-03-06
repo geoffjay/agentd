@@ -21,7 +21,9 @@ import {
 } from 'lucide-react'
 import { useLayout } from './context'
 import { useApprovals } from '@/hooks/useApprovals'
+import { useNotificationCount } from '@/hooks/useNotificationCount'
 import { ApprovalBadge } from '@/components/approvals/ApprovalBadge'
+import { NotificationBadge } from '@/components/notifications/NotificationBadge'
 
 // ---------------------------------------------------------------------------
 // Nav item definition
@@ -33,6 +35,8 @@ interface NavItem {
   icon: React.ReactNode
   /** Whether to render an ApprovalBadge for this item */
   showApprovalBadge?: boolean
+  /** Whether to render a NotificationBadge for this item */
+  showNotificationBadge?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -44,7 +48,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: <CheckSquare size={20} />,
     showApprovalBadge: true,
   },
-  { label: 'Notifications', path: '/notifications', icon: <Bell size={20} /> },
+  {
+    label: 'Notifications',
+    path: '/notifications',
+    icon: <Bell size={20} />,
+    showNotificationBadge: true,
+  },
   { label: 'Questions', path: '/questions', icon: <HelpCircle size={20} /> },
   { label: 'Workflows', path: '/workflows', icon: <GitBranch size={20} /> },
   { label: 'Monitoring', path: '/monitoring', icon: <BarChart2 size={20} /> },
@@ -61,10 +70,11 @@ interface NavLinkProps {
   item: NavItem
   collapsed: boolean
   approvalCount?: number
+  notificationCount?: number
   onClick?: () => void
 }
 
-function NavLink({ item, collapsed, approvalCount = 0, onClick }: NavLinkProps) {
+function NavLink({ item, collapsed, approvalCount = 0, notificationCount = 0, onClick }: NavLinkProps) {
   const location = useLocation()
   const isActive =
     item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path)
@@ -91,9 +101,15 @@ function NavLink({ item, collapsed, approvalCount = 0, onClick }: NavLinkProps) 
             <ApprovalBadge count={approvalCount} />
           </span>
         )}
+        {item.showNotificationBadge && collapsed && notificationCount > 0 && (
+          <span className="absolute -right-1 -top-1">
+            <NotificationBadge count={notificationCount} />
+          </span>
+        )}
       </span>
       {!collapsed && <span className="truncate">{item.label}</span>}
       {!collapsed && item.showApprovalBadge && <ApprovalBadge count={approvalCount} />}
+      {!collapsed && item.showNotificationBadge && <NotificationBadge count={notificationCount} />}
     </Link>
   )
 }
@@ -105,6 +121,7 @@ function NavLink({ item, collapsed, approvalCount = 0, onClick }: NavLinkProps) 
 export function Sidebar() {
   const { sidebarOpen, setSidebarOpen, toggleSidebar } = useLayout()
   const { totalPendingCount } = useApprovals({ refreshInterval: 30_000 })
+  const { pending: notificationPending } = useNotificationCount({ refreshInterval: 15_000 })
 
   // Close sidebar on Escape key (mobile overlay behaviour)
   useEffect(() => {
@@ -160,6 +177,7 @@ export function Sidebar() {
                   item={item}
                   collapsed={!sidebarOpen}
                   approvalCount={totalPendingCount}
+                  notificationCount={notificationPending}
                   // On mobile/tablet, close sidebar after navigating
                   onClick={() => {
                     if (window.innerWidth < 1024) setSidebarOpen(false)
