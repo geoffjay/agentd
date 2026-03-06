@@ -74,11 +74,7 @@ function ChangeModelDialog({ open, currentModel, onSave, onClose }: ChangeModelD
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/50"
-        aria-hidden="true"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/50" aria-hidden="true" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
@@ -109,10 +105,10 @@ function ChangeModelDialog({ open, currentModel, onSave, onClose }: ChangeModelD
             <select
               id="change-model-select"
               value={model}
-              onChange={e => setModel(e.target.value)}
+              onChange={(e) => setModel(e.target.value)}
               className={inputCls}
             >
-              {MODELS.map(m => (
+              {MODELS.map((m) => (
                 <option key={m.value} value={m.value}>
                   {m.label}
                 </option>
@@ -125,7 +121,7 @@ function ChangeModelDialog({ open, currentModel, onSave, onClose }: ChangeModelD
               id="change-model-restart"
               type="checkbox"
               checked={restart}
-              onChange={e => setRestart(e.target.checked)}
+              onChange={(e) => setRestart(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-primary-600"
             />
             <label
@@ -292,17 +288,13 @@ export function AgentDetail() {
           {/* Left: identity */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
-              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-                {agent.name}
-              </h1>
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{agent.name}</h1>
               <AgentStatusBadge status={agent.status} />
             </div>
 
             {/* ID */}
             <div className="flex items-center gap-1.5">
-              <span className="font-mono text-xs text-gray-400 dark:text-gray-500">
-                {agentId}
-              </span>
+              <span className="font-mono text-xs text-gray-400 dark:text-gray-500">{agentId}</span>
               <button
                 type="button"
                 aria-label="Copy agent ID"
@@ -320,9 +312,7 @@ export function AgentDetail() {
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
               <span>Created: {formattedCreated}</span>
               <span>Updated: {formattedUpdated}</span>
-              {agent.config.model && (
-                <span>Model: {agent.config.model}</span>
-              )}
+              {agent.config.model && <span>Model: {agent.config.model}</span>}
             </div>
           </div>
 
@@ -366,11 +356,7 @@ export function AgentDetail() {
         {/* Log view (takes 2/3 width on large screens) */}
         <div className="flex flex-col gap-3 lg:col-span-2">
           <div className="h-[480px]">
-            <AgentLogView
-              lines={lines}
-              status={streamStatus}
-              onClear={clearLog}
-            />
+            <AgentLogView lines={lines} status={streamStatus} onClear={clearLog} />
           </div>
 
           {/* Command input */}
@@ -399,9 +385,7 @@ export function AgentDetail() {
             className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
           >
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-              <h2 className="text-sm font-medium text-gray-900 dark:text-white">
-                Tool Policy
-              </h2>
+              <h2 className="text-sm font-medium text-gray-900 dark:text-white">Tool Policy</h2>
               {!policyEditing && (
                 <button
                   type="button"
@@ -414,20 +398,22 @@ export function AgentDetail() {
             </div>
             <div className="p-4">
               {policyEditing ? (
-                <AgentPolicyEditor
-                  policy={agent.config.tool_policy}
-                  onSave={handlePolicySave}
-                />
+                <AgentPolicyEditor policy={agent.config.tool_policy} onSave={handlePolicySave} />
               ) : (
                 <p className="text-sm text-gray-700 dark:text-gray-300">
                   {(() => {
                     const p = agent.config.tool_policy
                     switch (p.type) {
-                      case 'AllowAll': return 'Allow all tools'
-                      case 'DenyAll': return 'Deny all tools'
-                      case 'RequireApproval': return 'Require approval for all tools'
-                      case 'AllowList': return `Allow: ${p.tools.join(', ') || '(none)'}`
-                      case 'DenyList': return `Deny: ${p.tools.join(', ') || '(none)'}`
+                      case 'AllowAll':
+                        return 'Allow all tools'
+                      case 'DenyAll':
+                        return 'Deny all tools'
+                      case 'RequireApproval':
+                        return 'Require approval for all tools'
+                      case 'AllowList':
+                        return `Allow: ${p.tools.join(', ') || '(none)'}`
+                      case 'DenyList':
+                        return `Deny: ${p.tools.join(', ') || '(none)'}`
                     }
                   })()}
                 </p>

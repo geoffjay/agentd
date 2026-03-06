@@ -12,14 +12,38 @@ const emptyResults: GroupedSearchResults = {
 
 const richResults: GroupedSearchResults = {
   actions: [
-    { id: 'action-agents', category: 'action', title: 'Go to Agents', subtitle: 'Navigate to agents', href: '/agents' },
+    {
+      id: 'action-agents',
+      category: 'action',
+      title: 'Go to Agents',
+      subtitle: 'Navigate to agents',
+      href: '/agents',
+    },
   ],
   agents: [
-    { id: 'agent-1', category: 'agent', title: 'build-bot', subtitle: 'Status: Running', href: '/agents/1' },
-    { id: 'agent-2', category: 'agent', title: 'deploy-bot', subtitle: 'Status: Pending', href: '/agents/2' },
+    {
+      id: 'agent-1',
+      category: 'agent',
+      title: 'build-bot',
+      subtitle: 'Status: Running',
+      href: '/agents/1',
+    },
+    {
+      id: 'agent-2',
+      category: 'agent',
+      title: 'deploy-bot',
+      subtitle: 'Status: Pending',
+      href: '/agents/2',
+    },
   ],
   notifications: [
-    { id: 'notif-1', category: 'notification', title: 'Alert', subtitle: 'High — Pending', href: '/notifications/1' },
+    {
+      id: 'notif-1',
+      category: 'notification',
+      title: 'Alert',
+      subtitle: 'High — Pending',
+      href: '/notifications/1',
+    },
   ],
   total: 4,
 }
@@ -108,11 +132,7 @@ describe('RecentSearches', () => {
 
   it('renders recent search terms', () => {
     render(
-      <RecentSearches
-        searches={['build-bot', 'alert']}
-        onSelect={vi.fn()}
-        onClear={vi.fn()}
-      />,
+      <RecentSearches searches={['build-bot', 'alert']} onSelect={vi.fn()} onClear={vi.fn()} />,
     )
     expect(screen.getByText('build-bot')).toBeInTheDocument()
     expect(screen.getByText('alert')).toBeInTheDocument()
@@ -120,18 +140,14 @@ describe('RecentSearches', () => {
 
   it('calls onSelect when a recent search is clicked', () => {
     const onSelect = vi.fn()
-    render(
-      <RecentSearches searches={['build-bot']} onSelect={onSelect} onClear={vi.fn()} />,
-    )
+    render(<RecentSearches searches={['build-bot']} onSelect={onSelect} onClear={vi.fn()} />)
     fireEvent.click(screen.getByText('build-bot'))
     expect(onSelect).toHaveBeenCalledWith('build-bot')
   })
 
   it('calls onClear when Clear button is clicked', () => {
     const onClear = vi.fn()
-    render(
-      <RecentSearches searches={['build-bot']} onSelect={vi.fn()} onClear={onClear} />,
-    )
+    render(<RecentSearches searches={['build-bot']} onSelect={vi.fn()} onClear={onClear} />)
     fireEvent.click(screen.getByRole('button', { name: /clear/i }))
     expect(onClear).toHaveBeenCalledOnce()
   })

@@ -69,9 +69,7 @@ export const notifyHandlers = [
     HttpResponse.json(paginated<Notification>(DEFAULT_PENDING)),
   ),
 
-  http.get(`${BASE}/notifications/history`, () =>
-    HttpResponse.json(paginated<Notification>([])),
-  ),
+  http.get(`${BASE}/notifications/history`, () => HttpResponse.json(paginated<Notification>([]))),
 
   // -------------------------------------------------------------------------
   // Count

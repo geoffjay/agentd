@@ -18,13 +18,27 @@ describe('AgentConfigPanel', () => {
   })
 
   it('shows "No" for non-interactive agents', () => {
-    const agent = makeAgent({ config: { working_dir: '/tmp', shell: '/bin/bash', interactive: false, tool_policy: { type: 'AllowAll' } } as import('@/types/orchestrator').AgentConfig })
+    const agent = makeAgent({
+      config: {
+        working_dir: '/tmp',
+        shell: '/bin/bash',
+        interactive: false,
+        tool_policy: { type: 'AllowAll' },
+      } as import('@/types/orchestrator').AgentConfig,
+    })
     render(<AgentConfigPanel agent={agent} />)
     expect(screen.getByText('No')).toBeInTheDocument()
   })
 
   it('shows "Yes (TTY)" for interactive agents', () => {
-    const agent = makeAgent({ config: { working_dir: '/tmp', shell: '/bin/bash', interactive: true, tool_policy: { type: 'AllowAll' } } as import('@/types/orchestrator').AgentConfig })
+    const agent = makeAgent({
+      config: {
+        working_dir: '/tmp',
+        shell: '/bin/bash',
+        interactive: true,
+        tool_policy: { type: 'AllowAll' },
+      } as import('@/types/orchestrator').AgentConfig,
+    })
     render(<AgentConfigPanel agent={agent} />)
     expect(screen.getByText('Yes (TTY)')).toBeInTheDocument()
   })

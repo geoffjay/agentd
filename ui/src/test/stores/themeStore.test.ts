@@ -88,26 +88,17 @@ describe('readPersistedTheme', () => {
   })
 
   it('returns light from stored settings', () => {
-    localStorage.setItem(
-      'agentd:settings',
-      JSON.stringify({ ui: { theme: 'light' } }),
-    )
+    localStorage.setItem('agentd:settings', JSON.stringify({ ui: { theme: 'light' } }))
     expect(readPersistedTheme()).toBe('light')
   })
 
   it('returns dark from stored settings', () => {
-    localStorage.setItem(
-      'agentd:settings',
-      JSON.stringify({ ui: { theme: 'dark' } }),
-    )
+    localStorage.setItem('agentd:settings', JSON.stringify({ ui: { theme: 'dark' } }))
     expect(readPersistedTheme()).toBe('dark')
   })
 
   it('returns system for invalid stored value', () => {
-    localStorage.setItem(
-      'agentd:settings',
-      JSON.stringify({ ui: { theme: 'rainbow' } }),
-    )
+    localStorage.setItem('agentd:settings', JSON.stringify({ ui: { theme: 'rainbow' } }))
     expect(readPersistedTheme()).toBe('system')
   })
 

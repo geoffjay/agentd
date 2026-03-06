@@ -13,7 +13,9 @@ let cleanup: () => void
 
 beforeEach(() => {
   lastWs = undefined
-  cleanup = installMockWebSocket(ws => { lastWs = ws })
+  cleanup = installMockWebSocket((ws) => {
+    lastWs = ws
+  })
 })
 
 afterEach(() => {
@@ -45,7 +47,9 @@ describe('useAllAgentsStream', () => {
   it('parses agent:output events and adds lines to agentMessages', async () => {
     const { result } = renderHook(() => useAllAgentsStream())
     await waitFor(() => expect(lastWs).toBeDefined())
-    await act(async () => { lastWs!.simulateOpen() })
+    await act(async () => {
+      lastWs!.simulateOpen()
+    })
 
     await act(async () => {
       lastWs!.simulateMessage(
@@ -59,19 +63,33 @@ describe('useAllAgentsStream', () => {
     })
 
     expect(result.current.agentMessages.get('agent-abc')).toHaveLength(1)
-    expect(result.current.agentMessages.get('agent-abc')![0].text).toBe(
-      'hello from agent',
-    )
+    expect(result.current.agentMessages.get('agent-abc')![0].text).toBe('hello from agent')
   })
 
   it('demultiplexes messages to different agents', async () => {
     const { result } = renderHook(() => useAllAgentsStream())
     await waitFor(() => expect(lastWs).toBeDefined())
-    await act(async () => { lastWs!.simulateOpen() })
+    await act(async () => {
+      lastWs!.simulateOpen()
+    })
 
     await act(async () => {
-      lastWs!.simulateMessage(JSON.stringify({ type: 'agent:output', agentId: 'agent-1', line: 'line-a', timestamp: new Date().toISOString() }))
-      lastWs!.simulateMessage(JSON.stringify({ type: 'agent:output', agentId: 'agent-2', line: 'line-b', timestamp: new Date().toISOString() }))
+      lastWs!.simulateMessage(
+        JSON.stringify({
+          type: 'agent:output',
+          agentId: 'agent-1',
+          line: 'line-a',
+          timestamp: new Date().toISOString(),
+        }),
+      )
+      lastWs!.simulateMessage(
+        JSON.stringify({
+          type: 'agent:output',
+          agentId: 'agent-2',
+          line: 'line-b',
+          timestamp: new Date().toISOString(),
+        }),
+      )
     })
 
     expect(result.current.agentMessages.get('agent-1')).toHaveLength(1)
@@ -80,13 +98,15 @@ describe('useAllAgentsStream', () => {
 
   it('emits events to the agentEventBus', async () => {
     const received: string[] = []
-    const unsub = agentEventBus.on('agent:status_change', event => {
+    const unsub = agentEventBus.on('agent:status_change', (event) => {
       received.push(event.agentId)
     })
 
     const { result } = renderHook(() => useAllAgentsStream())
     await waitFor(() => expect(lastWs).toBeDefined())
-    await act(async () => { lastWs!.simulateOpen() })
+    await act(async () => {
+      lastWs!.simulateOpen()
+    })
 
     await act(async () => {
       lastWs!.simulateMessage(
@@ -107,15 +127,15 @@ describe('useAllAgentsStream', () => {
   it('handles non-JSON messages gracefully (stored under "unknown")', async () => {
     const { result } = renderHook(() => useAllAgentsStream())
     await waitFor(() => expect(lastWs).toBeDefined())
-    await act(async () => { lastWs!.simulateOpen() })
+    await act(async () => {
+      lastWs!.simulateOpen()
+    })
 
     await act(async () => {
       lastWs!.simulateMessage('plain text line')
     })
 
     expect(result.current.agentMessages.get('unknown')).toHaveLength(1)
-    expect(result.current.agentMessages.get('unknown')![0].text).toBe(
-      'plain text line',
-    )
+    expect(result.current.agentMessages.get('unknown')![0].text).toBe('plain text line')
   })
 })

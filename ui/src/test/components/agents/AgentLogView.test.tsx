@@ -9,13 +9,7 @@ function makeLine(id: number, text: string): LogLine {
 
 describe('AgentLogView', () => {
   it('renders the log container', () => {
-    render(
-      <AgentLogView
-        lines={[]}
-        status="connected"
-        onClear={vi.fn()}
-      />,
-    )
+    render(<AgentLogView lines={[]} status="connected" onClear={vi.fn()} />)
     // The outer container is a <div> with aria-label (not a <section>), so use getByLabelText
     expect(screen.getByLabelText(/agent log output/i)).toBeInTheDocument()
   })
@@ -36,10 +30,7 @@ describe('AgentLogView', () => {
   })
 
   it('renders log lines', () => {
-    const lines = [
-      makeLine(1, 'First line'),
-      makeLine(2, 'Second line'),
-    ]
+    const lines = [makeLine(1, 'First line'), makeLine(2, 'Second line')]
     render(<AgentLogView lines={lines} status="connected" onClear={vi.fn()} />)
     expect(screen.getByText('First line')).toBeInTheDocument()
     expect(screen.getByText('Second line')).toBeInTheDocument()

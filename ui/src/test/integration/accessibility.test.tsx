@@ -14,10 +14,7 @@ import { ThemeProvider } from '@/hooks/useTheme'
 import type { LayoutContextValue } from '@/layouts/context'
 import { vi } from 'vitest'
 import { StatusBadge } from '@/components/common/StatusBadge'
-import {
-  Skeleton,
-  CardSkeleton,
-} from '@/components/common/LoadingSkeleton'
+import { Skeleton, CardSkeleton } from '@/components/common/LoadingSkeleton'
 
 // ---------------------------------------------------------------------------
 // Helpers

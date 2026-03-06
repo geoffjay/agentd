@@ -162,7 +162,7 @@ export function useAgents({
   // Client-side filter, sort, paginate
   // ---------------------------------------------------------------------------
 
-  const filtered = allAgents.filter(agent => {
+  const filtered = allAgents.filter((agent) => {
     if (search) {
       return agent.name.toLowerCase().includes(search.toLowerCase())
     }
@@ -190,21 +190,15 @@ export function useAgents({
     [fetchAgents],
   )
 
-  const deleteAgent = useCallback(
-    async (id: string): Promise<void> => {
-      await orchestratorClient.deleteAgent(id)
-      setAllAgents(prev => prev.filter(a => a.id !== id))
-    },
-    [],
-  )
+  const deleteAgent = useCallback(async (id: string): Promise<void> => {
+    await orchestratorClient.deleteAgent(id)
+    setAllAgents((prev) => prev.filter((a) => a.id !== id))
+  }, [])
 
-  const bulkDelete = useCallback(
-    async (ids: string[]): Promise<void> => {
-      await Promise.all(ids.map(id => orchestratorClient.deleteAgent(id)))
-      setAllAgents(prev => prev.filter(a => !ids.includes(a.id)))
-    },
-    [],
-  )
+  const bulkDelete = useCallback(async (ids: string[]): Promise<void> => {
+    await Promise.all(ids.map((id) => orchestratorClient.deleteAgent(id)))
+    setAllAgents((prev) => prev.filter((a) => !ids.includes(a.id)))
+  }, [])
 
   return {
     agents,

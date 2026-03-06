@@ -48,10 +48,7 @@ describe('ThemeToggle', () => {
 
   it('calls setTheme on click', () => {
     // Spy via module mock would be complex; verify DOM effect instead
-    localStorage.setItem(
-      'agentd:settings',
-      JSON.stringify({ version: 1, ui: { theme: 'light' } }),
-    )
+    localStorage.setItem('agentd:settings', JSON.stringify({ version: 1, ui: { theme: 'light' } }))
     render(<ThemeToggle />, { wrapper })
     const btn = screen.getByRole('button')
 
@@ -70,10 +67,7 @@ describe('ThemeToggle', () => {
   })
 
   it('label reflects current light mode', () => {
-    localStorage.setItem(
-      'agentd:settings',
-      JSON.stringify({ version: 1, ui: { theme: 'light' } }),
-    )
+    localStorage.setItem('agentd:settings', JSON.stringify({ version: 1, ui: { theme: 'light' } }))
     render(<ThemeToggle />, { wrapper })
     expect(screen.getByRole('button')).toHaveAttribute(
       'aria-label',
@@ -82,10 +76,7 @@ describe('ThemeToggle', () => {
   })
 
   it('label reflects current dark mode', () => {
-    localStorage.setItem(
-      'agentd:settings',
-      JSON.stringify({ version: 1, ui: { theme: 'dark' } }),
-    )
+    localStorage.setItem('agentd:settings', JSON.stringify({ version: 1, ui: { theme: 'dark' } }))
     render(<ThemeToggle />, { wrapper })
     expect(screen.getByRole('button')).toHaveAttribute(
       'aria-label',

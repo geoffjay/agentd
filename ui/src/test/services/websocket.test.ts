@@ -15,7 +15,9 @@ let cleanup: () => void
 
 beforeEach(() => {
   lastWs = undefined
-  cleanup = installMockWebSocket(ws => { lastWs = ws })
+  cleanup = installMockWebSocket((ws) => {
+    lastWs = ws
+  })
 })
 
 afterEach(() => {
@@ -38,7 +40,7 @@ describe('WebSocketManager', () => {
   it('transitions to Connected when WebSocket opens', () => {
     const states: ConnectionState[] = []
     const manager = new WebSocketManager('ws://localhost/test')
-    manager.onStateChange(s => states.push(s))
+    manager.onStateChange((s) => states.push(s))
     manager.connect()
 
     lastWs!.simulateOpen()
@@ -52,7 +54,7 @@ describe('WebSocketManager', () => {
     vi.useFakeTimers()
     const states: ConnectionState[] = []
     const manager = new WebSocketManager('ws://localhost/test', { minReconnectDelay: 100 })
-    manager.onStateChange(s => states.push(s))
+    manager.onStateChange((s) => states.push(s))
     manager.connect()
     lastWs!.simulateOpen()
     lastWs!.simulateClose()
@@ -63,7 +65,7 @@ describe('WebSocketManager', () => {
   it('disconnects cleanly and transitions to Disconnected', () => {
     const states: ConnectionState[] = []
     const manager = new WebSocketManager('ws://localhost/test')
-    manager.onStateChange(s => states.push(s))
+    manager.onStateChange((s) => states.push(s))
     manager.connect()
     lastWs!.simulateOpen()
     manager.disconnect()
@@ -75,7 +77,7 @@ describe('WebSocketManager', () => {
   it('delivers messages to registered handlers', () => {
     const received: string[] = []
     const manager = new WebSocketManager('ws://localhost/test')
-    manager.onMessage(event => received.push(String(event.data)))
+    manager.onMessage((event) => received.push(String(event.data)))
     manager.connect()
     lastWs!.simulateOpen()
     lastWs!.simulateMessage('hello')
@@ -87,7 +89,7 @@ describe('WebSocketManager', () => {
   it('removes message handler when cleanup is called', () => {
     const received: string[] = []
     const manager = new WebSocketManager('ws://localhost/test')
-    const remove = manager.onMessage(event => received.push(String(event.data)))
+    const remove = manager.onMessage((event) => received.push(String(event.data)))
     manager.connect()
     lastWs!.simulateOpen()
     lastWs!.simulateMessage('before')
@@ -122,7 +124,10 @@ describe('WebSocketManager', () => {
     vi.useFakeTimers()
     let wsCount = 0
     cleanup()
-    cleanup = installMockWebSocket(ws => { lastWs = ws; wsCount++ })
+    cleanup = installMockWebSocket((ws) => {
+      lastWs = ws
+      wsCount++
+    })
 
     const manager = new WebSocketManager('ws://localhost/test', { minReconnectDelay: 50 })
     manager.connect()
@@ -138,9 +143,15 @@ describe('WebSocketManager', () => {
     vi.useFakeTimers()
     const wsInstances: MockWebSocket[] = []
     cleanup()
-    cleanup = installMockWebSocket(ws => { lastWs = ws; wsInstances.push(ws) })
+    cleanup = installMockWebSocket((ws) => {
+      lastWs = ws
+      wsInstances.push(ws)
+    })
 
-    const manager = new WebSocketManager('ws://localhost/test', { minReconnectDelay: 100, maxReconnectDelay: 400 })
+    const manager = new WebSocketManager('ws://localhost/test', {
+      minReconnectDelay: 100,
+      maxReconnectDelay: 400,
+    })
     manager.connect()
     lastWs!.simulateOpen()
     lastWs!.simulateClose() // triggers first reconnect at 100ms

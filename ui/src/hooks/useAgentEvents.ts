@@ -28,10 +28,7 @@ export interface UseAgentEventsResult {
    * Subscribe to a specific event type.
    * @returns Cleanup function — store and call in useEffect cleanup.
    */
-  subscribe: <T extends AgentEvent>(
-    type: T['type'],
-    handler: (event: T) => void,
-  ) => () => void
+  subscribe: <T extends AgentEvent>(type: T['type'], handler: (event: T) => void) => () => void
 }
 
 // ---------------------------------------------------------------------------

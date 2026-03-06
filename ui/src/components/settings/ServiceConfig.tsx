@@ -33,21 +33,21 @@ export function ServiceConfig({ services, onSave }: ServiceConfigProps) {
   })
 
   function handleUrlChange(key: keyof Settings['services'], value: string) {
-    setLocalServices(prev => ({ ...prev, [key]: value }))
-    setTestStatuses(prev => ({ ...prev, [key]: 'idle' }))
+    setLocalServices((prev) => ({ ...prev, [key]: value }))
+    setTestStatuses((prev) => ({ ...prev, [key]: 'idle' }))
   }
 
   async function handleTest(key: keyof Settings['services']) {
     const url = localServices[key]
-    setTestStatuses(prev => ({ ...prev, [key]: 'loading' }))
+    setTestStatuses((prev) => ({ ...prev, [key]: 'loading' }))
     try {
       const response = await fetch(`${url}/health`)
-      setTestStatuses(prev => ({
+      setTestStatuses((prev) => ({
         ...prev,
         [key]: response.ok ? 'success' : 'error',
       }))
     } catch {
-      setTestStatuses(prev => ({ ...prev, [key]: 'error' }))
+      setTestStatuses((prev) => ({ ...prev, [key]: 'error' }))
     }
   }
 
@@ -57,7 +57,7 @@ export function ServiceConfig({ services, onSave }: ServiceConfigProps) {
 
   return (
     <div className="space-y-4">
-      {SERVICE_ROWS.map(row => {
+      {SERVICE_ROWS.map((row) => {
         const status = testStatuses[row.key]
         return (
           <div key={row.key} className="flex items-center gap-3">
@@ -74,7 +74,7 @@ export function ServiceConfig({ services, onSave }: ServiceConfigProps) {
               id={`service-url-${row.key}`}
               type="text"
               value={localServices[row.key]}
-              onChange={e => handleUrlChange(row.key, e.target.value)}
+              onChange={(e) => handleUrlChange(row.key, e.target.value)}
               className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
               placeholder={`http://localhost:${row.port}`}
             />
@@ -91,9 +91,13 @@ export function ServiceConfig({ services, onSave }: ServiceConfigProps) {
                   aria-hidden="true"
                 />
               ) : status === 'success' ? (
-                <span className="text-green-600 dark:text-green-400" aria-hidden="true">✓</span>
+                <span className="text-green-600 dark:text-green-400" aria-hidden="true">
+                  ✓
+                </span>
               ) : status === 'error' ? (
-                <span className="text-red-500 dark:text-red-400" aria-hidden="true">✗</span>
+                <span className="text-red-500 dark:text-red-400" aria-hidden="true">
+                  ✗
+                </span>
               ) : null}
               Test
             </button>

@@ -4,14 +4,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 
 describe('ConfirmDialog', () => {
   it('renders nothing when closed', () => {
-    render(
-      <ConfirmDialog
-        open={false}
-        title="Delete?"
-        onConfirm={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    )
+    render(<ConfirmDialog open={false} title="Delete?" onConfirm={vi.fn()} onCancel={vi.fn()} />)
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
@@ -47,42 +40,21 @@ describe('ConfirmDialog', () => {
 
   it('calls onCancel when cancel button clicked', () => {
     const onCancel = vi.fn()
-    render(
-      <ConfirmDialog
-        open
-        title="Delete?"
-        onConfirm={vi.fn()}
-        onCancel={onCancel}
-      />,
-    )
+    render(<ConfirmDialog open title="Delete?" onConfirm={vi.fn()} onCancel={onCancel} />)
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
     expect(onCancel).toHaveBeenCalledOnce()
   })
 
   it('calls onCancel when Escape key is pressed', () => {
     const onCancel = vi.fn()
-    render(
-      <ConfirmDialog
-        open
-        title="Delete?"
-        onConfirm={vi.fn()}
-        onCancel={onCancel}
-      />,
-    )
+    render(<ConfirmDialog open title="Delete?" onConfirm={vi.fn()} onCancel={onCancel} />)
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onCancel).toHaveBeenCalledOnce()
   })
 
   it('calls onCancel when backdrop clicked', () => {
     const onCancel = vi.fn()
-    render(
-      <ConfirmDialog
-        open
-        title="Delete?"
-        onConfirm={vi.fn()}
-        onCancel={onCancel}
-      />,
-    )
+    render(<ConfirmDialog open title="Delete?" onConfirm={vi.fn()} onCancel={onCancel} />)
     // The backdrop is the aria-hidden overlay div
     const overlay = document.querySelector('.absolute.inset-0.bg-black\\/50')
     expect(overlay).toBeTruthy()
@@ -107,14 +79,7 @@ describe('ConfirmDialog', () => {
   })
 
   it('uses default labels when none are provided', () => {
-    render(
-      <ConfirmDialog
-        open
-        title="Confirm?"
-        onConfirm={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    )
+    render(<ConfirmDialog open title="Confirm?" onConfirm={vi.fn()} onCancel={vi.fn()} />)
     expect(screen.getByRole('button', { name: /^confirm$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument()
   })

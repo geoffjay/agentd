@@ -30,8 +30,6 @@ export const askHandlers = [
 
   http.post(`${BASE}/answer`, async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
-    return HttpResponse.json(
-      makeAnswerResponse({ question_id: String(body.question_id ?? '1') }),
-    )
+    return HttpResponse.json(makeAnswerResponse({ question_id: String(body.question_id ?? '1') }))
   }),
 ]

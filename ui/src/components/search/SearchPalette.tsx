@@ -23,9 +23,7 @@ import type { SearchResult } from '@/hooks/useSearch'
 // ---------------------------------------------------------------------------
 
 /** Flatten all result groups into an ordered list for keyboard navigation */
-function flattenResults(
-  results: ReturnType<typeof useSearch>['results'],
-): SearchResult[] {
+function flattenResults(results: ReturnType<typeof useSearch>['results']): SearchResult[] {
   return [...results.actions, ...results.agents, ...results.notifications]
 }
 
@@ -40,15 +38,21 @@ export interface SearchPaletteProps {
 
 export function SearchPalette({ isOpen, onClose }: SearchPaletteProps) {
   const navigate = useNavigate()
-  const { query, setQuery, results, loading, recentSearches, addRecentSearch, clearRecentSearches } =
-    useSearch()
+  const {
+    query,
+    setQuery,
+    results,
+    loading,
+    recentSearches,
+    addRecentSearch,
+    clearRecentSearches,
+  } = useSearch()
   const inputRef = useRef<HTMLInputElement>(null)
   const [activeIndex, setActiveIndex] = useState(-1)
 
   const allResults = flattenResults(results)
-  const activeId = activeIndex >= 0 && activeIndex < allResults.length
-    ? allResults[activeIndex].id
-    : null
+  const activeId =
+    activeIndex >= 0 && activeIndex < allResults.length ? allResults[activeIndex].id : null
 
   // Focus input when palette opens; reset state when it closes
   useEffect(() => {

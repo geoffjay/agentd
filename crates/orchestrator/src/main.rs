@@ -89,8 +89,10 @@ async fn main() -> anyhow::Result<()> {
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
-    let app =
-        create_router(state).merge(metrics_router).layer(agentd_common::server::trace_layer());
+    let app = create_router(state)
+        .merge(metrics_router)
+        .layer(agentd_common::server::trace_layer())
+        .layer(agentd_common::server::cors_layer());
 
     // Bind and serve.
     let addr = format!("127.0.0.1:{}", port);

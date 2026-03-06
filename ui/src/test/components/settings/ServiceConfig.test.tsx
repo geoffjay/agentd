@@ -31,7 +31,9 @@ describe('ServiceConfig', () => {
     const onSave = vi.fn()
     render(<ServiceConfig services={defaultServices} onSave={onSave} />)
 
-    const orchestratorInput = screen.getByRole('textbox', { name: /orchestrator/i }) as HTMLInputElement
+    const orchestratorInput = screen.getByRole('textbox', {
+      name: /orchestrator/i,
+    }) as HTMLInputElement
     fireEvent.change(orchestratorInput, { target: { value: 'http://localhost:9999' } })
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
@@ -59,17 +61,12 @@ describe('ServiceConfig', () => {
     fireEvent.click(testButtons[0])
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /test orchestrator/i }),
-      ).toBeDisabled()
+      expect(screen.getByRole('button', { name: /test orchestrator/i })).toBeDisabled()
     })
   })
 
   it('shows success indicator after successful health test', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: true } as Response),
-    )
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true } as Response))
 
     render(<ServiceConfig services={defaultServices} onSave={vi.fn()} />)
 

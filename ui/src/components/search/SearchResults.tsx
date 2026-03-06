@@ -181,7 +181,9 @@ export function SearchResults({ query, results, loading, activeId, onSelect }: S
         items={results.agents}
         activeId={activeId}
         onSelect={onSelect}
-        viewAllHref={results.agents.length === 5 ? `/agents?search=${encodeURIComponent(query)}` : undefined}
+        viewAllHref={
+          results.agents.length === 5 ? `/agents?search=${encodeURIComponent(query)}` : undefined
+        }
         viewAllLabel={`View all agent results for "${query}" →`}
       />
       <ResultSection

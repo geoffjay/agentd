@@ -247,10 +247,7 @@ export function useSearch(): UseSearchResult {
         const notifResults: ScoredResult[] = []
         if (notifResult.status === 'fulfilled') {
           for (const notif of notifResult.value.items) {
-            const score = Math.max(
-              scoreMatch(notif.title, q),
-              scoreMatch(notif.message, q),
-            )
+            const score = Math.max(scoreMatch(notif.title, q), scoreMatch(notif.message, q))
             if (score > 0) {
               notifResults.push({
                 id: `notif-${notif.id}`,

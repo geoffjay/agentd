@@ -67,12 +67,8 @@ function ApprovalRow({ approval, onApprove, onDeny }: ApprovalRowProps) {
           <span className="text-sm font-medium text-gray-900 dark:text-white">
             {approval.tool_name}
           </span>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            Requested: {requestedAt}
-          </span>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            Expires: {expiresAt}
-          </span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">Requested: {requestedAt}</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">Expires: {expiresAt}</span>
         </div>
 
         {/* Actions */}
@@ -106,7 +102,7 @@ function ApprovalRow({ approval, onApprove, onDeny }: ApprovalRowProps) {
           <button
             type="button"
             aria-expanded={expanded}
-            onClick={() => setExpanded(e => !e)}
+            onClick={() => setExpanded((e) => !e)}
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
           >
             {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -152,9 +148,7 @@ export function AgentApprovals({
   return (
     <section aria-label="Pending approvals">
       <div className="mb-3 flex items-center gap-2">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-          Pending Approvals
-        </h3>
+        <h3 className="text-sm font-medium text-gray-900 dark:text-white">Pending Approvals</h3>
         {approvals.length > 0 && (
           <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
             {approvals.length}
@@ -165,25 +159,15 @@ export function AgentApprovals({
       {loading ? (
         <ListItemSkeleton rows={2} />
       ) : error ? (
-        <p
-          role="alert"
-          className="text-sm text-red-600 dark:text-red-400"
-        >
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
           {error}
         </p>
       ) : approvals.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          No pending approvals.
-        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">No pending approvals.</p>
       ) : (
         <ul className="flex flex-col gap-2" aria-label="Approval requests">
-          {approvals.map(a => (
-            <ApprovalRow
-              key={a.id}
-              approval={a}
-              onApprove={onApprove}
-              onDeny={onDeny}
-            />
+          {approvals.map((a) => (
+            <ApprovalRow key={a.id} approval={a} onApprove={onApprove} onDeny={onDeny} />
           ))}
         </ul>
       )}

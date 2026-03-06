@@ -38,7 +38,12 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: <Home size={20} /> },
   { label: 'Agents', path: '/agents', icon: <Bot size={20} /> },
-  { label: 'Approvals', path: '/approvals', icon: <CheckSquare size={20} />, showApprovalBadge: true },
+  {
+    label: 'Approvals',
+    path: '/approvals',
+    icon: <CheckSquare size={20} />,
+    showApprovalBadge: true,
+  },
   { label: 'Notifications', path: '/notifications', icon: <Bell size={20} /> },
   { label: 'Questions', path: '/questions', icon: <HelpCircle size={20} /> },
   { label: 'Workflows', path: '/workflows', icon: <GitBranch size={20} /> },
@@ -72,9 +77,7 @@ function NavLink({ item, collapsed, approvalCount = 0, onClick }: NavLinkProps) 
       aria-current={isActive ? 'page' : undefined}
       className={[
         'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-        isActive
-          ? 'bg-primary-700 text-white'
-          : 'text-gray-400 hover:bg-gray-700 hover:text-white',
+        isActive ? 'bg-primary-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white',
         collapsed ? 'justify-center px-2' : '',
       ]
         .filter(Boolean)
@@ -90,9 +93,7 @@ function NavLink({ item, collapsed, approvalCount = 0, onClick }: NavLinkProps) 
         )}
       </span>
       {!collapsed && <span className="truncate">{item.label}</span>}
-      {!collapsed && item.showApprovalBadge && (
-        <ApprovalBadge count={approvalCount} />
-      )}
+      {!collapsed && item.showApprovalBadge && <ApprovalBadge count={approvalCount} />}
     </Link>
   )
 }

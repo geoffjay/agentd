@@ -24,9 +24,7 @@ import type { RenderOptions } from '@testing-library/react'
 // Default context value
 // ---------------------------------------------------------------------------
 
-export function makeLayoutContext(
-  overrides?: Partial<LayoutContextValue>,
-): LayoutContextValue {
+export function makeLayoutContext(overrides?: Partial<LayoutContextValue>): LayoutContextValue {
   return {
     sidebarOpen: true,
     setSidebarOpen: vi.fn(),

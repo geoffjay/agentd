@@ -25,9 +25,7 @@ describe('useAgentDetail', () => {
     const agent = makeAgent({ id: 'agent-1' })
     server.use(
       http.get(`${BASE}/agents/agent-1`, () => HttpResponse.json(agent)),
-      http.get(`${BASE}/agents/agent-1/approvals`, () =>
-        HttpResponse.json(paginatedApprovals([])),
-      ),
+      http.get(`${BASE}/agents/agent-1/approvals`, () => HttpResponse.json(paginatedApprovals([]))),
     )
 
     const { result } = renderHook(() => useAgentDetail('agent-1', { refreshInterval: 0 }))
@@ -41,9 +39,7 @@ describe('useAgentDetail', () => {
   it('sets error when agent fetch fails', async () => {
     server.use(
       http.get(`${BASE}/agents/bad-id`, () => HttpResponse.error()),
-      http.get(`${BASE}/agents/bad-id/approvals`, () =>
-        HttpResponse.json(paginatedApprovals([])),
-      ),
+      http.get(`${BASE}/agents/bad-id/approvals`, () => HttpResponse.json(paginatedApprovals([]))),
     )
 
     const { result } = renderHook(() => useAgentDetail('bad-id', { refreshInterval: 0 }))
@@ -77,9 +73,7 @@ describe('useAgentDetail', () => {
     const updatedAgent = { ...agent, config: { ...agent.config, model: 'new-model' } }
     server.use(
       http.get(`${BASE}/agents/agent-3`, () => HttpResponse.json(agent)),
-      http.get(`${BASE}/agents/agent-3/approvals`, () =>
-        HttpResponse.json(paginatedApprovals([])),
-      ),
+      http.get(`${BASE}/agents/agent-3/approvals`, () => HttpResponse.json(paginatedApprovals([]))),
       http.put(`${BASE}/agents/agent-3/model`, () => HttpResponse.json(updatedAgent)),
     )
 
@@ -150,17 +144,19 @@ describe('useAgentDetail', () => {
         callCount++
         return HttpResponse.json(agent)
       }),
-      http.get(`${BASE}/agents/agent-6/approvals`, () =>
-        HttpResponse.json(paginatedApprovals([])),
-      ),
+      http.get(`${BASE}/agents/agent-6/approvals`, () => HttpResponse.json(paginatedApprovals([]))),
     )
 
     renderHook(() => useAgentDetail('agent-6', { refreshInterval: 2000 }))
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50)
+    })
     const countAfterMount = callCount
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(2001) })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2001)
+    })
 
     expect(callCount).toBeGreaterThan(countAfterMount)
   })

@@ -46,7 +46,7 @@ export function SettingsPage() {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = event => {
+    reader.onload = (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string) as Partial<Settings>
         if (parsed.services) updateServices(parsed.services)
@@ -74,21 +74,13 @@ export function SettingsPage() {
         <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
           Service Configuration
         </h2>
-        <ServiceConfig
-          services={settings.services}
-          onSave={updateServices}
-        />
+        <ServiceConfig services={settings.services} onSave={updateServices} />
       </section>
 
       {/* UI Preferences */}
       <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
-          UI Preferences
-        </h2>
-        <UIPreferences
-          ui={settings.ui}
-          onSave={updateUI}
-        />
+        <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">UI Preferences</h2>
+        <UIPreferences ui={settings.ui} onSave={updateUI} />
       </section>
 
       {/* About */}

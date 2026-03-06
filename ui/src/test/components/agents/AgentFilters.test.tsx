@@ -27,16 +27,16 @@ describe('AgentFilters', () => {
   it('shows "agent" (singular) when totalCount is 1', () => {
     render(<AgentFilters {...defaultProps} displayCount={1} totalCount={1} />)
     // The count is in a <span> and the word in a text node, so use textContent
-    const p = screen.getByText((_, el) =>
-      el?.tagName === 'P' && /1 agent$/.test(el.textContent?.trim() ?? ''),
+    const p = screen.getByText(
+      (_, el) => el?.tagName === 'P' && /1 agent$/.test(el.textContent?.trim() ?? ''),
     )
     expect(p).toBeInTheDocument()
   })
 
   it('shows "agents" (plural) when totalCount is 0', () => {
     render(<AgentFilters {...defaultProps} displayCount={0} totalCount={0} />)
-    const p = screen.getByText((_, el) =>
-      el?.tagName === 'P' && /0 agents$/.test(el.textContent?.trim() ?? ''),
+    const p = screen.getByText(
+      (_, el) => el?.tagName === 'P' && /0 agents$/.test(el.textContent?.trim() ?? ''),
     )
     expect(p).toBeInTheDocument()
   })
@@ -79,7 +79,7 @@ describe('AgentFilters', () => {
   it('shows all status options in dropdown', () => {
     render(<AgentFilters {...defaultProps} />)
     const dropdown = screen.getByRole('combobox', { name: /filter by status/i })
-    const options = Array.from(dropdown.querySelectorAll('option')).map(o => o.value)
+    const options = Array.from(dropdown.querySelectorAll('option')).map((o) => o.value)
     expect(options).toContain('')
     expect(options).toContain('Running')
     expect(options).toContain('Pending')

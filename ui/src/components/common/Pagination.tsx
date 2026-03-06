@@ -44,8 +44,7 @@ export function Pagination({
 
   const btnBase =
     'inline-flex h-8 w-8 items-center justify-center rounded text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:pointer-events-none disabled:opacity-40'
-  const btnActive =
-    'bg-primary-600 text-white dark:bg-primary-500'
+  const btnActive = 'bg-primary-600 text-white dark:bg-primary-500'
   const btnInactive =
     'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
 
@@ -56,11 +55,8 @@ export function Pagination({
     >
       {/* Item range */}
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        Showing{' '}
-        <span className="font-medium text-gray-700 dark:text-gray-300">{startItem}</span>
-        –
-        <span className="font-medium text-gray-700 dark:text-gray-300">{endItem}</span>{' '}
-        of{' '}
+        Showing <span className="font-medium text-gray-700 dark:text-gray-300">{startItem}</span>–
+        <span className="font-medium text-gray-700 dark:text-gray-300">{endItem}</span> of{' '}
         <span className="font-medium text-gray-700 dark:text-gray-300">{totalItems}</span>
       </p>
 
@@ -88,14 +84,12 @@ export function Pagination({
             >
               1
             </button>
-            {windowStart > 2 && (
-              <span className="px-1 text-gray-400 dark:text-gray-600">…</span>
-            )}
+            {windowStart > 2 && <span className="px-1 text-gray-400 dark:text-gray-600">…</span>}
           </>
         )}
 
         {/* Page window */}
-        {pageNumbers.map(n => (
+        {pageNumbers.map((n) => (
           <button
             key={n}
             type="button"

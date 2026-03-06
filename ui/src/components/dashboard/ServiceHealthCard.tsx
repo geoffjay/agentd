@@ -62,9 +62,7 @@ export function ServiceHealthCard({ service }: ServiceHealthCardProps) {
           <Activity size={12} />
           {service.version ? `v${service.version}` : '—'}
         </span>
-        {service.lastChecked && (
-          <span>Checked {formatRelativeTime(service.lastChecked)}</span>
-        )}
+        {service.lastChecked && <span>Checked {formatRelativeTime(service.lastChecked)}</span>}
       </div>
 
       {/* Error message */}

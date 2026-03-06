@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import {
-  loadSettings,
-  saveSettings,
-  resetSettings,
-  DEFAULT_SETTINGS,
-} from '@/stores/settingsStore'
+import { loadSettings, saveSettings, resetSettings, DEFAULT_SETTINGS } from '@/stores/settingsStore'
 
 const STORAGE_KEY = 'agentd:settings'
 

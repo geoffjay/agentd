@@ -154,7 +154,7 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
                 : 'Waiting for agent output…'}
           </p>
         ) : (
-          lines.map(line => {
+          lines.map((line) => {
             const ts = new Date(line.timestamp).toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit',
@@ -163,9 +163,7 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
             })
             return (
               <div key={line.id} className="flex gap-2 whitespace-pre-wrap break-all">
-                <span className="flex-shrink-0 select-none text-gray-600">
-                  {ts}
-                </span>
+                <span className="flex-shrink-0 select-none text-gray-600">{ts}</span>
                 <span>{stripAnsi(line.text)}</span>
               </div>
             )
