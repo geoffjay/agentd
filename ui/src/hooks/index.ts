@@ -26,3 +26,12 @@ export type { StreamStatus, LogLine, UseAgentStreamResult } from './useAgentStre
 
 export { useApprovals } from './useApprovals'
 export type { UseApprovalsOptions, UseApprovalsResult } from './useApprovals'
+
+export { useWebSocket } from './useWebSocket'
+export type { ConnectionState, UseWebSocketResult, UseWebSocketOptions } from './useWebSocket'
+
+export { useAllAgentsStream } from './useAllAgentsStream'
+export type { UseAllAgentsStreamResult } from './useAllAgentsStream'
+
+export { useAgentEvents } from './useAgentEvents'
+export type { UseAgentEventsResult } from './useAgentEvents'

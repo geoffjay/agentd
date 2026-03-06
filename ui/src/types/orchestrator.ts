@@ -147,6 +147,66 @@ export interface DispatchRecord {
 }
 
 // ---------------------------------------------------------------------------
+// WebSocket event types
+// ---------------------------------------------------------------------------
+
+/** Agent produced a line of output on its log stream */
+export interface AgentOutputEvent {
+  type: 'agent:output'
+  agentId: string
+  line: string
+  timestamp: string
+}
+
+/** Agent lifecycle state changed */
+export interface AgentStatusChangeEvent {
+  type: 'agent:status_change'
+  agentId: string
+  status: AgentStatus
+  previousStatus?: AgentStatus
+  timestamp: string
+}
+
+/** A new tool-use approval request arrived */
+export interface ApprovalRequestedEvent {
+  type: 'approval:requested'
+  approval: PendingApproval
+}
+
+/** An approval was resolved (approved or denied) */
+export interface ApprovalResolvedEvent {
+  type: 'approval:resolved'
+  approvalId: string
+  status: 'Approved' | 'Denied'
+  timestamp: string
+}
+
+/** A workflow task was dispatched to an agent */
+export interface WorkflowTaskDispatchedEvent {
+  type: 'workflow:task_dispatched'
+  taskId: string
+  agentId: string
+  timestamp: string
+}
+
+/** A workflow task completed */
+export interface WorkflowTaskCompletedEvent {
+  type: 'workflow:task_completed'
+  taskId: string
+  result?: unknown
+  timestamp: string
+}
+
+/** Union of all agent-related WebSocket events */
+export type AgentEvent =
+  | AgentOutputEvent
+  | AgentStatusChangeEvent
+  | ApprovalRequestedEvent
+  | ApprovalResolvedEvent
+  | WorkflowTaskDispatchedEvent
+  | WorkflowTaskCompletedEvent
+
+// ---------------------------------------------------------------------------
 // Query params
 // ---------------------------------------------------------------------------
 

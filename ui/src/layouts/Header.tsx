@@ -1,6 +1,6 @@
 /**
  * Header — fixed top bar with sidebar toggle, logo, search, theme toggle,
- * notifications, and settings.
+ * connection status, notifications, and settings.
  *
  * The search button opens the global SearchPalette (managed by AppShell).
  * Ctrl+K / Cmd+K is handled at the AppShell level.
@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom'
 import { Bell, Menu, Search, Settings } from 'lucide-react'
 import { useLayout } from './context'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
+import { ConnectionStatus } from '@/components/common/ConnectionStatus'
+import { useAllAgentsStream } from '@/hooks/useAllAgentsStream'
 
 // ---------------------------------------------------------------------------
 // Notification badge
@@ -66,6 +68,7 @@ export interface HeaderProps {
 
 export function Header({ unreadCount = 0 }: HeaderProps) {
   const { toggleSidebar } = useLayout()
+  const { connectionState } = useAllAgentsStream()
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center gap-3 border-b border-gray-700 bg-gray-900 px-4 transition-colors duration-150">
@@ -94,6 +97,13 @@ export function Header({ unreadCount = 0 }: HeaderProps) {
 
       {/* Search trigger */}
       <SearchTrigger />
+
+      {/* Global stream connection status (icon only on small screens) */}
+      <ConnectionStatus
+        connectionState={connectionState}
+        iconOnly
+        className="hidden sm:flex"
+      />
 
       {/* Theme toggle */}
       <ThemeToggle />
