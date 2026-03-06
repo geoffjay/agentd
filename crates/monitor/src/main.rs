@@ -1,4 +1,4 @@
-//! agentd-monitor — System monitoring and alerting service.
+//! agentd-monitor — System health monitoring and alerting daemon.
 //!
 //! Watches system metrics (CPU, memory, disk, load average) and exposes a
 //! REST API for querying current state and triggering on-demand collection.
