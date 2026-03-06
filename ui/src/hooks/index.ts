@@ -23,3 +23,12 @@ export type { UseAgentDetailOptions, UseAgentDetailResult } from './useAgentDeta
 
 export { useAgentStream } from './useAgentStream'
 export type { StreamStatus, LogLine, UseAgentStreamResult } from './useAgentStream'
+
+export { useWebSocket } from './useWebSocket'
+export type { ConnectionState, UseWebSocketResult, UseWebSocketOptions } from './useWebSocket'
+
+export { useAllAgentsStream } from './useAllAgentsStream'
+export type { UseAllAgentsStreamResult } from './useAllAgentsStream'
+
+export { useAgentEvents } from './useAgentEvents'
+export type { UseAgentEventsResult } from './useAgentEvents'
