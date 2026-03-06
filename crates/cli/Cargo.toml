@@ -29,6 +29,9 @@ notify = { path = "../notify" }
 ask = { path = "../ask" }
 wrap = { path = "../wrap" }
 orchestrator = { path = "../orchestrator" }
+monitor = { path = "../monitor" }
+axum = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 mockito = "1.2"

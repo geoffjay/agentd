@@ -1,11 +1,30 @@
 //! agentd-monitor — System health monitoring and alerting daemon.
 //!
-//! Watches system metrics and creates notifications for alerts and anomalies.
+//! Watches system metrics (CPU, memory, disk, load average) and exposes a
+//! REST API for querying current state and triggering on-demand collection.
 //!
 //! **Default port:** 17003 (dev) / 7003 (production)
+//!
+//! # Usage
+//!
+//! ```bash
+//! # Start with defaults (port 17003, 30-second collection interval)
+//! agentd-monitor
+//!
+//! # Override port and interval via environment variables
+//! PORT=7003 COLLECTION_INTERVAL_SECS=60 agentd-monitor
+//!
+//! # JSON structured logging
+//! LOG_FORMAT=json agentd-monitor
+//! ```
 
 use anyhow::Result;
-use monitor::api::{ApiState, create_router_with_tracing};
+use monitor::{
+    api::{create_router_with_tracing, ApiState},
+    config::MonitorConfig,
+    metrics_collector,
+    state::AppState,
+};
 use std::net::SocketAddr;
 use tracing::{info, warn};
 
@@ -21,15 +40,33 @@ async fn main() -> Result<()> {
         tracing_subscriber::fmt().with_target(false).with_env_filter(env_filter).init();
     }
 
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(17003);
+    let config = MonitorConfig::from_env();
+    let port = config.port;
+    let interval_secs = config.collection_interval_secs;
 
-    info!(port, "Starting agentd-monitor daemon");
+    info!(
+        port,
+        collection_interval_secs = interval_secs,
+        cpu_threshold = config.cpu_alert_threshold,
+        memory_threshold = config.memory_alert_threshold,
+        disk_threshold = config.disk_alert_threshold,
+        "Starting agentd-monitor daemon"
+    );
 
-    let api_state = ApiState::default();
+    let app_state = AppState::new(config);
+    let api_state = ApiState { app_state: app_state.clone() };
     let router = create_router_with_tracing(api_state);
+
+    // Background metrics collection task
+    let bg_state = app_state.clone();
+    let collection_task = tokio::spawn(async move {
+        info!("Background metrics collector starting (interval: {}s)", interval_secs);
+        loop {
+            let metrics = metrics_collector::collect();
+            bg_state.push_metrics(metrics).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
+        }
+    });
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -51,6 +88,7 @@ async fn main() -> Result<()> {
         }
     }
 
+    collection_task.abort();
     info!("agentd-monitor daemon stopped");
     Ok(())
 }

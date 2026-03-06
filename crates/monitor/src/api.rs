@@ -3,45 +3,29 @@
 //! Provides the following endpoints:
 //!
 //! - `GET /health`   — standard health check
-//! - `GET /metrics`  — list current metric reports
-//! - `GET /alerts`   — list active alerts
+//! - `GET /metrics`  — latest system metrics snapshot
+//! - `POST /collect` — trigger an immediate metrics collection
+//! - `GET /history`  — full metrics history (ring buffer)
+//! - `GET /status`   — health assessment against configured thresholds
 
 use crate::{
     error::ApiError,
-    types::{Alert, AlertsResponse, HealthResponse, MetricReport, MetricsResponse},
+    metrics_collector,
+    state::AppState,
+    types::{CollectResponse, HealthResponse, SystemStatus},
 };
 use axum::{
     extract::State,
     response::IntoResponse,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
-use std::sync::{Arc, RwLock};
-use tracing::debug;
-
-/// In-memory store for the monitor service.
-///
-/// Holds metric reports and active alerts. Will be replaced with a more
-/// sophisticated storage layer as the service matures.
-#[derive(Default)]
-pub struct Store {
-    pub metrics: Vec<MetricReport>,
-    pub alerts: Vec<Alert>,
-}
+use tracing::info;
 
 /// Shared state passed to every API handler.
 #[derive(Clone)]
 pub struct ApiState {
-    /// Service name reported in health check responses
-    pub service_name: &'static str,
-    /// In-memory store shared across handlers
-    pub store: Arc<RwLock<Store>>,
-}
-
-impl Default for ApiState {
-    fn default() -> Self {
-        Self { service_name: "agentd-monitor", store: Arc::new(RwLock::new(Store::default())) }
-    }
+    pub app_state: AppState,
 }
 
 /// Create the base router (no middleware).
@@ -49,7 +33,9 @@ pub fn create_router(state: ApiState) -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/metrics", get(get_metrics))
-        .route("/alerts", get(get_alerts))
+        .route("/collect", post(collect_metrics))
+        .route("/history", get(get_history))
+        .route("/status", get(get_status))
         .with_state(state)
 }
 
@@ -65,51 +51,58 @@ pub fn create_router_with_tracing(state: ApiState) -> Router {
 }
 
 /// `GET /health` — standard health check.
+///
+/// Returns HTTP 200 with service name, version, and collection count.
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
-    let store = state.store.read().expect("store lock poisoned");
-    let metric_count = store.metrics.len();
-    let alert_count = store.alerts.len();
-    drop(store);
-
+    let count = state.app_state.metrics_count().await;
     Json(
-        HealthResponse::ok(state.service_name, env!("CARGO_PKG_VERSION"))
-            .with_detail("metrics_count", serde_json::json!(metric_count))
-            .with_detail("alert_count", serde_json::json!(alert_count)),
+        HealthResponse::ok("agentd-monitor", env!("CARGO_PKG_VERSION"))
+            .with_detail("metrics_collected", serde_json::json!(count)),
     )
 }
 
-/// `GET /metrics` — return all current metric reports.
+/// `GET /metrics` — return the latest metrics snapshot.
 ///
-/// Returns an empty list if no metrics have been collected yet.
+/// Returns HTTP 503 if no collection has run yet.
 async fn get_metrics(State(state): State<ApiState>) -> Result<impl IntoResponse, ApiError> {
-    let store = state.store.read().map_err(|e| ApiError::Internal(e.to_string()))?;
-    let metrics = store.metrics.clone();
-    let count = metrics.len();
-    debug!("Returning {} metric reports", count);
-    Ok(Json(MetricsResponse { metrics, count }))
+    state.app_state.latest_metrics().await.map(Json).ok_or(ApiError::NoMetricsAvailable)
 }
 
-/// `GET /alerts` — return all active alerts.
+/// `POST /collect` — trigger an immediate metrics collection.
 ///
-/// Returns an empty list if there are no active alerts.
-async fn get_alerts(State(state): State<ApiState>) -> Result<impl IntoResponse, ApiError> {
-    let store = state.store.read().map_err(|e| ApiError::Internal(e.to_string()))?;
-    let alerts = store.alerts.clone();
-    let count = alerts.len();
-    debug!("Returning {} active alerts", count);
-    Ok(Json(AlertsResponse { alerts, count }))
+/// Collects fresh metrics, stores them in state, and returns the snapshot
+/// along with any threshold alerts.
+async fn collect_metrics(State(state): State<ApiState>) -> impl IntoResponse {
+    info!("Collecting system metrics on demand");
+    let metrics = metrics_collector::collect();
+    state.app_state.push_metrics(metrics.clone()).await;
+    let system_status = state.app_state.evaluate_status().await;
+
+    Json(CollectResponse { metrics, alerts: system_status.alerts })
+}
+
+/// `GET /history` — return all retained metrics snapshots.
+async fn get_history(State(state): State<ApiState>) -> impl IntoResponse {
+    let history = state.app_state.all_metrics().await;
+    Json(history)
+}
+
+/// `GET /status` — evaluate current health against thresholds.
+async fn get_status(State(state): State<ApiState>) -> Json<SystemStatus> {
+    Json(state.app_state.evaluate_status().await)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::MonitorConfig;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
     fn make_state() -> ApiState {
-        ApiState::default()
+        ApiState { app_state: AppState::new(MonitorConfig::default()) }
     }
 
     #[tokio::test]
@@ -121,7 +114,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_health_check_body() {
+    async fn test_health_check_contains_service_name() {
         let router = create_router(make_state());
         let req = Request::builder().uri("/health").body(Body::empty()).unwrap();
         let resp = router.oneshot(req).await.unwrap();
@@ -129,80 +122,60 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["service"], "agentd-monitor");
         assert_eq!(json["status"], "ok");
-        assert_eq!(json["details"]["metrics_count"], 0);
-        assert_eq!(json["details"]["alert_count"], 0);
     }
 
     #[tokio::test]
-    async fn test_get_metrics_returns_empty_list_initially() {
+    async fn test_get_metrics_returns_503_when_empty() {
         let router = create_router(make_state());
         let req = Request::builder().uri("/metrics").body(Body::empty()).unwrap();
         let resp = router.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["count"], 0);
-        assert!(json["metrics"].as_array().unwrap().is_empty());
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
-    async fn test_get_alerts_returns_empty_list_initially() {
+    async fn test_collect_returns_200() {
         let router = create_router(make_state());
-        let req = Request::builder().uri("/alerts").body(Body::empty()).unwrap();
+        let req = Request::builder().method("POST").uri("/collect").body(Body::empty()).unwrap();
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["count"], 0);
-        assert!(json["alerts"].as_array().unwrap().is_empty());
     }
 
     #[tokio::test]
-    async fn test_get_metrics_reflects_stored_data() {
+    async fn test_collect_then_get_metrics() {
         let state = make_state();
-        {
-            let mut store = state.store.write().unwrap();
-            store.metrics.push(MetricReport {
-                name: "cpu.usage".to_string(),
-                value: 55.0,
-                unit: Some("percent".to_string()),
-                observed_at: None,
-                tags: std::collections::HashMap::new(),
-            });
-        }
-        let router = create_router(state);
-        let req = Request::builder().uri("/metrics").body(Body::empty()).unwrap();
-        let resp = router.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["count"], 1);
-        assert_eq!(json["metrics"][0]["name"], "cpu.usage");
+        let router = create_router(state.clone());
+
+        // Collect first
+        let collect_req =
+            Request::builder().method("POST").uri("/collect").body(Body::empty()).unwrap();
+        let collect_resp = router.clone().oneshot(collect_req).await.unwrap();
+        assert_eq!(collect_resp.status(), StatusCode::OK);
+
+        // Now GET /metrics should return data
+        let metrics_req = Request::builder().uri("/metrics").body(Body::empty()).unwrap();
+        let metrics_resp = router.oneshot(metrics_req).await.unwrap();
+        assert_eq!(metrics_resp.status(), StatusCode::OK);
     }
 
     #[tokio::test]
-    async fn test_get_alerts_reflects_stored_data() {
-        use chrono::Utc;
-        use uuid::Uuid;
-        let state = make_state();
-        {
-            let mut store = state.store.write().unwrap();
-            store.alerts.push(Alert {
-                id: Uuid::new_v4(),
-                metric: "memory.usage".to_string(),
-                current_value: 95.0,
-                threshold: 90.0,
-                message: "Memory critical".to_string(),
-                raised_at: Utc::now(),
-            });
-        }
-        let router = create_router(state);
-        let req = Request::builder().uri("/alerts").body(Body::empty()).unwrap();
+    async fn test_history_returns_empty_array_initially() {
+        let router = create_router(make_state());
+        let req = Request::builder().uri("/history").body(Body::empty()).unwrap();
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let body = resp.into_body().collect().await.unwrap().to_bytes();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["count"], 1);
-        assert_eq!(json["alerts"][0]["metric"], "memory.usage");
+        assert!(json.as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_status_returns_healthy_initially() {
+        let router = create_router(make_state());
+        let req = Request::builder().uri("/status").body(Body::empty()).unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "healthy");
     }
 }

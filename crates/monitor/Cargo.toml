@@ -25,8 +25,17 @@ axum = { workspace = true }
 tower-http = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["serde", "v4"] }
+sysinfo = "0.33"
+reqwest = { workspace = true, features = ["json"] }
 agentd-common = { path = "../common" }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+baml = { path = "../baml", optional = true }
+
+[features]
+baml-integration = ["baml"]
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+hyper = "1.0"

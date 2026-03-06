@@ -11,15 +11,15 @@ use thiserror::Error;
 /// Errors that can occur in monitor service API handlers.
 #[derive(Debug, Error)]
 pub enum ApiError {
-    /// No metrics are available yet (collection has not run)
-    #[error("No metrics available yet")]
+    /// Metrics collection failed
+    #[error("Metrics collection failed: {0}")]
+    CollectionFailed(String),
+
+    /// No metrics available yet (collection has not run)
+    #[error("No metrics available — collection has not run yet")]
     NoMetricsAvailable,
 
-    /// The requested resource was not found
-    #[error("Not found: {0}")]
-    NotFound(String),
-
-    /// An internal error occurred
+    /// Internal service error
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -27,10 +27,8 @@ pub enum ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            ApiError::NoMetricsAvailable => {
-                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-            }
-            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            ApiError::CollectionFailed(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
+            ApiError::NoMetricsAvailable => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
 
@@ -43,20 +41,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_no_metrics_available_message() {
+    fn test_collection_failed_message() {
+        let err = ApiError::CollectionFailed("sysinfo unavailable".to_string());
+        assert!(err.to_string().contains("sysinfo unavailable"));
+    }
+
+    #[test]
+    fn test_no_metrics_message() {
         let err = ApiError::NoMetricsAvailable;
         assert!(err.to_string().contains("No metrics"));
-    }
-
-    #[test]
-    fn test_not_found_message() {
-        let err = ApiError::NotFound("alert-123".to_string());
-        assert!(err.to_string().contains("alert-123"));
-    }
-
-    #[test]
-    fn test_internal_error_message() {
-        let err = ApiError::Internal("unexpected panic".to_string());
-        assert!(err.to_string().contains("unexpected panic"));
     }
 }
