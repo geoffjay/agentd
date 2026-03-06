@@ -113,7 +113,11 @@ impl AgentManager {
         Ok(agent)
     }
 
-    /// Terminate a running agent: kill tmux session, update DB.
+    /// Terminate a running agent: kill tmux session and delete DB record.
+    ///
+    /// The record is deleted (not just updated to Stopped) so that `agent apply`
+    /// can recreate an agent with the same name and `agent teardown` + `agent apply`
+    /// forms a clean cycle without stale records accumulating in the database.
     pub async fn terminate_agent(&self, id: &Uuid) -> anyhow::Result<Agent> {
         let mut agent =
             self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
@@ -124,11 +128,14 @@ impl AgentManager {
             }
         }
 
+        // Remove the record from storage entirely so the name can be reused.
+        self.storage.delete(id).await?;
+
+        // Set status on the returned value for callers that inspect it.
         agent.status = AgentStatus::Stopped;
         agent.updated_at = Utc::now();
-        self.storage.update(&agent).await?;
 
-        info!(agent_id = %id, "Agent terminated");
+        info!(agent_id = %id, "Agent terminated and record deleted");
 
         Ok(agent)
     }
