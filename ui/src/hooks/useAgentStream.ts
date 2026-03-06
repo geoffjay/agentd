@@ -1,7 +1,7 @@
 /**
  * useAgentStream — WebSocket hook for real-time agent log streaming.
  *
- * Connects to ws://<host>/ws/<agentId> via WebSocketManager, which
+ * Connects to ws://<host>/stream/<agentId> via WebSocketManager, which
  * handles auto-reconnect (exponential backoff), heartbeat detection,
  * and message buffering.
  *
@@ -61,7 +61,7 @@ function capLines(prev: LogLine[], incoming: LogLine[]): LogLine[] {
 
 function agentStreamUrl(agentId: string): string {
   const wsBase = serviceConfig.orchestratorServiceUrl.replace(/^http/, 'ws')
-  return `${wsBase}/ws/${agentId}`
+  return `${wsBase}/stream/${agentId}`
 }
 
 // ---------------------------------------------------------------------------

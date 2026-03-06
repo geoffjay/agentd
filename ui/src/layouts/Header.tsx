@@ -12,6 +12,7 @@ import { useLayout } from './context'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { ConnectionStatus } from '@/components/common/ConnectionStatus'
 import { useAllAgentsStream } from '@/hooks/useAllAgentsStream'
+import { useNotificationCount } from '@/hooks/useNotificationCount'
 
 // ---------------------------------------------------------------------------
 // Notification badge
@@ -62,13 +63,15 @@ function SearchTrigger() {
 // ---------------------------------------------------------------------------
 
 export interface HeaderProps {
-  /** Number of unread notifications to show in the badge */
+  /** Number of unread notifications to show in the badge; if omitted, fetched automatically */
   unreadCount?: number
 }
 
-export function Header({ unreadCount = 0 }: HeaderProps) {
+export function Header({ unreadCount }: HeaderProps) {
   const { toggleSidebar } = useLayout()
   const { connectionState } = useAllAgentsStream()
+  const { pending } = useNotificationCount({ refreshInterval: 15_000 })
+  const displayCount = unreadCount ?? pending
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center gap-3 border-b border-gray-700 bg-gray-900 px-4 transition-colors duration-150">
@@ -107,11 +110,11 @@ export function Header({ unreadCount = 0 }: HeaderProps) {
       {/* Notification bell */}
       <Link
         to="/notifications"
-        aria-label={unreadCount > 0 ? `Notifications — ${unreadCount} unread` : 'Notifications'}
+        aria-label={displayCount > 0 ? `Notifications — ${displayCount} unread` : 'Notifications'}
         className="relative rounded-md p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
       >
         <Bell size={20} />
-        <NotificationBadge count={unreadCount} />
+        <NotificationBadge count={displayCount} />
       </Link>
 
       {/* Settings */}

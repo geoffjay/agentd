@@ -197,11 +197,11 @@ describe('OrchestratorClient', () => {
   })
 
   describe('WebSocket helpers', () => {
-    it('connectAgentStream opens ws://.../ws/:id', () => {
+    it('connectAgentStream opens ws://.../stream/:id', () => {
       const MockWS = vi.fn()
       vi.stubGlobal('WebSocket', MockWS)
       client.connectAgentStream('agent-uuid-1')
-      expect(MockWS).toHaveBeenCalledWith('ws://localhost:17006/ws/agent-uuid-1')
+      expect(MockWS).toHaveBeenCalledWith('ws://localhost:17006/stream/agent-uuid-1')
     })
 
     it('connectAllStream opens ws://.../stream', () => {

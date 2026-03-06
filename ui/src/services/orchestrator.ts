@@ -114,11 +114,15 @@ export class OrchestratorClient extends ApiClient {
   // -------------------------------------------------------------------------
 
   /**
-   * Opens a WebSocket to stream output from a specific agent.
-   * URL: ws://<host>/ws/<agentId>
+   * Opens a read-only WebSocket to stream output from a specific agent.
+   * URL: ws://<host>/stream/<agentId>
+   *
+   * NOTE: Do NOT connect to /ws/<agentId> — that endpoint is reserved for
+   * the agent's Claude CLI process. Connecting to it replaces the agent's
+   * connection in the registry, severing communication with the actual agent.
    */
   connectAgentStream(agentId: string): WebSocket {
-    return this.openWebSocket(`/ws/${agentId}`)
+    return this.openWebSocket(`/stream/${agentId}`)
   }
 
   /**
