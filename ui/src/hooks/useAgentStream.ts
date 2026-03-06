@@ -1,16 +1,17 @@
 /**
  * useAgentStream — WebSocket hook for real-time agent log streaming.
  *
- * Features:
- * - Connects to ws://<host>/ws/<agentId> on mount
- * - Auto-reconnect on disconnect with exponential backoff
- * - Maintains a capped circular buffer of the last MAX_LINES log lines
- * - Exposes stream status: 'connecting' | 'connected' | 'disconnected'
- * - clear() resets the visible buffer without affecting the stream
+ * Connects to ws://<host>/ws/<agentId> via WebSocketManager, which
+ * handles auto-reconnect (exponential backoff), heartbeat detection,
+ * and message buffering.
+ *
+ * Returns a capped circular buffer of up to MAX_LINES log lines plus
+ * a connection status indicator.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { orchestratorClient } from '@/services/orchestrator'
+import { WebSocketManager } from '@/services/websocket'
+import { serviceConfig } from '@/services/config'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,9 +37,7 @@ export interface UseAgentStreamResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_LINES = 5000
-const MIN_RECONNECT_DELAY_MS = 1_000
-const MAX_RECONNECT_DELAY_MS = 30_000
+const MAX_LINES = 5_000
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,11 +53,15 @@ function makeLogLine(text: string): LogLine {
   }
 }
 
-/** Cap the buffer at MAX_LINES, discarding oldest entries */
 function capLines(prev: LogLine[], incoming: LogLine[]): LogLine[] {
   const combined = [...prev, ...incoming]
   if (combined.length <= MAX_LINES) return combined
   return combined.slice(combined.length - MAX_LINES)
+}
+
+function agentStreamUrl(agentId: string): string {
+  const wsBase = serviceConfig.orchestratorServiceUrl.replace(/^http/, 'ws')
+  return `${wsBase}/ws/${agentId}`
 }
 
 // ---------------------------------------------------------------------------
@@ -69,71 +72,45 @@ export function useAgentStream(agentId: string): UseAgentStreamResult {
   const [lines, setLines] = useState<LogLine[]>([])
   const [status, setStatus] = useState<StreamStatus>('connecting')
 
-  const wsRef = useRef<WebSocket | null>(null)
-  const reconnectDelayRef = useRef(MIN_RECONNECT_DELAY_MS)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const unmountedRef = useRef(false)
-
-  const connect = useCallback(() => {
-    if (unmountedRef.current) return
-
-    setStatus('connecting')
-
-    const ws = orchestratorClient.connectAgentStream(agentId)
-    wsRef.current = ws
-
-    ws.onopen = () => {
-      if (unmountedRef.current) { ws.close(); return }
-      setStatus('connected')
-      reconnectDelayRef.current = MIN_RECONNECT_DELAY_MS
-    }
-
-    ws.onmessage = (event: MessageEvent) => {
-      if (unmountedRef.current) return
-      // Each message may be a single line or newline-separated block
-      const rawText = String(event.data)
-      const incoming = rawText
-        .split('\n')
-        .filter(Boolean)
-        .map(makeLogLine)
-      setLines(prev => capLines(prev, incoming))
-    }
-
-    ws.onerror = () => {
-      // onerror fires before onclose; the actual reconnect is scheduled in onclose
-    }
-
-    ws.onclose = () => {
-      if (unmountedRef.current) return
-      setStatus('disconnected')
-      wsRef.current = null
-
-      // Exponential backoff reconnect
-      const delay = reconnectDelayRef.current
-      reconnectDelayRef.current = Math.min(delay * 2, MAX_RECONNECT_DELAY_MS)
-
-      reconnectTimerRef.current = setTimeout(() => {
-        if (!unmountedRef.current) connect()
-      }, delay)
-    }
-  }, [agentId])
+  const managerRef = useRef<WebSocketManager | null>(null)
 
   useEffect(() => {
-    unmountedRef.current = false
-    connect()
+    const manager = new WebSocketManager(agentStreamUrl(agentId), {
+      // Disable heartbeat — agent output arrives irregularly; a ping
+      // would be noise in the log stream
+      heartbeatInterval: 0,
+    })
+    managerRef.current = manager
+
+    const unsubState = manager.onStateChange(state => {
+      switch (state) {
+        case 'Connected':
+          setStatus('connected')
+          break
+        case 'Disconnected':
+          setStatus('disconnected')
+          break
+        default:
+          // Connecting | Reconnecting → show as 'connecting'
+          setStatus('connecting')
+      }
+    })
+
+    const unsubMsg = manager.onMessage((event: MessageEvent) => {
+      const rawText = String(event.data)
+      const incoming = rawText.split('\n').filter(Boolean).map(makeLogLine)
+      setLines(prev => capLines(prev, incoming))
+    })
+
+    manager.connect()
 
     return () => {
-      unmountedRef.current = true
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current)
-      }
-      if (wsRef.current) {
-        wsRef.current.onclose = null // prevent reconnect on intentional close
-        wsRef.current.close()
-        wsRef.current = null
-      }
+      unsubState()
+      unsubMsg()
+      manager.disconnect()
+      managerRef.current = null
     }
-  }, [connect])
+  }, [agentId])
 
   const clear = useCallback(() => setLines([]), [])
 

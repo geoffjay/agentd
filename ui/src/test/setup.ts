@@ -13,6 +13,41 @@ import { expect, beforeAll, afterEach, afterAll, vi } from 'vitest'
 import { server } from './mocks/server'
 
 // ---------------------------------------------------------------------------
+// WebSocket — jsdom does not implement WebSocket.
+// Provide a stub that stays in CONNECTING state so hooks that open WebSocket
+// connections don't throw. Individual tests can replace this with a fully
+// functional mock (see src/test/mocks/mockWebSocket.ts) when needed.
+// ---------------------------------------------------------------------------
+
+class _StubWebSocket {
+  static CONNECTING = 0
+  static OPEN = 1
+  static CLOSING = 2
+  static CLOSED = 3
+
+  readonly CONNECTING = 0
+  readonly OPEN = 1
+  readonly CLOSING = 2
+  readonly CLOSED = 3
+
+  readyState = 0 // CONNECTING — never opens, simulates a pending connection
+  onopen: ((event: Event) => void) | null = null
+  onclose: ((event: CloseEvent) => void) | null = null
+  onerror: ((event: Event) => void) | null = null
+  onmessage: ((event: MessageEvent) => void) | null = null
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  constructor(_url: string, _protocols?: string | string[]) {}
+  send(_data: string | ArrayBuffer | Blob | ArrayBufferView): void {}
+  close(_code?: number, _reason?: string): void {}
+  addEventListener(): void {}
+  removeEventListener(): void {}
+  dispatchEvent(_event: Event): boolean { return true }
+}
+
+vi.stubGlobal('WebSocket', _StubWebSocket)
+
+// ---------------------------------------------------------------------------
 // window.matchMedia — jsdom does not implement matchMedia, so we provide a
 // functional stub that defaults to the light colour scheme. Individual tests
 // can override this with vi.fn() if they need to test dark-mode behaviour.
