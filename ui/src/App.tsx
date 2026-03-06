@@ -13,6 +13,7 @@ import {
   WorkflowsPage,
 } from '@/pages'
 import { AgentDetail } from '@/pages/agents/AgentDetail'
+import { WorkflowDetail } from '@/pages/workflows/WorkflowDetail'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 
 function App() {
@@ -28,6 +29,7 @@ function App() {
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/questions" element={<QuestionsPage />} />
             <Route path="/workflows" element={<WorkflowsPage />} />
+            <Route path="/workflows/:id" element={<WorkflowDetail />} />
             <Route path="/monitoring" element={<MonitoringPage />} />
             <Route path="/hooks" element={<HooksPage />} />
             <Route path="/settings" element={<SettingsPage />} />
