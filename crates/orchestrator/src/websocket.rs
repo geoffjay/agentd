@@ -135,13 +135,23 @@ impl ConnectionRegistry {
 }
 
 /// Axum handler for WebSocket upgrade at /ws/{agent_id}.
+///
+/// This endpoint is reserved for agent CLI processes. Only one connection per
+/// agent is allowed — a second connection would replace the first, severing
+/// communication with the real agent. Use /stream/{agent_id} for read-only
+/// monitoring.
 pub async fn ws_handler(
     Path(agent_id): Path<Uuid>,
     ws: WebSocketUpgrade,
     State(registry): State<ConnectionRegistry>,
 ) -> impl IntoResponse {
+    if registry.is_connected(&agent_id).await {
+        warn!(%agent_id, "Rejected WebSocket upgrade: agent already connected. Use /stream/{agent_id} for monitoring.");
+        return axum::http::StatusCode::CONFLICT.into_response();
+    }
     info!(%agent_id, "WebSocket upgrade request");
     ws.on_upgrade(move |socket| handle_agent_socket(socket, agent_id, registry))
+        .into_response()
 }
 
 async fn handle_agent_socket(socket: WebSocket, agent_id: Uuid, registry: ConnectionRegistry) {

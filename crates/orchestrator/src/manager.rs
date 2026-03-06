@@ -316,7 +316,6 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
         // User can attach to the tmux session and interact directly.
     } else {
         args.push(format!("--sdk-url {}", ws_url));
-        args.push("--print".to_string());
         args.push("--output-format stream-json".to_string());
         args.push("--input-format stream-json".to_string());
     }
@@ -333,10 +332,10 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
         args.push(format!("--system-prompt '{}'", system_prompt.replace('\'', "'\\''")));
     }
 
-    // NOTE: -p is intentionally NOT used here. Initial prompts are sent via
-    // the WebSocket after the agent connects. Using -p causes claude to exit
-    // after processing the single prompt, making the agent unable to receive
-    // follow-up messages.
+    // NOTE: --print / -p is intentionally NOT used here. It causes claude to
+    // exit after processing a single conversation, making the agent unable to
+    // receive follow-up messages. In SDK mode (--sdk-url), the CLI stays alive
+    // and processes multiple messages without --print.
 
     let base = args.join(" ");
     let env_assignments = build_env_assignments(&config.env);
