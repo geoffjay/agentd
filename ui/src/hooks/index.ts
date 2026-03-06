@@ -17,3 +17,9 @@ export { useNivoTheme } from './useNivoTheme'
 
 export { useAgents } from './useAgents'
 export type { UseAgentsOptions, UseAgentsResult, SortField, SortDir } from './useAgents'
+
+export { useAgentDetail } from './useAgentDetail'
+export type { UseAgentDetailOptions, UseAgentDetailResult } from './useAgentDetail'
+
+export { useAgentStream } from './useAgentStream'
+export type { StreamStatus, LogLine, UseAgentStreamResult } from './useAgentStream'

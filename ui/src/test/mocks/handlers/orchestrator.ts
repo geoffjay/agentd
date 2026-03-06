@@ -72,6 +72,38 @@ export const orchestratorHandlers = [
   ),
 
   // -------------------------------------------------------------------------
+  // Agent model
+  // -------------------------------------------------------------------------
+
+  http.put(`${BASE}/agents/:id/model`, async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>
+    const agent = DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
+    return HttpResponse.json({ ...agent, config: { ...agent.config, model: body.model ?? agent.config.model } })
+  }),
+
+  // -------------------------------------------------------------------------
+  // Tool policy
+  // -------------------------------------------------------------------------
+
+  http.get(`${BASE}/agents/:id/policy`, ({ params }) => {
+    const agent = DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
+    return HttpResponse.json(agent.config.tool_policy)
+  }),
+
+  http.put(`${BASE}/agents/:id/policy`, async ({ request }) => {
+    const policy = await request.json()
+    return HttpResponse.json(policy)
+  }),
+
+  // -------------------------------------------------------------------------
+  // Agent approvals
+  // -------------------------------------------------------------------------
+
+  http.get(`${BASE}/agents/:id/approvals`, () =>
+    HttpResponse.json(paginated<PendingApproval>([])),
+  ),
+
+  // -------------------------------------------------------------------------
   // Approvals
   // -------------------------------------------------------------------------
 

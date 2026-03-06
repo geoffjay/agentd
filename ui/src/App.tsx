@@ -11,6 +11,7 @@ import {
   SettingsPage,
   WorkflowsPage,
 } from '@/pages'
+import { AgentDetail } from '@/pages/agents/AgentDetail'
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
         <Route element={<AppShell />}>
           <Route index element={<DashboardPage />} />
           <Route path="/agents" element={<AgentsPage />} />
+          <Route path="/agents/:id" element={<AgentDetail />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/questions" element={<QuestionsPage />} />
           <Route path="/workflows" element={<WorkflowsPage />} />
