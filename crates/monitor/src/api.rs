@@ -41,13 +41,7 @@ pub fn create_router(state: ApiState) -> Router {
 
 /// Create the router with HTTP tracing middleware.
 pub fn create_router_with_tracing(state: ApiState) -> Router {
-    use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
-
-    create_router(state).layer(
-        TraceLayer::new_for_http()
-            .make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO))
-            .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
-    )
+    create_router(state).layer(agentd_common::server::trace_layer())
 }
 
 /// `GET /health` — standard health check.

@@ -72,3 +72,65 @@ pub mod error;
 pub mod metrics_collector;
 pub mod state;
 pub mod types;
+
+use anyhow::Result;
+use std::net::SocketAddr;
+use tracing::{info, warn};
+
+/// Run the monitor service with the given configuration.
+///
+/// This is the main entry point for the monitor daemon. It sets up the API
+/// server, starts the background metrics collection task, and blocks until
+/// a shutdown signal is received.
+pub async fn run(config: config::MonitorConfig) -> Result<()> {
+    let port = config.port;
+    let interval_secs = config.collection_interval_secs;
+
+    info!(
+        port,
+        collection_interval_secs = interval_secs,
+        cpu_threshold = config.cpu_alert_threshold,
+        memory_threshold = config.memory_alert_threshold,
+        disk_threshold = config.disk_alert_threshold,
+        "Starting agentd-monitor daemon"
+    );
+
+    let app_state = state::AppState::new(config);
+    let api_state = api::ApiState { app_state: app_state.clone() };
+    let router = api::create_router_with_tracing(api_state);
+
+    // Background metrics collection task
+    let bg_state = app_state.clone();
+    let collection_task = tokio::spawn(async move {
+        info!("Background metrics collector starting (interval: {}s)", interval_secs);
+        loop {
+            let metrics = metrics_collector::collect();
+            bg_state.push_metrics(metrics).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
+        }
+    });
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    info!("HTTP server listening on http://{}", addr);
+
+    let shutdown_signal = async {
+        tokio::signal::ctrl_c().await.expect("Failed to install CTRL+C signal handler");
+        warn!("Shutdown signal received, stopping daemon...");
+    };
+
+    tokio::select! {
+        result = axum::serve(listener, router) => {
+            if let Err(e) = result {
+                tracing::error!("Server error: {}", e);
+            }
+        }
+        _ = shutdown_signal => {
+            info!("Graceful shutdown initiated");
+        }
+    }
+
+    collection_task.abort();
+    info!("agentd-monitor daemon stopped");
+    Ok(())
+}

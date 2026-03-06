@@ -9,6 +9,7 @@ use crate::{
     types::{Alert, HealthStatus, SystemMetrics, SystemStatus},
 };
 use chrono::Utc;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::debug;
@@ -24,7 +25,7 @@ pub struct AppState {
 
 struct AppStateInner {
     /// Ring buffer of collected metric snapshots (oldest first)
-    metrics_history: Vec<SystemMetrics>,
+    metrics_history: VecDeque<SystemMetrics>,
     /// Maximum number of snapshots to retain
     history_size: usize,
     /// Service configuration (thresholds etc.)
@@ -37,7 +38,7 @@ impl AppState {
         let history_size = config.history_size;
         Self {
             inner: Arc::new(RwLock::new(AppStateInner {
-                metrics_history: Vec::with_capacity(history_size),
+                metrics_history: VecDeque::with_capacity(history_size),
                 history_size,
                 config,
             })),
@@ -50,22 +51,22 @@ impl AppState {
     pub async fn push_metrics(&self, metrics: SystemMetrics) {
         let mut state = self.inner.write().await;
         if state.metrics_history.len() >= state.history_size {
-            state.metrics_history.remove(0);
+            state.metrics_history.pop_front();
         }
         debug!("Stored metrics snapshot at {}", metrics.collected_at);
-        state.metrics_history.push(metrics);
+        state.metrics_history.push_back(metrics);
     }
 
     /// Return the most recent metrics snapshot, if any.
     pub async fn latest_metrics(&self) -> Option<SystemMetrics> {
         let state = self.inner.read().await;
-        state.metrics_history.last().cloned()
+        state.metrics_history.back().cloned()
     }
 
     /// Return all retained metrics snapshots (oldest first).
     pub async fn all_metrics(&self) -> Vec<SystemMetrics> {
         let state = self.inner.read().await;
-        state.metrics_history.clone()
+        state.metrics_history.iter().cloned().collect()
     }
 
     /// Return the number of snapshots currently held.
@@ -78,7 +79,7 @@ impl AppState {
     /// [`SystemStatus`] describing the current health.
     pub async fn evaluate_status(&self) -> SystemStatus {
         let state = self.inner.read().await;
-        let latest = state.metrics_history.last().cloned();
+        let latest = state.metrics_history.back().cloned();
 
         let Some(metrics) = latest else {
             return SystemStatus {
