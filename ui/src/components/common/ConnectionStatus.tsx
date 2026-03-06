@@ -78,10 +78,7 @@ export function ConnectionStatus({
       aria-label={`Stream: ${displayLabel}`}
       className={`flex items-center gap-1.5 text-xs ${text} ${className}`}
     >
-      <span
-        aria-hidden="true"
-        className={`h-2 w-2 flex-shrink-0 rounded-full ${dot}`}
-      />
+      <span aria-hidden="true" className={`h-2 w-2 flex-shrink-0 rounded-full ${dot}`} />
       {!iconOnly && <span>{displayLabel}</span>}
     </span>
   )

@@ -20,7 +20,7 @@ describe('useAgentEvents', () => {
     const { result } = renderHook(() => useAgentEvents())
 
     act(() => {
-      result.current.subscribe('agent:status_change', event => {
+      result.current.subscribe('agent:status_change', (event) => {
         received.push(event.agentId)
       })
     })
@@ -43,7 +43,7 @@ describe('useAgentEvents', () => {
     const { result } = renderHook(() => useAgentEvents())
 
     act(() => {
-      result.current.subscribe('approval:requested', event => {
+      result.current.subscribe('approval:requested', (event) => {
         received.push(event)
       })
     })
@@ -67,7 +67,7 @@ describe('useAgentEvents', () => {
 
     let cleanup: (() => void) | undefined
     act(() => {
-      cleanup = result.current.subscribe('agent:status_change', event => {
+      cleanup = result.current.subscribe('agent:status_change', (event) => {
         received.push(event.agentId)
       })
     })
@@ -83,7 +83,9 @@ describe('useAgentEvents', () => {
     })
 
     // Remove subscription
-    act(() => { cleanup?.() })
+    act(() => {
+      cleanup?.()
+    })
 
     // Emit again — should not receive
     act(() => {

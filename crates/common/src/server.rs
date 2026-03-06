@@ -49,3 +49,67 @@ pub fn trace_layer() -> tower_http::trace::TraceLayer<
         .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
         .on_response(tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO))
 }
+
+/// Create a CORS layer configured from the environment.
+///
+/// Reads the `CORS_ORIGINS` environment variable to determine allowed origins.
+/// Defaults to `*` (any origin) when the variable is not set, which is appropriate
+/// for local development. Set to a comma-separated list of origins for production.
+///
+/// # Allowed Configuration
+///
+/// - **Methods**: GET, POST, PUT, DELETE, OPTIONS
+/// - **Headers**: Content-Type, Authorization, and WebSocket upgrade headers
+/// - **Origins**: Configurable via `CORS_ORIGINS` env var (default: `*`)
+///
+/// # Environment Variables
+///
+/// - `CORS_ORIGINS` — Comma-separated list of allowed origins, or `*` for any.
+///   Example: `https://app.example.com,https://admin.example.com`
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use agentd_common::server::cors_layer;
+///
+/// let app = Router::new()
+///     .route("/", get(handler))
+///     .layer(cors_layer());
+/// ```
+pub fn cors_layer() -> tower_http::cors::CorsLayer {
+    use axum::http::{header, HeaderName, HeaderValue, Method};
+    use tower_http::cors::{AllowOrigin, CorsLayer};
+
+    let origins = std::env::var("CORS_ORIGINS").unwrap_or_else(|_| "*".to_string());
+
+    let allow_origin = if origins.trim() == "*" {
+        AllowOrigin::any()
+    } else {
+        let values: Vec<HeaderValue> = origins
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+        AllowOrigin::list(values)
+    };
+
+    CorsLayer::new()
+        .allow_origin(allow_origin)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+            // WebSocket upgrade headers
+            header::UPGRADE,
+            header::CONNECTION,
+            HeaderName::from_static("sec-websocket-key"),
+            HeaderName::from_static("sec-websocket-version"),
+            HeaderName::from_static("sec-websocket-protocol"),
+            HeaderName::from_static("sec-websocket-extensions"),
+        ])
+}

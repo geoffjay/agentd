@@ -8,7 +8,7 @@ export function useSettings() {
   const [settings, setSettings] = useState<Settings>(loadSettings)
 
   const update = useCallback((patch: Partial<Settings>) => {
-    setSettings(prev => {
+    setSettings((prev) => {
       const next = { ...prev, ...patch }
       saveSettings(next)
       return next
@@ -16,7 +16,7 @@ export function useSettings() {
   }, [])
 
   const updateServices = useCallback((patch: Partial<Settings['services']>) => {
-    setSettings(prev => {
+    setSettings((prev) => {
       const next = { ...prev, services: { ...prev.services, ...patch } }
       saveSettings(next)
       return next
@@ -24,7 +24,7 @@ export function useSettings() {
   }, [])
 
   const updateUI = useCallback((patch: Partial<Settings['ui']>) => {
-    setSettings(prev => {
+    setSettings((prev) => {
       const next = { ...prev, ui: { ...prev.ui, ...patch } }
       saveSettings(next)
       return next

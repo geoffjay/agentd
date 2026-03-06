@@ -12,7 +12,9 @@ let cleanup: () => void
 
 beforeEach(() => {
   lastWs = undefined
-  cleanup = installMockWebSocket(ws => { lastWs = ws })
+  cleanup = installMockWebSocket((ws) => {
+    lastWs = ws
+  })
 })
 
 afterEach(() => {
@@ -22,16 +24,12 @@ afterEach(() => {
 
 describe('useWebSocket', () => {
   it('starts in Disconnected state', () => {
-    const { result } = renderHook(() =>
-      useWebSocket('ws://localhost/test', { paused: true }),
-    )
+    const { result } = renderHook(() => useWebSocket('ws://localhost/test', { paused: true }))
     expect(result.current.connectionState).toBe('Disconnected')
   })
 
   it('transitions to Connecting on mount when not paused', async () => {
-    const { result } = renderHook(() =>
-      useWebSocket('ws://localhost/test'),
-    )
+    const { result } = renderHook(() => useWebSocket('ws://localhost/test'))
     await waitFor(() => expect(result.current.connectionState).toBe('Connecting'))
   })
 
@@ -63,9 +61,7 @@ describe('useWebSocket', () => {
   })
 
   it('caps messages at maxMessages', async () => {
-    const { result } = renderHook(() =>
-      useWebSocket('ws://localhost/test', { maxMessages: 3 }),
-    )
+    const { result } = renderHook(() => useWebSocket('ws://localhost/test', { maxMessages: 3 }))
     await waitFor(() => expect(lastWs).toBeDefined())
 
     await act(async () => {
@@ -112,12 +108,14 @@ describe('useWebSocket', () => {
   it('does not auto-connect when paused=true', async () => {
     let wsCreated = false
     cleanup()
-    cleanup = installMockWebSocket(() => { wsCreated = true })
+    cleanup = installMockWebSocket(() => {
+      wsCreated = true
+    })
 
     renderHook(() => useWebSocket('ws://localhost/test', { paused: true }))
 
     // Give React time to run effects
-    await new Promise(r => setTimeout(r, 10))
+    await new Promise((r) => setTimeout(r, 10))
     expect(wsCreated).toBe(false)
   })
 })

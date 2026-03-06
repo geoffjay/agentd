@@ -42,12 +42,14 @@ export const orchestratorHandlers = [
   }),
 
   http.get(`${BASE}/agents/:id`, ({ params }) => {
-    const agent = DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
+    const agent =
+      DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
     return HttpResponse.json(agent)
   }),
 
   http.delete(`${BASE}/agents/:id`, ({ params }) => {
-    const agent = DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
+    const agent =
+      DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
     return HttpResponse.json(agent)
   }),
 
@@ -77,8 +79,12 @@ export const orchestratorHandlers = [
 
   http.put(`${BASE}/agents/:id/model`, async ({ params, request }) => {
     const body = (await request.json()) as Record<string, unknown>
-    const agent = DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
-    return HttpResponse.json({ ...agent, config: { ...agent.config, model: body.model ?? agent.config.model } })
+    const agent =
+      DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
+    return HttpResponse.json({
+      ...agent,
+      config: { ...agent.config, model: body.model ?? agent.config.model },
+    })
   }),
 
   // -------------------------------------------------------------------------
@@ -86,7 +92,8 @@ export const orchestratorHandlers = [
   // -------------------------------------------------------------------------
 
   http.get(`${BASE}/agents/:id/policy`, ({ params }) => {
-    const agent = DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
+    const agent =
+      DEFAULT_AGENTS.find((a) => a.id === params.id) ?? makeAgent({ id: String(params.id) })
     return HttpResponse.json(agent.config.tool_policy)
   }),
 
@@ -99,9 +106,7 @@ export const orchestratorHandlers = [
   // Agent approvals
   // -------------------------------------------------------------------------
 
-  http.get(`${BASE}/agents/:id/approvals`, () =>
-    HttpResponse.json(paginated<PendingApproval>([])),
-  ),
+  http.get(`${BASE}/agents/:id/approvals`, () => HttpResponse.json(paginated<PendingApproval>([]))),
 
   // -------------------------------------------------------------------------
   // Approvals

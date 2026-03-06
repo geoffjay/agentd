@@ -104,7 +104,7 @@ export function AgentList() {
   const setParam = useCallback(
     (updates: Record<string, string | null>) => {
       setSearchParams(
-        prev => {
+        (prev) => {
           const next = new URLSearchParams(prev)
           for (const [k, v] of Object.entries(updates)) {
             if (v === null || v === '') {
@@ -134,8 +134,7 @@ export function AgentList() {
   }
 
   function handleSort(field: SortField) {
-    const newDir: SortDir =
-      field === sortBy ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc'
+    const newDir: SortDir = field === sortBy ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc'
     setParam({ sort: field, dir: newDir, page: null })
   }
 
@@ -154,9 +153,7 @@ export function AgentList() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
-            Agents
-          </h1>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Agents</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Manage and monitor running agents.
           </p>
@@ -165,11 +162,7 @@ export function AgentList() {
         <div className="flex items-center gap-2">
           {/* Refresh indicator */}
           {refreshing && (
-            <RefreshCw
-              size={14}
-              aria-label="Refreshing…"
-              className="animate-spin text-gray-400"
-            />
+            <RefreshCw size={14} aria-label="Refreshing…" className="animate-spin text-gray-400" />
           )}
 
           {/* Manual refresh button */}

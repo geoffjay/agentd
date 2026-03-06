@@ -10,9 +10,30 @@ vi.mock('@/services/orchestrator', () => ({
   orchestratorClient: {
     listAgents: vi.fn().mockResolvedValue({
       items: [
-        { id: '1', name: 'build-bot', status: 'Running', config: {}, created_at: '', updated_at: '' },
-        { id: '2', name: 'deploy-bot', status: 'Pending', config: {}, created_at: '', updated_at: '' },
-        { id: '3', name: 'test-runner', status: 'Stopped', config: {}, created_at: '', updated_at: '' },
+        {
+          id: '1',
+          name: 'build-bot',
+          status: 'Running',
+          config: {},
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          id: '2',
+          name: 'deploy-bot',
+          status: 'Pending',
+          config: {},
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          id: '3',
+          name: 'test-runner',
+          status: 'Stopped',
+          config: {},
+          created_at: '',
+          updated_at: '',
+        },
       ],
       total: 3,
       limit: 200,

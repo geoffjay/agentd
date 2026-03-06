@@ -42,10 +42,7 @@ export interface UseWebSocketOptions extends WebSocketManagerOptions {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useWebSocket(
-  url: string,
-  options: UseWebSocketOptions = {},
-): UseWebSocketResult {
+export function useWebSocket(url: string, options: UseWebSocketOptions = {}): UseWebSocketResult {
   const { maxMessages = 200, paused = false, ...managerOpts } = options
 
   const managerRef = useRef<WebSocketManager | null>(null)
@@ -71,7 +68,7 @@ export function useWebSocket(
 
     const unsubState = manager.onStateChange(setConnectionState)
     const unsubMsg = manager.onMessage((event: MessageEvent) => {
-      setMessages(prev => {
+      setMessages((prev) => {
         const next = [...prev, event]
         const max = maxRef.current
         return next.length > max ? next.slice(next.length - max) : next

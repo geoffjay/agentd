@@ -10,12 +10,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { orchestratorClient } from '@/services/orchestrator'
-import type {
-  Agent,
-  PendingApproval,
-  SetModelRequest,
-  ToolPolicy,
-} from '@/types/orchestrator'
+import type { Agent, PendingApproval, SetModelRequest, ToolPolicy } from '@/types/orchestrator'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -169,28 +164,22 @@ export function useAgentDetail(
     async (policy: ToolPolicy) => {
       const updated = await orchestratorClient.updatePolicy(agentId, policy)
       // Reflect updated policy in local agent state
-      setAgent(prev =>
+      setAgent((prev) =>
         prev ? { ...prev, config: { ...prev.config, tool_policy: updated } } : prev,
       )
     },
     [agentId],
   )
 
-  const approveRequest = useCallback(
-    async (approvalId: string) => {
-      await orchestratorClient.approveRequest(approvalId)
-      setApprovals(prev => prev.filter(a => a.id !== approvalId))
-    },
-    [],
-  )
+  const approveRequest = useCallback(async (approvalId: string) => {
+    await orchestratorClient.approveRequest(approvalId)
+    setApprovals((prev) => prev.filter((a) => a.id !== approvalId))
+  }, [])
 
-  const denyRequest = useCallback(
-    async (approvalId: string) => {
-      await orchestratorClient.denyRequest(approvalId)
-      setApprovals(prev => prev.filter(a => a.id !== approvalId))
-    },
-    [],
-  )
+  const denyRequest = useCallback(async (approvalId: string) => {
+    await orchestratorClient.denyRequest(approvalId)
+    setApprovals((prev) => prev.filter((a) => a.id !== approvalId))
+  }, [])
 
   return {
     agent,

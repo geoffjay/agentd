@@ -63,24 +63,18 @@ describe('AgentTable', () => {
   it('calls onSelectChange with all agent ids when select-all is checked', () => {
     const onSelectChange = vi.fn()
     const agents = makeAgentList(2)
-    render(
-      <AgentTable {...defaultProps} agents={agents} onSelectChange={onSelectChange} />,
-      { wrapper },
-    )
+    render(<AgentTable {...defaultProps} agents={agents} onSelectChange={onSelectChange} />, {
+      wrapper,
+    })
     fireEvent.click(screen.getByRole('checkbox', { name: /select all/i }))
-    expect(onSelectChange).toHaveBeenCalledWith(agents.map(a => a.id))
+    expect(onSelectChange).toHaveBeenCalledWith(agents.map((a) => a.id))
   })
 
   it('shows bulk action toolbar when agents are selected', () => {
     const agents = makeAgentList(2)
-    render(
-      <AgentTable
-        {...defaultProps}
-        agents={agents}
-        selectedIds={[agents[0].id]}
-      />,
-      { wrapper },
-    )
+    render(<AgentTable {...defaultProps} agents={agents} selectedIds={[agents[0].id]} />, {
+      wrapper,
+    })
     expect(screen.getByRole('button', { name: /terminate selected/i })).toBeInTheDocument()
   })
 
@@ -102,10 +96,7 @@ describe('AgentTable', () => {
   it('calls onDelete with correct id after confirming single terminate', async () => {
     const onDelete = vi.fn().mockResolvedValue(undefined)
     const agents = makeAgentList(1)
-    render(
-      <AgentTable {...defaultProps} agents={agents} onDelete={onDelete} />,
-      { wrapper },
-    )
+    render(<AgentTable {...defaultProps} agents={agents} onDelete={onDelete} />, { wrapper })
     fireEvent.click(screen.getByRole('button', { name: /terminate agent/i }))
     await waitFor(() => screen.getByRole('alertdialog'))
     fireEvent.click(screen.getByRole('button', { name: /^terminate$/i }))

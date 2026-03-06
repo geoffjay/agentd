@@ -99,11 +99,7 @@ export function Header({ unreadCount = 0 }: HeaderProps) {
       <SearchTrigger />
 
       {/* Global stream connection status (icon only on small screens) */}
-      <ConnectionStatus
-        connectionState={connectionState}
-        iconOnly
-        className="hidden sm:flex"
-      />
+      <ConnectionStatus connectionState={connectionState} iconOnly className="hidden sm:flex" />
 
       {/* Theme toggle */}
       <ThemeToggle />
@@ -111,9 +107,7 @@ export function Header({ unreadCount = 0 }: HeaderProps) {
       {/* Notification bell */}
       <Link
         to="/notifications"
-        aria-label={
-          unreadCount > 0 ? `Notifications — ${unreadCount} unread` : 'Notifications'
-        }
+        aria-label={unreadCount > 0 ? `Notifications — ${unreadCount} unread` : 'Notifications'}
         className="relative rounded-md p-2 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
       >
         <Bell size={20} />

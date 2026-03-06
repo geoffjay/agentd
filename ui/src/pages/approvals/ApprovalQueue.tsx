@@ -32,8 +32,8 @@ export function ApprovalQueuePage() {
 
   // Keep selectedIds clean when approvals list changes
   useEffect(() => {
-    const ids = new Set(approvals.map(a => a.id))
-    setSelectedIds(prev => {
+    const ids = new Set(approvals.map((a) => a.id))
+    setSelectedIds((prev) => {
       const next = new Set<string>()
       for (const id of prev) {
         if (ids.has(id)) next.add(id)
@@ -43,16 +43,14 @@ export function ApprovalQueuePage() {
   }, [approvals])
 
   // Filtered approvals
-  const visible = filterAgentId
-    ? approvals.filter(a => a.agent_id === filterAgentId)
-    : approvals
+  const visible = filterAgentId ? approvals.filter((a) => a.agent_id === filterAgentId) : approvals
 
   // Selection helpers
-  const allSelected = visible.length > 0 && visible.every(a => selectedIds.has(a.id))
+  const allSelected = visible.length > 0 && visible.every((a) => selectedIds.has(a.id))
   const someSelected = selectedIds.size > 0
 
   const toggleSelect = useCallback((id: string) => {
-    setSelectedIds(prev => {
+    setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -64,7 +62,7 @@ export function ApprovalQueuePage() {
     if (allSelected) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(visible.map(a => a.id)))
+      setSelectedIds(new Set(visible.map((a) => a.id)))
     }
   }
 
@@ -90,13 +88,13 @@ export function ApprovalQueuePage() {
 
   // Bulk handlers
   const handleApproveAll = async () => {
-    const ids = visible.map(a => a.id)
+    const ids = visible.map((a) => a.id)
     if (!window.confirm(`Approve all ${ids.length} pending approvals?`)) return
     await bulkApprove(ids)
   }
 
   const handleDenyAll = async () => {
-    const ids = visible.map(a => a.id)
+    const ids = visible.map((a) => a.id)
     if (!window.confirm(`Deny all ${ids.length} pending approvals?`)) return
     await bulkDeny(ids)
   }
@@ -105,7 +103,9 @@ export function ApprovalQueuePage() {
   const handleDenySelected = () => bulkDeny([...selectedIds])
 
   // Unique agents for filter dropdown
-  const agentOptions = [...new Map(approvals.map(a => [a.agent_id, agentMap.get(a.agent_id)])).entries()]
+  const agentOptions = [
+    ...new Map(approvals.map((a) => [a.agent_id, agentMap.get(a.agent_id)])).entries(),
+  ]
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-6">
@@ -130,7 +130,7 @@ export function ApprovalQueuePage() {
           <select
             aria-label="Filter by agent"
             value={filterAgentId}
-            onChange={e => setFilterAgentId(e.target.value)}
+            onChange={(e) => setFilterAgentId(e.target.value)}
             className="rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
             <option value="">All agents</option>
@@ -200,9 +200,7 @@ export function ApprovalQueuePage() {
       )}
 
       {/* States */}
-      {loading && (
-        <p className="py-12 text-center text-sm text-gray-400">Loading approvals…</p>
-      )}
+      {loading && <p className="py-12 text-center text-sm text-gray-400">Loading approvals…</p>}
 
       {!loading && error && (
         <div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-400">
@@ -219,7 +217,7 @@ export function ApprovalQueuePage() {
       {/* Approval list */}
       {!loading && visible.length > 0 && (
         <ul className="space-y-3" aria-label="Pending approvals">
-          {visible.map(approval => (
+          {visible.map((approval) => (
             <li key={approval.id}>
               <ApprovalCard
                 approval={approval}

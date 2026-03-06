@@ -73,11 +73,8 @@ export interface UseAllAgentsStreamResult {
 // ---------------------------------------------------------------------------
 
 export function useAllAgentsStream(): UseAllAgentsStreamResult {
-  const [agentMessages, setAgentMessages] = useState<Map<string, LogLine[]>>(
-    new Map(),
-  )
-  const [connectionState, setConnectionState] =
-    useState<ConnectionState>('Disconnected')
+  const [agentMessages, setAgentMessages] = useState<Map<string, LogLine[]>>(new Map())
+  const [connectionState, setConnectionState] = useState<ConnectionState>('Disconnected')
 
   const managerRef = useRef<WebSocketManager | null>(null)
 
@@ -95,7 +92,7 @@ export function useAllAgentsStream(): UseAllAgentsStreamResult {
         parsed = JSON.parse(raw) as AgentEvent
       } catch {
         // Non-JSON fallback: treat as plain output
-        setAgentMessages(prev => addLine(prev, 'unknown', makeLine(raw)))
+        setAgentMessages((prev) => addLine(prev, 'unknown', makeLine(raw)))
         return
       }
 
@@ -104,9 +101,7 @@ export function useAllAgentsStream(): UseAllAgentsStreamResult {
 
       // Maintain the per-agent log buffer for output events
       if (parsed.type === 'agent:output') {
-        setAgentMessages(prev =>
-          addLine(prev, parsed.agentId, makeLine(parsed.line)),
-        )
+        setAgentMessages((prev) => addLine(prev, parsed.agentId, makeLine(parsed.line)))
       }
     })
 

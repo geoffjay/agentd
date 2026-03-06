@@ -16,11 +16,7 @@ describe('AgentCommandInput', () => {
 
   it('disables input when enabled=false', () => {
     render(
-      <AgentCommandInput
-        {...defaultProps}
-        enabled={false}
-        disabledReason="Agent is not running"
-      />,
+      <AgentCommandInput {...defaultProps} enabled={false} disabledReason="Agent is not running" />,
     )
     expect(screen.getByRole('textbox', { name: /send message/i })).toBeDisabled()
   })
@@ -67,7 +63,7 @@ describe('AgentCommandInput', () => {
     fireEvent.change(input, { target: { value: '   ' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
-    await new Promise(r => setTimeout(r, 50))
+    await new Promise((r) => setTimeout(r, 50))
     expect(onSend).not.toHaveBeenCalled()
   })
 
@@ -82,8 +78,6 @@ describe('AgentCommandInput', () => {
       key: 'Enter',
     })
 
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Network error'),
-    )
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Network error'))
   })
 })

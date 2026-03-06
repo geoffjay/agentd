@@ -46,13 +46,19 @@ function buildPolicy(type: PolicyType, toolsStr: string): ToolPolicy {
   if (type === 'AllowList') {
     return {
       type: 'AllowList',
-      tools: toolsStr.split(',').map(t => t.trim()).filter(Boolean),
+      tools: toolsStr
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
     }
   }
   if (type === 'DenyList') {
     return {
       type: 'DenyList',
-      tools: toolsStr.split(',').map(t => t.trim()).filter(Boolean),
+      tools: toolsStr
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
     }
   }
   return { type }
@@ -100,11 +106,11 @@ export function AgentPolicyEditor({ policy, saving = false, onSave }: AgentPolic
         <select
           id="policy-type"
           value={type}
-          onChange={e => setType(e.target.value as PolicyType)}
+          onChange={(e) => setType(e.target.value as PolicyType)}
           disabled={saving}
           className={inputCls}
         >
-          {POLICY_TYPES.map(p => (
+          {POLICY_TYPES.map((p) => (
             <option key={p.value} value={p.value}>
               {p.label}
             </option>
@@ -125,7 +131,7 @@ export function AgentPolicyEditor({ policy, saving = false, onSave }: AgentPolic
             id="policy-tools"
             type="text"
             value={toolsStr}
-            onChange={e => setToolsStr(e.target.value)}
+            onChange={(e) => setToolsStr(e.target.value)}
             disabled={saving}
             placeholder="bash, read_file, write_file"
             className={inputCls}

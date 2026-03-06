@@ -56,7 +56,9 @@ export class MockWebSocket {
 
   addEventListener(): void {}
   removeEventListener(): void {}
-  dispatchEvent(_event: Event): boolean { return true }
+  dispatchEvent(_event: Event): boolean {
+    return true
+  }
 
   // -------------------------------------------------------------------------
   // Test helpers — call these from test code to simulate server behaviour
@@ -103,9 +105,7 @@ export class MockWebSocket {
  * each time a new socket is constructed. Returns a cleanup function that
  * restores the original WebSocket.
  */
-export function installMockWebSocket(
-  onCreate?: MockWebSocketFactory,
-): () => void {
+export function installMockWebSocket(onCreate?: MockWebSocketFactory): () => void {
   const instances: MockWebSocket[] = []
 
   function MockWebSocketConstructor(url: string) {

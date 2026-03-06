@@ -31,9 +31,7 @@ afterEach(() => {
 describe('useAgents', () => {
   it('fetches agents on mount', async () => {
     const agents = makeAgentList(3)
-    server.use(
-      http.get(`${BASE}/agents`, () => HttpResponse.json(paginatedAgents(agents))),
-    )
+    server.use(http.get(`${BASE}/agents`, () => HttpResponse.json(paginatedAgents(agents))))
 
     const { result } = renderHook(() => useAgents({ paused: true }))
 
@@ -44,9 +42,7 @@ describe('useAgents', () => {
   })
 
   it('sets error when API fails', async () => {
-    server.use(
-      http.get(`${BASE}/agents`, () => HttpResponse.error()),
-    )
+    server.use(http.get(`${BASE}/agents`, () => HttpResponse.error()))
 
     const { result } = renderHook(() => useAgents({ paused: true }))
 
@@ -61,13 +57,9 @@ describe('useAgents', () => {
       makeAgent({ name: 'deploy-agent' }),
       makeAgent({ name: 'test-runner' }),
     ]
-    server.use(
-      http.get(`${BASE}/agents`, () => HttpResponse.json(paginatedAgents(agents))),
-    )
+    server.use(http.get(`${BASE}/agents`, () => HttpResponse.json(paginatedAgents(agents))))
 
-    const { result } = renderHook(() =>
-      useAgents({ search: 'build', paused: true }),
-    )
+    const { result } = renderHook(() => useAgents({ search: 'build', paused: true }))
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
@@ -78,13 +70,9 @@ describe('useAgents', () => {
 
   it('paginates agents', async () => {
     const agents = makeAgentList(25)
-    server.use(
-      http.get(`${BASE}/agents`, () => HttpResponse.json(paginatedAgents(agents))),
-    )
+    server.use(http.get(`${BASE}/agents`, () => HttpResponse.json(paginatedAgents(agents))))
 
-    const { result } = renderHook(() =>
-      useAgents({ page: 1, pageSize: 10, paused: true }),
-    )
+    const { result } = renderHook(() => useAgents({ page: 1, pageSize: 10, paused: true }))
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
@@ -94,13 +82,9 @@ describe('useAgents', () => {
 
   it('returns second page of agents', async () => {
     const agents = makeAgentList(25)
-    server.use(
-      http.get(`${BASE}/agents`, () => HttpResponse.json(paginatedAgents(agents))),
-    )
+    server.use(http.get(`${BASE}/agents`, () => HttpResponse.json(paginatedAgents(agents))))
 
-    const { result } = renderHook(() =>
-      useAgents({ page: 2, pageSize: 10, paused: true }),
-    )
+    const { result } = renderHook(() => useAgents({ page: 2, pageSize: 10, paused: true }))
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
@@ -204,7 +188,7 @@ describe('useAgents', () => {
     })
 
     expect(result.current.allAgents).toHaveLength(2)
-    expect(result.current.allAgents.find(a => a.id === agents[0].id)).toBeUndefined()
+    expect(result.current.allAgents.find((a) => a.id === agents[0].id)).toBeUndefined()
   })
 
   it('bulkDelete removes all specified agents from local state', async () => {
@@ -230,9 +214,7 @@ describe('useAgents', () => {
     const newAgent = makeAgent({ name: 'new-agent' })
     server.use(
       http.get(`${BASE}/agents`, () => HttpResponse.json(paginatedAgents(agents))),
-      http.post(`${BASE}/agents`, () =>
-        HttpResponse.json(newAgent, { status: 201 }),
-      ),
+      http.post(`${BASE}/agents`, () => HttpResponse.json(newAgent, { status: 201 })),
     )
 
     const { result } = renderHook(() => useAgents({ paused: true }))

@@ -5,7 +5,10 @@
 
 import { useMemo } from 'react'
 import { BarChart2, RefreshCw, Webhook } from 'lucide-react'
-import { ServiceHealthCard, ServiceHealthCardSkeleton } from '@/components/dashboard/ServiceHealthCard'
+import {
+  ServiceHealthCard,
+  ServiceHealthCardSkeleton,
+} from '@/components/dashboard/ServiceHealthCard'
 import { AgentSummary } from '@/components/dashboard/AgentSummary'
 import { NotificationSummary } from '@/components/dashboard/NotificationSummary'
 import { ActivityTimeline } from '@/components/dashboard/ActivityTimeline'
@@ -120,10 +123,7 @@ export function DashboardPage() {
           title="Monitoring"
           icon={<BarChart2 size={24} className="text-gray-400" />}
         />
-        <ComingSoonCard
-          title="Hooks"
-          icon={<Webhook size={24} className="text-gray-400" />}
-        />
+        <ComingSoonCard title="Hooks" icon={<Webhook size={24} className="text-gray-400" />} />
       </div>
     </div>
   )

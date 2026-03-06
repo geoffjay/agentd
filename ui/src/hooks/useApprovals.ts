@@ -120,17 +120,14 @@ export function useApprovals({
         if (browserNotifications && seenIdsRef.current.size > 0) {
           for (const a of incoming) {
             if (!seenIdsRef.current.has(a.id)) {
-              fireNotification(
-                'Approval Required',
-                `Tool "${a.tool_name}" is waiting for approval`,
-              )
+              fireNotification('Approval Required', `Tool "${a.tool_name}" is waiting for approval`)
             }
           }
         }
-        seenIdsRef.current = new Set(incoming.map(a => a.id))
+        seenIdsRef.current = new Set(incoming.map((a) => a.id))
 
         setAllApprovals(incoming)
-        setAgentMap(new Map(agentsResult.items.map(ag => [ag.id, ag])))
+        setAgentMap(new Map(agentsResult.items.map((ag) => [ag.id, ag])))
         setError(undefined)
       } catch (err) {
         if (!mountedRef.current) return
@@ -150,7 +147,9 @@ export function useApprovals({
     mountedRef.current = true
     fetchData(true)
     if (browserNotifications) requestNotificationPermission()
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+    }
   }, [fetchData, browserNotifications])
 
   // ---------------------------------------------------------------------------
@@ -168,7 +167,7 @@ export function useApprovals({
   // ---------------------------------------------------------------------------
 
   const setBusy = (ids: string[], busy: boolean) => {
-    setBusyIds(prev => {
+    setBusyIds((prev) => {
       const next = new Set(prev)
       for (const id of ids) {
         if (busy) next.add(id)
@@ -179,7 +178,7 @@ export function useApprovals({
   }
 
   const removeApprovals = (ids: string[]) => {
-    setAllApprovals(prev => prev.filter(a => !ids.includes(a.id)))
+    setAllApprovals((prev) => prev.filter((a) => !ids.includes(a.id)))
   }
 
   const approve = useCallback(async (id: string) => {
@@ -205,7 +204,7 @@ export function useApprovals({
   const bulkApprove = useCallback(async (ids: string[]) => {
     setBusy(ids, true)
     try {
-      await Promise.allSettled(ids.map(id => orchestratorClient.approveRequest(id)))
+      await Promise.allSettled(ids.map((id) => orchestratorClient.approveRequest(id)))
       removeApprovals(ids)
     } finally {
       setBusy(ids, false)
@@ -215,7 +214,7 @@ export function useApprovals({
   const bulkDeny = useCallback(async (ids: string[]) => {
     setBusy(ids, true)
     try {
-      await Promise.allSettled(ids.map(id => orchestratorClient.denyRequest(id)))
+      await Promise.allSettled(ids.map((id) => orchestratorClient.denyRequest(id)))
       removeApprovals(ids)
     } finally {
       setBusy(ids, false)
@@ -226,9 +225,7 @@ export function useApprovals({
   // Derived state
   // ---------------------------------------------------------------------------
 
-  const approvals = agentId
-    ? allApprovals.filter(a => a.agent_id === agentId)
-    : allApprovals
+  const approvals = agentId ? allApprovals.filter((a) => a.agent_id === agentId) : allApprovals
 
   return {
     approvals,

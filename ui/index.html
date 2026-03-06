@@ -12,14 +12,13 @@
       Reads the theme preference from the 'agentd:settings' localStorage key.
     -->
     <script>
-      (function () {
+      ;(function () {
         try {
           var settings = JSON.parse(localStorage.getItem('agentd:settings') || '{}')
           var theme = (settings.ui && settings.ui.theme) || 'system'
           var isDark =
             theme === 'dark' ||
-            (theme === 'system' &&
-              window.matchMedia('(prefers-color-scheme: dark)').matches)
+            (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
           if (isDark) {
             document.documentElement.classList.add('dark')
           }

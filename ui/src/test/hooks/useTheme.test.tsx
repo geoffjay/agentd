@@ -26,10 +26,7 @@ function wrapper({ children }: { children: ReactNode }) {
 // ---------------------------------------------------------------------------
 
 function setStoredTheme(theme: 'light' | 'dark' | 'system') {
-  localStorage.setItem(
-    'agentd:settings',
-    JSON.stringify({ version: 1, ui: { theme } }),
-  )
+  localStorage.setItem('agentd:settings', JSON.stringify({ version: 1, ui: { theme } }))
 }
 
 // ---------------------------------------------------------------------------

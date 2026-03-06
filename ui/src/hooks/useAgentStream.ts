@@ -82,7 +82,7 @@ export function useAgentStream(agentId: string): UseAgentStreamResult {
     })
     managerRef.current = manager
 
-    const unsubState = manager.onStateChange(state => {
+    const unsubState = manager.onStateChange((state) => {
       switch (state) {
         case 'Connected':
           setStatus('connected')
@@ -99,7 +99,7 @@ export function useAgentStream(agentId: string): UseAgentStreamResult {
     const unsubMsg = manager.onMessage((event: MessageEvent) => {
       const rawText = String(event.data)
       const incoming = rawText.split('\n').filter(Boolean).map(makeLogLine)
-      setLines(prev => capLines(prev, incoming))
+      setLines((prev) => capLines(prev, incoming))
     })
 
     manager.connect()

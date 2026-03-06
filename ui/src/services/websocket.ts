@@ -95,8 +95,7 @@ export class WebSocketManager {
   connect(): void {
     if (
       this.ws &&
-      (this.ws.readyState === WebSocket.CONNECTING ||
-        this.ws.readyState === WebSocket.OPEN)
+      (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)
     ) {
       return
     }
@@ -139,7 +138,9 @@ export class WebSocketManager {
    */
   onMessage(handler: MessageHandler): () => void {
     this.messageHandlers.add(handler)
-    return () => { this.messageHandlers.delete(handler) }
+    return () => {
+      this.messageHandlers.delete(handler)
+    }
   }
 
   /**
@@ -148,7 +149,9 @@ export class WebSocketManager {
    */
   onStateChange(handler: StateHandler): () => void {
     this.stateHandlers.add(handler)
-    return () => { this.stateHandlers.delete(handler) }
+    return () => {
+      this.stateHandlers.delete(handler)
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -156,9 +159,7 @@ export class WebSocketManager {
   // -------------------------------------------------------------------------
 
   private _open(): void {
-    this._setState(
-      this._state === 'Disconnected' ? 'Connecting' : 'Reconnecting',
-    )
+    this._setState(this._state === 'Disconnected' ? 'Connecting' : 'Reconnecting')
 
     try {
       this.ws = new WebSocket(this.url)

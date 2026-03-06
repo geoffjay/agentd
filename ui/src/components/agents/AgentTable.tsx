@@ -53,9 +53,7 @@ function SortHeader({ field, label, currentSort, currentDir, onSort }: SortHeade
       type="button"
       onClick={() => onSort(field)}
       className="flex items-center gap-1 font-medium hover:text-gray-900 dark:hover:text-white"
-      aria-sort={
-        isActive ? (currentDir === 'asc' ? 'ascending' : 'descending') : 'none'
-      }
+      aria-sort={isActive ? (currentDir === 'asc' ? 'ascending' : 'descending') : 'none'}
     >
       {label}
       {isActive ? (
@@ -109,8 +107,7 @@ function AgentRow({ agent, selected, onSelect, onDelete }: AgentRowProps) {
   })
 
   const workingDir = agent.config.working_dir
-  const displayDir =
-    workingDir.length > 30 ? `…${workingDir.slice(-29)}` : workingDir
+  const displayDir = workingDir.length > 30 ? `…${workingDir.slice(-29)}` : workingDir
 
   return (
     <tr
@@ -120,7 +117,7 @@ function AgentRow({ agent, selected, onSelect, onDelete }: AgentRowProps) {
       {/* Checkbox */}
       <td
         className="w-10 px-4 py-3"
-        onClick={e => {
+        onClick={(e) => {
           e.stopPropagation()
         }}
       >
@@ -128,7 +125,7 @@ function AgentRow({ agent, selected, onSelect, onDelete }: AgentRowProps) {
           type="checkbox"
           aria-label={`Select agent ${agent.name}`}
           checked={selected}
-          onChange={e => {
+          onChange={(e) => {
             onSelect(agent.id, e.target.checked)
           }}
           className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
@@ -136,9 +133,7 @@ function AgentRow({ agent, selected, onSelect, onDelete }: AgentRowProps) {
       </td>
 
       {/* Name */}
-      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-        {agent.name}
-      </td>
+      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{agent.name}</td>
 
       {/* Status */}
       <td className="px-4 py-3">
@@ -151,10 +146,7 @@ function AgentRow({ agent, selected, onSelect, onDelete }: AgentRowProps) {
       </td>
 
       {/* Working Directory */}
-      <td
-        className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
-        title={workingDir}
-      >
+      <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" title={workingDir}>
         <span className="font-mono text-xs">{displayDir}</span>
       </td>
 
@@ -164,10 +156,7 @@ function AgentRow({ agent, selected, onSelect, onDelete }: AgentRowProps) {
       </td>
 
       {/* Actions */}
-      <td
-        className="px-4 py-3"
-        onClick={e => e.stopPropagation()}
-      >
+      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -211,12 +200,12 @@ export function AgentTable({
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Select / deselect helpers
-  const allSelected = agents.length > 0 && agents.every(a => selectedIds.includes(a.id))
+  const allSelected = agents.length > 0 && agents.every((a) => selectedIds.includes(a.id))
   const someSelected = selectedIds.length > 0
 
   function toggleAll(checked: boolean) {
     if (checked) {
-      onSelectChange(agents.map(a => a.id))
+      onSelectChange(agents.map((a) => a.id))
     } else {
       onSelectChange([])
     }
@@ -226,7 +215,7 @@ export function AgentTable({
     if (checked) {
       onSelectChange([...selectedIds, id])
     } else {
-      onSelectChange(selectedIds.filter(s => s !== id))
+      onSelectChange(selectedIds.filter((s) => s !== id))
     }
   }
 
@@ -289,7 +278,7 @@ export function AgentTable({
                   type="checkbox"
                   aria-label="Select all agents"
                   checked={allSelected}
-                  onChange={e => toggleAll(e.target.checked)}
+                  onChange={(e) => toggleAll(e.target.checked)}
                   className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
                 />
               </th>
@@ -342,13 +331,13 @@ export function AgentTable({
             ) : agents.length === 0 ? (
               <EmptyState />
             ) : (
-              agents.map(agent => (
+              agents.map((agent) => (
                 <AgentRow
                   key={agent.id}
                   agent={agent}
                   selected={selectedIds.includes(agent.id)}
                   onSelect={toggleOne}
-                  onDelete={id => setDeleteTarget(id)}
+                  onDelete={(id) => setDeleteTarget(id)}
                 />
               ))
             )}

@@ -84,9 +84,7 @@ export function ApprovalCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             {/* Tool name */}
-            <span className="font-mono text-sm font-semibold text-white">
-              {approval.tool_name}
-            </span>
+            <span className="font-mono text-sm font-semibold text-white">{approval.tool_name}</span>
 
             {/* Agent link */}
             {agentName && (
@@ -113,7 +111,7 @@ export function ApprovalCard({
             type="button"
             aria-expanded={expanded}
             aria-controls={`approval-details-${approval.id}`}
-            onClick={() => setExpanded(v => !v)}
+            onClick={() => setExpanded((v) => !v)}
             className="mt-1 flex items-center gap-1 text-xs text-gray-400 hover:text-gray-300"
           >
             {expanded ? (

@@ -162,13 +162,11 @@ export function AgentCommandInput({
           type="text"
           aria-label="Send message to agent"
           placeholder={
-            !enabled
-              ? (disabledReason ?? 'Unavailable')
-              : 'Type a message and press Enter…'
+            !enabled ? (disabledReason ?? 'Unavailable') : 'Type a message and press Enter…'
           }
           value={value}
           disabled={!enabled || sending}
-          onChange={e => {
+          onChange={(e) => {
             setValue(e.target.value)
             historyIndexRef.current = -1
           }}

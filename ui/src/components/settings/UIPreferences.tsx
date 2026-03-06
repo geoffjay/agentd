@@ -27,18 +27,15 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
     <div className="space-y-5">
       {/* Theme */}
       <div className="flex items-center justify-between">
-        <label
-          htmlFor="ui-theme"
-          className="text-sm font-medium text-gray-700 dark:text-gray-300"
-        >
+        <label htmlFor="ui-theme" className="text-sm font-medium text-gray-700 dark:text-gray-300">
           Theme
         </label>
         <select
           id="ui-theme"
           value={localUI.theme}
-          onChange={e => {
+          onChange={(e) => {
             const theme = e.target.value as Settings['ui']['theme']
-            setLocalUI(prev => ({ ...prev, theme }))
+            setLocalUI((prev) => ({ ...prev, theme }))
             // Apply immediately so the user sees the change in real time
             setTheme(theme)
           }}
@@ -63,8 +60,8 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
             id="ui-sidebar-open"
             type="checkbox"
             checked={localUI.sidebarDefaultOpen}
-            onChange={e =>
-              setLocalUI(prev => ({ ...prev, sidebarDefaultOpen: e.target.checked }))
+            onChange={(e) =>
+              setLocalUI((prev) => ({ ...prev, sidebarDefaultOpen: e.target.checked }))
             }
             className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800"
           />
@@ -83,8 +80,8 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
         <select
           id="ui-refresh-interval"
           value={localUI.refreshInterval}
-          onChange={e =>
-            setLocalUI(prev => ({
+          onChange={(e) =>
+            setLocalUI((prev) => ({
               ...prev,
               refreshInterval: Number(e.target.value) as Settings['ui']['refreshInterval'],
             }))
@@ -111,8 +108,8 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
             id="ui-notifications"
             type="checkbox"
             checked={localUI.notificationsEnabled}
-            onChange={e =>
-              setLocalUI(prev => ({ ...prev, notificationsEnabled: e.target.checked }))
+            onChange={(e) =>
+              setLocalUI((prev) => ({ ...prev, notificationsEnabled: e.target.checked }))
             }
             className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800"
           />
@@ -131,8 +128,8 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
         <select
           id="ui-log-lines"
           value={localUI.logViewLines}
-          onChange={e =>
-            setLocalUI(prev => ({
+          onChange={(e) =>
+            setLocalUI((prev) => ({
               ...prev,
               logViewLines: Number(e.target.value) as Settings['ui']['logViewLines'],
             }))

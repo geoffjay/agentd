@@ -17,21 +17,21 @@ import type { PartialTheme as NivoTheme } from '@nivo/theming'
 
 export const lightColors = {
   // Backgrounds
-  bgPrimary: '#f8fafc',      // secondary-50 — page background
-  bgSecondary: '#f1f5f9',    // secondary-100 — card background
-  bgTertiary: '#e2e8f0',     // secondary-200 — subtle surface
+  bgPrimary: '#f8fafc', // secondary-50 — page background
+  bgSecondary: '#f1f5f9', // secondary-100 — card background
+  bgTertiary: '#e2e8f0', // secondary-200 — subtle surface
 
   // Text
-  textPrimary: '#0f172a',    // secondary-900
-  textSecondary: '#334155',  // secondary-700
-  textMuted: '#64748b',      // secondary-500
+  textPrimary: '#0f172a', // secondary-900
+  textSecondary: '#334155', // secondary-700
+  textMuted: '#64748b', // secondary-500
 
   // Borders
-  borderDefault: '#e2e8f0',  // secondary-200
-  borderStrong: '#cbd5e1',   // secondary-300
+  borderDefault: '#e2e8f0', // secondary-200
+  borderStrong: '#cbd5e1', // secondary-300
 
   // Accent
-  accentPrimary: '#3b82f6',  // primary-500
+  accentPrimary: '#3b82f6', // primary-500
   accentSecondary: '#2563eb', // primary-600
 
   // Status
@@ -43,21 +43,21 @@ export const lightColors = {
 
 export const darkColors = {
   // Backgrounds
-  bgPrimary: '#020617',      // secondary-950 — page background
-  bgSecondary: '#0f172a',    // secondary-900 — card background
-  bgTertiary: '#1e293b',     // secondary-800 — subtle surface
+  bgPrimary: '#020617', // secondary-950 — page background
+  bgSecondary: '#0f172a', // secondary-900 — card background
+  bgTertiary: '#1e293b', // secondary-800 — subtle surface
 
   // Text
-  textPrimary: '#f8fafc',    // secondary-50
-  textSecondary: '#cbd5e1',  // secondary-300
-  textMuted: '#94a3b8',      // secondary-400
+  textPrimary: '#f8fafc', // secondary-50
+  textSecondary: '#cbd5e1', // secondary-300
+  textMuted: '#94a3b8', // secondary-400
 
   // Borders
-  borderDefault: '#1e293b',  // secondary-800
-  borderStrong: '#334155',   // secondary-700
+  borderDefault: '#1e293b', // secondary-800
+  borderStrong: '#334155', // secondary-700
 
   // Accent
-  accentPrimary: '#60a5fa',  // primary-400
+  accentPrimary: '#60a5fa', // primary-400
   accentSecondary: '#93c5fd', // primary-300
 
   // Status

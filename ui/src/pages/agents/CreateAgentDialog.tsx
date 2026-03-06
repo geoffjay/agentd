@@ -59,10 +59,22 @@ interface FormErrors {
 
 function buildToolPolicy(type: string, toolList: string): ToolPolicy {
   if (type === 'AllowList') {
-    return { type: 'AllowList', tools: toolList.split(',').map(t => t.trim()).filter(Boolean) }
+    return {
+      type: 'AllowList',
+      tools: toolList
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
+    }
   }
   if (type === 'DenyList') {
-    return { type: 'DenyList', tools: toolList.split(',').map(t => t.trim()).filter(Boolean) }
+    return {
+      type: 'DenyList',
+      tools: toolList
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
+    }
   }
   return { type: type as 'AllowAll' | 'DenyAll' | 'RequireApproval' }
 }
@@ -97,7 +109,15 @@ function validate(form: FormState): FormErrors {
 // Section label
 // ---------------------------------------------------------------------------
 
-function SectionLabel({ htmlFor, label, optional }: { htmlFor: string; label: string; optional?: boolean }) {
+function SectionLabel({
+  htmlFor,
+  label,
+  optional,
+}: {
+  htmlFor: string
+  label: string
+  optional?: boolean
+}) {
   return (
     <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 dark:text-gray-300">
       {label}
@@ -145,14 +165,14 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
   const [submitting, setSubmitting] = useState(false)
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm(prev => ({ ...prev, [key]: value }))
+    setForm((prev) => ({ ...prev, [key]: value }))
     if (key in errors) {
-      setErrors(prev => ({ ...prev, [key]: undefined }))
+      setErrors((prev) => ({ ...prev, [key]: undefined }))
     }
   }
 
   function addEnvRow() {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       env_keys: [...prev.env_keys, ''],
       env_values: [...prev.env_values, ''],
@@ -160,7 +180,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
   }
 
   function removeEnvRow(i: number) {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       env_keys: prev.env_keys.filter((_, idx) => idx !== i),
       env_values: prev.env_values.filter((_, idx) => idx !== i),
@@ -170,13 +190,13 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
   function updateEnvKey(i: number, value: string) {
     const keys = [...form.env_keys]
     keys[i] = value
-    setForm(prev => ({ ...prev, env_keys: keys }))
+    setForm((prev) => ({ ...prev, env_keys: keys }))
   }
 
   function updateEnvValue(i: number, value: string) {
     const values = [...form.env_values]
     values[i] = value
-    setForm(prev => ({ ...prev, env_values: values }))
+    setForm((prev) => ({ ...prev, env_values: values }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -210,8 +230,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
 
   if (!open) return null
 
-  const showToolList =
-    form.tool_policy_type === 'AllowList' || form.tool_policy_type === 'DenyList'
+  const showToolList = form.tool_policy_type === 'AllowList' || form.tool_policy_type === 'DenyList'
 
   const inputCls =
     'block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500'
@@ -219,11 +238,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end">
       {/* Backdrop */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 bg-black/40"
-        onClick={handleClose}
-      />
+      <div aria-hidden="true" className="absolute inset-0 bg-black/40" onClick={handleClose} />
 
       {/* Panel */}
       <aside
@@ -235,7 +250,10 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-          <h2 id="create-agent-title" className="text-lg font-semibold text-gray-900 dark:text-white">
+          <h2
+            id="create-agent-title"
+            className="text-lg font-semibold text-gray-900 dark:text-white"
+          >
             Create Agent
           </h2>
           <button
@@ -271,9 +289,11 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                 type="text"
                 required
                 value={form.name}
-                onChange={e => update('name', e.target.value)}
+                onChange={(e) => update('name', e.target.value)}
                 placeholder="my-agent"
-                className={[inputCls, errors.name ? 'border-red-500 focus:ring-red-500' : ''].join(' ')}
+                className={[inputCls, errors.name ? 'border-red-500 focus:ring-red-500' : ''].join(
+                  ' ',
+                )}
               />
               <FieldError msg={errors.name} />
             </div>
@@ -286,9 +306,12 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                 type="text"
                 required
                 value={form.working_dir}
-                onChange={e => update('working_dir', e.target.value)}
+                onChange={(e) => update('working_dir', e.target.value)}
                 placeholder="/home/user/project"
-                className={[inputCls, errors.working_dir ? 'border-red-500 focus:ring-red-500' : ''].join(' ')}
+                className={[
+                  inputCls,
+                  errors.working_dir ? 'border-red-500 focus:ring-red-500' : '',
+                ].join(' ')}
               />
               <FieldError msg={errors.working_dir} />
             </div>
@@ -299,11 +322,13 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
               <select
                 id="agent-model"
                 value={form.model}
-                onChange={e => update('model', e.target.value)}
+                onChange={(e) => update('model', e.target.value)}
                 className={inputCls}
               >
-                {MODELS.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
+                {MODELS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -311,8 +336,12 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
             {/* Interactive toggle */}
             <div className="flex items-center justify-between">
               <div>
-                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">Interactive</span>
-                <span className="text-xs text-gray-400 dark:text-gray-500">Run agent in interactive (TTY) mode</span>
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Interactive
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  Run agent in interactive (TTY) mode
+                </span>
               </div>
               <button
                 type="button"
@@ -342,7 +371,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                   id="agent-prompt"
                   rows={3}
                   value={form.prompt}
-                  onChange={e => update('prompt', e.target.value)}
+                  onChange={(e) => update('prompt', e.target.value)}
                   placeholder="Initial prompt for the agent…"
                   className={[inputCls, 'resize-none'].join(' ')}
                 />
@@ -356,7 +385,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                 id="agent-system-prompt"
                 rows={3}
                 value={form.system_prompt}
-                onChange={e => update('system_prompt', e.target.value)}
+                onChange={(e) => update('system_prompt', e.target.value)}
                 placeholder="System prompt override…"
                 className={[inputCls, 'resize-none'].join(' ')}
               />
@@ -368,11 +397,13 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
               <select
                 id="agent-tool-policy"
                 value={form.tool_policy_type}
-                onChange={e => update('tool_policy_type', e.target.value)}
+                onChange={(e) => update('tool_policy_type', e.target.value)}
                 className={inputCls}
               >
-                {TOOL_POLICY_TYPES.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                {TOOL_POLICY_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
                 ))}
               </select>
               {showToolList && (
@@ -387,7 +418,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                     id="agent-tool-list"
                     type="text"
                     value={form.tool_list}
-                    onChange={e => update('tool_list', e.target.value)}
+                    onChange={(e) => update('tool_list', e.target.value)}
                     placeholder="bash, read_file, write_file"
                     className={inputCls}
                   />
@@ -402,7 +433,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                 id="agent-shell"
                 type="text"
                 value={form.shell}
-                onChange={e => update('shell', e.target.value)}
+                onChange={(e) => update('shell', e.target.value)}
                 placeholder="/bin/bash"
                 className={inputCls}
               />
@@ -412,7 +443,9 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
             <div>
               <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Environment Variables{' '}
-                <span className="text-xs font-normal text-gray-400 dark:text-gray-500">(optional)</span>
+                <span className="text-xs font-normal text-gray-400 dark:text-gray-500">
+                  (optional)
+                </span>
               </span>
               <div className="mt-2 space-y-2">
                 {form.env_keys.map((key, i) => (
@@ -421,7 +454,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                       type="text"
                       aria-label={`Environment variable key ${i + 1}`}
                       value={key}
-                      onChange={e => updateEnvKey(i, e.target.value)}
+                      onChange={(e) => updateEnvKey(i, e.target.value)}
                       placeholder="KEY"
                       className={[inputCls, 'flex-1 font-mono text-xs'].join(' ')}
                     />
@@ -430,7 +463,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                       type="text"
                       aria-label={`Environment variable value ${i + 1}`}
                       value={form.env_values[i] ?? ''}
-                      onChange={e => updateEnvValue(i, e.target.value)}
+                      onChange={(e) => updateEnvValue(i, e.target.value)}
                       placeholder="value"
                       className={[inputCls, 'flex-1 font-mono text-xs'].join(' ')}
                     />

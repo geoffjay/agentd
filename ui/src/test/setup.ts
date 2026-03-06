@@ -42,7 +42,9 @@ class _StubWebSocket {
   close(_code?: number, _reason?: string): void {}
   addEventListener(): void {}
   removeEventListener(): void {}
-  dispatchEvent(_event: Event): boolean { return true }
+  dispatchEvent(_event: Event): boolean {
+    return true
+  }
 }
 
 vi.stubGlobal('WebSocket', _StubWebSocket)

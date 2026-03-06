@@ -37,13 +37,7 @@ function policyLabel(policy: ToolPolicy): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function ConfigRow({
-  label,
-  children,
-}: {
-  label: string
-  children: React.ReactNode
-}) {
+function ConfigRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
       <span className="w-36 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
@@ -62,13 +56,11 @@ function EnvVarsRow({ env }: { env: Record<string, string> }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
-          Environment
-        </span>
+        <span className="text-xs font-medium text-gray-400 dark:text-gray-500">Environment</span>
         <button
           type="button"
           aria-label={revealed ? 'Hide env values' : 'Show env values'}
-          onClick={() => setRevealed(v => !v)}
+          onClick={() => setRevealed((v) => !v)}
           className="rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
         >
           {revealed ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -99,13 +91,11 @@ function SystemPromptRow({ prompt }: { prompt: string }) {
         System Prompt
       </span>
       <div className="flex flex-col gap-1">
-        <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-          {display}
-        </p>
+        <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{display}</p>
         {isLong && (
           <button
             type="button"
-            onClick={() => setExpanded(e => !e)}
+            onClick={() => setExpanded((e) => !e)}
             className="self-start text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
           >
             {expanded ? 'Show less' : 'Show more'}
@@ -138,7 +128,7 @@ export function AgentConfigPanel({ agent }: AgentConfigPanelProps) {
         type="button"
         aria-expanded={open}
         aria-controls="agent-config-body"
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-gray-800/50"
       >
         <span>Configuration</span>
@@ -184,17 +174,11 @@ export function AgentConfigPanel({ agent }: AgentConfigPanelProps) {
             </ConfigRow>
           )}
 
-          <ConfigRow label="Tool Policy">
-            {policyLabel(config.tool_policy)}
-          </ConfigRow>
+          <ConfigRow label="Tool Policy">{policyLabel(config.tool_policy)}</ConfigRow>
 
-          {config.system_prompt && (
-            <SystemPromptRow prompt={config.system_prompt} />
-          )}
+          {config.system_prompt && <SystemPromptRow prompt={config.system_prompt} />}
 
-          {config.env && Object.keys(config.env).length > 0 && (
-            <EnvVarsRow env={config.env} />
-          )}
+          {config.env && Object.keys(config.env).length > 0 && <EnvVarsRow env={config.env} />}
         </div>
       )}
     </section>

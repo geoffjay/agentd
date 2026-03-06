@@ -14,11 +14,7 @@ export interface AgentStatusBadgeProps {
   className?: string
 }
 
-export function AgentStatusBadge({
-  status,
-  variant = 'badge',
-  className,
-}: AgentStatusBadgeProps) {
+export function AgentStatusBadge({ status, variant = 'badge', className }: AgentStatusBadgeProps) {
   return <StatusBadge status={status} variant={variant} className={className} />
 }
 

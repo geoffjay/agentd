@@ -46,9 +46,7 @@ describe('UIPreferences', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
-    expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ theme: 'dark' }),
-    )
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }))
   })
 
   it('changing theme select applies theme immediately to DOM', () => {
@@ -69,9 +67,7 @@ describe('UIPreferences', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
-    expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ sidebarDefaultOpen: false }),
-    )
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ sidebarDefaultOpen: false }))
   })
 
   it('changing refresh interval updates the value passed to onSave', () => {
@@ -83,8 +79,6 @@ describe('UIPreferences', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
-    expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ refreshInterval: 120 }),
-    )
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ refreshInterval: 120 }))
   })
 })
