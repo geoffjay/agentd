@@ -12,6 +12,8 @@ import type {
   Agent,
   ApprovalActionRequest,
   CreateAgentRequest,
+  CreateWorkflowRequest,
+  DispatchRecord,
   ListAgentsParams,
   ListApprovalsParams,
   PendingApproval,
@@ -20,6 +22,8 @@ import type {
   SetModelRequest,
   ToolPolicy,
   UpdatePolicyRequest,
+  UpdateWorkflowRequest,
+  Workflow,
 } from '@/types/orchestrator'
 
 export class OrchestratorClient extends ApiClient {
@@ -107,6 +111,40 @@ export class OrchestratorClient extends ApiClient {
 
   denyRequest(id: string, body?: ApprovalActionRequest): Promise<PendingApproval> {
     return this.post<PendingApproval>(`/approvals/${id}/deny`, body ?? {})
+  }
+
+  // -------------------------------------------------------------------------
+  // Workflows
+  // -------------------------------------------------------------------------
+
+  listWorkflows(params?: { limit?: number; offset?: number }): Promise<PaginatedResponse<Workflow>> {
+    return this.get<PaginatedResponse<Workflow>>('/workflows', params as Record<string, string>)
+  }
+
+  getWorkflow(id: string): Promise<Workflow> {
+    return this.get<Workflow>(`/workflows/${id}`)
+  }
+
+  createWorkflow(request: CreateWorkflowRequest): Promise<Workflow> {
+    return this.post<Workflow>('/workflows', request)
+  }
+
+  updateWorkflow(id: string, request: UpdateWorkflowRequest): Promise<Workflow> {
+    return this.put<Workflow>(`/workflows/${id}`, request)
+  }
+
+  deleteWorkflow(id: string): Promise<void> {
+    return this.delete<void>(`/workflows/${id}`)
+  }
+
+  getWorkflowHistory(
+    id: string,
+    params?: { limit?: number; offset?: number },
+  ): Promise<PaginatedResponse<DispatchRecord>> {
+    return this.get<PaginatedResponse<DispatchRecord>>(
+      `/workflows/${id}/history`,
+      params as Record<string, string>,
+    )
   }
 
   // -------------------------------------------------------------------------

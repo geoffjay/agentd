@@ -119,31 +119,92 @@ export interface ApprovalActionRequest {
 
 export type TaskStatus = 'Pending' | 'Running' | 'Completed' | 'Failed' | 'Cancelled'
 
-export interface TaskSourceConfig {
-  type: string
-  [key: string]: unknown
-}
+/** Status of a task dispatch record (mirrors Rust DispatchStatus) */
+export type DispatchStatus = 'pending' | 'dispatched' | 'completed' | 'failed' | 'skipped'
 
-export interface Task {
+/**
+ * Tagged union for different task source backends.
+ * Currently only GitHub Issues is supported.
+ */
+export type TaskSourceConfig =
+  | {
+      type: 'github_issues'
+      owner: string
+      repo: string
+      labels: string[]
+      state: 'open' | 'closed' | 'all'
+    }
+
+/**
+ * A workflow as returned by the API.
+ * Mirrors the Rust WorkflowResponse type.
+ */
+export interface Workflow {
   id: string
-  workflow_id: string
   name: string
-  status: TaskStatus
-  source: TaskSourceConfig
+  agent_id: string
+  source_config: TaskSourceConfig
+  prompt_template: string
+  poll_interval_secs: number
+  enabled: boolean
+  tool_policy: ToolPolicy
   created_at: string
   updated_at: string
 }
 
-export interface WorkflowConfig {
-  name: string
-  tasks: TaskSourceConfig[]
-}
-
+/**
+ * A task dispatch record as returned by the API.
+ * Mirrors the Rust DispatchResponse type.
+ */
 export interface DispatchRecord {
   id: string
   workflow_id: string
+  source_id: string
+  agent_id: string
+  prompt_sent: string
+  status: DispatchStatus
   dispatched_at: string
-  status: TaskStatus
+  completed_at?: string
+}
+
+/**
+ * An external task fetched from a task source.
+ * Mirrors the Rust Task type.
+ */
+export interface Task {
+  source_id: string
+  title: string
+  body: string
+  url: string
+  labels: string[]
+  assignee?: string
+  metadata: Record<string, string>
+}
+
+/** Request body for creating a workflow */
+export interface CreateWorkflowRequest {
+  name: string
+  agent_id: string
+  source_config: TaskSourceConfig
+  prompt_template: string
+  poll_interval_secs: number
+  enabled: boolean
+  tool_policy: ToolPolicy
+}
+
+/** Request body for updating a workflow (all fields optional) */
+export interface UpdateWorkflowRequest {
+  name?: string
+  prompt_template?: string
+  poll_interval_secs?: number
+  enabled?: boolean
+  tool_policy?: ToolPolicy
+}
+
+/** Legacy type alias kept for compatibility */
+export interface WorkflowConfig {
+  name: string
+  tasks: Array<{ type: string; [key: string]: unknown }>
 }
 
 // ---------------------------------------------------------------------------
