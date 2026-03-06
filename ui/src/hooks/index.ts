@@ -23,3 +23,6 @@ export type { UseAgentDetailOptions, UseAgentDetailResult } from './useAgentDeta
 
 export { useAgentStream } from './useAgentStream'
 export type { StreamStatus, LogLine, UseAgentStreamResult } from './useAgentStream'
+
+export { useApprovals } from './useApprovals'
+export type { UseApprovalsOptions, UseApprovalsResult } from './useApprovals'

@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/layouts'
 import {
   AgentsPage,
+  ApprovalQueuePage,
   DashboardPage,
   HooksPage,
   MonitoringPage,
@@ -28,6 +29,7 @@ function App() {
           <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="/hooks" element={<HooksPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/approvals" element={<ApprovalQueuePage />} />
         </Route>
 
         {/* 404 catch-all */}
