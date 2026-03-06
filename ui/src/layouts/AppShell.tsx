@@ -16,6 +16,7 @@ import { Sidebar } from './Sidebar'
 import { ContentArea } from './ContentArea'
 import { SearchPalette } from '@/components/search/SearchPalette'
 import { ThemeProvider } from '@/hooks/useTheme'
+import { ToastContainer } from '@/components/common/ToastContainer'
 
 const STORAGE_KEY = 'agentd:sidebar:open'
 
@@ -77,6 +78,7 @@ export function AppShell() {
             <Outlet />
           </ContentArea>
           <SearchPalette isOpen={searchOpen} onClose={closeSearch} />
+          <ToastContainer />
         </div>
       </LayoutContext.Provider>
     </ThemeProvider>
