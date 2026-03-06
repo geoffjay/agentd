@@ -5,6 +5,29 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ui</title>
+    <!--
+      Anti-FOUC (Flash of Unstyled Content) theme script.
+      Runs synchronously before React hydrates to apply the correct
+      theme class to <html> before any paint occurs.
+      Reads the theme preference from the 'agentd:settings' localStorage key.
+    -->
+    <script>
+      (function () {
+        try {
+          var settings = JSON.parse(localStorage.getItem('agentd:settings') || '{}')
+          var theme = (settings.ui && settings.ui.theme) || 'system'
+          var isDark =
+            theme === 'dark' ||
+            (theme === 'system' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (isDark) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {
+          // Silently ignore errors (private browsing, JSON parse failures, etc.)
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

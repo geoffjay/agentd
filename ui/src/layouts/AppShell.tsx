@@ -2,8 +2,8 @@
  * AppShell — root layout wrapper.
  *
  * Manages sidebar open/closed state (persisted to localStorage),
- * global search palette visibility, provides LayoutContext to all
- * children, and handles keyboard shortcuts:
+ * global search palette visibility, provides LayoutContext and
+ * ThemeProvider to all children, and handles keyboard shortcuts:
  *   - Ctrl+B: toggle sidebar
  *   - Ctrl+K / Cmd+K: open search palette
  */
@@ -15,6 +15,7 @@ import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 import { ContentArea } from './ContentArea'
 import { SearchPalette } from '@/components/search/SearchPalette'
+import { ThemeProvider } from '@/hooks/useTheme'
 
 const STORAGE_KEY = 'agentd:sidebar:open'
 
@@ -65,18 +66,20 @@ export function AppShell() {
   }, [sidebarOpen, setSidebarOpen])
 
   return (
-    <LayoutContext.Provider
-      value={{ sidebarOpen, setSidebarOpen, toggleSidebar, searchOpen, openSearch, closeSearch }}
-    >
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-        <Header />
-        <Sidebar />
-        <ContentArea>
-          <Outlet />
-        </ContentArea>
-        <SearchPalette isOpen={searchOpen} onClose={closeSearch} />
-      </div>
-    </LayoutContext.Provider>
+    <ThemeProvider>
+      <LayoutContext.Provider
+        value={{ sidebarOpen, setSidebarOpen, toggleSidebar, searchOpen, openSearch, closeSearch }}
+      >
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-150">
+          <Header />
+          <Sidebar />
+          <ContentArea>
+            <Outlet />
+          </ContentArea>
+          <SearchPalette isOpen={searchOpen} onClose={closeSearch} />
+        </div>
+      </LayoutContext.Provider>
+    </ThemeProvider>
   )
 }
 

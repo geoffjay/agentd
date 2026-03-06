@@ -9,3 +9,8 @@ export type { NotificationPriorityCounts, UseNotificationSummaryResult } from '.
 
 export { useSearch } from './useSearch'
 export type { SearchResult, GroupedSearchResults, UseSearchResult, SearchCategory } from './useSearch'
+
+export { useTheme, ThemeProvider } from './useTheme'
+export type { ThemeContextValue } from './useTheme'
+
+export { useNivoTheme } from './useNivoTheme'

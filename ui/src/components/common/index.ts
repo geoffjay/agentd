@@ -1,3 +1,5 @@
 export { StatusBadge } from './StatusBadge'
 export type { ServiceStatus } from './StatusBadge'
 export { Skeleton, CardSkeleton, ListItemSkeleton, ChartSkeleton } from './LoadingSkeleton'
+export { ThemeToggle } from './ThemeToggle'
+export type { ThemeToggleProps } from './ThemeToggle'

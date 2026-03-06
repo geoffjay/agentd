@@ -1,5 +1,6 @@
 /**
- * Header — fixed top bar with sidebar toggle, logo, search, notifications, and settings.
+ * Header — fixed top bar with sidebar toggle, logo, search, theme toggle,
+ * notifications, and settings.
  *
  * The search button opens the global SearchPalette (managed by AppShell).
  * Ctrl+K / Cmd+K is handled at the AppShell level.
@@ -8,6 +9,7 @@
 import { Link } from 'react-router-dom'
 import { Bell, Menu, Search, Settings } from 'lucide-react'
 import { useLayout } from './context'
+import { ThemeToggle } from '@/components/common/ThemeToggle'
 
 // ---------------------------------------------------------------------------
 // Notification badge
@@ -66,7 +68,7 @@ export function Header({ unreadCount = 0 }: HeaderProps) {
   const { toggleSidebar } = useLayout()
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center gap-3 border-b border-gray-700 bg-gray-900 px-4">
+    <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center gap-3 border-b border-gray-700 bg-gray-900 px-4 transition-colors duration-150">
       {/* Sidebar toggle */}
       <button
         type="button"
@@ -92,6 +94,9 @@ export function Header({ unreadCount = 0 }: HeaderProps) {
 
       {/* Search trigger */}
       <SearchTrigger />
+
+      {/* Theme toggle */}
+      <ThemeToggle />
 
       {/* Notification bell */}
       <Link
