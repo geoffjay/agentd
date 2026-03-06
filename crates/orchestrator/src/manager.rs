@@ -133,11 +133,25 @@ impl AgentManager {
         Ok(agent)
     }
 
-    /// Reconcile DB state with actual tmux sessions on startup.
+    /// Reconcile DB state with actual tmux sessions and WebSocket connections on startup.
+    ///
+    /// Handles three cases for agents marked as `Running`:
+    ///
+    /// 1. **tmux session is gone** — the process died unexpectedly.  Mark the
+    ///    agent as `Failed`.
+    ///
+    /// 2. **tmux session is alive but agent is not connected to the registry** —
+    ///    the orchestrator was restarted and the in-memory `ConnectionRegistry`
+    ///    was reset.  The Claude process is still running in tmux but holds a
+    ///    stale WebSocket connection to the old orchestrator instance.  Kill the
+    ///    session and re-launch Claude so it establishes a fresh connection.
+    ///
+    /// 3. **tmux session is alive and agent is connected** — everything is fine,
+    ///    nothing to do.
     pub async fn reconcile(&self) -> anyhow::Result<()> {
         let agents = self.storage.list(Some(AgentStatus::Running)).await?;
 
-        for mut agent in agents {
+        for agent in agents {
             let session_alive = agent
                 .tmux_session
                 .as_ref()
@@ -145,6 +159,8 @@ impl AgentManager {
                 .unwrap_or(false);
 
             if !session_alive {
+                // Case 1: tmux session is gone — mark as Failed.
+                let mut agent = agent;
                 warn!(
                     agent_id = %agent.id,
                     "Agent marked running but tmux session is gone, marking failed"
@@ -154,7 +170,19 @@ impl AgentManager {
                 if let Err(e) = self.storage.update(&agent).await {
                     error!(agent_id = %agent.id, %e, "Failed to update agent status");
                 }
+            } else if !self.registry.is_connected(&agent.id).await {
+                // Case 2: tmux session alive but WebSocket connection is stale
+                // (orchestrator was restarted and ConnectionRegistry was reset).
+                // Kill the old Claude process and relaunch so it reconnects.
+                warn!(
+                    agent_id = %agent.id,
+                    "Agent has live tmux session but is not connected to registry after startup, restarting"
+                );
+                if let Err(e) = self.restart_agent(&agent).await {
+                    error!(agent_id = %agent.id, %e, "Failed to restart stale agent during reconcile");
+                }
             }
+            // Case 3: alive and connected — nothing to do.
         }
 
         Ok(())
