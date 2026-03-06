@@ -1,10 +1,14 @@
 /**
  * UIPreferences — UI preferences form for theme, sidebar, refresh interval,
  * notifications, and log view lines.
+ *
+ * Theme changes apply immediately to the DOM via ThemeContext so users
+ * can preview the effect before saving.
  */
 
 import { useState } from 'react'
 import type { Settings } from '@/stores/settingsStore'
+import { useTheme } from '@/hooks/useTheme'
 
 interface UIPreferencesProps {
   ui: Settings['ui']
@@ -13,6 +17,7 @@ interface UIPreferencesProps {
 
 export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
   const [localUI, setLocalUI] = useState<Settings['ui']>(ui)
+  const { setTheme } = useTheme()
 
   function handleSave() {
     onSave(localUI)
@@ -31,12 +36,12 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
         <select
           id="ui-theme"
           value={localUI.theme}
-          onChange={e =>
-            setLocalUI(prev => ({
-              ...prev,
-              theme: e.target.value as Settings['ui']['theme'],
-            }))
-          }
+          onChange={e => {
+            const theme = e.target.value as Settings['ui']['theme']
+            setLocalUI(prev => ({ ...prev, theme }))
+            // Apply immediately so the user sees the change in real time
+            setTheme(theme)
+          }}
           className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
         >
           <option value="light">Light</option>

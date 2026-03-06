@@ -10,6 +10,7 @@ import { render } from '@testing-library/react'
 import { axe } from '@/test/setup'
 import { MemoryRouter } from 'react-router-dom'
 import { LayoutContext } from '@/layouts/context'
+import { ThemeProvider } from '@/hooks/useTheme'
 import type { LayoutContextValue } from '@/layouts/context'
 import { vi } from 'vitest'
 import { StatusBadge } from '@/components/common/StatusBadge'
@@ -35,9 +36,11 @@ function makeCtx(): LayoutContextValue {
 
 function withRouter(element: React.ReactElement) {
   return (
-    <MemoryRouter>
-      <LayoutContext.Provider value={makeCtx()}>{element}</LayoutContext.Provider>
-    </MemoryRouter>
+    <ThemeProvider>
+      <MemoryRouter>
+        <LayoutContext.Provider value={makeCtx()}>{element}</LayoutContext.Provider>
+      </MemoryRouter>
+    </ThemeProvider>
   )
 }
 

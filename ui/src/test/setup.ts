@@ -9,8 +9,28 @@
 
 import '@testing-library/jest-dom'
 import { configureAxe, toHaveNoViolations } from 'jest-axe'
-import { expect, beforeAll, afterEach, afterAll } from 'vitest'
+import { expect, beforeAll, afterEach, afterAll, vi } from 'vitest'
 import { server } from './mocks/server'
+
+// ---------------------------------------------------------------------------
+// window.matchMedia — jsdom does not implement matchMedia, so we provide a
+// functional stub that defaults to the light colour scheme. Individual tests
+// can override this with vi.fn() if they need to test dark-mode behaviour.
+// ---------------------------------------------------------------------------
+
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation((query: string) => ({
+    matches: false, // default: light theme / no special media query match
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+})
 
 // ---------------------------------------------------------------------------
 // Extend Vitest's expect with jest-axe accessibility matchers

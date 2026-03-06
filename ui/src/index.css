@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Configure class-based dark mode — adds `dark:` variant support via .dark class */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Color tokens */
   --color-primary-50: #eff6ff;
@@ -68,7 +71,111 @@
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 }
 
-/* Base styles */
+/* ---------------------------------------------------------------------------
+   Semantic CSS custom properties — light theme (default)
+   --------------------------------------------------------------------------- */
+:root {
+  /* Backgrounds */
+  --bg-primary: var(--color-secondary-50);
+  --bg-secondary: var(--color-secondary-100);
+  --bg-tertiary: var(--color-secondary-200);
+
+  /* Surface (cards, panels) */
+  --surface-default: #ffffff;
+  --surface-raised: var(--color-secondary-50);
+  --surface-overlay: #ffffff;
+
+  /* Navigation */
+  --nav-bg: var(--color-secondary-900);
+  --nav-border: var(--color-secondary-700);
+  --nav-text: var(--color-secondary-400);
+  --nav-text-active: #ffffff;
+  --nav-item-hover: var(--color-secondary-700);
+  --nav-item-active: var(--color-primary-700);
+
+  /* Text */
+  --text-primary: var(--color-secondary-900);
+  --text-secondary: var(--color-secondary-700);
+  --text-muted: var(--color-secondary-500);
+  --text-inverse: #ffffff;
+
+  /* Borders */
+  --border-default: var(--color-secondary-200);
+  --border-strong: var(--color-secondary-300);
+  --border-focus: var(--color-primary-500);
+
+  /* Accent / brand */
+  --accent-primary: var(--color-primary-500);
+  --accent-primary-hover: var(--color-primary-600);
+  --accent-secondary: var(--color-primary-100);
+
+  /* Status */
+  --status-success: var(--color-success-500);
+  --status-warning: var(--color-warning-500);
+  --status-error: var(--color-error-500);
+  --status-info: var(--color-info-500);
+
+  /* Form elements */
+  --input-bg: #ffffff;
+  --input-border: var(--color-secondary-300);
+  --input-text: var(--color-secondary-900);
+  --input-placeholder: var(--color-secondary-400);
+}
+
+/* ---------------------------------------------------------------------------
+   Semantic CSS custom properties — dark theme
+   --------------------------------------------------------------------------- */
+.dark {
+  /* Backgrounds */
+  --bg-primary: var(--color-secondary-950);
+  --bg-secondary: var(--color-secondary-900);
+  --bg-tertiary: var(--color-secondary-800);
+
+  /* Surface (cards, panels) */
+  --surface-default: var(--color-secondary-900);
+  --surface-raised: var(--color-secondary-800);
+  --surface-overlay: var(--color-secondary-800);
+
+  /* Navigation */
+  --nav-bg: var(--color-secondary-900);
+  --nav-border: var(--color-secondary-700);
+  --nav-text: var(--color-secondary-400);
+  --nav-text-active: #ffffff;
+  --nav-item-hover: var(--color-secondary-700);
+  --nav-item-active: var(--color-primary-700);
+
+  /* Text */
+  --text-primary: var(--color-secondary-50);
+  --text-secondary: var(--color-secondary-300);
+  --text-muted: var(--color-secondary-400);
+  --text-inverse: var(--color-secondary-900);
+
+  /* Borders */
+  --border-default: var(--color-secondary-800);
+  --border-strong: var(--color-secondary-700);
+  --border-focus: var(--color-primary-400);
+
+  /* Accent / brand */
+  --accent-primary: var(--color-primary-400);
+  --accent-primary-hover: var(--color-primary-300);
+  --accent-secondary: var(--color-primary-900);
+
+  /* Status */
+  --status-success: var(--color-success-500);
+  --status-warning: var(--color-warning-500);
+  --status-error: var(--color-error-500);
+  --status-info: var(--color-info-500);
+
+  /* Form elements */
+  --input-bg: var(--color-secondary-800);
+  --input-border: var(--color-secondary-600);
+  --input-text: var(--color-secondary-50);
+  --input-placeholder: var(--color-secondary-500);
+}
+
+/* ---------------------------------------------------------------------------
+   Base styles
+   --------------------------------------------------------------------------- */
 *,
 *::before,
 *::after {
@@ -83,20 +190,32 @@ html {
   text-rendering: optimizeLegibility;
 }
 
+/* Smooth theme transitions — only on background-color to keep performance good */
+html,
+body,
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+
+/* Opt-out of transitions for elements that should change instantly */
+.no-theme-transition,
+.no-theme-transition *,
+svg,
+svg * {
+  transition: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: var(--color-secondary-50);
-  color: var(--color-secondary-900);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 #root {
   min-height: 100vh;
-}
-
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: var(--color-secondary-950);
-    color: var(--color-secondary-50);
-  }
 }

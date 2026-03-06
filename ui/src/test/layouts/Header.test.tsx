@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Header } from '@/layouts/Header'
 import { LayoutContext } from '@/layouts/context'
+import { ThemeProvider } from '@/hooks/useTheme'
 import type { LayoutContextValue } from '@/layouts/context'
 
 // ---------------------------------------------------------------------------
@@ -26,11 +27,13 @@ function renderHeader(props = {}, contextOverrides: Partial<LayoutContextValue> 
   return {
     ctx,
     ...render(
-      <MemoryRouter>
-        <LayoutContext.Provider value={ctx}>
-          <Header {...props} />
-        </LayoutContext.Provider>
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter>
+          <LayoutContext.Provider value={ctx}>
+            <Header {...props} />
+          </LayoutContext.Provider>
+        </MemoryRouter>
+      </ThemeProvider>,
     ),
   }
 }
@@ -101,5 +104,10 @@ describe('Header', () => {
     renderHeader()
     const btn = screen.getByRole('button', { name: /global search/i })
     expect(btn).toHaveAttribute('aria-keyshortcuts', 'Control+k Meta+k')
+  })
+
+  it('renders the theme toggle button', () => {
+    renderHeader()
+    expect(screen.getByRole('button', { name: /theme/i })).toBeInTheDocument()
   })
 })
