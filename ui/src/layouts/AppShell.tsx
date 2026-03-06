@@ -17,6 +17,7 @@ import { ContentArea } from './ContentArea'
 import { SearchPalette } from '@/components/search/SearchPalette'
 import { ThemeProvider } from '@/hooks/useTheme'
 import { ToastContainer } from '@/components/common/ToastContainer'
+import { SkipNav } from '@/components/common/SkipNav'
 
 const STORAGE_KEY = 'agentd:sidebar:open'
 
@@ -72,6 +73,7 @@ export function AppShell() {
         value={{ sidebarOpen, setSidebarOpen, toggleSidebar, searchOpen, openSearch, closeSearch }}
       >
         <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-150">
+          <SkipNav />
           <Header />
           <Sidebar />
           <ContentArea>
