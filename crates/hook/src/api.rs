@@ -246,8 +246,7 @@ mod tests {
     #[tokio::test]
     async fn test_receive_event_response_body() {
         let router = create_router(make_state());
-        let payload =
-            serde_json::json!({"kind": "git", "command": "pre-commit", "exit_code": 0});
+        let payload = serde_json::json!({"kind": "git", "command": "pre-commit", "exit_code": 0});
         let req = Request::builder()
             .method("POST")
             .uri("/events")
@@ -266,8 +265,7 @@ mod tests {
     async fn test_receive_then_list_events() {
         let state = make_state();
         let router = create_router(state);
-        let payload =
-            serde_json::json!({"kind": "shell", "command": "ls -la", "exit_code": 0});
+        let payload = serde_json::json!({"kind": "shell", "command": "ls -la", "exit_code": 0});
         let post_req = Request::builder()
             .method("POST")
             .uri("/events")
@@ -287,8 +285,7 @@ mod tests {
     #[tokio::test]
     async fn test_receive_event_rejects_empty_command() {
         let router = create_router(make_state());
-        let payload =
-            serde_json::json!({"kind": "shell", "command": "   ", "exit_code": 1});
+        let payload = serde_json::json!({"kind": "shell", "command": "   ", "exit_code": 1});
         let req = Request::builder()
             .method("POST")
             .uri("/events")
@@ -317,8 +314,7 @@ mod tests {
     async fn test_get_event_by_id() {
         let state = make_state();
         let router = create_router(state);
-        let payload =
-            serde_json::json!({"kind": "shell", "command": "echo hi", "exit_code": 0});
+        let payload = serde_json::json!({"kind": "shell", "command": "echo hi", "exit_code": 0});
         let post_req = Request::builder()
             .method("POST")
             .uri("/events")
@@ -343,10 +339,7 @@ mod tests {
     async fn test_get_event_not_found() {
         let router = create_router(make_state());
         let fake_id = Uuid::new_v4();
-        let req = Request::builder()
-            .uri(format!("/events/{fake_id}"))
-            .body(Body::empty())
-            .unwrap();
+        let req = Request::builder().uri(format!("/events/{fake_id}")).body(Body::empty()).unwrap();
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }

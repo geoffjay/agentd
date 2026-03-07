@@ -52,14 +52,8 @@ impl HookConfig {
         let notify_service_url = env::var("NOTIFY_SERVICE_URL").ok().filter(|s| !s.is_empty());
 
         Self {
-            port: env::var("PORT")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(17002),
-            history_size: env::var("HISTORY_SIZE")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(500),
+            port: env::var("PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(17002),
+            history_size: env::var("HISTORY_SIZE").ok().and_then(|v| v.parse().ok()).unwrap_or(500),
             notify_on_failure: env::var("NOTIFY_ON_FAILURE")
                 .map(|v| v != "false" && v != "0")
                 .unwrap_or(true),

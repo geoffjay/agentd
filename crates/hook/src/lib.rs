@@ -56,7 +56,7 @@ pub mod state;
 pub mod types;
 
 use anyhow::Result;
-use api::{ApiState, create_router_with_tracing};
+use api::{create_router_with_tracing, ApiState};
 use std::net::SocketAddr;
 use tracing::{info, warn};
 

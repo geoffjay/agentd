@@ -128,11 +128,13 @@ mod tests {
         let mut config = HookConfig::default();
         config.history_size = 3;
         let state = AppState::new(config);
-        let ids: Vec<_> = (0..5).map(|i| {
-            let ev = make_event(&format!("cmd-{i}"), 0);
-            let id = ev.id;
-            (ev, id)
-        }).collect();
+        let ids: Vec<_> = (0..5)
+            .map(|i| {
+                let ev = make_event(&format!("cmd-{i}"), 0);
+                let id = ev.id;
+                (ev, id)
+            })
+            .collect();
 
         for (ev, _) in &ids {
             state.push_event(ev.clone()).await;
