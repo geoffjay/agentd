@@ -6,6 +6,8 @@
 //! The generated scripts use preexec/precmd hooks to capture command start/end
 //! times and forward completed events to the hook service via HTTP.
 
+use std::str::FromStr;
+
 /// Shell type for integration script generation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Shell {
@@ -14,14 +16,15 @@ pub enum Shell {
     Fish,
 }
 
-impl Shell {
-    /// Parse a shell name string into a [`Shell`] variant.
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for Shell {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "zsh" => Some(Shell::Zsh),
-            "bash" => Some(Shell::Bash),
-            "fish" => Some(Shell::Fish),
-            _ => None,
+            "zsh" => Ok(Shell::Zsh),
+            "bash" => Ok(Shell::Bash),
+            "fish" => Ok(Shell::Fish),
+            _ => Err(format!("Unknown shell '{s}'")),
         }
     }
 }
@@ -193,11 +196,11 @@ mod tests {
 
     #[test]
     fn test_shell_from_str() {
-        assert_eq!(Shell::from_str("zsh"), Some(Shell::Zsh));
-        assert_eq!(Shell::from_str("bash"), Some(Shell::Bash));
-        assert_eq!(Shell::from_str("fish"), Some(Shell::Fish));
-        assert_eq!(Shell::from_str("Zsh"), Some(Shell::Zsh));
-        assert_eq!(Shell::from_str("unknown"), None);
+        assert_eq!("zsh".parse::<Shell>(), Ok(Shell::Zsh));
+        assert_eq!("bash".parse::<Shell>(), Ok(Shell::Bash));
+        assert_eq!("fish".parse::<Shell>(), Ok(Shell::Fish));
+        assert_eq!("Zsh".parse::<Shell>(), Ok(Shell::Zsh));
+        assert!("unknown".parse::<Shell>().is_err());
     }
 
     #[test]

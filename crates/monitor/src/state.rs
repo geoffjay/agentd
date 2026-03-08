@@ -219,8 +219,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_ring_buffer_evicts_oldest() {
-        let mut config = MonitorConfig::default();
-        config.history_size = 3;
+        let config = MonitorConfig {
+            history_size: 3,
+            ..Default::default()
+        };
         let state = AppState::new(config);
 
         for i in 0..5u32 {
@@ -248,8 +250,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_degraded_on_single_threshold_breach() {
-        let mut config = MonitorConfig::default();
-        config.cpu_alert_threshold = 80.0;
+        let config = MonitorConfig {
+            cpu_alert_threshold: 80.0,
+            ..Default::default()
+        };
         let state = AppState::new(config);
         state.push_metrics(make_metrics(95.0, 50.0, 50.0)).await;
 
@@ -261,9 +265,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_critical_on_multiple_threshold_breaches() {
-        let mut config = MonitorConfig::default();
-        config.cpu_alert_threshold = 80.0;
-        config.memory_alert_threshold = 80.0;
+        let config = MonitorConfig {
+            cpu_alert_threshold: 80.0,
+            memory_alert_threshold: 80.0,
+            ..Default::default()
+        };
         let state = AppState::new(config);
         state.push_metrics(make_metrics(95.0, 95.0, 50.0)).await;
 
