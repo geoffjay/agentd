@@ -91,9 +91,7 @@ pub async fn create_test_connection() -> (DatabaseConnection, tempfile::TempDir)
 /// Apply all pending SeaORM migrations for migrator `M` to the database at `db_path`.
 ///
 /// Creates the database file if it does not exist.
-pub async fn apply_migrations<M: sea_orm_migration::MigratorTrait>(
-    db_path: &Path,
-) -> Result<()> {
+pub async fn apply_migrations<M: sea_orm_migration::MigratorTrait>(db_path: &Path) -> Result<()> {
     let db = create_connection(db_path).await?;
     M::up(&db, None).await?;
     Ok(())
