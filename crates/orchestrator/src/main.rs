@@ -1,5 +1,7 @@
 mod api;
 mod approvals;
+mod entity;
+mod migration;
 mod manager;
 mod scheduler;
 mod storage;
@@ -60,9 +62,9 @@ async fn main() -> anyhow::Result<()> {
 
     let manager = Arc::new(manager);
 
-    // Scheduler for autonomous workflows (shares the same SQLite pool).
-    let scheduler_storage = SchedulerStorage::new(storage.pool().clone());
-    scheduler_storage.init_schema().await?;
+    // Scheduler for autonomous workflows (shares the same SeaORM connection).
+    // Schema is already applied by AgentStorage::with_path() via Migrator::up().
+    let scheduler_storage = SchedulerStorage::new(storage.db().clone());
     let scheduler = Arc::new(Scheduler::new(scheduler_storage, registry.clone()));
 
     // Register scheduler as a result callback so it gets notified when agents finish.
