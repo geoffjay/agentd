@@ -81,6 +81,8 @@
 
 pub mod api;
 pub mod client;
+pub mod entity;
+pub(crate) mod migration;
 pub mod notification;
 pub mod storage;
 pub mod types;
