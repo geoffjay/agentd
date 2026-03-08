@@ -74,14 +74,9 @@ impl AgentStorage {
             worktree: Set(if agent.config.worktree { 1 } else { 0 }),
             system_prompt: Set(agent.config.system_prompt.clone()),
             tmux_session: Set(agent.tmux_session.clone()),
-            tool_policy: Set(
-                serde_json::to_string(&agent.config.tool_policy).unwrap_or_default(),
-            ),
+            tool_policy: Set(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default()),
             model: Set(agent.config.model.clone()),
-            env: Set(
-                serde_json::to_string(&agent.config.env)
-                    .unwrap_or_else(|_| "{}".to_string()),
-            ),
+            env: Set(serde_json::to_string(&agent.config.env).unwrap_or_else(|_| "{}".to_string())),
             created_at: Set(agent.created_at.to_rfc3339()),
             updated_at: Set(agent.updated_at.to_rfc3339()),
         };
@@ -104,25 +99,14 @@ impl AgentStorage {
         use sea_orm::sea_query::Expr;
 
         let result = agent_entity::Entity::update_many()
-            .col_expr(
-                agent_entity::Column::Status,
-                Expr::value(agent.status.to_string()),
-            )
-            .col_expr(
-                agent_entity::Column::TmuxSession,
-                Expr::value(agent.tmux_session.clone()),
-            )
+            .col_expr(agent_entity::Column::Status, Expr::value(agent.status.to_string()))
+            .col_expr(agent_entity::Column::TmuxSession, Expr::value(agent.tmux_session.clone()))
             .col_expr(
                 agent_entity::Column::ToolPolicy,
-                Expr::value(
-                    serde_json::to_string(&agent.config.tool_policy).unwrap_or_default(),
-                ),
+                Expr::value(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default()),
             )
             .col_expr(agent_entity::Column::Model, Expr::value(agent.config.model.clone()))
-            .col_expr(
-                agent_entity::Column::UpdatedAt,
-                Expr::value(agent.updated_at.to_rfc3339()),
-            )
+            .col_expr(agent_entity::Column::UpdatedAt, Expr::value(agent.updated_at.to_rfc3339()))
             .filter(agent_entity::Column::Id.eq(agent.id.to_string()))
             .exec(&self.db)
             .await?;
@@ -174,10 +158,8 @@ impl AgentStorage {
             None => Condition::all(),
         };
 
-        let total = agent_entity::Entity::find()
-            .filter(condition.clone())
-            .count(&self.db)
-            .await? as usize;
+        let total =
+            agent_entity::Entity::find().filter(condition.clone()).count(&self.db).await? as usize;
 
         let models: Vec<agent_entity::Model> = agent_entity::Entity::find()
             .filter(condition)
@@ -198,10 +180,8 @@ impl AgentStorage {
 
 /// Convert a raw entity [`agent_entity::Model`] into the domain [`Agent`] type.
 fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
-    let tool_policy: ToolPolicy =
-        serde_json::from_str(&model.tool_policy).unwrap_or_default();
-    let env: HashMap<String, String> =
-        serde_json::from_str(&model.env).unwrap_or_default();
+    let tool_policy: ToolPolicy = serde_json::from_str(&model.tool_policy).unwrap_or_default();
+    let env: HashMap<String, String> = serde_json::from_str(&model.env).unwrap_or_default();
 
     Ok(Agent {
         id: Uuid::parse_str(&model.id)?,

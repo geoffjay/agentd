@@ -1,8 +1,8 @@
 mod api;
 mod approvals;
 mod entity;
-mod migration;
 mod manager;
+mod migration;
 mod scheduler;
 mod storage;
 mod types;
