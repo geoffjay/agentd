@@ -17,24 +17,24 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 // ---------------------------------------------------------------------------
 
 const PRIORITY_BORDER: Record<string, string> = {
-  Low: 'border-l-blue-500',
-  Normal: 'border-l-green-500',
-  High: 'border-l-orange-500',
-  Urgent: 'border-l-red-500',
+  low: 'border-l-blue-500',
+  normal: 'border-l-green-500',
+  high: 'border-l-orange-500',
+  urgent: 'border-l-red-500',
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  System: 'System',
-  AskService: 'Ask',
-  AgentHook: 'Agent Hook',
-  MonitorService: 'Monitor',
+  system: 'System',
+  ask_service: 'Ask',
+  agent_hook: 'Agent Hook',
+  monitor_service: 'Monitor',
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  System: 'bg-gray-700 text-gray-300',
-  AskService: 'bg-blue-900/50 text-blue-300',
-  AgentHook: 'bg-purple-900/50 text-purple-300',
-  MonitorService: 'bg-teal-900/50 text-teal-300',
+  system: 'bg-gray-700 text-gray-300',
+  ask_service: 'bg-blue-900/50 text-blue-300',
+  agent_hook: 'bg-purple-900/50 text-purple-300',
+  monitor_service: 'bg-teal-900/50 text-teal-300',
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -86,12 +86,12 @@ export function NotificationCard({
 }: NotificationCardProps) {
   const [expanded, setExpanded] = useState(false)
   const borderClass = PRIORITY_BORDER[notification.priority] ?? 'border-l-gray-500'
-  const isEphemeral = notification.lifetime.type === 'Ephemeral'
-  const expiresAt = isEphemeral ? (notification.lifetime as { type: 'Ephemeral'; expires_at: string }).expires_at : null
+  const isEphemeral = notification.lifetime.type === 'ephemeral'
+  const expiresAt = isEphemeral ? (notification.lifetime as { type: 'ephemeral'; expires_at: string }).expires_at : null
   const isDone =
-    notification.status === 'Dismissed' ||
-    notification.status === 'Expired' ||
-    notification.status === 'Responded'
+    notification.status === 'dismissed' ||
+    notification.status === 'expired' ||
+    notification.status === 'responded'
 
   return (
     <article
@@ -129,10 +129,10 @@ export function NotificationCard({
             <span
               className={[
                 'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                SOURCE_COLORS[notification.source] ?? 'bg-gray-700 text-gray-300',
+                SOURCE_COLORS[notification.source.type] ?? 'bg-gray-700 text-gray-300',
               ].join(' ')}
             >
-              {SOURCE_LABELS[notification.source] ?? notification.source}
+              {SOURCE_LABELS[notification.source.type] ?? notification.source.type}
             </span>
 
             {/* Status badge */}
@@ -189,7 +189,7 @@ export function NotificationCard({
           )}
 
           {/* Response (if already responded) */}
-          {notification.status === 'Responded' && notification.response && (
+          {notification.status === 'responded' && notification.response && (
             <div className="mt-2 rounded bg-gray-900/60 p-2 text-xs text-gray-400">
               <span className="font-semibold text-gray-300">Response:</span>{' '}
               {notification.response}
@@ -198,7 +198,7 @@ export function NotificationCard({
 
           {/* Action buttons */}
           <div className="mt-3 flex flex-wrap gap-2">
-            {notification.status === 'Pending' && (
+            {notification.status === 'pending' && (
               <button
                 type="button"
                 disabled={busy}
@@ -210,7 +210,7 @@ export function NotificationCard({
             )}
 
             {notification.requires_response &&
-              (notification.status === 'Pending' || notification.status === 'Viewed') && (
+              (notification.status === 'pending' || notification.status === 'viewed') && (
                 <button
                   type="button"
                   disabled={busy}
@@ -221,7 +221,7 @@ export function NotificationCard({
                 </button>
               )}
 
-            {(notification.status === 'Pending' || notification.status === 'Viewed') && (
+            {(notification.status === 'pending' || notification.status === 'viewed') && (
               <button
                 type="button"
                 disabled={busy}

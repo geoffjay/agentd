@@ -81,7 +81,7 @@ export function HookPlaceholder() {
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
           Hooks — Coming Soon
         </h2>
-        <p className="text-gray-500 dark:text-gray-400 max-w-xl mx-auto">
+        <p className="text-gray-500 dark:text-gray-400">
           The hook service will monitor git hooks and system hooks, automatically creating
           notifications when hook events fire. Configure triggers, view execution logs, and
           connect hook events to your notification workflows.

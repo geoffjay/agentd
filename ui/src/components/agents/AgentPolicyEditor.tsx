@@ -26,42 +26,42 @@ export interface AgentPolicyEditorProps {
 // ---------------------------------------------------------------------------
 
 const POLICY_TYPES = [
-  { label: 'Allow All', value: 'AllowAll' },
-  { label: 'Deny All', value: 'DenyAll' },
-  { label: 'Allow List', value: 'AllowList' },
-  { label: 'Deny List', value: 'DenyList' },
-  { label: 'Require Approval', value: 'RequireApproval' },
+  { label: 'Allow All', value: 'allow_all' },
+  { label: 'Deny All', value: 'deny_all' },
+  { label: 'Allow List', value: 'allow_list' },
+  { label: 'Deny List', value: 'deny_list' },
+  { label: 'Require Approval', value: 'require_approval' },
 ] as const
 
 type PolicyType = (typeof POLICY_TYPES)[number]['value']
 
 function getToolsString(policy: ToolPolicy): string {
-  if (policy.type === 'AllowList' || policy.type === 'DenyList') {
+  if (policy.mode === 'allow_list' || policy.mode === 'deny_list') {
     return policy.tools.join(', ')
   }
   return ''
 }
 
-function buildPolicy(type: PolicyType, toolsStr: string): ToolPolicy {
-  if (type === 'AllowList') {
+function buildPolicy(mode: PolicyType, toolsStr: string): ToolPolicy {
+  if (mode === 'allow_list') {
     return {
-      type: 'AllowList',
+      mode: 'allow_list',
       tools: toolsStr
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean),
     }
   }
-  if (type === 'DenyList') {
+  if (mode === 'deny_list') {
     return {
-      type: 'DenyList',
+      mode: 'deny_list',
       tools: toolsStr
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean),
     }
   }
-  return { type }
+  return { mode }
 }
 
 const inputCls =
@@ -72,16 +72,16 @@ const inputCls =
 // ---------------------------------------------------------------------------
 
 export function AgentPolicyEditor({ policy, saving = false, onSave }: AgentPolicyEditorProps) {
-  const [type, setType] = useState<PolicyType>(policy.type)
+  const [mode, setMode] = useState<PolicyType>(policy.mode)
   const [toolsStr, setToolsStr] = useState(getToolsString(policy))
   const [error, setError] = useState<string | undefined>()
 
-  const showToolList = type === 'AllowList' || type === 'DenyList'
+  const showToolList = mode === 'allow_list' || mode === 'deny_list'
 
   async function handleSave() {
     setError(undefined)
     try {
-      await onSave(buildPolicy(type, toolsStr))
+      await onSave(buildPolicy(mode, toolsStr))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save policy')
     }
@@ -105,8 +105,8 @@ export function AgentPolicyEditor({ policy, saving = false, onSave }: AgentPolic
         </label>
         <select
           id="policy-type"
-          value={type}
-          onChange={(e) => setType(e.target.value as PolicyType)}
+          value={mode}
+          onChange={(e) => setMode(e.target.value as PolicyType)}
           disabled={saving}
           className={inputCls}
         >

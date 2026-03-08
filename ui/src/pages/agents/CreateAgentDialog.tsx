@@ -22,11 +22,11 @@ const MODELS = [
 ]
 
 const TOOL_POLICY_TYPES = [
-  { label: 'Allow All', value: 'AllowAll' },
-  { label: 'Deny All', value: 'DenyAll' },
-  { label: 'Allow List', value: 'AllowList' },
-  { label: 'Deny List', value: 'DenyList' },
-  { label: 'Require Approval', value: 'RequireApproval' },
+  { label: 'Allow All', value: 'allow_all' },
+  { label: 'Deny All', value: 'deny_all' },
+  { label: 'Allow List', value: 'allow_list' },
+  { label: 'Deny List', value: 'deny_list' },
+  { label: 'Require Approval', value: 'require_approval' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -57,26 +57,26 @@ interface FormErrors {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildToolPolicy(type: string, toolList: string): ToolPolicy {
-  if (type === 'AllowList') {
+function buildToolPolicy(mode: string, toolList: string): ToolPolicy {
+  if (mode === 'allow_list') {
     return {
-      type: 'AllowList',
+      mode: 'allow_list',
       tools: toolList
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean),
     }
   }
-  if (type === 'DenyList') {
+  if (mode === 'deny_list') {
     return {
-      type: 'DenyList',
+      mode: 'deny_list',
       tools: toolList
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean),
     }
   }
-  return { type: type as 'AllowAll' | 'DenyAll' | 'RequireApproval' }
+  return { mode: mode as 'allow_all' | 'deny_all' | 'require_approval' }
 }
 
 function buildRequest(form: FormState): CreateAgentRequest {
@@ -153,7 +153,7 @@ const DEFAULT_FORM: FormState = {
   interactive: false,
   prompt: '',
   system_prompt: '',
-  tool_policy_type: 'AllowAll',
+  tool_policy_type: 'allow_all',
   tool_list: '',
   env_keys: [''],
   env_values: [''],
@@ -230,7 +230,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
 
   if (!open) return null
 
-  const showToolList = form.tool_policy_type === 'AllowList' || form.tool_policy_type === 'DenyList'
+  const showToolList = form.tool_policy_type === 'allow_list' || form.tool_policy_type === 'deny_list'
 
   const inputCls =
     'block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500'

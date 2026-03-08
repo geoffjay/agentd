@@ -11,10 +11,10 @@ import { X } from 'lucide-react'
 import type { Notification } from '@/types/notify'
 
 const SOURCE_LABELS: Record<string, string> = {
-  System: 'System',
-  AskService: 'Ask Service',
-  AgentHook: 'Agent Hook',
-  MonitorService: 'Monitor Service',
+  system: 'System',
+  ask_service: 'Ask Service',
+  agent_hook: 'Agent Hook',
+  monitor_service: 'Monitor Service',
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ export function NotificationResponseDialog({
               {notification.title}
             </h2>
             <p className="mt-0.5 text-xs text-gray-400">
-              {SOURCE_LABELS[notification.source] ?? notification.source}
+              {SOURCE_LABELS[notification.source.type] ?? notification.source.type}
               {' · '}
               {notification.priority} priority
             </p>

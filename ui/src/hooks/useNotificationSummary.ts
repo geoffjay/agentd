@@ -7,10 +7,10 @@ import { notifyClient } from '@/services/notify'
 import type { NotificationPriority } from '@/types/notify'
 
 export interface NotificationPriorityCounts {
-  Low: number
-  Normal: number
-  High: number
-  Urgent: number
+  low: number
+  normal: number
+  high: number
+  urgent: number
 }
 
 export interface UseNotificationSummaryResult {
@@ -22,7 +22,7 @@ export interface UseNotificationSummaryResult {
   error?: string
 }
 
-const EMPTY_PRIORITY: NotificationPriorityCounts = { Low: 0, Normal: 0, High: 0, Urgent: 0 }
+const EMPTY_PRIORITY: NotificationPriorityCounts = { low: 0, normal: 0, high: 0, urgent: 0 }
 
 export function useNotificationSummary(): UseNotificationSummaryResult {
   const [pending, setPending] = useState(0)
@@ -42,14 +42,14 @@ export function useNotificationSummary(): UseNotificationSummaryResult {
       ])
 
       // Pending = those still needing attention
-      const pendingCount = actionable.items.filter((n) => n.status === 'Pending').length
-      // Unread = Pending + Viewed (seen but not responded)
+      const pendingCount = actionable.items.filter((n) => n.status === 'pending').length
+      // Unread = pending + viewed (seen but not responded)
       const unreadCount = actionable.items.filter(
-        (n) => n.status === 'Pending' || n.status === 'Viewed',
+        (n) => n.status === 'pending' || n.status === 'viewed',
       ).length
 
       // Build priority breakdown from actionable set
-      const pCounts: NotificationPriorityCounts = { Low: 0, Normal: 0, High: 0, Urgent: 0 }
+      const pCounts: NotificationPriorityCounts = { low: 0, normal: 0, high: 0, urgent: 0 }
       for (const n of actionable.items) {
         const p = n.priority as NotificationPriority
         if (p in pCounts) pCounts[p]++

@@ -260,7 +260,7 @@ export function AgentDetail() {
     )
   }
 
-  const isRunning = agent.status === 'Running'
+  const isRunning = agent.status === 'running'
   const canSendMessage = isRunning && !agent.config.interactive
 
   const formattedCreated = new Date(agent.created_at).toLocaleString()
@@ -403,16 +403,16 @@ export function AgentDetail() {
                 <p className="text-sm text-gray-700 dark:text-gray-300">
                   {(() => {
                     const p = agent.config.tool_policy
-                    switch (p.type) {
-                      case 'AllowAll':
+                    switch (p.mode) {
+                      case 'allow_all':
                         return 'Allow all tools'
-                      case 'DenyAll':
+                      case 'deny_all':
                         return 'Deny all tools'
-                      case 'RequireApproval':
+                      case 'require_approval':
                         return 'Require approval for all tools'
-                      case 'AllowList':
+                      case 'allow_list':
                         return `Allow: ${p.tools.join(', ') || '(none)'}`
-                      case 'DenyList':
+                      case 'deny_list':
                         return `Deny: ${p.tools.join(', ') || '(none)'}`
                     }
                   })()}

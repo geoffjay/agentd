@@ -9,7 +9,7 @@
  */
 
 import type { NotificationFilters as Filters, SortOrder } from '@/hooks/useNotifications'
-import type { NotificationPriority, NotificationSource, NotificationStatus } from '@/types/notify'
+import type { NotificationPriority, NotificationStatus } from '@/types/notify'
 
 // ---------------------------------------------------------------------------
 // Option lists
@@ -17,27 +17,28 @@ import type { NotificationPriority, NotificationSource, NotificationStatus } fro
 
 const STATUS_OPTIONS: Array<{ value: NotificationStatus | 'All'; label: string }> = [
   { value: 'All', label: 'All statuses' },
-  { value: 'Pending', label: 'Pending' },
-  { value: 'Viewed', label: 'Viewed' },
-  { value: 'Responded', label: 'Responded' },
-  { value: 'Dismissed', label: 'Dismissed' },
-  { value: 'Expired', label: 'Expired' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'viewed', label: 'Viewed' },
+  { value: 'responded', label: 'Responded' },
+  { value: 'dismissed', label: 'Dismissed' },
+  { value: 'expired', label: 'Expired' },
 ]
 
 const PRIORITY_OPTIONS: Array<{ value: NotificationPriority | 'All'; label: string }> = [
   { value: 'All', label: 'All priorities' },
-  { value: 'Urgent', label: 'Urgent' },
-  { value: 'High', label: 'High' },
-  { value: 'Normal', label: 'Normal' },
-  { value: 'Low', label: 'Low' },
+  { value: 'urgent', label: 'Urgent' },
+  { value: 'high', label: 'High' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'low', label: 'Low' },
 ]
 
-const SOURCE_OPTIONS: Array<{ value: NotificationSource | 'All'; label: string }> = [
+/** Source filter options use the API's type-discriminant strings. */
+const SOURCE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'All', label: 'All sources' },
-  { value: 'System', label: 'System' },
-  { value: 'AskService', label: 'Ask Service' },
-  { value: 'AgentHook', label: 'Agent Hook' },
-  { value: 'MonitorService', label: 'Monitor' },
+  { value: 'system', label: 'System' },
+  { value: 'ask_service', label: 'Ask Service' },
+  { value: 'agent_hook', label: 'Agent Hook' },
+  { value: 'monitor_service', label: 'Monitor' },
 ]
 
 const SORT_OPTIONS: Array<{ value: SortOrder; label: string }> = [
@@ -73,7 +74,7 @@ export function NotificationFilters({
     onFiltersChange({ ...filters, priority: value as NotificationPriority | 'All' })
 
   const setSource = (value: string) =>
-    onFiltersChange({ ...filters, source: value as NotificationSource | 'All' })
+    onFiltersChange({ ...filters, source: value })
 
   const hasActiveFilters =
     (filters.status && filters.status !== 'All') ||

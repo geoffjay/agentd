@@ -19,16 +19,16 @@ import type { Agent, ToolPolicy } from '@/types/orchestrator'
 // ---------------------------------------------------------------------------
 
 function policyLabel(policy: ToolPolicy): string {
-  switch (policy.type) {
-    case 'AllowAll':
+  switch (policy.mode) {
+    case 'allow_all':
       return 'Allow All tools'
-    case 'DenyAll':
+    case 'deny_all':
       return 'Deny All tools'
-    case 'RequireApproval':
+    case 'require_approval':
       return 'Require Approval for all tools'
-    case 'AllowList':
+    case 'allow_list':
       return `Allow: ${policy.tools.length > 0 ? policy.tools.join(', ') : '(none)'}`
-    case 'DenyList':
+    case 'deny_list':
       return `Deny: ${policy.tools.length > 0 ? policy.tools.join(', ') : '(none)'}`
   }
 }
