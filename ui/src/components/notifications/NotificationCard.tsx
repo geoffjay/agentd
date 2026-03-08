@@ -17,10 +17,10 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 // ---------------------------------------------------------------------------
 
 const PRIORITY_BORDER: Record<string, string> = {
-  Low: 'border-l-blue-500',
-  Normal: 'border-l-green-500',
-  High: 'border-l-orange-500',
-  Urgent: 'border-l-red-500',
+  low: 'border-l-blue-500',
+  normal: 'border-l-green-500',
+  high: 'border-l-orange-500',
+  urgent: 'border-l-red-500',
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -86,12 +86,12 @@ export function NotificationCard({
 }: NotificationCardProps) {
   const [expanded, setExpanded] = useState(false)
   const borderClass = PRIORITY_BORDER[notification.priority] ?? 'border-l-gray-500'
-  const isEphemeral = notification.lifetime.type === 'Ephemeral'
-  const expiresAt = isEphemeral ? (notification.lifetime as { type: 'Ephemeral'; expires_at: string }).expires_at : null
+  const isEphemeral = notification.lifetime.type === 'ephemeral'
+  const expiresAt = isEphemeral ? (notification.lifetime as { type: 'ephemeral'; expires_at: string }).expires_at : null
   const isDone =
-    notification.status === 'Dismissed' ||
-    notification.status === 'Expired' ||
-    notification.status === 'Responded'
+    notification.status === 'dismissed' ||
+    notification.status === 'expired' ||
+    notification.status === 'responded'
 
   return (
     <article
@@ -189,7 +189,7 @@ export function NotificationCard({
           )}
 
           {/* Response (if already responded) */}
-          {notification.status === 'Responded' && notification.response && (
+          {notification.status === 'responded' && notification.response && (
             <div className="mt-2 rounded bg-gray-900/60 p-2 text-xs text-gray-400">
               <span className="font-semibold text-gray-300">Response:</span>{' '}
               {notification.response}
@@ -198,7 +198,7 @@ export function NotificationCard({
 
           {/* Action buttons */}
           <div className="mt-3 flex flex-wrap gap-2">
-            {notification.status === 'Pending' && (
+            {notification.status === 'pending' && (
               <button
                 type="button"
                 disabled={busy}
@@ -210,7 +210,7 @@ export function NotificationCard({
             )}
 
             {notification.requires_response &&
-              (notification.status === 'Pending' || notification.status === 'Viewed') && (
+              (notification.status === 'pending' || notification.status === 'viewed') && (
                 <button
                   type="button"
                   disabled={busy}
@@ -221,7 +221,7 @@ export function NotificationCard({
                 </button>
               )}
 
-            {(notification.status === 'Pending' || notification.status === 'Viewed') && (
+            {(notification.status === 'pending' || notification.status === 'viewed') && (
               <button
                 type="button"
                 disabled={busy}

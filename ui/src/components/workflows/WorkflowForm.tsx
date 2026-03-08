@@ -166,7 +166,7 @@ export function WorkflowForm({ open, workflow, agents, onSave, onClose }: Workfl
         prompt_template: promptTemplate.trim(),
         poll_interval_secs: minutesToSecs(pollMinutes),
         enabled,
-        tool_policy: { type: 'AllowAll' },
+        tool_policy: { mode: 'allow_all' },
       }
 
       await onSave(request)
@@ -178,7 +178,7 @@ export function WorkflowForm({ open, workflow, agents, onSave, onClose }: Workfl
     }
   }
 
-  const runningAgents = agents.filter((a) => a.status === 'Running')
+  const runningAgents = agents.filter((a) => a.status === 'running')
   const isEditing = Boolean(workflow)
 
   return (

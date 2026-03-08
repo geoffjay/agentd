@@ -160,14 +160,14 @@ export function NotificationList() {
   }
 
   const handleMarkAllViewed = async () => {
-    const pendingCount = notifications.filter((n) => n.status === 'Pending').length
+    const pendingCount = notifications.filter((n) => n.status === 'pending').length
     if (pendingCount === 0) return
     if (!window.confirm(`Mark ${pendingCount} notification${pendingCount !== 1 ? 's' : ''} as viewed?`))
       return
     await markAllViewed()
   }
 
-  const pendingCount = notifications.filter((n) => n.status === 'Pending').length
+  const pendingCount = notifications.filter((n) => n.status === 'pending').length
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-6">

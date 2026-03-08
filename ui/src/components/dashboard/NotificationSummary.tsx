@@ -9,10 +9,10 @@ import { ChartSkeleton } from '@/components/common/LoadingSkeleton'
 import type { UseNotificationSummaryResult } from '@/hooks/useNotificationSummary'
 
 const PRIORITY_COLORS: Record<string, string> = {
-  Low: '#94a3b8',
-  Normal: '#60a5fa',
-  High: '#f59e0b',
-  Urgent: '#ef4444',
+  low: '#94a3b8',
+  normal: '#60a5fa',
+  high: '#f59e0b',
+  urgent: '#ef4444',
 }
 
 type NotificationSummaryProps = UseNotificationSummaryResult
@@ -26,10 +26,10 @@ export function NotificationSummary({
   error,
 }: NotificationSummaryProps) {
   const barData = [
-    { priority: 'Low', count: priorityCounts.Low, color: PRIORITY_COLORS.Low },
-    { priority: 'Normal', count: priorityCounts.Normal, color: PRIORITY_COLORS.Normal },
-    { priority: 'High', count: priorityCounts.High, color: PRIORITY_COLORS.High },
-    { priority: 'Urgent', count: priorityCounts.Urgent, color: PRIORITY_COLORS.Urgent },
+    { priority: 'low', count: priorityCounts.low, color: PRIORITY_COLORS.low },
+    { priority: 'normal', count: priorityCounts.normal, color: PRIORITY_COLORS.normal },
+    { priority: 'high', count: priorityCounts.high, color: PRIORITY_COLORS.high },
+    { priority: 'urgent', count: priorityCounts.urgent, color: PRIORITY_COLORS.urgent },
   ]
 
   const hasData = total > 0

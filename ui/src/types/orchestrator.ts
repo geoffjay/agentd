@@ -4,21 +4,21 @@
  */
 
 /** Lifecycle state of an agent */
-export type AgentStatus = 'Pending' | 'Running' | 'Stopped' | 'Failed'
+export type AgentStatus = 'pending' | 'running' | 'stopped' | 'failed'
 
 /** Approval lifecycle state */
-export type ApprovalStatus = 'Pending' | 'Approved' | 'Denied' | 'TimedOut'
+export type ApprovalStatus = 'pending' | 'approved' | 'denied' | 'timed_out'
 
 // ---------------------------------------------------------------------------
 // ToolPolicy – discriminated union mirroring the Rust enum
 // ---------------------------------------------------------------------------
 
 export type ToolPolicy =
-  | { type: 'AllowAll' }
-  | { type: 'DenyAll' }
-  | { type: 'AllowList'; tools: string[] }
-  | { type: 'DenyList'; tools: string[] }
-  | { type: 'RequireApproval' }
+  | { mode: 'allow_all' }
+  | { mode: 'deny_all' }
+  | { mode: 'allow_list'; tools: string[] }
+  | { mode: 'deny_list'; tools: string[] }
+  | { mode: 'require_approval' }
 
 // ---------------------------------------------------------------------------
 // AgentConfig
@@ -117,7 +117,7 @@ export interface ApprovalActionRequest {
 // Workflow / Task types (scheduler integration)
 // ---------------------------------------------------------------------------
 
-export type TaskStatus = 'Pending' | 'Running' | 'Completed' | 'Failed' | 'Cancelled'
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 /** Status of a task dispatch record (mirrors Rust DispatchStatus) */
 export type DispatchStatus = 'pending' | 'dispatched' | 'completed' | 'failed' | 'skipped'
@@ -238,7 +238,7 @@ export interface ApprovalRequestedEvent {
 export interface ApprovalResolvedEvent {
   type: 'approval:resolved'
   approvalId: string
-  status: 'Approved' | 'Denied'
+  status: 'approved' | 'denied'
   timestamp: string
 }
 

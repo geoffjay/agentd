@@ -18,15 +18,15 @@ interface StatusBadgeProps {
 
 const STATUS_STYLES: Record<string, string> = {
   // Agent statuses
-  Running: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  Pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-  Stopped: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  Failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  running: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+  stopped: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
   // Notification statuses
-  Viewed: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  Responded: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  Dismissed: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',
-  Expired: 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600',
+  viewed: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  responded: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  dismissed: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500',
+  expired: 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600',
   // Service health
   healthy: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
   degraded: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -35,14 +35,14 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 const DOT_STYLES: Record<string, string> = {
-  Running: 'bg-green-500',
-  Pending: 'bg-yellow-500',
-  Stopped: 'bg-gray-400',
-  Failed: 'bg-red-500',
-  Viewed: 'bg-blue-500',
-  Responded: 'bg-green-500',
-  Dismissed: 'bg-gray-400',
-  Expired: 'bg-gray-300',
+  running: 'bg-green-500',
+  pending: 'bg-yellow-500',
+  stopped: 'bg-gray-400',
+  failed: 'bg-red-500',
+  viewed: 'bg-blue-500',
+  responded: 'bg-green-500',
+  dismissed: 'bg-gray-400',
+  expired: 'bg-gray-300',
   healthy: 'bg-green-500',
   degraded: 'bg-yellow-500',
   down: 'bg-red-500',

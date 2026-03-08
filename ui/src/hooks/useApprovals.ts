@@ -108,7 +108,7 @@ export function useApprovals({
       }
       try {
         const [approvalsResult, agentsResult] = await Promise.all([
-          orchestratorClient.listApprovals({ status: 'Pending', limit: 200 }),
+          orchestratorClient.listApprovals({ status: 'pending', limit: 200 }),
           orchestratorClient.listAgents({ limit: 200 }),
         ])
 

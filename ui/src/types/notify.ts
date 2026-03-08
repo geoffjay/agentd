@@ -12,14 +12,14 @@ export type NotificationSource = 'AgentHook' | 'AskService' | 'MonitorService' |
 
 /** How long the notification lives */
 export type NotificationLifetime =
-  | { type: 'Persistent' }
-  | { type: 'Ephemeral'; expires_at: string }
+  | { type: 'persistent' }
+  | { type: 'ephemeral'; expires_at: string }
 
 /** Display priority */
-export type NotificationPriority = 'Low' | 'Normal' | 'High' | 'Urgent'
+export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent'
 
 /** Current state of a notification */
-export type NotificationStatus = 'Pending' | 'Viewed' | 'Responded' | 'Dismissed' | 'Expired'
+export type NotificationStatus = 'pending' | 'viewed' | 'responded' | 'dismissed' | 'expired'
 
 // ---------------------------------------------------------------------------
 // Notification model

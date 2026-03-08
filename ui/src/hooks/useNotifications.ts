@@ -62,10 +62,10 @@ export interface UseNotificationsResult {
 // ---------------------------------------------------------------------------
 
 const PRIORITY_ORDER: Record<NotificationPriority, number> = {
-  Urgent: 4,
-  High: 3,
-  Normal: 2,
-  Low: 1,
+  urgent: 4,
+  high: 3,
+  normal: 2,
+  low: 1,
 }
 
 function sortNotifications(items: Notification[], sort: SortOrder): Notification[] {
@@ -215,7 +215,7 @@ export function useNotifications({
   const markViewed = useCallback(async (id: string) => {
     setBusy([id], true)
     try {
-      const updated = await notifyClient.updateNotification(id, { status: 'Viewed' })
+      const updated = await notifyClient.updateNotification(id, { status: 'viewed' })
       updateLocal(id, { status: updated.status })
     } finally {
       setBusy([id], false)
@@ -226,7 +226,7 @@ export function useNotifications({
     setBusy([id], true)
     try {
       const updated = await notifyClient.updateNotification(id, {
-        status: 'Responded',
+        status: 'responded',
         response,
       })
       updateLocal(id, { status: updated.status, response: updated.response })
@@ -238,7 +238,7 @@ export function useNotifications({
   const dismiss = useCallback(async (id: string) => {
     setBusy([id], true)
     try {
-      const updated = await notifyClient.updateNotification(id, { status: 'Dismissed' })
+      const updated = await notifyClient.updateNotification(id, { status: 'dismissed' })
       updateLocal(id, { status: updated.status })
     } finally {
       setBusy([id], false)
@@ -259,10 +259,10 @@ export function useNotifications({
     setBusy(ids, true)
     try {
       await Promise.allSettled(
-        ids.map((id) => notifyClient.updateNotification(id, { status: 'Dismissed' })),
+        ids.map((id) => notifyClient.updateNotification(id, { status: 'dismissed' })),
       )
       for (const id of ids) {
-        updateLocal(id, { status: 'Dismissed' })
+        updateLocal(id, { status: 'dismissed' })
       }
     } finally {
       setBusy(ids, false)
@@ -281,16 +281,16 @@ export function useNotifications({
 
   const markAllViewed = useCallback(async () => {
     const pendingIds = allNotifications
-      .filter((n) => n.status === 'Pending')
+      .filter((n) => n.status === 'pending')
       .map((n) => n.id)
     if (pendingIds.length === 0) return
     setBusy(pendingIds, true)
     try {
       await Promise.allSettled(
-        pendingIds.map((id) => notifyClient.updateNotification(id, { status: 'Viewed' })),
+        pendingIds.map((id) => notifyClient.updateNotification(id, { status: 'viewed' })),
       )
       for (const id of pendingIds) {
-        updateLocal(id, { status: 'Viewed' })
+        updateLocal(id, { status: 'viewed' })
       }
     } finally {
       setBusy(pendingIds, false)

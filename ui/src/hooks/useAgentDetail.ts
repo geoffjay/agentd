@@ -98,7 +98,7 @@ export function useAgentDetail(
       }
       try {
         const result = await orchestratorClient.listAgentApprovals(agentId, {
-          status: 'Pending',
+          status: 'pending',
           limit: 50,
         })
         setApprovals(result.items)
