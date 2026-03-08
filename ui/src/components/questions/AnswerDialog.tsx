@@ -102,7 +102,7 @@ export function AnswerDialog({
         aria-labelledby="answer-dialog-title"
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
       >
-        <div className="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+        <div className="relative w-full max-w-lg rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
           {/* Close button */}
           <button
             type="button"
