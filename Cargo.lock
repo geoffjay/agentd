@@ -4569,8 +4569,12 @@ dependencies = [
 name = "xtask"
 version = "0.1.0"
 dependencies = [
+ "agentd-common",
  "anyhow",
  "colored",
+ "notify",
+ "orchestrator",
+ "tokio",
 ]
 
 [[package]]

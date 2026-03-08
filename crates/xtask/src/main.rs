@@ -1,7 +1,8 @@
 //! agentd xtask — Build and installation automation.
 //!
 //! Provides commands for installing agentd binaries, managing LaunchAgent/systemd
-//! service definitions, and generating shell completions.
+//! service definitions, generating shell completions, and managing SeaORM migrations
+//! and entity generation.
 //!
 //! # Commands
 //!
@@ -10,6 +11,9 @@
 //! - `uninstall` — Remove all installed components
 //! - `start-services` / `stop-services` / `restart-services` — Service lifecycle
 //! - `service-status` — Check running state of all services
+//! - `generate-entities [--service <name>]` — Regenerate SeaORM entity files via sea-orm-cli
+//! - `migrate [--service <name>]` — Apply pending SeaORM migrations
+//! - `migrate-status [--service <name>]` — Show migration status for all databases
 
 mod platform;
 
@@ -46,6 +50,18 @@ fn main() -> Result<()> {
             let service = args.get(2).context("Service name required")?;
             restart_service(service)?;
         }
+        Some("generate-entities") => {
+            let service = parse_service_flag(&args);
+            generate_entities(service.as_deref())?;
+        }
+        Some("migrate") => {
+            let service = parse_service_flag(&args);
+            tokio::runtime::Runtime::new()?.block_on(migrate(service.as_deref()))?;
+        }
+        Some("migrate-status") => {
+            let service = parse_service_flag(&args);
+            tokio::runtime::Runtime::new()?.block_on(migrate_status(service.as_deref()))?;
+        }
         _ => print_help(),
     }
     Ok(())
@@ -69,10 +85,29 @@ fn print_help() {
     println!("  {} <name> - Restart specific service", "restart-service".green());
     println!("  {} - Check service status", "service-status".green());
     println!();
+    println!("{}", "Database:".cyan());
+    println!(
+        "  {} [--service <name>] - Regenerate SeaORM entity files from database schema",
+        "generate-entities".green()
+    );
+    println!(
+        "  {} [--service <name>] - Apply pending SeaORM migrations",
+        "migrate".green()
+    );
+    println!(
+        "  {} [--service <name>] - Show migration status for all databases",
+        "migrate-status".green()
+    );
+    println!();
     println!("{}", "Examples:".cyan());
     println!("  {}", "cargo xtask install-user".yellow());
     println!("  {}", "cargo xtask start-service notify".yellow());
     println!("  {}", "cargo xtask restart-service ask".yellow());
+    println!("  {}", "cargo xtask migrate".yellow());
+    println!("  {}", "cargo xtask migrate --service notify".yellow());
+    println!("  {}", "cargo xtask migrate-status".yellow());
+    println!("  {}", "cargo xtask generate-entities".yellow());
+    println!("  {}", "cargo xtask generate-entities --service orchestrator".yellow());
     println!();
     println!("{}", "Available services:".cyan());
     println!("  {}", SERVICE_NAMES.join(", "));
@@ -89,6 +124,261 @@ fn print_help() {
         }
     );
 }
+
+// ---------------------------------------------------------------------------
+// Database commands
+// ---------------------------------------------------------------------------
+
+/// Services that have SeaORM-managed SQLite databases.
+const DB_SERVICES: &[DbService] = &[
+    DbService {
+        name: "notify",
+        project: "agentd-notify",
+        db_file: "notify.db",
+        entity_dir: "crates/notify/src/entity",
+    },
+    DbService {
+        name: "orchestrator",
+        project: "agentd-orchestrator",
+        db_file: "orchestrator.db",
+        entity_dir: "crates/orchestrator/src/entity",
+    },
+];
+
+struct DbService {
+    /// Short name used in `--service` flag (e.g., `"notify"`)
+    name: &'static str,
+    /// XDG project name for database path resolution (e.g., `"agentd-notify"`)
+    project: &'static str,
+    /// Database filename (e.g., `"notify.db"`)
+    db_file: &'static str,
+    /// Relative path to the entity output directory from the workspace root
+    entity_dir: &'static str,
+}
+
+/// Parse `--service <name>` from the argument list, returning the service name if present.
+fn parse_service_flag(args: &[String]) -> Option<String> {
+    args.windows(2)
+        .find(|w| w[0] == "--service")
+        .map(|w| w[1].clone())
+}
+
+/// `cargo xtask generate-entities [--service <name>]`
+///
+/// Runs `sea-orm-cli generate entity --database-url sqlite://<path> --output-dir <dir>`
+/// for each (or the specified) service with a SeaORM-managed SQLite database.
+///
+/// Requires `sea-orm-cli` to be installed:
+///   `cargo install sea-orm-cli`
+fn generate_entities(service: Option<&str>) -> Result<()> {
+    check_in_project_root()?;
+
+    // Verify sea-orm-cli is available
+    if Command::new("sea-orm-cli").arg("--version").output().is_err() {
+        eprintln!("{}", "sea-orm-cli not found.".red().bold());
+        eprintln!("Install it with: {}", "cargo install sea-orm-cli".cyan());
+        anyhow::bail!("sea-orm-cli is required for entity generation");
+    }
+
+    let services: Vec<&DbService> = match service {
+        Some(name) => {
+            let svc = DB_SERVICES
+                .iter()
+                .find(|s| s.name == name)
+                .with_context(|| {
+                    format!(
+                        "Unknown service '{name}'. Valid: {}",
+                        DB_SERVICES.iter().map(|s| s.name).collect::<Vec<_>>().join(", ")
+                    )
+                })?;
+            vec![svc]
+        }
+        None => DB_SERVICES.iter().collect(),
+    };
+
+    println!("{}", "Generating SeaORM entities...".blue().bold());
+    println!();
+
+    for svc in services {
+        let db_path = agentd_common::storage::get_db_path(svc.project, svc.db_file)?;
+
+        if !db_path.exists() {
+            eprintln!(
+                "  {} {} — database not found at {}",
+                "⚠".yellow(),
+                svc.name.yellow(),
+                db_path.display()
+            );
+            eprintln!(
+                "  {} Start the service once to create the database, then re-run.",
+                "hint:".bright_black()
+            );
+            continue;
+        }
+
+        let db_url = format!("sqlite://{}", db_path.display());
+        println!("  {} {}  ({})", "→".cyan(), svc.name.green(), db_path.display());
+
+        let status = Command::new("sea-orm-cli")
+            .args([
+                "generate",
+                "entity",
+                "--database-url",
+                &db_url,
+                "--output-dir",
+                svc.entity_dir,
+                "--with-serde",
+                "both",
+            ])
+            .status()
+            .with_context(|| format!("Failed to run sea-orm-cli for {}", svc.name))?;
+
+        if status.success() {
+            println!("  {} {} entities written to {}", "✓".green(), svc.name, svc.entity_dir);
+        } else {
+            eprintln!("  {} sea-orm-cli failed for {}", "✗".red(), svc.name);
+        }
+    }
+
+    println!();
+    println!("{}", "Entity generation complete.".green().bold());
+    println!();
+    println!(
+        "{}",
+        "Note: Generated files are a scaffold — review before committing.".bright_black()
+    );
+    Ok(())
+}
+
+/// `cargo xtask migrate [--service <name>]`
+///
+/// Applies all pending SeaORM migrations for the specified service (or all
+/// services if `--service` is omitted). Creates the database file if it does
+/// not exist.
+async fn migrate(service: Option<&str>) -> Result<()> {
+    check_in_project_root()?;
+
+    let services: Vec<&DbService> = match service {
+        Some(name) => {
+            let svc = DB_SERVICES
+                .iter()
+                .find(|s| s.name == name)
+                .with_context(|| {
+                    format!(
+                        "Unknown service '{name}'. Valid: {}",
+                        DB_SERVICES.iter().map(|s| s.name).collect::<Vec<_>>().join(", ")
+                    )
+                })?;
+            vec![svc]
+        }
+        None => DB_SERVICES.iter().collect(),
+    };
+
+    println!("{}", "Applying migrations...".blue().bold());
+    println!();
+
+    for svc in services {
+        let db_path = agentd_common::storage::get_db_path(svc.project, svc.db_file)?;
+        print!("  {} {} … ", "→".cyan(), svc.name.green());
+
+        let result = match svc.name {
+            "notify" => notify::apply_migrations_for_path(&db_path).await,
+            "orchestrator" => orchestrator::apply_migrations_for_path(&db_path).await,
+            _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
+        };
+
+        match result {
+            Ok(()) => println!("{}", "✓ up to date".green()),
+            Err(e) => {
+                println!("{}", "✗ failed".red());
+                eprintln!("    {}", e);
+            }
+        }
+    }
+
+    println!();
+    println!("{}", "Migration complete.".green().bold());
+    Ok(())
+}
+
+/// `cargo xtask migrate-status [--service <name>]`
+///
+/// Prints the current migration status (applied / pending) for each known
+/// migration of the specified service (or all services).
+async fn migrate_status(service: Option<&str>) -> Result<()> {
+    check_in_project_root()?;
+
+    let services: Vec<&DbService> = match service {
+        Some(name) => {
+            let svc = DB_SERVICES
+                .iter()
+                .find(|s| s.name == name)
+                .with_context(|| {
+                    format!(
+                        "Unknown service '{name}'. Valid: {}",
+                        DB_SERVICES.iter().map(|s| s.name).collect::<Vec<_>>().join(", ")
+                    )
+                })?;
+            vec![svc]
+        }
+        None => DB_SERVICES.iter().collect(),
+    };
+
+    println!("{}", "Migration Status:".blue().bold());
+    println!();
+
+    for svc in services {
+        println!("  {} {}:", "◆".cyan(), svc.name.green().bold());
+
+        let db_path = agentd_common::storage::get_db_path(svc.project, svc.db_file)?;
+
+        if !db_path.exists() {
+            println!("    {} database not found — no migrations applied", "⚠".yellow());
+            println!("    path: {}", db_path.display().to_string().bright_black());
+            continue;
+        }
+
+        let result = match svc.name {
+            "notify" => notify::migration_status_for_path(&db_path).await,
+            "orchestrator" => orchestrator::migration_status_for_path(&db_path).await,
+            _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
+        };
+
+        match result {
+            Ok(statuses) => {
+                for (name, applied) in &statuses {
+                    let (icon, label) = if *applied {
+                        ("✓".green(), "applied".green())
+                    } else {
+                        ("○".yellow(), "pending".yellow())
+                    };
+                    println!("    {} {} {}", icon, label, name.bright_black());
+                }
+                let applied_count = statuses.iter().filter(|(_, a)| *a).count();
+                let pending_count = statuses.len() - applied_count;
+                println!(
+                    "    {} applied, {} pending",
+                    applied_count.to_string().green(),
+                    if pending_count > 0 {
+                        pending_count.to_string().yellow()
+                    } else {
+                        pending_count.to_string().green()
+                    }
+                );
+            }
+            Err(e) => {
+                eprintln!("    {} failed to read status: {}", "✗".red(), e);
+            }
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Installation commands
+// ---------------------------------------------------------------------------
 
 fn install_user() -> Result<()> {
     println!("{}", "Installing agentd (user mode)...".blue().bold());

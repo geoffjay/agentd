@@ -86,3 +86,32 @@ pub(crate) mod migration;
 pub mod notification;
 pub mod storage;
 pub mod types;
+
+/// Apply all pending SeaORM migrations to the SQLite database at `db_path`.
+///
+/// Creates the file if it does not exist. Designed for use by `cargo xtask migrate`.
+pub async fn apply_migrations_for_path(db_path: &std::path::Path) -> anyhow::Result<()> {
+    use sea_orm_migration::prelude::MigratorTrait;
+    let db = agentd_common::storage::create_connection(db_path).await?;
+    migration::Migrator::up(&db, None).await?;
+    Ok(())
+}
+
+/// Return the status of all known migrations for the database at `db_path`.
+///
+/// Each entry is `(migration_name, is_applied)`. Designed for use by
+/// `cargo xtask migrate-status`.
+pub async fn migration_status_for_path(
+    db_path: &std::path::Path,
+) -> anyhow::Result<Vec<(String, bool)>> {
+    use sea_orm_migration::prelude::MigratorTrait;
+    let db = agentd_common::storage::create_connection(db_path).await?;
+    let statuses = migration::Migrator::get_migration_with_status(&db).await?;
+    Ok(statuses
+        .into_iter()
+        .map(|m: sea_orm_migration::Migration| {
+            let applied = m.status() == sea_orm_migration::MigrationStatus::Applied;
+            (m.name().to_string(), applied)
+        })
+        .collect())
+}
