@@ -88,6 +88,34 @@ pub async fn create_test_connection() -> (DatabaseConnection, tempfile::TempDir)
     (conn, temp_dir)
 }
 
+/// Apply all pending SeaORM migrations for migrator `M` to the database at `db_path`.
+///
+/// Creates the database file if it does not exist.
+pub async fn apply_migrations<M: sea_orm_migration::MigratorTrait>(
+    db_path: &Path,
+) -> Result<()> {
+    let db = create_connection(db_path).await?;
+    M::up(&db, None).await?;
+    Ok(())
+}
+
+/// Return the status of all known migrations for migrator `M` at `db_path`.
+///
+/// Each entry is `(migration_name, is_applied)`.
+pub async fn migration_status<M: sea_orm_migration::MigratorTrait>(
+    db_path: &Path,
+) -> Result<Vec<(String, bool)>> {
+    let db = create_connection(db_path).await?;
+    let statuses = M::get_migration_with_status(&db).await?;
+    Ok(statuses
+        .into_iter()
+        .map(|m: sea_orm_migration::Migration| {
+            let applied = m.status() == sea_orm_migration::MigrationStatus::Applied;
+            (m.name().to_string(), applied)
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

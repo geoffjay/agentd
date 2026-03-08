@@ -90,10 +90,7 @@ fn print_help() {
         "  {} [--service <name>] - Regenerate SeaORM entity files from database schema",
         "generate-entities".green()
     );
-    println!(
-        "  {} [--service <name>] - Apply pending SeaORM migrations",
-        "migrate".green()
-    );
+    println!("  {} [--service <name>] - Apply pending SeaORM migrations", "migrate".green());
     println!(
         "  {} [--service <name>] - Show migration status for all databases",
         "migrate-status".green()
@@ -158,9 +155,26 @@ struct DbService {
 
 /// Parse `--service <name>` from the argument list, returning the service name if present.
 fn parse_service_flag(args: &[String]) -> Option<String> {
-    args.windows(2)
-        .find(|w| w[0] == "--service")
-        .map(|w| w[1].clone())
+    args.windows(2).find(|w| w[0] == "--service").map(|w| w[1].clone())
+}
+
+/// Resolve the target services from an optional `--service` filter.
+///
+/// Returns all `DB_SERVICES` when `service` is `None`, or the single matching
+/// entry when a name is provided.
+fn resolve_services(service: Option<&str>) -> Result<Vec<&'static DbService>> {
+    match service {
+        Some(name) => {
+            let svc = DB_SERVICES.iter().find(|s| s.name == name).with_context(|| {
+                format!(
+                    "Unknown service '{name}'. Valid: {}",
+                    DB_SERVICES.iter().map(|s| s.name).collect::<Vec<_>>().join(", ")
+                )
+            })?;
+            Ok(vec![svc])
+        }
+        None => Ok(DB_SERVICES.iter().collect()),
+    }
 }
 
 /// `cargo xtask generate-entities [--service <name>]`
@@ -180,21 +194,7 @@ fn generate_entities(service: Option<&str>) -> Result<()> {
         anyhow::bail!("sea-orm-cli is required for entity generation");
     }
 
-    let services: Vec<&DbService> = match service {
-        Some(name) => {
-            let svc = DB_SERVICES
-                .iter()
-                .find(|s| s.name == name)
-                .with_context(|| {
-                    format!(
-                        "Unknown service '{name}'. Valid: {}",
-                        DB_SERVICES.iter().map(|s| s.name).collect::<Vec<_>>().join(", ")
-                    )
-                })?;
-            vec![svc]
-        }
-        None => DB_SERVICES.iter().collect(),
-    };
+    let services = resolve_services(service)?;
 
     println!("{}", "Generating SeaORM entities...".blue().bold());
     println!();
@@ -258,21 +258,7 @@ fn generate_entities(service: Option<&str>) -> Result<()> {
 async fn migrate(service: Option<&str>) -> Result<()> {
     check_in_project_root()?;
 
-    let services: Vec<&DbService> = match service {
-        Some(name) => {
-            let svc = DB_SERVICES
-                .iter()
-                .find(|s| s.name == name)
-                .with_context(|| {
-                    format!(
-                        "Unknown service '{name}'. Valid: {}",
-                        DB_SERVICES.iter().map(|s| s.name).collect::<Vec<_>>().join(", ")
-                    )
-                })?;
-            vec![svc]
-        }
-        None => DB_SERVICES.iter().collect(),
-    };
+    let services = resolve_services(service)?;
 
     println!("{}", "Applying migrations...".blue().bold());
     println!();
@@ -308,21 +294,7 @@ async fn migrate(service: Option<&str>) -> Result<()> {
 async fn migrate_status(service: Option<&str>) -> Result<()> {
     check_in_project_root()?;
 
-    let services: Vec<&DbService> = match service {
-        Some(name) => {
-            let svc = DB_SERVICES
-                .iter()
-                .find(|s| s.name == name)
-                .with_context(|| {
-                    format!(
-                        "Unknown service '{name}'. Valid: {}",
-                        DB_SERVICES.iter().map(|s| s.name).collect::<Vec<_>>().join(", ")
-                    )
-                })?;
-            vec![svc]
-        }
-        None => DB_SERVICES.iter().collect(),
-    };
+    let services = resolve_services(service)?;
 
     println!("{}", "Migration Status:".blue().bold());
     println!();
