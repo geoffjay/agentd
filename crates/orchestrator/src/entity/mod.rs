@@ -5,6 +5,8 @@
 //! - [`agent`] → `agents` table
 //! - [`workflow`] → `workflows` table
 //! - [`dispatch`] → `dispatch_log` table
+//!
+//! See `docs/storage.md` for entity conventions and usage patterns.
 
 pub mod agent;
 pub mod dispatch;
