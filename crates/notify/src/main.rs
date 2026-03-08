@@ -61,6 +61,8 @@
 //! ```
 
 mod api;
+mod entity;
+mod migration;
 mod notification;
 mod storage;
 mod types;
