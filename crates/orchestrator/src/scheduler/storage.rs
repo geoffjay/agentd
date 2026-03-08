@@ -62,8 +62,7 @@ impl SchedulerStorage {
 
     /// Retrieves a workflow by its UUID.
     pub async fn get_workflow(&self, id: &Uuid) -> Result<Option<WorkflowConfig>> {
-        let model =
-            workflow_entity::Entity::find_by_id(id.to_string()).one(&self.db).await?;
+        let model = workflow_entity::Entity::find_by_id(id.to_string()).one(&self.db).await?;
         match model {
             Some(m) => Ok(Some(model_to_workflow(m)?)),
             None => Ok(None),
@@ -226,10 +225,9 @@ impl SchedulerStorage {
         let condition =
             Condition::all().add(dispatch_entity::Column::WorkflowId.eq(workflow_id.to_string()));
 
-        let total = dispatch_entity::Entity::find()
-            .filter(condition.clone())
-            .count(&self.db)
-            .await? as usize;
+        let total =
+            dispatch_entity::Entity::find().filter(condition.clone()).count(&self.db).await?
+                as usize;
 
         let models: Vec<dispatch_entity::Model> = dispatch_entity::Entity::find()
             .filter(condition)
@@ -239,8 +237,7 @@ impl SchedulerStorage {
             .all(&self.db)
             .await?;
 
-        let dispatches =
-            models.into_iter().map(model_to_dispatch).collect::<Result<Vec<_>>>()?;
+        let dispatches = models.into_iter().map(model_to_dispatch).collect::<Result<Vec<_>>>()?;
         Ok((dispatches, total))
     }
 

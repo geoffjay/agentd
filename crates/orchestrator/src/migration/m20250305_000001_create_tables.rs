@@ -20,30 +20,15 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Agents::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Agents::Id)
-                            .string()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(Agents::Id).string().not_null().primary_key())
                     .col(ColumnDef::new(Agents::Name).string().not_null())
                     .col(ColumnDef::new(Agents::Status).string().not_null())
                     .col(ColumnDef::new(Agents::WorkingDir).string().not_null())
                     .col(ColumnDef::new(Agents::User).string().null())
                     .col(ColumnDef::new(Agents::Shell).string().not_null())
-                    .col(
-                        ColumnDef::new(Agents::Interactive)
-                            .integer()
-                            .not_null()
-                            .default(0),
-                    )
+                    .col(ColumnDef::new(Agents::Interactive).integer().not_null().default(0))
                     .col(ColumnDef::new(Agents::Prompt).string().null())
-                    .col(
-                        ColumnDef::new(Agents::Worktree)
-                            .integer()
-                            .not_null()
-                            .default(0),
-                    )
+                    .col(ColumnDef::new(Agents::Worktree).integer().not_null().default(0))
                     .col(ColumnDef::new(Agents::SystemPrompt).string().null())
                     .col(ColumnDef::new(Agents::TmuxSession).string().null())
                     .col(
@@ -53,12 +38,7 @@ impl MigrationTrait for Migration {
                             .default("{\"mode\":\"allow_all\"}"),
                     )
                     .col(ColumnDef::new(Agents::Model).string().null())
-                    .col(
-                        ColumnDef::new(Agents::Env)
-                            .string()
-                            .not_null()
-                            .default("{}"),
-                    )
+                    .col(ColumnDef::new(Agents::Env).string().not_null().default("{}"))
                     .col(ColumnDef::new(Agents::CreatedAt).string().not_null())
                     .col(ColumnDef::new(Agents::UpdatedAt).string().not_null())
                     .to_owned(),
@@ -84,18 +64,8 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Workflows::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Workflows::Id)
-                            .string()
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(
-                        ColumnDef::new(Workflows::Name)
-                            .string()
-                            .not_null()
-                            .unique_key(),
-                    )
+                    .col(ColumnDef::new(Workflows::Id).string().not_null().primary_key())
+                    .col(ColumnDef::new(Workflows::Name).string().not_null().unique_key())
                     .col(ColumnDef::new(Workflows::AgentId).string().not_null())
                     .col(ColumnDef::new(Workflows::SourceType).string().not_null())
                     .col(ColumnDef::new(Workflows::SourceConfig).string().not_null())
@@ -106,12 +76,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(60),
                     )
-                    .col(
-                        ColumnDef::new(Workflows::Enabled)
-                            .integer()
-                            .not_null()
-                            .default(1),
-                    )
+                    .col(ColumnDef::new(Workflows::Enabled).integer().not_null().default(1))
                     .col(
                         ColumnDef::new(Workflows::ToolPolicy)
                             .string()
@@ -132,12 +97,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(DispatchLog::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(DispatchLog::Id)
-                            .string()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(DispatchLog::Id).string().not_null().primary_key())
                     .col(ColumnDef::new(DispatchLog::WorkflowId).string().not_null())
                     .col(ColumnDef::new(DispatchLog::SourceId).string().not_null())
                     .col(ColumnDef::new(DispatchLog::AgentId).string().not_null())
@@ -189,15 +149,9 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(DispatchLog::Table).to_owned())
-            .await?;
-        manager
-            .drop_table(Table::drop().table(Workflows::Table).to_owned())
-            .await?;
-        manager
-            .drop_table(Table::drop().table(Agents::Table).to_owned())
-            .await?;
+        manager.drop_table(Table::drop().table(DispatchLog::Table).to_owned()).await?;
+        manager.drop_table(Table::drop().table(Workflows::Table).to_owned()).await?;
+        manager.drop_table(Table::drop().table(Agents::Table).to_owned()).await?;
         Ok(())
     }
 }

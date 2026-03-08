@@ -173,7 +173,7 @@ async fn shell_integration(
     let config = state.app_state.config().await;
     let hook_url = format!("http://localhost:{}", config.port);
 
-    let shell = Shell::from_str(&shell_name).ok_or_else(|| {
+    let shell: Shell = shell_name.parse().map_err(|_| {
         ApiError::InvalidShell(format!(
             "Unknown shell '{}'. Supported: zsh, bash, fish",
             shell_name
