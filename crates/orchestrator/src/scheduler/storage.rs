@@ -1,154 +1,127 @@
+//! SeaORM-based persistent storage for workflows and dispatch logs.
+//!
+//! [`SchedulerStorage`] shares the same [`DatabaseConnection`] as
+//! [`crate::storage::AgentStorage`] — the database schema (including the
+//! `workflows` and `dispatch_log` tables) is managed by the single
+//! [`crate::migration::Migrator`] that runs at startup.
+
+use crate::{
+    entity::{dispatch as dispatch_entity, workflow as workflow_entity},
+    scheduler::types::{DispatchRecord, DispatchStatus, WorkflowConfig},
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use sqlx::{sqlite::SqlitePool, Row};
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
+};
 use uuid::Uuid;
 
-use crate::scheduler::types::{DispatchRecord, DispatchStatus, WorkflowConfig};
-
 /// Persistent storage for workflows and dispatch logs.
+///
+/// Shares a [`DatabaseConnection`] with [`crate::storage::AgentStorage`];
+/// the caller is responsible for running migrations before constructing this.
 #[derive(Clone)]
 pub struct SchedulerStorage {
-    pool: SqlitePool,
+    db: DatabaseConnection,
 }
 
 impl SchedulerStorage {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
-    }
-
-    pub async fn init_schema(&self) -> Result<()> {
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS workflows (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                agent_id TEXT NOT NULL,
-                source_type TEXT NOT NULL,
-                source_config TEXT NOT NULL,
-                prompt_template TEXT NOT NULL,
-                poll_interval_secs INTEGER NOT NULL DEFAULT 60,
-                enabled INTEGER NOT NULL DEFAULT 1,
-                tool_policy TEXT NOT NULL DEFAULT '{"mode":"allow_all"}',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS dispatch_log (
-                id TEXT PRIMARY KEY,
-                workflow_id TEXT NOT NULL,
-                source_id TEXT NOT NULL,
-                agent_id TEXT NOT NULL,
-                prompt_sent TEXT NOT NULL,
-                status TEXT NOT NULL,
-                dispatched_at TEXT NOT NULL,
-                completed_at TEXT,
-                UNIQUE(workflow_id, source_id)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_dispatch_workflow ON dispatch_log(workflow_id)",
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_dispatch_status ON dispatch_log(status)")
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
+    /// Create a new [`SchedulerStorage`] backed by `db`.
+    ///
+    /// `db` is expected to already have the full schema applied (via
+    /// [`crate::migration::Migrator::up`]).
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
     }
 
     // -- Workflow CRUD --
 
+    /// Inserts a workflow and returns its UUID.
     pub async fn add_workflow(&self, workflow: &WorkflowConfig) -> Result<Uuid> {
         let source_config_json = serde_json::to_string(&workflow.source_config)?;
         let tool_policy_json = serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
-        sqlx::query(
-            r#"
-            INSERT INTO workflows (id, name, agent_id, source_type, source_config, prompt_template, poll_interval_secs, enabled, tool_policy, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(workflow.id.to_string())
-        .bind(&workflow.name)
-        .bind(workflow.agent_id.to_string())
-        .bind(workflow.source_config.source_type())
-        .bind(&source_config_json)
-        .bind(&workflow.prompt_template)
-        .bind(workflow.poll_interval_secs as i64)
-        .bind(workflow.enabled as i32)
-        .bind(&tool_policy_json)
-        .bind(workflow.created_at.to_rfc3339())
-        .bind(workflow.updated_at.to_rfc3339())
-        .execute(&self.pool)
-        .await?;
 
+        let model = workflow_entity::ActiveModel {
+            id: Set(workflow.id.to_string()),
+            name: Set(workflow.name.clone()),
+            agent_id: Set(workflow.agent_id.to_string()),
+            source_type: Set(workflow.source_config.source_type().to_string()),
+            source_config: Set(source_config_json),
+            prompt_template: Set(workflow.prompt_template.clone()),
+            poll_interval_secs: Set(workflow.poll_interval_secs as i64),
+            enabled: Set(if workflow.enabled { 1 } else { 0 }),
+            tool_policy: Set(tool_policy_json),
+            created_at: Set(workflow.created_at.to_rfc3339()),
+            updated_at: Set(workflow.updated_at.to_rfc3339()),
+        };
+
+        workflow_entity::Entity::insert(model).exec(&self.db).await?;
         Ok(workflow.id)
     }
 
+    /// Retrieves a workflow by its UUID.
     pub async fn get_workflow(&self, id: &Uuid) -> Result<Option<WorkflowConfig>> {
-        let row = sqlx::query("SELECT * FROM workflows WHERE id = ?")
-            .bind(id.to_string())
-            .fetch_optional(&self.pool)
-            .await?;
-
-        match row {
-            Some(row) => Ok(Some(row_to_workflow(&row)?)),
+        let model =
+            workflow_entity::Entity::find_by_id(id.to_string()).one(&self.db).await?;
+        match model {
+            Some(m) => Ok(Some(model_to_workflow(m)?)),
             None => Ok(None),
         }
     }
 
+    /// Lists all workflows ordered by creation time (newest first).
     pub async fn list_workflows(&self) -> Result<Vec<WorkflowConfig>> {
-        let rows = sqlx::query("SELECT * FROM workflows ORDER BY created_at DESC")
-            .fetch_all(&self.pool)
+        let models: Vec<workflow_entity::Model> = workflow_entity::Entity::find()
+            .order_by(workflow_entity::Column::CreatedAt, Order::Desc)
+            .all(&self.db)
             .await?;
-
-        rows.iter().map(row_to_workflow).collect()
+        models.into_iter().map(model_to_workflow).collect()
     }
 
+    /// Updates mutable workflow fields (name, prompt_template, poll_interval_secs, enabled, tool_policy, updated_at).
     pub async fn update_workflow(&self, workflow: &WorkflowConfig) -> Result<()> {
+        use sea_orm::sea_query::Expr;
         let tool_policy_json = serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
-        let result = sqlx::query(
-            r#"
-            UPDATE workflows
-            SET name = ?, prompt_template = ?, poll_interval_secs = ?, enabled = ?, tool_policy = ?, updated_at = ?
-            WHERE id = ?
-            "#,
-        )
-        .bind(&workflow.name)
-        .bind(&workflow.prompt_template)
-        .bind(workflow.poll_interval_secs as i64)
-        .bind(workflow.enabled as i32)
-        .bind(&tool_policy_json)
-        .bind(workflow.updated_at.to_rfc3339())
-        .bind(workflow.id.to_string())
-        .execute(&self.pool)
-        .await?;
 
-        if result.rows_affected() == 0 {
+        let result = workflow_entity::Entity::update_many()
+            .col_expr(workflow_entity::Column::Name, Expr::value(workflow.name.clone()))
+            .col_expr(
+                workflow_entity::Column::PromptTemplate,
+                Expr::value(workflow.prompt_template.clone()),
+            )
+            .col_expr(
+                workflow_entity::Column::PollIntervalSecs,
+                Expr::value(workflow.poll_interval_secs as i64),
+            )
+            .col_expr(
+                workflow_entity::Column::Enabled,
+                Expr::value(if workflow.enabled { 1i32 } else { 0i32 }),
+            )
+            .col_expr(workflow_entity::Column::ToolPolicy, Expr::value(tool_policy_json))
+            .col_expr(
+                workflow_entity::Column::UpdatedAt,
+                Expr::value(workflow.updated_at.to_rfc3339()),
+            )
+            .filter(workflow_entity::Column::Id.eq(workflow.id.to_string()))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
             anyhow::bail!("Workflow not found");
         }
 
         Ok(())
     }
 
+    /// Permanently deletes a workflow by UUID.
     pub async fn delete_workflow(&self, id: &Uuid) -> Result<()> {
-        let result = sqlx::query("DELETE FROM workflows WHERE id = ?")
-            .bind(id.to_string())
-            .execute(&self.pool)
+        let result = workflow_entity::Entity::delete_many()
+            .filter(workflow_entity::Column::Id.eq(id.to_string()))
+            .exec(&self.db)
             .await?;
 
-        if result.rows_affected() == 0 {
+        if result.rows_affected == 0 {
             anyhow::bail!("Workflow not found");
         }
 
@@ -157,208 +130,212 @@ impl SchedulerStorage {
 
     // -- Dispatch log --
 
+    /// Inserts a dispatch record.
     pub async fn add_dispatch(&self, record: &DispatchRecord) -> Result<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO dispatch_log (id, workflow_id, source_id, agent_id, prompt_sent, status, dispatched_at, completed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(record.id.to_string())
-        .bind(record.workflow_id.to_string())
-        .bind(&record.source_id)
-        .bind(record.agent_id.to_string())
-        .bind(&record.prompt_sent)
-        .bind(record.status.to_string())
-        .bind(record.dispatched_at.to_rfc3339())
-        .bind(record.completed_at.map(|dt| dt.to_rfc3339()))
-        .execute(&self.pool)
-        .await?;
+        let model = dispatch_entity::ActiveModel {
+            id: Set(record.id.to_string()),
+            workflow_id: Set(record.workflow_id.to_string()),
+            source_id: Set(record.source_id.clone()),
+            agent_id: Set(record.agent_id.to_string()),
+            prompt_sent: Set(record.prompt_sent.clone()),
+            status: Set(record.status.to_string()),
+            dispatched_at: Set(record.dispatched_at.to_rfc3339()),
+            completed_at: Set(record.completed_at.map(|dt| dt.to_rfc3339())),
+        };
 
+        dispatch_entity::Entity::insert(model).exec(&self.db).await?;
         Ok(())
     }
 
+    /// Updates the status and optional completion timestamp of a dispatch record.
     pub async fn update_dispatch_status(
         &self,
         id: &Uuid,
         status: DispatchStatus,
         completed_at: Option<DateTime<Utc>>,
     ) -> Result<()> {
-        let result =
-            sqlx::query("UPDATE dispatch_log SET status = ?, completed_at = ? WHERE id = ?")
-                .bind(status.to_string())
-                .bind(completed_at.map(|dt| dt.to_rfc3339()))
-                .bind(id.to_string())
-                .execute(&self.pool)
-                .await?;
+        use sea_orm::sea_query::Expr;
 
-        if result.rows_affected() == 0 {
+        let result = dispatch_entity::Entity::update_many()
+            .col_expr(dispatch_entity::Column::Status, Expr::value(status.to_string()))
+            .col_expr(
+                dispatch_entity::Column::CompletedAt,
+                Expr::value(completed_at.map(|dt| dt.to_rfc3339())),
+            )
+            .filter(dispatch_entity::Column::Id.eq(id.to_string()))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
             anyhow::bail!("Dispatch record not found");
         }
 
         Ok(())
     }
 
-    /// Check if a task has already been dispatched for a given workflow.
+    /// Returns `true` if the given `source_id` has already been dispatched for `workflow_id`.
     pub async fn is_dispatched(&self, workflow_id: &Uuid, source_id: &str) -> Result<bool> {
-        let row = sqlx::query(
-            "SELECT COUNT(*) as cnt FROM dispatch_log WHERE workflow_id = ? AND source_id = ?",
-        )
-        .bind(workflow_id.to_string())
-        .bind(source_id)
-        .fetch_one(&self.pool)
-        .await?;
-
-        let count: i32 = row.get("cnt");
+        let count = dispatch_entity::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(dispatch_entity::Column::WorkflowId.eq(workflow_id.to_string()))
+                    .add(dispatch_entity::Column::SourceId.eq(source_id)),
+            )
+            .count(&self.db)
+            .await?;
         Ok(count > 0)
     }
 
+    /// Lists all dispatch records for a workflow, newest first.
     #[allow(dead_code)]
     pub async fn list_dispatches(&self, workflow_id: &Uuid) -> Result<Vec<DispatchRecord>> {
-        let rows = sqlx::query(
-            "SELECT * FROM dispatch_log WHERE workflow_id = ? ORDER BY dispatched_at DESC",
-        )
-        .bind(workflow_id.to_string())
-        .fetch_all(&self.pool)
-        .await?;
-
-        rows.iter().map(row_to_dispatch).collect()
+        let models: Vec<dispatch_entity::Model> = dispatch_entity::Entity::find()
+            .filter(dispatch_entity::Column::WorkflowId.eq(workflow_id.to_string()))
+            .order_by(dispatch_entity::Column::DispatchedAt, Order::Desc)
+            .all(&self.db)
+            .await?;
+        models.into_iter().map(model_to_dispatch).collect()
     }
 
-    /// List workflows with pagination.
+    /// Lists workflows with pagination; returns `(items, total_count)`.
     pub async fn list_workflows_paginated(
         &self,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<WorkflowConfig>, usize)> {
-        let count =
-            sqlx::query("SELECT COUNT(*) as total FROM workflows").fetch_one(&self.pool).await?;
-        let rows = sqlx::query("SELECT * FROM workflows ORDER BY created_at DESC LIMIT ? OFFSET ?")
-            .bind(limit as i64)
-            .bind(offset as i64)
-            .fetch_all(&self.pool)
+        let total = workflow_entity::Entity::find().count(&self.db).await? as usize;
+
+        let models: Vec<workflow_entity::Model> = workflow_entity::Entity::find()
+            .order_by(workflow_entity::Column::CreatedAt, Order::Desc)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&self.db)
             .await?;
 
-        let total: i64 = count.get("total");
-        let workflows = rows.iter().map(row_to_workflow).collect::<Result<Vec<_>>>()?;
-        Ok((workflows, total as usize))
+        let workflows = models.into_iter().map(model_to_workflow).collect::<Result<Vec<_>>>()?;
+        Ok((workflows, total))
     }
 
-    /// List dispatch history with pagination.
+    /// Lists dispatch records for a workflow with pagination; returns `(items, total_count)`.
     pub async fn list_dispatches_paginated(
         &self,
         workflow_id: &Uuid,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<DispatchRecord>, usize)> {
-        let count = sqlx::query("SELECT COUNT(*) as total FROM dispatch_log WHERE workflow_id = ?")
-            .bind(workflow_id.to_string())
-            .fetch_one(&self.pool)
+        let condition =
+            Condition::all().add(dispatch_entity::Column::WorkflowId.eq(workflow_id.to_string()));
+
+        let total = dispatch_entity::Entity::find()
+            .filter(condition.clone())
+            .count(&self.db)
+            .await? as usize;
+
+        let models: Vec<dispatch_entity::Model> = dispatch_entity::Entity::find()
+            .filter(condition)
+            .order_by(dispatch_entity::Column::DispatchedAt, Order::Desc)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&self.db)
             .await?;
 
-        let rows = sqlx::query(
-            "SELECT * FROM dispatch_log WHERE workflow_id = ? ORDER BY dispatched_at DESC LIMIT ? OFFSET ?",
-        )
-        .bind(workflow_id.to_string())
-        .bind(limit as i64)
-        .bind(offset as i64)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let total: i64 = count.get("total");
-        let dispatches = rows.iter().map(row_to_dispatch).collect::<Result<Vec<_>>>()?;
-        Ok((dispatches, total as usize))
+        let dispatches =
+            models.into_iter().map(model_to_dispatch).collect::<Result<Vec<_>>>()?;
+        Ok((dispatches, total))
     }
 
-    /// Find the active (Dispatched) dispatch for a given agent.
+    /// Finds the active (`Dispatched`) dispatch record for an agent, if any.
     #[allow(dead_code)]
     pub async fn find_active_dispatch(&self, agent_id: &Uuid) -> Result<Option<DispatchRecord>> {
-        let row = sqlx::query(
-            "SELECT * FROM dispatch_log WHERE agent_id = ? AND status = 'dispatched' LIMIT 1",
-        )
-        .bind(agent_id.to_string())
-        .fetch_optional(&self.pool)
-        .await?;
+        let model = dispatch_entity::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(dispatch_entity::Column::AgentId.eq(agent_id.to_string()))
+                    .add(dispatch_entity::Column::Status.eq("dispatched")),
+            )
+            .one(&self.db)
+            .await?;
 
-        match row {
-            Some(row) => Ok(Some(row_to_dispatch(&row)?)),
+        match model {
+            Some(m) => Ok(Some(model_to_dispatch(m)?)),
             None => Ok(None),
         }
     }
 
-    /// Mark all in-flight dispatches as failed (used during startup recovery).
+    /// Marks all in-flight (`dispatched`) dispatch records as `failed`.
+    ///
+    /// Used during startup recovery to handle records that were in-flight when
+    /// the service was last interrupted.
+    ///
+    /// Returns the number of rows updated.
     pub async fn fail_inflight_dispatches(&self) -> Result<u64> {
+        use sea_orm::sea_query::Expr;
         let now = Utc::now().to_rfc3339();
-        let result = sqlx::query(
-            "UPDATE dispatch_log SET status = 'failed', completed_at = ? WHERE status = 'dispatched'",
-        )
-        .bind(&now)
-        .execute(&self.pool)
-        .await?;
 
-        Ok(result.rows_affected())
+        let result = dispatch_entity::Entity::update_many()
+            .col_expr(dispatch_entity::Column::Status, Expr::value("failed"))
+            .col_expr(dispatch_entity::Column::CompletedAt, Expr::value(now))
+            .filter(dispatch_entity::Column::Status.eq("dispatched"))
+            .exec(&self.db)
+            .await?;
+
+        Ok(result.rows_affected)
     }
 }
 
-fn row_to_workflow(row: &sqlx::sqlite::SqliteRow) -> Result<WorkflowConfig> {
-    let id: String = row.get("id");
-    let agent_id: String = row.get("agent_id");
-    let source_config_json: String = row.get("source_config");
-    let tool_policy_json: String = row.get("tool_policy");
-    let enabled: bool = row.get::<i32, _>("enabled") != 0;
-    let poll_interval: i64 = row.get("poll_interval_secs");
-    let created_at: String = row.get("created_at");
-    let updated_at: String = row.get("updated_at");
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
+fn model_to_workflow(model: workflow_entity::Model) -> Result<WorkflowConfig> {
+    use crate::types::ToolPolicy;
     Ok(WorkflowConfig {
-        id: Uuid::parse_str(&id)?,
-        name: row.get("name"),
-        agent_id: Uuid::parse_str(&agent_id)?,
-        source_config: serde_json::from_str(&source_config_json)?,
-        prompt_template: row.get("prompt_template"),
-        poll_interval_secs: poll_interval as u64,
-        enabled,
-        tool_policy: serde_json::from_str(&tool_policy_json).unwrap_or_default(),
-        created_at: DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc),
-        updated_at: DateTime::parse_from_rfc3339(&updated_at)?.with_timezone(&Utc),
+        id: Uuid::parse_str(&model.id)?,
+        name: model.name,
+        agent_id: Uuid::parse_str(&model.agent_id)?,
+        source_config: serde_json::from_str(&model.source_config)?,
+        prompt_template: model.prompt_template,
+        poll_interval_secs: model.poll_interval_secs as u64,
+        enabled: model.enabled != 0,
+        tool_policy: serde_json::from_str::<ToolPolicy>(&model.tool_policy).unwrap_or_default(),
+        created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
+        updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
 }
 
-fn row_to_dispatch(row: &sqlx::sqlite::SqliteRow) -> Result<DispatchRecord> {
-    let id: String = row.get("id");
-    let workflow_id: String = row.get("workflow_id");
-    let agent_id: String = row.get("agent_id");
-    let status_str: String = row.get("status");
-    let dispatched_at: String = row.get("dispatched_at");
-    let completed_at: Option<String> = row.get("completed_at");
-
+fn model_to_dispatch(model: dispatch_entity::Model) -> Result<DispatchRecord> {
     Ok(DispatchRecord {
-        id: Uuid::parse_str(&id)?,
-        workflow_id: Uuid::parse_str(&workflow_id)?,
-        source_id: row.get("source_id"),
-        agent_id: Uuid::parse_str(&agent_id)?,
-        prompt_sent: row.get("prompt_sent"),
-        status: status_str.parse()?,
-        dispatched_at: DateTime::parse_from_rfc3339(&dispatched_at)?.with_timezone(&Utc),
-        completed_at: completed_at
+        id: Uuid::parse_str(&model.id)?,
+        workflow_id: Uuid::parse_str(&model.workflow_id)?,
+        source_id: model.source_id,
+        agent_id: Uuid::parse_str(&model.agent_id)?,
+        prompt_sent: model.prompt_sent,
+        status: model.status.parse()?,
+        dispatched_at: DateTime::parse_from_rfc3339(&model.dispatched_at)?.with_timezone(&Utc),
+        completed_at: model
+            .completed_at
             .map(|s| DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&Utc)))
             .transpose()?,
     })
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::scheduler::types::TaskSourceConfig;
+    use crate::storage::AgentStorage;
     use tempfile::TempDir;
 
     async fn create_test_storage() -> (SchedulerStorage, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-        let pool = SqlitePool::connect(&db_url).await.unwrap();
-        let storage = SchedulerStorage::new(pool);
-        storage.init_schema().await.unwrap();
+        // Run migrations via AgentStorage (which applies all three tables)
+        let agent_storage = AgentStorage::with_path(&db_path).await.unwrap();
+        let storage = SchedulerStorage::new(agent_storage.db().clone());
         (storage, temp_dir)
     }
 

@@ -30,6 +30,8 @@ sqlx = { version = "0.8", features = [
     "chrono",
     "uuid",
 ] }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
 
 # Async trait support
 async-trait = "0.1"

@@ -24,6 +24,8 @@
 pub mod api;
 pub mod approvals;
 pub mod client;
+pub mod entity;
+pub(crate) mod migration;
 pub mod manager;
 pub mod scheduler;
 pub mod storage;
