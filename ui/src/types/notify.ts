@@ -7,8 +7,16 @@
 // Enums / discriminated unions
 // ---------------------------------------------------------------------------
 
-/** Where the notification originated */
-export type NotificationSource = 'AgentHook' | 'AskService' | 'MonitorService' | 'System'
+/** Where the notification originated.
+ *
+ * Mirrors the Rust `NotificationSource` enum serialized with
+ * `#[serde(tag = "type", rename_all = "snake_case")]`.
+ */
+export type NotificationSource =
+  | { type: 'system' }
+  | { type: 'ask_service'; request_id: string }
+  | { type: 'agent_hook'; agent_id: string; hook_type: string }
+  | { type: 'monitor_service'; alert_type: string }
 
 /** How long the notification lives */
 export type NotificationLifetime =

@@ -13,7 +13,6 @@ import { notifyClient } from '@/services/notify'
 import type {
   Notification,
   NotificationPriority,
-  NotificationSource,
   NotificationStatus,
 } from '@/types/notify'
 
@@ -27,7 +26,8 @@ export type SortOrder = 'newest' | 'oldest' | 'priority'
 export interface NotificationFilters {
   status?: NotificationStatus | 'All'
   priority?: NotificationPriority | 'All'
-  source?: NotificationSource | 'All'
+  /** Source type discriminant: 'system' | 'ask_service' | 'agent_hook' | 'monitor_service' | 'All' */
+  source?: string | 'All'
 }
 
 export interface UseNotificationsOptions {
@@ -98,7 +98,7 @@ function applyFilters(items: Notification[], filters: NotificationFilters): Noti
     result = result.filter((n) => n.priority === filters.priority)
   }
   if (filters.source && filters.source !== 'All') {
-    result = result.filter((n) => n.source === filters.source)
+    result = result.filter((n) => n.source.type === filters.source)
   }
   return result
 }

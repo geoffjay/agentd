@@ -24,17 +24,17 @@ const PRIORITY_BORDER: Record<string, string> = {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  System: 'System',
-  AskService: 'Ask',
-  AgentHook: 'Agent Hook',
-  MonitorService: 'Monitor',
+  system: 'System',
+  ask_service: 'Ask',
+  agent_hook: 'Agent Hook',
+  monitor_service: 'Monitor',
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  System: 'bg-gray-700 text-gray-300',
-  AskService: 'bg-blue-900/50 text-blue-300',
-  AgentHook: 'bg-purple-900/50 text-purple-300',
-  MonitorService: 'bg-teal-900/50 text-teal-300',
+  system: 'bg-gray-700 text-gray-300',
+  ask_service: 'bg-blue-900/50 text-blue-300',
+  agent_hook: 'bg-purple-900/50 text-purple-300',
+  monitor_service: 'bg-teal-900/50 text-teal-300',
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -129,10 +129,10 @@ export function NotificationCard({
             <span
               className={[
                 'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                SOURCE_COLORS[notification.source] ?? 'bg-gray-700 text-gray-300',
+                SOURCE_COLORS[notification.source.type] ?? 'bg-gray-700 text-gray-300',
               ].join(' ')}
             >
-              {SOURCE_LABELS[notification.source] ?? notification.source}
+              {SOURCE_LABELS[notification.source.type] ?? notification.source.type}
             </span>
 
             {/* Status badge */}
