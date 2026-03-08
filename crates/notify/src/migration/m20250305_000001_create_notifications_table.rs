@@ -17,12 +17,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Notifications::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Notifications::Id)
-                            .string()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(Notifications::Id).string().not_null().primary_key())
                     .col(ColumnDef::new(Notifications::SourceType).string().not_null())
                     .col(ColumnDef::new(Notifications::SourceData).string().not_null())
                     .col(ColumnDef::new(Notifications::LifetimeType).string().not_null())
@@ -31,11 +26,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Notifications::Status).string().not_null())
                     .col(ColumnDef::new(Notifications::Title).string().not_null())
                     .col(ColumnDef::new(Notifications::Message).string().not_null())
-                    .col(
-                        ColumnDef::new(Notifications::RequiresResponse)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Notifications::RequiresResponse).integer().not_null())
                     .col(ColumnDef::new(Notifications::Response).string().null())
                     .col(ColumnDef::new(Notifications::CreatedAt).string().not_null())
                     .col(ColumnDef::new(Notifications::UpdatedAt).string().not_null())
@@ -71,9 +62,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(Notifications::Table).to_owned())
-            .await
+        manager.drop_table(Table::drop().table(Notifications::Table).to_owned()).await
     }
 }
 

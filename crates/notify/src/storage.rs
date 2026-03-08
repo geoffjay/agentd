@@ -116,9 +116,7 @@ impl NotificationStorage {
                 NotificationLifetime::Persistent => "Persistent".to_string(),
             }),
             lifetime_expires_at: Set(match notification.lifetime {
-                NotificationLifetime::Ephemeral { expires_at } => {
-                    Some(expires_at.to_rfc3339())
-                }
+                NotificationLifetime::Ephemeral { expires_at } => Some(expires_at.to_rfc3339()),
                 NotificationLifetime::Persistent => None,
             }),
             priority: Set(format!("{:?}", notification.priority)),
@@ -137,8 +135,7 @@ impl NotificationStorage {
 
     /// Retrieves a notification by its UUID.
     pub async fn get(&self, id: &Uuid) -> Result<Option<Notification>> {
-        let model =
-            notif_entity::Entity::find_by_id(id.to_string()).one(&self.db).await?;
+        let model = notif_entity::Entity::find_by_id(id.to_string()).one(&self.db).await?;
         match model {
             Some(m) => Ok(Some(model_to_notification(m)?)),
             None => Ok(None),
@@ -153,10 +150,7 @@ impl NotificationStorage {
                 notif_entity::Column::Status,
                 Expr::value(format!("{:?}", notification.status)),
             )
-            .col_expr(
-                notif_entity::Column::Response,
-                Expr::value(notification.response.clone()),
-            )
+            .col_expr(notif_entity::Column::Response, Expr::value(notification.response.clone()))
             .col_expr(
                 notif_entity::Column::UpdatedAt,
                 Expr::value(notification.updated_at.to_rfc3339()),
@@ -190,12 +184,11 @@ impl NotificationStorage {
         &self,
         status_filter: Option<NotificationStatus>,
     ) -> Result<Vec<Notification>> {
-        let mut query = notif_entity::Entity::find()
-            .order_by(notif_entity::Column::CreatedAt, Order::Desc);
+        let mut query =
+            notif_entity::Entity::find().order_by(notif_entity::Column::CreatedAt, Order::Desc);
 
         if let Some(status) = status_filter {
-            query =
-                query.filter(notif_entity::Column::Status.eq(format!("{:?}", status)));
+            query = query.filter(notif_entity::Column::Status.eq(format!("{:?}", status)));
         }
 
         let models: Vec<notif_entity::Model> = query.all(&self.db).await?;
@@ -210,17 +203,12 @@ impl NotificationStorage {
         offset: usize,
     ) -> Result<(Vec<Notification>, usize)> {
         let condition = match &status_filter {
-            Some(s) => {
-                Condition::all()
-                    .add(notif_entity::Column::Status.eq(format!("{:?}", s)))
-            }
+            Some(s) => Condition::all().add(notif_entity::Column::Status.eq(format!("{:?}", s))),
             None => Condition::all(),
         };
 
-        let total = notif_entity::Entity::find()
-            .filter(condition.clone())
-            .count(&self.db)
-            .await? as usize;
+        let total =
+            notif_entity::Entity::find().filter(condition.clone()).count(&self.db).await? as usize;
 
         let models = notif_entity::Entity::find()
             .filter(condition)
@@ -230,7 +218,8 @@ impl NotificationStorage {
             .all(&self.db)
             .await?;
 
-        let notifications = models.into_iter().map(model_to_notification).collect::<Result<Vec<_>>>()?;
+        let notifications =
+            models.into_iter().map(model_to_notification).collect::<Result<Vec<_>>>()?;
         Ok((notifications, total))
     }
 
@@ -282,10 +271,8 @@ impl NotificationStorage {
             .add(notif_entity::Column::Status.eq("Responded"))
             .add(notif_entity::Column::Status.eq("Expired"));
 
-        let total = notif_entity::Entity::find()
-            .filter(condition.clone())
-            .count(&self.db)
-            .await? as usize;
+        let total =
+            notif_entity::Entity::find().filter(condition.clone()).count(&self.db).await? as usize;
 
         let models = notif_entity::Entity::find()
             .filter(condition)
