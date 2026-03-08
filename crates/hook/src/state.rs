@@ -125,10 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ring_buffer_evicts_oldest() {
-        let config = HookConfig {
-            history_size: 3,
-            ..Default::default()
-        };
+        let config = HookConfig { history_size: 3, ..Default::default() };
         let state = AppState::new(config);
         let ids: Vec<_> = (0..5)
             .map(|i| {

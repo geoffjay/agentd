@@ -219,10 +219,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ring_buffer_evicts_oldest() {
-        let config = MonitorConfig {
-            history_size: 3,
-            ..Default::default()
-        };
+        let config = MonitorConfig { history_size: 3, ..Default::default() };
         let state = AppState::new(config);
 
         for i in 0..5u32 {
@@ -250,10 +247,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_degraded_on_single_threshold_breach() {
-        let config = MonitorConfig {
-            cpu_alert_threshold: 80.0,
-            ..Default::default()
-        };
+        let config = MonitorConfig { cpu_alert_threshold: 80.0, ..Default::default() };
         let state = AppState::new(config);
         state.push_metrics(make_metrics(95.0, 50.0, 50.0)).await;
 
