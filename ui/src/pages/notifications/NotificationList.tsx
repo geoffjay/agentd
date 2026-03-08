@@ -105,15 +105,17 @@ export function NotificationList() {
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  // Keep selectedIds in sync when list changes
+  // Keep selectedIds in sync when list changes (prune removed IDs)
   useEffect(() => {
-    const ids = new Set(notifications.map((n) => n.id))
     setSelectedIds((prev) => {
+      if (prev.size === 0) return prev // nothing selected — bail out without new Set
+      const ids = new Set(notifications.map((n) => n.id))
       const next = new Set<string>()
       for (const id of prev) {
         if (ids.has(id)) next.add(id)
       }
-      return next
+      // Return prev when nothing was pruned so React bails out (Object.is equality)
+      return next.size === prev.size ? prev : next
     })
   }, [notifications])
 
