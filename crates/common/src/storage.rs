@@ -1,27 +1,23 @@
 //! Shared SQLite storage utilities.
 //!
-//! Provides common database path resolution and connection creation
+//! Provides common database path resolution and SeaORM connection creation
 //! used by all agentd services that persist data to SQLite.
 //!
-//! The module offers two APIs:
-//!
-//! - **SeaORM (preferred)** — [`create_connection`] / [`create_test_connection`]
-//! - **SQLx (deprecated)** — [`create_pool`] / [`create_test_pool`] kept for
-//!   incremental migration of downstream crates
+//! All database access goes through SeaORM's [`DatabaseConnection`], which
+//! is `Clone + Send + Sync` and can be shared safely across async tasks.
 //!
 //! # Examples
 //!
 //! ```rust,ignore
 //! use agentd_common::storage::{get_db_path, create_connection};
 //!
-//! let db_path = get_db_path("notify", "notify.db")?;
+//! let db_path = get_db_path("agentd-notify", "notify.db")?;
 //! let conn = create_connection(&db_path).await?;
 //! ```
 
 use anyhow::Result;
 use directories::ProjectDirs;
 use sea_orm::{Database, DatabaseConnection};
-use sqlx::sqlite::SqlitePool;
 use std::path::{Path, PathBuf};
 
 /// Resolve the platform-specific database file path for a service.
@@ -58,7 +54,7 @@ pub fn get_db_path(project_name: &str, db_filename: &str) -> Result<PathBuf> {
 /// responsible for running schema migrations after obtaining the connection.
 ///
 /// [`DatabaseConnection`] is `Clone + Send + Sync` and can be shared across
-/// async tasks the same way a `SqlitePool` is.
+/// async tasks without wrapping in `Arc`.
 ///
 /// # Arguments
 ///
@@ -71,9 +67,9 @@ pub async fn create_connection(db_path: &Path) -> Result<DatabaseConnection> {
 
 /// Create a temporary SeaORM [`DatabaseConnection`] for testing.
 ///
-/// Returns a connection to a temporary file-based SQLite database. The caller
-/// should hold onto the `TempDir` to keep the database alive for the duration
-/// of the test.
+/// Returns a connection to a temporary file-based SQLite database alongside a
+/// [`tempfile::TempDir`] that must be kept alive for the duration of the test
+/// (dropping it deletes the database file).
 ///
 /// # Examples
 ///
@@ -90,49 +86,6 @@ pub async fn create_test_connection() -> (DatabaseConnection, tempfile::TempDir)
     let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
     let conn = Database::connect(&db_url).await.unwrap();
     (conn, temp_dir)
-}
-
-/// Create a SQLite connection pool for the given database path.
-///
-/// # Deprecation
-///
-/// This function is deprecated in favour of [`create_connection`] which
-/// returns a SeaORM [`DatabaseConnection`]. It is kept during the migration
-/// period to allow downstream crates (`notify`, `orchestrator`) to migrate
-/// independently without a simultaneous breaking change.
-///
-/// # Arguments
-///
-/// * `db_path` — Full path to the SQLite database file
-#[deprecated(since = "0.3.0", note = "Use `create_connection` instead (SeaORM)")]
-pub async fn create_pool(db_path: &Path) -> Result<SqlitePool> {
-    let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-    let pool = SqlitePool::connect(&db_url).await?;
-    Ok(pool)
-}
-
-/// Create a temporary SQLite pool for testing.
-///
-/// # Deprecation
-///
-/// This function is deprecated in favour of [`create_test_connection`] which
-/// returns a SeaORM [`DatabaseConnection`]. Kept for incremental migration.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use agentd_common::storage::create_test_pool;
-///
-/// #[allow(deprecated)]
-/// let (pool, _tmp) = create_test_pool().await;
-/// ```
-#[deprecated(since = "0.3.0", note = "Use `create_test_connection` instead (SeaORM)")]
-pub async fn create_test_pool() -> (SqlitePool, tempfile::TempDir) {
-    let temp_dir = tempfile::TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-    let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-    let pool = SqlitePool::connect(&db_url).await.unwrap();
-    (pool, temp_dir)
 }
 
 #[cfg(test)]
@@ -171,21 +124,5 @@ mod tests {
         assert!(!db_path.exists());
         create_connection(&db_path).await.unwrap();
         assert!(db_path.exists());
-    }
-
-    #[allow(deprecated)]
-    #[tokio::test]
-    async fn test_create_pool_deprecated() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let pool = create_pool(&db_path).await.unwrap();
-        sqlx::query("SELECT 1").execute(&pool).await.unwrap();
-    }
-
-    #[allow(deprecated)]
-    #[tokio::test]
-    async fn test_create_test_pool_deprecated() {
-        let (pool, _tmp) = create_test_pool().await;
-        sqlx::query("SELECT 1").execute(&pool).await.unwrap();
     }
 }

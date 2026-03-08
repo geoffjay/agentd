@@ -24,12 +24,6 @@ tower = "0.5"
 tower-http = { workspace = true, features = ["cors"] }
 
 # Database
-sqlx = { version = "0.8", features = [
-    "sqlite",
-    "runtime-tokio",
-    "chrono",
-    "uuid",
-] }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
 
