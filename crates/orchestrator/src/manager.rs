@@ -416,6 +416,7 @@ mod tests {
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
+            auto_clear_threshold: None,
         }
     }
 

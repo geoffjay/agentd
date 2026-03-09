@@ -71,10 +71,10 @@ async fn main() -> anyhow::Result<()> {
     {
         let sched = scheduler.clone();
         registry
-            .on_result(Arc::new(move |agent_id, is_error| {
+            .on_result(Arc::new(move |info| {
                 let sched = sched.clone();
                 tokio::spawn(async move {
-                    sched.notify_task_complete(agent_id, is_error).await;
+                    sched.notify_task_complete(info.agent_id, info.is_error).await;
                 });
             }))
             .await;

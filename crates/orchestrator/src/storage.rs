@@ -197,6 +197,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
             tool_policy,
             model: model.model,
             env,
+            auto_clear_threshold: None,
         },
         tmux_session: model.tmux_session,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
@@ -234,6 +235,7 @@ mod tests {
                 tool_policy: ToolPolicy::default(),
                 model: None,
                 env: HashMap::new(),
+                auto_clear_threshold: None,
             },
         )
     }
