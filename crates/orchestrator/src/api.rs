@@ -107,6 +107,7 @@ async fn create_agent(
         tool_policy: req.tool_policy,
         model: req.model,
         env: req.env,
+        auto_clear_threshold: req.auto_clear_threshold,
     };
 
     let agent = state.manager.spawn_agent(req.name, config).await?;

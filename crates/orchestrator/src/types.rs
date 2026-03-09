@@ -126,6 +126,10 @@ pub struct AgentConfig {
     /// Commonly used for ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub env: HashMap<String, String>,
+    /// If set, automatically clear the agent's context when the cumulative
+    /// input-token count for the current session exceeds this threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_clear_threshold: Option<u64>,
 }
 
 fn default_shell() -> String {
@@ -194,6 +198,10 @@ pub struct CreateAgentRequest {
     /// Commonly used for ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub env: HashMap<String, String>,
+    /// If set, automatically clear the agent's context when the cumulative
+    /// input-token count for the current session exceeds this threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_clear_threshold: Option<u64>,
 }
 
 /// Response body for agent endpoints.
@@ -330,6 +338,80 @@ pub struct ApprovalActionRequest {
     pub reason: Option<String>,
 }
 
+// -- Usage tracking and context management types --
+
+/// Token counts, cost, and timing from a single `result` message emitted by
+/// the Claude Code SDK.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UsageSnapshot {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_input_tokens: u64,
+    pub cache_creation_input_tokens: u64,
+    pub total_cost_usd: f64,
+    pub num_turns: u64,
+    pub duration_ms: u64,
+    pub duration_api_ms: u64,
+}
+
+/// Session-level aggregated usage — shared shape for both the active session
+/// and the cumulative lifetime totals in [`AgentUsageStats`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_input_tokens: u64,
+    pub cache_creation_input_tokens: u64,
+    pub total_cost_usd: f64,
+    pub num_turns: u64,
+    pub duration_ms: u64,
+    pub duration_api_ms: u64,
+    /// Number of `result` messages counted in this session.
+    pub result_count: u32,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+}
+
+/// Per-agent aggregated usage statistics, including the active session and
+/// lifetime cumulative totals.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentUsageStats {
+    pub agent_id: Uuid,
+    /// Stats for the currently-active session, if one is in progress.
+    pub current_session: Option<SessionUsage>,
+    /// Aggregate totals across all completed and current sessions.
+    pub cumulative: SessionUsage,
+    /// Total number of sessions (including the current one, if any).
+    pub session_count: u32,
+}
+
+/// Structured information passed to a [`ResultCallback`] when an agent
+/// completes a task.  Replaces the previous `(Uuid, bool)` tuple.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResultInfo {
+    pub agent_id: Uuid,
+    pub is_error: bool,
+    /// Token/cost/timing snapshot parsed from the `result` message, if present.
+    pub usage: Option<UsageSnapshot>,
+}
+
+/// Request body for POST /agents/{id}/clear-context.
+///
+/// Currently has no required fields; reserved for future options (e.g. forcing
+/// a checkpoint even when under threshold).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ClearContextRequest {}
+
+/// Response body for POST /agents/{id}/clear-context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClearContextResponse {
+    pub agent_id: Uuid,
+    /// Usage statistics at the moment the context was cleared.
+    pub session_usage: Option<SessionUsage>,
+    /// The session number that will be used going forward (1-based).
+    pub new_session_number: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -464,6 +546,7 @@ mod tests {
             tool_policy: ToolPolicy::default(),
             model: Some("opus".to_string()),
             env: HashMap::new(),
+            auto_clear_threshold: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -485,6 +568,7 @@ mod tests {
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
+            auto_clear_threshold: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -504,6 +588,7 @@ mod tests {
             tool_policy: ToolPolicy::default(),
             model: Some("sonnet".to_string()),
             env: HashMap::new(),
+            auto_clear_threshold: None,
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
@@ -529,6 +614,7 @@ mod tests {
             tool_policy: ToolPolicy::default(),
             model: None,
             env: env.clone(),
+            auto_clear_threshold: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -552,6 +638,7 @@ mod tests {
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
+            auto_clear_threshold: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -587,6 +674,7 @@ mod tests {
             tool_policy: ToolPolicy::default(),
             model: None,
             env: env.clone(),
+            auto_clear_threshold: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -613,6 +701,7 @@ mod tests {
             tool_policy: ToolPolicy::default(),
             model: None,
             env,
+            auto_clear_threshold: None,
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);

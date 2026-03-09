@@ -530,6 +530,7 @@ async fn apply_agent(
         tool_policy: tmpl.tool_policy.clone(),
         model: tmpl.model.clone(),
         env: tmpl.env.clone(),
+        auto_clear_threshold: None,
     };
 
     let agent = client.create_agent(&request).await?;

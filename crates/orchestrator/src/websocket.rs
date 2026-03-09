@@ -1,5 +1,5 @@
 use crate::approvals::ApprovalRegistry;
-use crate::types::{ApprovalDecision, ToolPolicy};
+use crate::types::{ApprovalDecision, ResultInfo, ToolPolicy};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -23,7 +23,7 @@ pub struct AgentConnection {
 }
 
 /// Callback invoked when an agent produces a "result" message.
-pub type ResultCallback = Arc<dyn Fn(Uuid, bool) + Send + Sync>;
+pub type ResultCallback = Arc<dyn Fn(ResultInfo) + Send + Sync>;
 
 /// Manages all active WebSocket connections from claude code instances.
 #[derive(Clone)]
@@ -126,10 +126,10 @@ impl ConnectionRegistry {
     }
 
     /// Notify all registered callbacks that an agent has completed a task.
-    pub async fn notify_result(&self, agent_id: Uuid, is_error: bool) {
+    pub async fn notify_result(&self, info: ResultInfo) {
         let callbacks = self.result_callbacks.read().await;
         for cb in callbacks.iter() {
-            cb(agent_id, is_error);
+            cb(info.clone());
         }
     }
 }
@@ -237,7 +237,39 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 } else {
                     info!(%agent_id, "Agent query completed successfully");
                 }
-                registry.notify_result(*agent_id, is_error).await;
+                let usage = msg.get("usage").and_then(|u| {
+                    Some(crate::types::UsageSnapshot {
+                        input_tokens: u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+                        output_tokens: u
+                            .get("output_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0),
+                        cache_read_input_tokens: u
+                            .get("cache_read_input_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0),
+                        cache_creation_input_tokens: u
+                            .get("cache_creation_input_tokens")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0),
+                        total_cost_usd: u
+                            .get("total_cost_usd")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.0),
+                        num_turns: u.get("num_turns").and_then(|v| v.as_u64()).unwrap_or(0),
+                        duration_ms: u
+                            .get("duration_ms")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0),
+                        duration_api_ms: u
+                            .get("duration_api_ms")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0),
+                    })
+                });
+                registry
+                    .notify_result(ResultInfo { agent_id: *agent_id, is_error, usage })
+                    .await;
             }
             "control_request" => {
                 handle_control_request(agent_id, &msg, registry).await;
