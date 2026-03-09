@@ -1,0 +1,54 @@
+# Development overrides for docker-compose.yml.
+#
+# Applies on top of the base compose file to add:
+#   - Source-code volume mounts (rebuild and restart with `docker compose up --build`)
+#   - Debug-level logging
+#   - Human-readable (non-JSON) log format
+#   - Relaxed restart policy so crashed services don't spam restarts
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Or set COMPOSE_FILE once:
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml
+#   docker compose up
+
+name: agentd
+
+services:
+
+  notify:
+    build:
+      # Rebuild on every `up` to pick up source changes.
+      target: notify
+    environment:
+      RUST_LOG: "${RUST_LOG:-debug}"
+      LOG_FORMAT: text
+    restart: "no"
+
+  orchestrator:
+    build:
+      target: orchestrator
+    environment:
+      RUST_LOG: "${RUST_LOG:-debug}"
+      LOG_FORMAT: text
+    restart: "no"
+
+  ask:
+    build:
+      target: ask
+    environment:
+      RUST_LOG: "${RUST_LOG:-debug}"
+      LOG_FORMAT: text
+    restart: "no"
+
+  wrap:
+    build:
+      target: wrap
+    environment:
+      RUST_LOG: "${RUST_LOG:-debug}"
+      LOG_FORMAT: text
+    # Enable a pseudo-TTY so tmux can launch agent sessions during dev.
+    tty: true
+    stdin_open: true
+    restart: "no"

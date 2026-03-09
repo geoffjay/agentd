@@ -1,0 +1,150 @@
+# agentd — full stack compose configuration.
+#
+# Usage:
+#   docker compose up -d              # start all services in background
+#   docker compose up orchestrator    # start a single service
+#   docker compose logs -f            # stream logs
+#   docker compose down               # stop and remove containers
+#   docker compose down -v            # also remove named volumes (destroys data)
+#
+# For development with source-mount overrides see docker-compose.dev.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+name: agentd
+
+# ── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  notify-data:
+    driver: local
+  orchestrator-data:
+    driver: local
+
+# ── Shared network ─────────────────────────────────────────────────────────────
+networks:
+  agentd:
+    driver: bridge
+
+# ── Services ───────────────────────────────────────────────────────────────────
+services:
+
+  # ── agentd-notify ─────────────────────────────────────────────────────────
+  notify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: notify
+    image: agentd/notify:latest
+    container_name: agentd-notify
+    restart: unless-stopped
+    networks:
+      - agentd
+    ports:
+      - "${NOTIFY_PORT:-17004}:17004"
+    volumes:
+      - notify-data:/data
+    environment:
+      PORT: "17004"
+      HOST: "0.0.0.0"
+      RUST_LOG: "${RUST_LOG:-info}"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+      XDG_DATA_HOME: /data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:17004/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── agentd-orchestrator ───────────────────────────────────────────────────
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: orchestrator
+    image: agentd/orchestrator:latest
+    container_name: agentd-orchestrator
+    restart: unless-stopped
+    networks:
+      - agentd
+    ports:
+      - "${ORCHESTRATOR_PORT:-17006}:17006"
+    volumes:
+      - orchestrator-data:/data
+    environment:
+      PORT: "17006"
+      HOST: "0.0.0.0"
+      # Agents connect back to the orchestrator using this URL.
+      # Override with the externally reachable hostname when deploying
+      # behind a reverse proxy (e.g. WS_BASE_URL=wss://example.com/ws).
+      WS_BASE_URL: "${WS_BASE_URL:-ws://orchestrator:17006}"
+      RUST_LOG: "${RUST_LOG:-info}"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+      XDG_DATA_HOME: /data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:17006/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── agentd-ask ────────────────────────────────────────────────────────────
+  ask:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ask
+    image: agentd/ask:latest
+    container_name: agentd-ask
+    restart: unless-stopped
+    networks:
+      - agentd
+    ports:
+      - "${ASK_PORT:-17001}:17001"
+    environment:
+      PORT: "17001"
+      HOST: "0.0.0.0"
+      # Resolve notify by Docker service name within the agentd network.
+      NOTIFY_SERVICE_URL: "http://notify:17004"
+      RUST_LOG: "${RUST_LOG:-info}"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+    depends_on:
+      notify:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:17001/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── agentd-wrap ───────────────────────────────────────────────────────────
+  #
+  # Note: the wrap service manages tmux sessions for agent workflows. Running
+  # tmux inside a container requires a pseudo-TTY; set `tty: true` if you
+  # experience issues launching sessions. In CI or minimal environments,
+  # omit this service or use a dedicated tmux-capable sidecar image.
+  wrap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: wrap
+    image: agentd/wrap:latest
+    container_name: agentd-wrap
+    restart: unless-stopped
+    networks:
+      - agentd
+    ports:
+      - "${WRAP_PORT:-17005}:17005"
+    environment:
+      PORT: "17005"
+      HOST: "0.0.0.0"
+      RUST_LOG: "${RUST_LOG:-info}"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+    # tmux needs a terminal; uncomment if launching agent sessions.
+    # tty: true
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:17005/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
