@@ -219,13 +219,14 @@ enum Commands {
 
     /// Start the hook daemon
     ///
-    /// The hook daemon monitors git hooks and other system hooks, creating
-    /// notifications when user intervention is required. (Not yet implemented)
+    /// The hook daemon monitors shell and git hook events, recording them and
+    /// creating notifications when user intervention may be required.
+    /// Default port: 17002 (dev) / 7002 (production).
     Hook,
     /// Start the monitor daemon
     ///
     /// The monitor daemon watches system metrics and creates notifications for
-    /// alerts and anomalies. (Not yet implemented)
+    /// alerts and anomalies.
     Monitor,
 }
 
@@ -312,12 +313,10 @@ async fn main() -> Result<()> {
             check_all_services(cli.json).await?;
         }
         Commands::Hook => {
-            println!("Starting hook daemon...");
-            // TODO: Start hook daemon
+            hook::run(hook::config::HookConfig::from_env()).await?;
         }
         Commands::Monitor => {
-            println!("Starting monitor daemon...");
-            // TODO: Start monitor daemon
+            monitor::run(monitor::config::MonitorConfig::from_env()).await?;
         }
     }
 

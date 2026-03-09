@@ -1,20 +1,23 @@
 //! Shared SQLite storage utilities.
 //!
-//! Provides common database path resolution and connection pool creation
+//! Provides common database path resolution and SeaORM connection creation
 //! used by all agentd services that persist data to SQLite.
+//!
+//! All database access goes through SeaORM's [`DatabaseConnection`], which
+//! is `Clone + Send + Sync` and can be shared safely across async tasks.
 //!
 //! # Examples
 //!
 //! ```rust,ignore
-//! use agentd_common::storage::{get_db_path, create_pool};
+//! use agentd_common::storage::{get_db_path, create_connection};
 //!
-//! let db_path = get_db_path("notify", "notify.db")?;
-//! let pool = create_pool(&db_path).await?;
+//! let db_path = get_db_path("agentd-notify", "notify.db")?;
+//! let conn = create_connection(&db_path).await?;
 //! ```
 
 use anyhow::Result;
 use directories::ProjectDirs;
-use sqlx::sqlite::SqlitePool;
+use sea_orm::{Database, DatabaseConnection};
 use std::path::{Path, PathBuf};
 
 /// Resolve the platform-specific database file path for a service.
@@ -45,42 +48,70 @@ pub fn get_db_path(project_name: &str, db_filename: &str) -> Result<PathBuf> {
     Ok(data_dir.join(db_filename))
 }
 
-/// Create a SQLite connection pool for the given database path.
+/// Create a SeaORM [`DatabaseConnection`] for the given SQLite database path.
 ///
 /// Opens the database file in read-write-create mode. The caller is
-/// responsible for running schema migrations after obtaining the pool.
+/// responsible for running schema migrations after obtaining the connection.
+///
+/// [`DatabaseConnection`] is `Clone + Send + Sync` and can be shared across
+/// async tasks without wrapping in `Arc`.
 ///
 /// # Arguments
 ///
 /// * `db_path` — Full path to the SQLite database file
-pub async fn create_pool(db_path: &Path) -> Result<SqlitePool> {
+pub async fn create_connection(db_path: &Path) -> Result<DatabaseConnection> {
     let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-    let pool = SqlitePool::connect(&db_url).await?;
-    Ok(pool)
+    let conn = Database::connect(&db_url).await?;
+    Ok(conn)
 }
 
-/// Create a temporary SQLite pool for testing.
+/// Create a temporary SeaORM [`DatabaseConnection`] for testing.
 ///
-/// Returns a pool connected to a temporary file-based database. The caller
-/// should hold onto the `TempDir` to keep the database alive for the
-/// duration of the test.
+/// Returns a connection to a temporary file-based SQLite database alongside a
+/// [`tempfile::TempDir`] that must be kept alive for the duration of the test
+/// (dropping it deletes the database file).
 ///
 /// # Examples
 ///
 /// ```rust,ignore
-/// use agentd_common::storage::create_test_pool;
-/// use tempfile::TempDir;
+/// use agentd_common::storage::create_test_connection;
 ///
-/// let (pool, _tmp) = create_test_pool().await;
-/// // Use pool for test operations...
+/// let (conn, _tmp) = create_test_connection().await;
+/// // Use conn for test operations...
 /// // Database is cleaned up when _tmp is dropped
 /// ```
-pub async fn create_test_pool() -> (SqlitePool, tempfile::TempDir) {
+pub async fn create_test_connection() -> (DatabaseConnection, tempfile::TempDir) {
     let temp_dir = tempfile::TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
     let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-    let pool = SqlitePool::connect(&db_url).await.unwrap();
-    (pool, temp_dir)
+    let conn = Database::connect(&db_url).await.unwrap();
+    (conn, temp_dir)
+}
+
+/// Apply all pending SeaORM migrations for migrator `M` to the database at `db_path`.
+///
+/// Creates the database file if it does not exist.
+pub async fn apply_migrations<M: sea_orm_migration::MigratorTrait>(db_path: &Path) -> Result<()> {
+    let db = create_connection(db_path).await?;
+    M::up(&db, None).await?;
+    Ok(())
+}
+
+/// Return the status of all known migrations for migrator `M` at `db_path`.
+///
+/// Each entry is `(migration_name, is_applied)`.
+pub async fn migration_status<M: sea_orm_migration::MigratorTrait>(
+    db_path: &Path,
+) -> Result<Vec<(String, bool)>> {
+    let db = create_connection(db_path).await?;
+    let statuses = M::get_migration_with_status(&db).await?;
+    Ok(statuses
+        .into_iter()
+        .map(|m: sea_orm_migration::Migration| {
+            let applied = m.status() == sea_orm_migration::MigrationStatus::Applied;
+            (m.name().to_string(), applied)
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -89,25 +120,35 @@ mod tests {
 
     #[test]
     fn test_get_db_path_returns_path() {
-        // Use a unique project name to avoid interfering with real data
         let path = get_db_path("agentd-test-common", "test.db").unwrap();
         assert!(path.to_string_lossy().contains("agentd-test-common"));
         assert!(path.to_string_lossy().ends_with("test.db"));
     }
 
     #[tokio::test]
-    async fn test_create_pool() {
+    async fn test_create_connection() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
-        let pool = create_pool(&db_path).await.unwrap();
+        let conn = create_connection(&db_path).await.unwrap();
 
-        // Verify we can execute a basic query
-        sqlx::query("SELECT 1").execute(&pool).await.unwrap();
+        // Verify the connection is live
+        use sea_orm::ConnectionTrait;
+        conn.execute_unprepared("SELECT 1").await.unwrap();
     }
 
     #[tokio::test]
-    async fn test_create_test_pool() {
-        let (pool, _tmp) = create_test_pool().await;
-        sqlx::query("SELECT 1").execute(&pool).await.unwrap();
+    async fn test_create_test_connection() {
+        let (conn, _tmp) = create_test_connection().await;
+        use sea_orm::ConnectionTrait;
+        conn.execute_unprepared("SELECT 1").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_create_connection_creates_file() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("new.db");
+        assert!(!db_path.exists());
+        create_connection(&db_path).await.unwrap();
+        assert!(db_path.exists());
     }
 }

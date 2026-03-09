@@ -301,6 +301,23 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
         }
     }
 
+    // Re-sign the app bundle so macOS doesn't kill the binaries
+    println!();
+    println!("{}", "Signing app bundle...".blue());
+    let sign_status = Command::new("codesign")
+        .args(["--force", "--deep", "--sign", "-", app_bundle.to_str().unwrap()])
+        .status()
+        .context("Failed to execute codesign")?;
+
+    if sign_status.success() {
+        println!("  {} Agent.app signed (ad-hoc)", "✓".green());
+    } else {
+        eprintln!(
+            "{}",
+            "  Warning: Failed to sign Agent.app — binaries may be killed by macOS".yellow()
+        );
+    }
+
     // Create symlink from /usr/local/bin/agent to CLI
     println!();
     println!("{}", "Creating symlink...".blue());

@@ -138,7 +138,9 @@ async fn main() -> Result<()> {
     // Create router with tracing middleware and metrics endpoint
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
-    let app = create_router_with_tracing(api_state).merge(metrics_router);
+    let app = create_router_with_tracing(api_state)
+        .merge(metrics_router)
+        .layer(agentd_common::server::cors_layer());
 
     // Bind to address
     let addr = format!("0.0.0.0:{port}");

@@ -64,9 +64,21 @@ pub enum TaskSourceConfig {
         #[serde(default = "default_issue_state")]
         state: String,
     },
+    GithubPullRequests {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_pr_state")]
+        state: String,
+    },
 }
 
 fn default_issue_state() -> String {
+    "open".to_string()
+}
+
+fn default_pr_state() -> String {
     "open".to_string()
 }
 
@@ -74,6 +86,7 @@ impl TaskSourceConfig {
     pub fn source_type(&self) -> &'static str {
         match self {
             TaskSourceConfig::GithubIssues { .. } => "github_issues",
+            TaskSourceConfig::GithubPullRequests { .. } => "github_pull_requests",
         }
     }
 }
