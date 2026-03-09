@@ -30,6 +30,9 @@ pub struct Model {
     pub env: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Optional token-count threshold that triggers an automatic context clear.
+    /// Stored as nullable INTEGER; maps to `Option<u64>` in the domain layer.
+    pub auto_clear_threshold: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
