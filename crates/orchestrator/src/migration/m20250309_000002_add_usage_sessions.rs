@@ -21,9 +21,7 @@ impl MigrationTrait for Migration {
         // -----------------------------------------------------------------
         let db = manager.get_connection();
         if let Err(e) = db
-            .execute_unprepared(
-                "ALTER TABLE agents ADD COLUMN auto_clear_threshold INTEGER",
-            )
+            .execute_unprepared("ALTER TABLE agents ADD COLUMN auto_clear_threshold INTEGER")
             .await
         {
             if !e.to_string().contains("duplicate column name") {
@@ -136,9 +134,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(AgentUsageSessions::Table).to_owned())
-            .await?;
+        manager.drop_table(Table::drop().table(AgentUsageSessions::Table).to_owned()).await?;
         // To keep the rollback simple the auto_clear_threshold column is left
         // in place (SQLite < 3.35.0 does not support DROP COLUMN).
         Ok(())
