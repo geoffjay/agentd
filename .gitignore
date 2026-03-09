@@ -80,5 +80,6 @@ docs/site/
 # Frontend (ui/)
 ui/node_modules/
 ui/dist/
+ui/.vite/
 ui/.env.local
 ui/coverage/
