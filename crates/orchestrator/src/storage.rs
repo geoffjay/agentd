@@ -202,7 +202,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
             tool_policy,
             model: model.model,
             env,
-            auto_clear_threshold: model.auto_clear_threshold.map(|v| v as u64),
+            auto_clear_threshold: model.auto_clear_threshold.and_then(|v| u64::try_from(v).ok()),
         },
         tmux_session: model.tmux_session,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),

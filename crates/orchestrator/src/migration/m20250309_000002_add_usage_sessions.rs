@@ -33,6 +33,7 @@ impl MigrationTrait for Migration {
 
         // -----------------------------------------------------------------
         // agent_usage_sessions table
+        // TODO: add SeaORM entity in follow-up
         // -----------------------------------------------------------------
         manager
             .create_table(
@@ -112,7 +113,8 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .from(AgentUsageSessions::Table, AgentUsageSessions::AgentId)
-                            .to(Agents::Table, Agents::Id),
+                            .to(Agents::Table, Agents::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
             )
@@ -137,8 +139,8 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(Table::drop().table(AgentUsageSessions::Table).to_owned())
             .await?;
-        // SQLite does not support DROP COLUMN; the auto_clear_threshold column
-        // is left in place when rolling back this migration.
+        // To keep the rollback simple the auto_clear_threshold column is left
+        // in place (SQLite < 3.35.0 does not support DROP COLUMN).
         Ok(())
     }
 }
