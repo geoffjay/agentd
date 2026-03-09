@@ -1,0 +1,73 @@
+# Plan worker workflow — polls GitHub issues and dispatches them to the worker agent.
+#
+# Note: this workflow prompt uses an gh extension that is installed with:
+#   gh extension install jwilger/gh-issue-ext
+#
+# Usage:
+#   agent apply .agentd/workflows/plan-worker.yml   # single workflow
+#   agent apply .agentd/                            # agents + workflow together
+
+name: plan-worker
+agent: planner
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - plan-agent
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  Work on the following GitHub issue:
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Instructions:
+
+  1. Move the issue to "In Progress" by assigning it using the status field
+  3. Review the plan in the issue description
+  3. Analyze the relevant for the issue
+  3. Read the open issues for the relevant crates
+
+  Then, based on your analysis, propose the issues that are necessary to implement the plan for the
+  GitHub project at https://github.com/users/geoffjay/projects/5. Focus on:
+
+  - Missing functionality or incomplete implementations
+  - Documentation gaps
+  - Testing gaps
+  - Integration points between crates that need work
+  - Operational concerns (logging, error handling, configuration)
+
+  Some additional guidance:
+
+  - Never assign the "agent", "work-agent", "plan-agent", or "review-agent" labels
+  - Ideally plans will be focused effort and can be constrained to 5-10 issues, but this is not a
+    hard requirement
+  - Create relationships between issues as needed using blocked by, blocks, and aprent issues
+  - Use gh issue-ext to add relationships and dependencies
+
+  For each proposed issue, create it using:
+    gh issue create --repo geoffjay/agentd --title "..." --body "..." --label "..."
+
+  After creating each issue, add it to the project board:
+    gh project item-add 5 --owner geoffjay --url <issue-url>
+
+  After adding the issue to the project board, assign the necessary relationships and dependencies.
+  Skip this if the issue-ext extension is not available in the gh CLI:
+    gh issue-ext sub add <parent> <child>         # parent/child relationship
+    gh issue-ext blocking add <blocked> <blocker> # blocking relationship
+
+  After the plan is complete:
+
+  - Create a milestone if the plan has enough issues to justify one, otherwise assign the issues to
+    an existing milestone
+  - Close the issue: gh issue close {{source_id}} --repo geoffjay/agentd

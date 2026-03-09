@@ -1687,6 +1687,10 @@ fn display_workflow(workflow: &WorkflowResponse) {
             println!("{}: github_issues", "Source Type".bold());
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
         }
+        TaskSourceConfig::GithubPullRequests { owner, repo, .. } => {
+            println!("{}: github_pull_requests", "Source Type".bold());
+            println!("{}: {}/{}", "Repository".bold(), owner, repo);
+        }
     }
     let template = &workflow.prompt_template;
     let display =

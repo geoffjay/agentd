@@ -113,7 +113,11 @@ impl AgentManager {
         Ok(agent)
     }
 
-    /// Terminate a running agent: kill tmux session, update DB.
+    /// Terminate a running agent: kill tmux session and delete DB record.
+    ///
+    /// The record is deleted (not just updated to Stopped) so that `agent apply`
+    /// can recreate an agent with the same name and `agent teardown` + `agent apply`
+    /// forms a clean cycle without stale records accumulating in the database.
     pub async fn terminate_agent(&self, id: &Uuid) -> anyhow::Result<Agent> {
         let mut agent =
             self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
@@ -124,20 +128,37 @@ impl AgentManager {
             }
         }
 
+        // Remove the record from storage entirely so the name can be reused.
+        self.storage.delete(id).await?;
+
+        // Set status on the returned value for callers that inspect it.
         agent.status = AgentStatus::Stopped;
         agent.updated_at = Utc::now();
-        self.storage.update(&agent).await?;
 
-        info!(agent_id = %id, "Agent terminated");
+        info!(agent_id = %id, "Agent terminated and record deleted");
 
         Ok(agent)
     }
 
-    /// Reconcile DB state with actual tmux sessions on startup.
+    /// Reconcile DB state with actual tmux sessions and WebSocket connections on startup.
+    ///
+    /// Handles three cases for agents marked as `Running`:
+    ///
+    /// 1. **tmux session is gone** — the process died unexpectedly.  Mark the
+    ///    agent as `Failed`.
+    ///
+    /// 2. **tmux session is alive but agent is not connected to the registry** —
+    ///    the orchestrator was restarted and the in-memory `ConnectionRegistry`
+    ///    was reset.  The Claude process is still running in tmux but holds a
+    ///    stale WebSocket connection to the old orchestrator instance.  Kill the
+    ///    session and re-launch Claude so it establishes a fresh connection.
+    ///
+    /// 3. **tmux session is alive and agent is connected** — everything is fine,
+    ///    nothing to do.
     pub async fn reconcile(&self) -> anyhow::Result<()> {
         let agents = self.storage.list(Some(AgentStatus::Running)).await?;
 
-        for mut agent in agents {
+        for agent in agents {
             let session_alive = agent
                 .tmux_session
                 .as_ref()
@@ -145,6 +166,8 @@ impl AgentManager {
                 .unwrap_or(false);
 
             if !session_alive {
+                // Case 1: tmux session is gone — mark as Failed.
+                let mut agent = agent;
                 warn!(
                     agent_id = %agent.id,
                     "Agent marked running but tmux session is gone, marking failed"
@@ -154,7 +177,19 @@ impl AgentManager {
                 if let Err(e) = self.storage.update(&agent).await {
                     error!(agent_id = %agent.id, %e, "Failed to update agent status");
                 }
+            } else if !self.registry.is_connected(&agent.id).await {
+                // Case 2: tmux session alive but WebSocket connection is stale
+                // (orchestrator was restarted and ConnectionRegistry was reset).
+                // Kill the old Claude process and relaunch so it reconnects.
+                warn!(
+                    agent_id = %agent.id,
+                    "Agent has live tmux session but is not connected to registry after startup, restarting"
+                );
+                if let Err(e) = self.restart_agent(&agent).await {
+                    error!(agent_id = %agent.id, %e, "Failed to restart stale agent during reconcile");
+                }
             }
+            // Case 3: alive and connected — nothing to do.
         }
 
         Ok(())
@@ -316,7 +351,6 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
         // User can attach to the tmux session and interact directly.
     } else {
         args.push(format!("--sdk-url {}", ws_url));
-        args.push("--print".to_string());
         args.push("--output-format stream-json".to_string());
         args.push("--input-format stream-json".to_string());
     }
@@ -333,10 +367,10 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
         args.push(format!("--system-prompt '{}'", system_prompt.replace('\'', "'\\''")));
     }
 
-    // NOTE: -p is intentionally NOT used here. Initial prompts are sent via
-    // the WebSocket after the agent connects. Using -p causes claude to exit
-    // after processing the single prompt, making the agent unable to receive
-    // follow-up messages.
+    // NOTE: --print / -p is intentionally NOT used here. It causes claude to
+    // exit after processing a single conversation, making the agent unable to
+    // receive follow-up messages. In SDK mode (--sdk-url), the CLI stays alive
+    // and processes multiple messages without --print.
 
     let base = args.join(" ");
     let env_assignments = build_env_assignments(&config.env);

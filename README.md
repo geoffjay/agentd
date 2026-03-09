@@ -268,6 +268,13 @@ All services communicate via REST APIs. The orchestrator additionally provides W
 
 ## Development
 
+### Prerequisites (Development Tools)
+
+```bash
+# Install sea-orm-cli for database migrations (required when working on DB migrations)
+cargo install sea-orm-cli
+```
+
 ### Building
 
 ```bash

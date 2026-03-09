@@ -1,0 +1,292 @@
+@import 'tailwindcss';
+
+/* Configure class-based dark mode — adds `dark:` variant support via .dark class */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Color tokens */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+  --color-primary-950: #172554;
+
+  --color-secondary-50: #f8fafc;
+  --color-secondary-100: #f1f5f9;
+  --color-secondary-200: #e2e8f0;
+  --color-secondary-300: #cbd5e1;
+  --color-secondary-400: #94a3b8;
+  --color-secondary-500: #64748b;
+  --color-secondary-600: #475569;
+  --color-secondary-700: #334155;
+  --color-secondary-800: #1e293b;
+  --color-secondary-900: #0f172a;
+  --color-secondary-950: #020617;
+
+  --color-success-500: #22c55e;
+  --color-warning-500: #f59e0b;
+  --color-error-500: #ef4444;
+  --color-info-500: #06b6d4;
+
+  /* Spacing tokens */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+
+  /* Typography tokens */
+  --font-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+
+  /* Border radius tokens */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Shadow tokens */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+
+/* ---------------------------------------------------------------------------
+   Semantic CSS custom properties — light theme (default)
+   --------------------------------------------------------------------------- */
+:root {
+  /* Backgrounds */
+  --bg-primary: var(--color-secondary-50);
+  --bg-secondary: var(--color-secondary-100);
+  --bg-tertiary: var(--color-secondary-200);
+
+  /* Surface (cards, panels) */
+  --surface-default: #ffffff;
+  --surface-raised: var(--color-secondary-50);
+  --surface-overlay: #ffffff;
+
+  /* Navigation */
+  --nav-bg: var(--color-secondary-900);
+  --nav-border: var(--color-secondary-700);
+  --nav-text: var(--color-secondary-400);
+  --nav-text-active: #ffffff;
+  --nav-item-hover: var(--color-secondary-700);
+  --nav-item-active: var(--color-primary-700);
+
+  /* Text */
+  --text-primary: var(--color-secondary-900);
+  --text-secondary: var(--color-secondary-700);
+  --text-muted: var(--color-secondary-500);
+  --text-inverse: #ffffff;
+
+  /* Borders */
+  --border-default: var(--color-secondary-200);
+  --border-strong: var(--color-secondary-300);
+  --border-focus: var(--color-primary-500);
+
+  /* Accent / brand */
+  --accent-primary: var(--color-primary-500);
+  --accent-primary-hover: var(--color-primary-600);
+  --accent-secondary: var(--color-primary-100);
+
+  /* Status */
+  --status-success: var(--color-success-500);
+  --status-warning: var(--color-warning-500);
+  --status-error: var(--color-error-500);
+  --status-info: var(--color-info-500);
+
+  /* Form elements */
+  --input-bg: #ffffff;
+  --input-border: var(--color-secondary-300);
+  --input-text: var(--color-secondary-900);
+  --input-placeholder: var(--color-secondary-400);
+}
+
+/* ---------------------------------------------------------------------------
+   Semantic CSS custom properties — dark theme
+   --------------------------------------------------------------------------- */
+.dark {
+  /* Backgrounds */
+  --bg-primary: var(--color-secondary-950);
+  --bg-secondary: var(--color-secondary-900);
+  --bg-tertiary: var(--color-secondary-800);
+
+  /* Surface (cards, panels) */
+  --surface-default: var(--color-secondary-900);
+  --surface-raised: var(--color-secondary-800);
+  --surface-overlay: var(--color-secondary-800);
+
+  /* Navigation */
+  --nav-bg: var(--color-secondary-900);
+  --nav-border: var(--color-secondary-700);
+  --nav-text: var(--color-secondary-400);
+  --nav-text-active: #ffffff;
+  --nav-item-hover: var(--color-secondary-700);
+  --nav-item-active: var(--color-primary-700);
+
+  /* Text */
+  --text-primary: var(--color-secondary-50);
+  --text-secondary: var(--color-secondary-300);
+  --text-muted: var(--color-secondary-400);
+  --text-inverse: var(--color-secondary-900);
+
+  /* Borders */
+  --border-default: var(--color-secondary-800);
+  --border-strong: var(--color-secondary-700);
+  --border-focus: var(--color-primary-400);
+
+  /* Accent / brand */
+  --accent-primary: var(--color-primary-400);
+  --accent-primary-hover: var(--color-primary-300);
+  --accent-secondary: var(--color-primary-900);
+
+  /* Status */
+  --status-success: var(--color-success-500);
+  --status-warning: var(--color-warning-500);
+  --status-error: var(--color-error-500);
+  --status-info: var(--color-info-500);
+
+  /* Form elements */
+  --input-bg: var(--color-secondary-800);
+  --input-border: var(--color-secondary-600);
+  --input-text: var(--color-secondary-50);
+  --input-placeholder: var(--color-secondary-500);
+}
+
+/* ---------------------------------------------------------------------------
+   Base styles
+   --------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Smooth theme transitions — only on background-color to keep performance good */
+html,
+body,
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+
+/* Opt-out of transitions for elements that should change instantly */
+.no-theme-transition,
+.no-theme-transition *,
+svg,
+svg * {
+  transition: none !important;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ---------------------------------------------------------------------------
+   Accessibility — focus visible
+   Ensure visible focus outlines for keyboard navigation (WCAG 2.4.7).
+   We use :focus-visible so mouse clicks don't show the ring.
+   --------------------------------------------------------------------------- */
+*:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* Remove default outline for elements that manage focus themselves */
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Accessibility — reduced motion (prefers-reduced-motion: reduce)
+   Disables transitions and animations for users who prefer reduced motion.
+   WCAG 2.3.3 (AAA) / recommended for AA compliance.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Accessibility — high contrast / forced colors
+   Ensure interactive elements remain visible in Windows High Contrast mode.
+   --------------------------------------------------------------------------- */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid ButtonText;
+  }
+  button,
+  [role='button'] {
+    forced-color-adjust: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive — prevent horizontal overflow on all viewports
+   --------------------------------------------------------------------------- */
+html,
+body,
+#root {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Touch targets — minimum 44×44px on interactive elements (WCAG 2.5.5) */
+@media (pointer: coarse) {
+  button,
+  [role='button'],
+  a,
+  input[type='checkbox'],
+  input[type='radio'] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

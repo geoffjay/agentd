@@ -58,6 +58,9 @@ tags.temp
 # Other
 .env
 
+# Layer config
+.otter
+
 # Documentation build
 .venv
 
@@ -73,3 +76,9 @@ docs/site/
 # td/sidecar
 .todos/
 .sidecar/
+
+# Frontend (ui/)
+ui/node_modules/
+ui/dist/
+ui/.env.local
+ui/coverage/

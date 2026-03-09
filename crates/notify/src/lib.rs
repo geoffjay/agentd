@@ -81,6 +81,25 @@
 
 pub mod api;
 pub mod client;
+pub mod entity;
+pub(crate) mod migration;
 pub mod notification;
 pub mod storage;
 pub mod types;
+
+/// Apply all pending SeaORM migrations to the SQLite database at `db_path`.
+///
+/// Creates the file if it does not exist. Designed for use by `cargo xtask migrate`.
+pub async fn apply_migrations_for_path(db_path: &std::path::Path) -> anyhow::Result<()> {
+    agentd_common::storage::apply_migrations::<migration::Migrator>(db_path).await
+}
+
+/// Return the status of all known migrations for the database at `db_path`.
+///
+/// Each entry is `(migration_name, is_applied)`. Designed for use by
+/// `cargo xtask migrate-status`.
+pub async fn migration_status_for_path(
+    db_path: &std::path::Path,
+) -> anyhow::Result<Vec<(String, bool)>> {
+    agentd_common::storage::migration_status::<migration::Migrator>(db_path).await
+}

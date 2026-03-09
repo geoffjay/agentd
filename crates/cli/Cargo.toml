@@ -29,6 +29,8 @@ notify = { path = "../notify" }
 ask = { path = "../ask" }
 wrap = { path = "../wrap" }
 orchestrator = { path = "../orchestrator" }
+monitor = { path = "../monitor" }
+hook = { path = "../hook" }
 
 [dev-dependencies]
 mockito = "1.2"

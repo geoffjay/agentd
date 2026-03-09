@@ -1,6 +1,8 @@
 mod api;
 mod approvals;
+mod entity;
 mod manager;
+mod migration;
 mod scheduler;
 mod storage;
 mod types;
@@ -64,9 +66,9 @@ async fn main() -> anyhow::Result<()> {
 
     let manager = Arc::new(manager);
 
-    // Scheduler for autonomous workflows (shares the same SQLite pool).
-    let scheduler_storage = SchedulerStorage::new(storage.pool().clone());
-    scheduler_storage.init_schema().await?;
+    // Scheduler for autonomous workflows (shares the same SeaORM connection).
+    // Schema is already applied by AgentStorage::with_path() via Migrator::up().
+    let scheduler_storage = SchedulerStorage::new(storage.db().clone());
     let scheduler = Arc::new(Scheduler::new(scheduler_storage, registry.clone()));
 
     // Register scheduler as a result callback so it gets notified when agents finish.
@@ -93,8 +95,10 @@ async fn main() -> anyhow::Result<()> {
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
-    let app =
-        create_router(state).merge(metrics_router).layer(agentd_common::server::trace_layer());
+    let app = create_router(state)
+        .merge(metrics_router)
+        .layer(agentd_common::server::trace_layer())
+        .layer(agentd_common::server::cors_layer());
 
     // Bind and serve.
     let addr = format!("{}:{}", host, port);

@@ -1,245 +1,212 @@
-use crate::types::{Agent, AgentConfig, AgentStatus, ToolPolicy};
+//! SeaORM-based persistent storage for agent records.
+//!
+//! Provides [`AgentStorage`], backed by a SQLite database via SeaORM.
+//! The shared [`DatabaseConnection`] is also exposed for [`crate::scheduler::storage::SchedulerStorage`].
+
+use crate::{
+    entity::agent as agent_entity,
+    migration::Migrator,
+    types::{Agent, AgentConfig, AgentStatus, ToolPolicy},
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use sqlx::{sqlite::SqlitePool, Row};
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
+};
+use sea_orm_migration::prelude::MigratorTrait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+/// Persistent storage backend for agent records using SeaORM + SQLite.
+///
+/// Holds a [`DatabaseConnection`] that is `Clone + Send + Sync`, so
+/// [`AgentStorage`] itself can be cheaply cloned and shared across tasks.
+///
+/// The underlying database is also shared with [`crate::scheduler::storage::SchedulerStorage`]
+/// via [`AgentStorage::db()`].
 #[derive(Clone)]
 pub struct AgentStorage {
-    pool: SqlitePool,
+    db: DatabaseConnection,
 }
 
 impl AgentStorage {
-    /// Access the underlying SQLite pool (used by SchedulerStorage).
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
-    }
-
+    /// Returns the platform-specific database file path.
     pub fn get_db_path() -> Result<PathBuf> {
         agentd_common::storage::get_db_path("agentd-orchestrator", "orchestrator.db")
     }
 
+    /// Creates a new storage instance connected to the default path.
     pub async fn new() -> Result<Self> {
         let db_path = Self::get_db_path()?;
         Self::with_path(&db_path).await
     }
 
+    /// Creates a new storage instance connected to `db_path`.
+    ///
+    /// All pending SeaORM migrations (agents, workflows, dispatch_log) are
+    /// applied before returning.
     pub async fn with_path(db_path: &Path) -> Result<Self> {
-        let pool = agentd_common::storage::create_pool(db_path).await?;
-        let storage = Self { pool };
-        storage.init_schema().await?;
-        Ok(storage)
+        let db = agentd_common::storage::create_connection(db_path).await?;
+        Migrator::up(&db, None).await?;
+        Ok(Self { db })
     }
 
-    async fn init_schema(&self) -> Result<()> {
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS agents (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                status TEXT NOT NULL,
-                working_dir TEXT NOT NULL,
-                user TEXT,
-                shell TEXT NOT NULL,
-                interactive INTEGER NOT NULL DEFAULT 0,
-                prompt TEXT,
-                worktree INTEGER NOT NULL DEFAULT 0,
-                system_prompt TEXT,
-                tmux_session TEXT,
-                tool_policy TEXT NOT NULL DEFAULT '{"mode":"allow_all"}',
-                model TEXT,
-                env TEXT NOT NULL DEFAULT '{}',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)")
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
+    /// Exposes the underlying [`DatabaseConnection`] so that
+    /// [`crate::scheduler::storage::SchedulerStorage`] can share the same
+    /// connection without opening a second database file.
+    pub fn db(&self) -> &DatabaseConnection {
+        &self.db
     }
 
+    /// Inserts an agent and returns its UUID.
     pub async fn add(&self, agent: &Agent) -> Result<Uuid> {
-        sqlx::query(
-            r#"
-            INSERT INTO agents (id, name, status, working_dir, user, shell, interactive, prompt, worktree, system_prompt, tmux_session, tool_policy, model, env, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(agent.id.to_string())
-        .bind(&agent.name)
-        .bind(agent.status.to_string())
-        .bind(&agent.config.working_dir)
-        .bind(agent.config.user.as_deref())
-        .bind(&agent.config.shell)
-        .bind(agent.config.interactive)
-        .bind(agent.config.prompt.as_deref())
-        .bind(agent.config.worktree)
-        .bind(agent.config.system_prompt.as_deref())
-        .bind(agent.tmux_session.as_deref())
-        .bind(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default())
-        .bind(agent.config.model.as_deref())
-        .bind(serde_json::to_string(&agent.config.env).unwrap_or_else(|_| "{}".to_string()))
-        .bind(agent.created_at.to_rfc3339())
-        .bind(agent.updated_at.to_rfc3339())
-        .execute(&self.pool)
-        .await?;
+        let model = agent_entity::ActiveModel {
+            id: Set(agent.id.to_string()),
+            name: Set(agent.name.clone()),
+            status: Set(agent.status.to_string()),
+            working_dir: Set(agent.config.working_dir.clone()),
+            user: Set(agent.config.user.clone()),
+            shell: Set(agent.config.shell.clone()),
+            interactive: Set(if agent.config.interactive { 1 } else { 0 }),
+            prompt: Set(agent.config.prompt.clone()),
+            worktree: Set(if agent.config.worktree { 1 } else { 0 }),
+            system_prompt: Set(agent.config.system_prompt.clone()),
+            tmux_session: Set(agent.tmux_session.clone()),
+            tool_policy: Set(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default()),
+            model: Set(agent.config.model.clone()),
+            env: Set(serde_json::to_string(&agent.config.env).unwrap_or_else(|_| "{}".to_string())),
+            created_at: Set(agent.created_at.to_rfc3339()),
+            updated_at: Set(agent.updated_at.to_rfc3339()),
+        };
 
+        agent_entity::Entity::insert(model).exec(&self.db).await?;
         Ok(agent.id)
     }
 
+    /// Retrieves an agent by its UUID.
     pub async fn get(&self, id: &Uuid) -> Result<Option<Agent>> {
-        let row = sqlx::query("SELECT * FROM agents WHERE id = ?")
-            .bind(id.to_string())
-            .fetch_optional(&self.pool)
-            .await?;
-
-        match row {
-            Some(row) => Ok(Some(row_to_agent(&row)?)),
+        let model = agent_entity::Entity::find_by_id(id.to_string()).one(&self.db).await?;
+        match model {
+            Some(m) => Ok(Some(model_to_agent(m)?)),
             None => Ok(None),
         }
     }
 
+    /// Updates the mutable fields of an agent (status, tmux_session, tool_policy, model, updated_at).
     pub async fn update(&self, agent: &Agent) -> Result<()> {
-        let result = sqlx::query(
-            r#"
-            UPDATE agents
-            SET status = ?, tmux_session = ?, tool_policy = ?, model = ?, updated_at = ?
-            WHERE id = ?
-            "#,
-        )
-        .bind(agent.status.to_string())
-        .bind(agent.tmux_session.as_deref())
-        .bind(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default())
-        .bind(agent.config.model.as_deref())
-        .bind(agent.updated_at.to_rfc3339())
-        .bind(agent.id.to_string())
-        .execute(&self.pool)
-        .await?;
+        use sea_orm::sea_query::Expr;
 
-        if result.rows_affected() == 0 {
-            anyhow::bail!("Agent not found");
-        }
-
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub async fn delete(&self, id: &Uuid) -> Result<()> {
-        let result = sqlx::query("DELETE FROM agents WHERE id = ?")
-            .bind(id.to_string())
-            .execute(&self.pool)
+        let result = agent_entity::Entity::update_many()
+            .col_expr(agent_entity::Column::Status, Expr::value(agent.status.to_string()))
+            .col_expr(agent_entity::Column::TmuxSession, Expr::value(agent.tmux_session.clone()))
+            .col_expr(
+                agent_entity::Column::ToolPolicy,
+                Expr::value(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default()),
+            )
+            .col_expr(agent_entity::Column::Model, Expr::value(agent.config.model.clone()))
+            .col_expr(agent_entity::Column::UpdatedAt, Expr::value(agent.updated_at.to_rfc3339()))
+            .filter(agent_entity::Column::Id.eq(agent.id.to_string()))
+            .exec(&self.db)
             .await?;
 
-        if result.rows_affected() == 0 {
+        if result.rows_affected == 0 {
             anyhow::bail!("Agent not found");
         }
 
         Ok(())
     }
 
-    pub async fn list(&self, status_filter: Option<AgentStatus>) -> Result<Vec<Agent>> {
-        let rows = if let Some(status) = status_filter {
-            sqlx::query("SELECT * FROM agents WHERE status = ? ORDER BY created_at DESC")
-                .bind(status.to_string())
-                .fetch_all(&self.pool)
-                .await?
-        } else {
-            sqlx::query("SELECT * FROM agents ORDER BY created_at DESC")
-                .fetch_all(&self.pool)
-                .await?
-        };
+    /// Permanently deletes an agent by UUID.
+    pub async fn delete(&self, id: &Uuid) -> Result<()> {
+        let result = agent_entity::Entity::delete_many()
+            .filter(agent_entity::Column::Id.eq(id.to_string()))
+            .exec(&self.db)
+            .await?;
 
-        rows.iter().map(row_to_agent).collect()
+        if result.rows_affected == 0 {
+            anyhow::bail!("Agent not found");
+        }
+
+        Ok(())
     }
 
-    /// List agents with pagination.
+    /// Lists all agents, optionally filtered by status (newest first).
+    pub async fn list(&self, status_filter: Option<AgentStatus>) -> Result<Vec<Agent>> {
+        let mut query =
+            agent_entity::Entity::find().order_by(agent_entity::Column::CreatedAt, Order::Desc);
+
+        if let Some(status) = status_filter {
+            query = query.filter(agent_entity::Column::Status.eq(status.to_string()));
+        }
+
+        let models: Vec<agent_entity::Model> = query.all(&self.db).await?;
+        models.into_iter().map(model_to_agent).collect()
+    }
+
+    /// Lists agents with pagination; returns `(items, total_count)`.
     pub async fn list_paginated(
         &self,
         status_filter: Option<AgentStatus>,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<Agent>, usize)> {
-        let (count_row, data_rows) = if let Some(status) = status_filter {
-            let status_str = status.to_string();
-            let count = sqlx::query("SELECT COUNT(*) as total FROM agents WHERE status = ?")
-                .bind(&status_str)
-                .fetch_one(&self.pool)
-                .await?;
-            let rows = sqlx::query(
-                "SELECT * FROM agents WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            )
-            .bind(&status_str)
-            .bind(limit as i64)
-            .bind(offset as i64)
-            .fetch_all(&self.pool)
-            .await?;
-            (count, rows)
-        } else {
-            let count =
-                sqlx::query("SELECT COUNT(*) as total FROM agents").fetch_one(&self.pool).await?;
-            let rows =
-                sqlx::query("SELECT * FROM agents ORDER BY created_at DESC LIMIT ? OFFSET ?")
-                    .bind(limit as i64)
-                    .bind(offset as i64)
-                    .fetch_all(&self.pool)
-                    .await?;
-            (count, rows)
+        let condition = match &status_filter {
+            Some(s) => Condition::all().add(agent_entity::Column::Status.eq(s.to_string())),
+            None => Condition::all(),
         };
 
-        let total: i64 = count_row.get("total");
-        let agents = data_rows.iter().map(row_to_agent).collect::<Result<Vec<_>>>()?;
+        let total =
+            agent_entity::Entity::find().filter(condition.clone()).count(&self.db).await? as usize;
 
-        Ok((agents, total as usize))
+        let models: Vec<agent_entity::Model> = agent_entity::Entity::find()
+            .filter(condition)
+            .order_by(agent_entity::Column::CreatedAt, Order::Desc)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&self.db)
+            .await?;
+
+        let agents = models.into_iter().map(model_to_agent).collect::<Result<Vec<_>>>()?;
+        Ok((agents, total))
     }
 }
 
-fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> Result<Agent> {
-    let id: String = row.get("id");
-    let status_str: String = row.get("status");
-    let user: Option<String> = row.get("user");
-    let interactive: bool = row.get::<i32, _>("interactive") != 0;
-    let prompt: Option<String> = row.get("prompt");
-    let worktree: bool = row.get::<i32, _>("worktree") != 0;
-    let system_prompt: Option<String> = row.get("system_prompt");
-    let tmux_session: Option<String> = row.get("tmux_session");
-    let tool_policy_str: String = row.get("tool_policy");
-    let tool_policy: ToolPolicy = serde_json::from_str(&tool_policy_str).unwrap_or_default();
-    let model: Option<String> = row.get("model");
-    // env column may not exist in older databases (backward compatibility): default to empty map.
-    let env_str: String = row.try_get("env").unwrap_or_else(|_| "{}".to_string());
-    let env: HashMap<String, String> = serde_json::from_str(&env_str).unwrap_or_default();
-    let created_at: String = row.get("created_at");
-    let updated_at: String = row.get("updated_at");
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Convert a raw entity [`agent_entity::Model`] into the domain [`Agent`] type.
+fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
+    let tool_policy: ToolPolicy = serde_json::from_str(&model.tool_policy).unwrap_or_default();
+    let env: HashMap<String, String> = serde_json::from_str(&model.env).unwrap_or_default();
 
     Ok(Agent {
-        id: Uuid::parse_str(&id)?,
-        name: row.get("name"),
-        status: status_str.parse()?,
+        id: Uuid::parse_str(&model.id)?,
+        name: model.name,
+        status: model.status.parse()?,
         config: AgentConfig {
-            working_dir: row.get("working_dir"),
-            user,
-            shell: row.get("shell"),
-            interactive,
-            prompt,
-            worktree,
-            system_prompt,
+            working_dir: model.working_dir,
+            user: model.user,
+            shell: model.shell,
+            interactive: model.interactive != 0,
+            prompt: model.prompt,
+            worktree: model.worktree != 0,
+            system_prompt: model.system_prompt,
             tool_policy,
-            model,
+            model: model.model,
             env,
         },
-        tmux_session,
-        created_at: DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc),
-        updated_at: DateTime::parse_from_rfc3339(&updated_at)?.with_timezone(&Utc),
+        tmux_session: model.tmux_session,
+        created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
+        updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -337,7 +304,6 @@ mod tests {
 
         storage.add(&agent).await.unwrap();
 
-        // Set model and update
         agent.config.model = Some("opus".to_string());
         agent.updated_at = chrono::Utc::now();
         storage.update(&agent).await.unwrap();
@@ -345,7 +311,6 @@ mod tests {
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
         assert_eq!(retrieved.config.model, Some("opus".to_string()));
 
-        // Change model
         agent.config.model = Some("sonnet".to_string());
         agent.updated_at = chrono::Utc::now();
         storage.update(&agent).await.unwrap();
@@ -353,7 +318,6 @@ mod tests {
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
         assert_eq!(retrieved.config.model, Some("sonnet".to_string()));
 
-        // Clear model
         agent.config.model = None;
         agent.updated_at = chrono::Utc::now();
         storage.update(&agent).await.unwrap();
