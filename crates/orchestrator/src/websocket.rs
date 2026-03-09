@@ -237,7 +237,7 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 } else {
                     info!(%agent_id, "Agent query completed successfully");
                 }
-                let usage = msg.get("usage").and_then(|u| {
+                let usage = msg.get("usage").map(|u| {
                     Some(crate::types::UsageSnapshot {
                         input_tokens: u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
                         output_tokens: u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
@@ -261,7 +261,13 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                             .unwrap_or(0),
                     })
                 });
-                registry.notify_result(ResultInfo { agent_id: *agent_id, is_error, usage }).await;
+                registry
+                    .notify_result(ResultInfo {
+                        agent_id: *agent_id,
+                        is_error,
+                        usage: usage.expect("usage"),
+                    })
+                    .await;
             }
             "control_request" => {
                 handle_control_request(agent_id, &msg, registry).await;

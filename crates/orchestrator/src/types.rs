@@ -356,6 +356,7 @@ pub struct UsageSnapshot {
 
 /// Session-level aggregated usage — shared shape for both the active session
 /// and the cumulative lifetime totals in [`AgentUsageStats`].
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionUsage {
     pub input_tokens: u64,
@@ -374,6 +375,7 @@ pub struct SessionUsage {
 
 /// Per-agent aggregated usage statistics, including the active session and
 /// lifetime cumulative totals.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentUsageStats {
     pub agent_id: Uuid,
@@ -399,10 +401,12 @@ pub struct ResultInfo {
 ///
 /// Currently has no required fields; reserved for future options (e.g. forcing
 /// a checkpoint even when under threshold).
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ClearContextRequest {}
 
 /// Response body for POST /agents/{id}/clear-context.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClearContextResponse {
     pub agent_id: Uuid,
