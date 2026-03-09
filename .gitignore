@@ -66,6 +66,8 @@ tags.temp
 
 # AI
 .claude/settings.local.json
+.claude/scripts/merge-claude-settings.sh
+.claude/settings/settings.redact.json
 
 # BAML generated clients (OpenAPI spec)
 baml_openapi/
