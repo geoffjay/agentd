@@ -214,13 +214,13 @@ fn create_source(config: &TaskSourceConfig) -> Box<dyn TaskSource> {
         TaskSourceConfig::GithubIssues { owner, repo, labels, state } => Box::new(
             GithubIssueSource::new(owner.clone(), repo.clone(), labels.clone(), state.clone()),
         ),
-        TaskSourceConfig::GithubPullRequests { owner, repo, labels, state } => Box::new(
-            GithubPullRequestSource::new(
+        TaskSourceConfig::GithubPullRequests { owner, repo, labels, state } => {
+            Box::new(GithubPullRequestSource::new(
                 owner.clone(),
                 repo.clone(),
                 labels.clone(),
                 state.clone(),
-            ),
-        ),
+            ))
+        }
     }
 }

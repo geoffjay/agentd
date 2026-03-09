@@ -119,7 +119,6 @@ impl AgentStorage {
     }
 
     /// Permanently deletes an agent by UUID.
-    #[allow(dead_code)]
     pub async fn delete(&self, id: &Uuid) -> Result<()> {
         let result = agent_entity::Entity::delete_many()
             .filter(agent_entity::Column::Id.eq(id.to_string()))
