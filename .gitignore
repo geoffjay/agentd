@@ -58,6 +58,9 @@ tags.temp
 # Other
 .env
 
+# Layer config
+.otter
+
 # Documentation build
 .venv
 

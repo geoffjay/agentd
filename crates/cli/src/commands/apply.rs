@@ -91,6 +91,14 @@ pub enum SourceTemplate {
         #[serde(default = "default_state")]
         state: String,
     },
+    GithubPullRequests {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_state")]
+        state: String,
+    },
 }
 
 fn default_state() -> String {
@@ -302,6 +310,9 @@ pub async fn apply_workflow_file(
     let source_config = match tmpl.source {
         SourceTemplate::GithubIssues { owner, repo, labels, state } => {
             TaskSourceConfig::GithubIssues { owner, repo, labels, state }
+        }
+        SourceTemplate::GithubPullRequests { owner, repo, labels, state } => {
+            TaskSourceConfig::GithubPullRequests { owner, repo, labels, state }
         }
     };
 
@@ -745,6 +756,7 @@ state: closed
                 assert_eq!(labels, vec!["bug"]);
                 assert_eq!(state, "closed");
             }
+            other => panic!("Expected GithubIssues, got {:?}", other),
         }
     }
 

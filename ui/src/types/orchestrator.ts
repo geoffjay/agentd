@@ -124,7 +124,6 @@ export type DispatchStatus = 'pending' | 'dispatched' | 'completed' | 'failed' |
 
 /**
  * Tagged union for different task source backends.
- * Currently only GitHub Issues is supported.
  */
 export type TaskSourceConfig =
   | {
@@ -133,6 +132,13 @@ export type TaskSourceConfig =
       repo: string
       labels: string[]
       state: 'open' | 'closed' | 'all'
+    }
+  | {
+      type: 'github_pull_requests'
+      owner: string
+      repo: string
+      labels: string[]
+      state: 'open' | 'closed' | 'merged' | 'all'
     }
 
 /**

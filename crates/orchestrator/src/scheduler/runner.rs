@@ -1,4 +1,4 @@
-use crate::scheduler::github::GithubIssueSource;
+use crate::scheduler::github::{GithubIssueSource, GithubPullRequestSource};
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
 use crate::scheduler::template::render_template;
@@ -213,6 +213,14 @@ fn create_source(config: &TaskSourceConfig) -> Box<dyn TaskSource> {
     match config {
         TaskSourceConfig::GithubIssues { owner, repo, labels, state } => Box::new(
             GithubIssueSource::new(owner.clone(), repo.clone(), labels.clone(), state.clone()),
+        ),
+        TaskSourceConfig::GithubPullRequests { owner, repo, labels, state } => Box::new(
+            GithubPullRequestSource::new(
+                owner.clone(),
+                repo.clone(),
+                labels.clone(),
+                state.clone(),
+            ),
         ),
     }
 }
