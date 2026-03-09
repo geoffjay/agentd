@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Build artifacts
+target/
+**/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python virtual environment (if present)
+.venv/
+venv/
+__pycache__/
+
+# Node modules (if any)
+node_modules/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Test fixtures
+*.lock.bak
+
+# Logs
+*.log
+logs/
+
+# macOS
+.DS_Store
+
+# Linux
+Thumbs.db

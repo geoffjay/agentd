@@ -303,6 +303,124 @@ cargo run -p cli -- orchestrator list-agents
 cargo run -p cli -- apply .agentd/
 ```
 
+## Docker Support
+
+agentd provides Docker support for simplified development setup, CI testing, and deployment to cloud environments.
+
+### Prerequisites
+
+- Docker 20.10+
+- Docker Compose 2.0+
+
+### Quick Start
+
+```bash
+# Build the Docker image
+docker build -t agentd:latest .
+
+# Start all services
+docker-compose up -d
+
+# Check service status
+docker-compose ps
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+### Service Ports
+
+| Service | Container Port | Host Port | Description |
+|---------|---------------|-----------|-------------|
+| ask | 17001 | 17001 | Interactive question service |
+| hook | 17002 | 17002 | Shell hook integration |
+| monitor | 17003 | 17003 | System monitoring |
+| notify | 17004 | 17004 | Notification service |
+| wrap | 17005 | 17005 | Tmux session management |
+| orchestrator | 17006 | 17006 | Agent orchestration |
+
+### Using the CLI with Docker
+
+```bash
+# Use the CLI to interact with Docker services
+export ORCHESTRATOR_SERVICE_URL=http://localhost:17006
+agent status
+agent orchestrator list-agents
+agent apply .agentd/
+```
+
+### Development Mode
+
+For development with hot reload on code changes:
+
+```bash
+# Start with development override
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --watch
+
+# Or rebuild on changes
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml build --no-cache
+```
+
+### Persistent Data
+
+SQLite databases are stored in named volumes:
+- `agentd-notify-data` - Notification service database
+- `agentd-orchestrator-data` - Orchestrator service database
+
+To remove persistent data:
+```bash
+docker-compose down -v
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `RUST_LOG` | Logging level | `info` |
+| `LOG_FORMAT` | Set to `json` for structured logging | `json` (in Docker) |
+| `PORT` | Service port (per-service) | See table above |
+| `NOTIFY_SERVICE_URL` | Notification service URL | `http://notify:17004` |
+| `WRAP_SERVICE_URL` | Wrap service URL | `http://wrap:17005` |
+| `ORCHESTRATOR_SERVICE_URL` | Orchestrator URL for CLI | `http://localhost:17006` |
+
+### Health Checks
+
+All services expose `/health` endpoints for health checking:
+
+```bash
+# Check individual service health
+curl http://localhost:17006/health
+
+# Check all services via CLI
+agent status
+```
+
+### Prometheus Metrics
+
+All services expose `/metrics` endpoints for Prometheus scraping:
+
+```bash
+curl http://localhost:17006/metrics
+```
+
+### Troubleshooting
+
+```bash
+# View service logs
+docker-compose logs orchestrator
+docker-compose logs -f notify  # Follow logs
+
+# Restart a service
+docker-compose restart orchestrator
+
+# Rebuild and restart
+docker-compose build --no-cache
+docker-compose up -d --force-recreate
+```
+
 ## Configuration
 
 For the complete configuration reference including all environment variables, data storage paths, and plist/systemd customization, see the **[Configuration Guide](docs/public/configuration.md)**.
