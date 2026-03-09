@@ -240,10 +240,7 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 let usage = msg.get("usage").and_then(|u| {
                     Some(crate::types::UsageSnapshot {
                         input_tokens: u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                        output_tokens: u
-                            .get("output_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0),
+                        output_tokens: u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
                         cache_read_input_tokens: u
                             .get("cache_read_input_tokens")
                             .and_then(|v| v.as_u64())
@@ -257,19 +254,14 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                             .and_then(|v| v.as_f64())
                             .unwrap_or(0.0),
                         num_turns: u.get("num_turns").and_then(|v| v.as_u64()).unwrap_or(0),
-                        duration_ms: u
-                            .get("duration_ms")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0),
+                        duration_ms: u.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(0),
                         duration_api_ms: u
                             .get("duration_api_ms")
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0),
                     })
                 });
-                registry
-                    .notify_result(ResultInfo { agent_id: *agent_id, is_error, usage })
-                    .await;
+                registry.notify_result(ResultInfo { agent_id: *agent_id, is_error, usage }).await;
             }
             "control_request" => {
                 handle_control_request(agent_id, &msg, registry).await;
