@@ -1,2 +1,14 @@
 VAR GITHUB_USER=geoffjay
 VAR GITHUB_REPO=agentd
+VAR GITHUB_PROJECT_ID=5
+
+LAYER https://github.com/otter-layers/claude-code-redaction \
+  TARGET .claude/ \
+  AFTER ["./.claude/scripts/merge-claude-settings.sh"]
+
+LAYER https://github.com/otter-layers/agentd-github-template \
+  TARGET .agentd/ \
+  TEMPLATE \
+    github_user=${GITHUB_USER} \
+    github_repo=${GITHUB_REPO} \
+    github_project_id=${GITHUB_PROJECT_ID}
