@@ -43,3 +43,6 @@ export type { UseAllAgentsStreamResult } from './useAllAgentsStream'
 
 export { useAgentEvents } from './useAgentEvents'
 export type { UseAgentEventsResult } from './useAgentEvents'
+
+export { useAgentUsage } from './useAgentUsage'
+export type { UseAgentUsageReturn } from './useAgentUsage'

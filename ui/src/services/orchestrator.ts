@@ -10,7 +10,9 @@ import { serviceConfig } from './config'
 import type { HealthResponse, PaginatedResponse } from '@/types/common'
 import type {
   Agent,
+  AgentUsageStats,
   ApprovalActionRequest,
+  ClearContextResponse,
   CreateAgentRequest,
   CreateWorkflowRequest,
   DispatchRecord,
@@ -66,6 +68,18 @@ export class OrchestratorClient extends ApiClient {
 
   updateModel(agentId: string, request: SetModelRequest): Promise<Agent> {
     return this.put<Agent>(`/agents/${agentId}/model`, request)
+  }
+
+  // -------------------------------------------------------------------------
+  // Usage & context management
+  // -------------------------------------------------------------------------
+
+  getAgentUsage(agentId: string): Promise<AgentUsageStats> {
+    return this.get<AgentUsageStats>(`/agents/${agentId}/usage`)
+  }
+
+  clearContext(agentId: string): Promise<ClearContextResponse> {
+    return this.post<ClearContextResponse>(`/agents/${agentId}/clear-context`, {})
   }
 
   // -------------------------------------------------------------------------
