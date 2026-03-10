@@ -46,6 +46,8 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents/{id}/message", post(send_message))
         .route("/agents/{id}/model", axum::routing::put(set_agent_model))
         .route("/agents/{id}/policy", get(get_agent_policy).put(update_agent_policy))
+        .route("/agents/{id}/usage", get(get_agent_usage))
+        .route("/agents/{id}/clear-context", post(clear_agent_context))
         .route("/agents/{id}/approvals", get(list_agent_approvals))
         .route("/approvals", get(list_all_approvals))
         .route("/approvals/{id}", get(get_approval))
@@ -204,6 +206,36 @@ async fn set_agent_model(
     info!(agent_id = %id, model = ?agent.config.model, restart = req.restart, "Agent model changed via API");
 
     Ok(Json(AgentResponse::from(agent)))
+}
+
+// -- Usage & context endpoints --
+
+/// Get usage statistics for an agent.
+async fn get_agent_usage(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify agent exists; 404 if not.
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let stats = state.manager.get_usage_stats(&id).await?;
+
+    Ok(Json(stats))
+}
+
+/// Clear an agent's context and start a fresh session.
+async fn clear_agent_context(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify agent exists; 404 if not.
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let response = state.manager.clear_context(&id).await?;
+
+    info!(agent_id = %id, new_session = response.new_session_number, "Agent context cleared via API");
+
+    Ok(Json(response))
 }
 
 // -- Tool approval endpoints --
