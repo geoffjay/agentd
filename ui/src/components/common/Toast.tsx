@@ -95,7 +95,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
       aria-atomic="true"
       className={[
         'relative overflow-hidden rounded-lg border border-gray-700 bg-gray-800 shadow-xl',
-        'border-l-4 max-w-sm w-full',
+        'border-l-4',
         BORDER[type] ?? 'border-l-gray-500',
       ].join(' ')}
     >

@@ -188,7 +188,7 @@ function ClearContextDialog({ open, session, loading, onConfirm, onCancel }: Cle
         aria-modal="true"
         aria-labelledby="clear-context-title"
         aria-describedby="clear-context-desc"
-        className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+        className="relative rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
       >
         <h2
           id="clear-context-title"
