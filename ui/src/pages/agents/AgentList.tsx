@@ -82,6 +82,7 @@ export function AgentList() {
     createAgent,
     deleteAgent,
     bulkDelete,
+    usageMap,
   } = useAgents({
     status,
     search,
@@ -219,6 +220,7 @@ export function AgentList() {
         onBulkDelete={bulkDelete}
         selectedIds={selectedIds}
         onSelectChange={setSelectedIds}
+        usageMap={usageMap}
       />
 
       {/* Pagination */}
