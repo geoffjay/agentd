@@ -59,8 +59,8 @@ use orchestrator::scheduler::types::{
     WorkflowResponse,
 };
 use orchestrator::types::{
-    AgentResponse, AgentStatus, ApprovalStatus, CreateAgentRequest, PendingApproval,
-    SendMessageRequest, ToolPolicy,
+    AgentResponse, AgentStatus, AgentUsageStats, ApprovalStatus, ClearContextResponse,
+    CreateAgentRequest, PendingApproval, SendMessageRequest, SessionUsage, ToolPolicy,
 };
 
 /// Orchestrator service management subcommands.
@@ -174,6 +174,14 @@ pub enum OrchestratorCommand {
         // Future: --env-file <path> to load vars from a dotenv-style file.
         #[arg(long = "env", value_name = "KEY=VALUE")]
         env_vars: Vec<String>,
+
+        /// Token threshold for automatic context clearing.
+        ///
+        /// When the agent's cumulative token usage exceeds this threshold,
+        /// the context is automatically cleared and a new session starts.
+        /// If not specified, no automatic context clearing is performed.
+        #[arg(long)]
+        auto_clear_threshold: Option<u64>,
     },
 
     /// Get details of a specific agent.
@@ -350,6 +358,54 @@ pub enum OrchestratorCommand {
         /// Restart the agent process immediately with the new model
         #[arg(long)]
         restart: bool,
+    },
+
+    /// Get usage statistics for an agent.
+    ///
+    /// Shows current session and cumulative usage including tokens,
+    /// cost, turns, and duration.
+    ///
+    /// # Examples
+    ///
+    /// By agent ID:
+    ///
+    ///   agent orchestrator usage 550e8400-e29b-41d4-a716-446655440000
+    ///
+    /// By agent name:
+    ///
+    ///   agent orchestrator usage --name my-agent
+    Usage {
+        /// Agent ID (UUID)
+        #[arg(conflicts_with = "name")]
+        id: Option<String>,
+
+        /// Agent name (resolves to first matching agent)
+        #[arg(long, conflicts_with = "id")]
+        name: Option<String>,
+    },
+
+    /// Clear an agent's context and start a fresh session.
+    ///
+    /// Terminates the current context, captures usage stats, and restarts
+    /// the agent with a clean session.
+    ///
+    /// # Examples
+    ///
+    /// By agent ID:
+    ///
+    ///   agent orchestrator clear-context 550e8400-e29b-41d4-a716-446655440000
+    ///
+    /// By agent name:
+    ///
+    ///   agent orchestrator clear-context --name my-agent
+    ClearContext {
+        /// Agent ID (UUID)
+        #[arg(conflicts_with = "name")]
+        id: Option<String>,
+
+        /// Agent name (resolves to first matching agent)
+        #[arg(long, conflicts_with = "id")]
+        name: Option<String>,
     },
 
     /// Check the health of the orchestrator service.
@@ -558,6 +614,7 @@ impl OrchestratorCommand {
                 model,
                 tool_policy,
                 env_vars,
+                auto_clear_threshold,
             } => {
                 create_agent(
                     client,
@@ -575,6 +632,7 @@ impl OrchestratorCommand {
                     model.as_deref(),
                     tool_policy.as_deref(),
                     env_vars,
+                    *auto_clear_threshold,
                     json,
                 )
                 .await
@@ -605,6 +663,12 @@ impl OrchestratorCommand {
                     json,
                 )
                 .await
+            }
+            OrchestratorCommand::Usage { id, name } => {
+                usage_cmd(client, id.as_deref(), name.as_deref(), json).await
+            }
+            OrchestratorCommand::ClearContext { id, name } => {
+                clear_context_cmd(client, id.as_deref(), name.as_deref(), json).await
             }
             OrchestratorCommand::Health => orchestrator_health(client, json).await,
             OrchestratorCommand::ListApprovals { agent_id, status } => {
@@ -733,6 +797,7 @@ async fn create_agent(
     model: Option<&str>,
     tool_policy_json: Option<&str>,
     env_vars: &[String],
+    auto_clear_threshold: Option<u64>,
     json: bool,
 ) -> Result<()> {
     // Resolve working directory: use provided value or default to $PWD
@@ -764,7 +829,7 @@ async fn create_agent(
         tool_policy,
         model: model.map(|s| s.to_string()),
         env,
-        auto_clear_threshold: None,
+        auto_clear_threshold,
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -1194,6 +1259,134 @@ async fn set_model_cmd(
     }
 
     Ok(())
+}
+
+// -- Usage & context --
+
+async fn usage_cmd(
+    client: &OrchestratorClient,
+    id: Option<&str>,
+    name: Option<&str>,
+    json: bool,
+) -> Result<()> {
+    let agent_id = match (id, name) {
+        (Some(agent_id), _) => parse_uuid(agent_id)?,
+        (_, Some(agent_name)) => resolve_agent_id(client, None, Some(agent_name)).await?,
+        (None, None) => bail!("Either an agent ID or --name must be provided."),
+    };
+
+    let stats =
+        client.get_agent_usage(&agent_id).await.context("Failed to get agent usage stats")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&stats)?);
+    } else {
+        display_usage_stats(&stats);
+    }
+
+    Ok(())
+}
+
+async fn clear_context_cmd(
+    client: &OrchestratorClient,
+    id: Option<&str>,
+    name: Option<&str>,
+    json: bool,
+) -> Result<()> {
+    let agent_id = match (id, name) {
+        (Some(agent_id), _) => parse_uuid(agent_id)?,
+        (_, Some(agent_name)) => resolve_agent_id(client, None, Some(agent_name)).await?,
+        (None, None) => bail!("Either an agent ID or --name must be provided."),
+    };
+
+    let response =
+        client.clear_context(&agent_id).await.context("Failed to clear agent context")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        display_clear_context_response(&response);
+    }
+
+    Ok(())
+}
+
+fn display_usage_stats(stats: &AgentUsageStats) {
+    println!("{}", "Agent Usage Statistics".blue().bold());
+    println!("{}", "=".repeat(60).cyan());
+    println!("{}: {}", "Agent ID".bold(), stats.agent_id);
+    println!("{}: {}", "Session Count".bold(), stats.session_count);
+    println!();
+
+    if let Some(ref session) = stats.current_session {
+        println!("{}", "Current Session".green().bold());
+        println!("{}", "-".repeat(60).cyan());
+        display_session_usage(session);
+        println!();
+    } else {
+        println!("{}", "No active session.".yellow());
+        println!();
+    }
+
+    println!("{}", "Cumulative (All Sessions)".green().bold());
+    println!("{}", "-".repeat(60).cyan());
+    display_session_usage(&stats.cumulative);
+}
+
+fn display_session_usage(usage: &SessionUsage) {
+    println!("  {}: {}", "Input Tokens".bold(), format_tokens(usage.input_tokens));
+    println!("  {}: {}", "Output Tokens".bold(), format_tokens(usage.output_tokens));
+    println!("  {}: {}", "Cache Read Tokens".bold(), format_tokens(usage.cache_read_input_tokens));
+    println!(
+        "  {}: {}",
+        "Cache Creation Tokens".bold(),
+        format_tokens(usage.cache_creation_input_tokens)
+    );
+    println!("  {}: ${:.4}", "Total Cost".bold(), usage.total_cost_usd);
+    println!("  {}: {}", "Turns".bold(), usage.num_turns);
+    println!("  {}: {}", "Duration".bold(), format_duration_ms(usage.duration_ms));
+    println!("  {}: {}", "API Duration".bold(), format_duration_ms(usage.duration_api_ms));
+    println!("  {}: {}", "Results".bold(), usage.result_count);
+    println!("  {}: {}", "Started".bold(), usage.started_at);
+    if let Some(ended) = usage.ended_at {
+        println!("  {}: {}", "Ended".bold(), ended);
+    }
+}
+
+fn display_clear_context_response(response: &ClearContextResponse) {
+    println!("{}", "Context cleared successfully!".green().bold());
+    println!("{}", "=".repeat(60).cyan());
+    println!("{}: {}", "Agent ID".bold(), response.agent_id);
+    println!("{}: {}", "New Session Number".bold(), response.new_session_number);
+
+    if let Some(ref usage) = response.session_usage {
+        println!();
+        println!("{}", "Session Usage at Clear".yellow().bold());
+        println!("{}", "-".repeat(60).cyan());
+        display_session_usage(usage);
+    }
+}
+
+fn format_tokens(count: u64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}K", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
+}
+
+fn format_duration_ms(ms: u64) -> String {
+    if ms >= 60_000 {
+        let mins = ms / 60_000;
+        let secs = (ms % 60_000) / 1_000;
+        format!("{}m {}s", mins, secs)
+    } else if ms >= 1_000 {
+        format!("{:.1}s", ms as f64 / 1_000.0)
+    } else {
+        format!("{}ms", ms)
+    }
 }
 
 fn display_policy(policy: &ToolPolicy) {
