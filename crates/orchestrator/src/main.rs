@@ -101,9 +101,7 @@ async fn main() -> anyhow::Result<()> {
                     };
 
                     // 1. Persist usage to DB.
-                    if let Err(e) =
-                        storage.record_session_usage(&info.agent_id, &usage).await
-                    {
+                    if let Err(e) = storage.record_session_usage(&info.agent_id, &usage).await {
                         error!(
                             agent_id = %info.agent_id,
                             %e,
@@ -144,11 +142,8 @@ async fn main() -> anyhow::Result<()> {
                         }
                     };
 
-                    let current_input = stats
-                        .current_session
-                        .as_ref()
-                        .map(|s| s.input_tokens)
-                        .unwrap_or(0);
+                    let current_input =
+                        stats.current_session.as_ref().map(|s| s.input_tokens).unwrap_or(0);
 
                     if current_input < threshold {
                         return;
