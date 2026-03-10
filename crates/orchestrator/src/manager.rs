@@ -1,5 +1,5 @@
 use crate::storage::AgentStorage;
-use crate::types::{Agent, AgentConfig, AgentStatus};
+use crate::types::{Agent, AgentConfig, AgentStatus, AgentUsageStats, ClearContextResponse};
 use crate::websocket::ConnectionRegistry;
 use chrono::Utc;
 use std::sync::Arc;
@@ -250,6 +250,62 @@ impl AgentManager {
         }
 
         Ok(agent)
+    }
+
+    /// Clear the agent's conversation context by ending the current session,
+    /// restarting the Claude process, and opening a new session row.
+    ///
+    /// Steps:
+    /// 1. Snapshot the current usage stats (so the caller knows what was cleared).
+    /// 2. End the active session in storage (`ended_at = now()`).
+    /// 3. Restart the agent process (kills tmux, relaunches Claude with same UUID).
+    /// 4. Start a fresh session row in storage.
+    /// 5. Return a [`ClearContextResponse`] with the pre-clear stats and the new
+    ///    session number.
+    ///
+    /// If the agent is running and the restart fails, the session is still ended
+    /// and a new one is still opened. Note: `restart_agent` always attempts
+    /// `kill_session` before any hard-failure return, so in practice the old
+    /// process is dead before we reach this point. The narrow exception is if
+    /// `kill_session` itself fails (it only warns), in which case the old
+    /// process *may* still hold context. We still advance the session counter
+    /// to keep storage consistent.
+    pub async fn clear_context(&self, id: &Uuid) -> anyhow::Result<ClearContextResponse> {
+        let agent =
+            self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+
+        // 1. Capture the current usage stats before we mutate anything.
+        let stats = self.storage.get_usage_stats(id).await?;
+        let session_usage = stats.current_session;
+
+        // 2. Close the active session (context is about to be wiped).
+        self.storage.end_session(id).await?;
+
+        // 3. Only restart the agent process if it is currently running.
+        //    For non-running agents we just rotate the session without
+        //    spawning a new process.
+        if agent.status == AgentStatus::Running {
+            if let Err(e) = self.restart_agent(&agent).await {
+                error!(agent_id = %id, %e, "Failed to restart agent during clear_context; session bookkeeping will still proceed");
+            }
+        } else {
+            warn!(agent_id = %id, status = %agent.status, "clear_context called on non-running agent; skipping process restart");
+        }
+
+        // 4. Open a fresh session row.
+        self.storage.start_new_session(id).await?;
+
+        // The new session number is deterministic: previous count + 1.
+        let new_session_number = stats.session_count + 1;
+
+        info!(agent_id = %id, new_session_number, "Agent context cleared");
+
+        Ok(ClearContextResponse { agent_id: *id, session_usage, new_session_number })
+    }
+
+    /// Return the current and cumulative usage statistics for an agent.
+    pub async fn get_usage_stats(&self, id: &Uuid) -> anyhow::Result<AgentUsageStats> {
+        self.storage.get_usage_stats(id).await
     }
 
     /// Restart a running agent: kill the current tmux session and re-launch Claude.
