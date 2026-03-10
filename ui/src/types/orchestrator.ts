@@ -49,7 +49,8 @@ export interface Agent {
   name: string
   status: AgentStatus
   config: AgentConfig
-  tmux_session?: string
+  session_id?: string
+  backend_type?: string
   created_at: string
   updated_at: string
 }

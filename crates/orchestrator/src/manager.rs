@@ -68,7 +68,7 @@ impl AgentManager {
 
         // Mark as running.
         agent.status = AgentStatus::Running;
-        agent.tmux_session = Some(session_name.clone());
+        agent.session_id = Some(session_name.clone());
         agent.updated_at = Utc::now();
         self.storage.update(&agent).await?;
 
@@ -122,7 +122,7 @@ impl AgentManager {
         let mut agent =
             self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
 
-        if let Some(ref session) = agent.tmux_session {
+        if let Some(ref session) = agent.session_id {
             if let Err(e) = self.tmux.kill_session(session) {
                 warn!(agent_id = %id, %e, "Failed to kill tmux session");
             }
@@ -160,7 +160,7 @@ impl AgentManager {
 
         for agent in agents {
             let session_alive = agent
-                .tmux_session
+                .session_id
                 .as_ref()
                 .map(|s| self.tmux.session_exists(s).unwrap_or(false))
                 .unwrap_or(false);
@@ -316,7 +316,7 @@ impl AgentManager {
         let mut agent = agent.clone();
 
         // Kill the existing tmux session.
-        if let Some(ref session) = agent.tmux_session {
+        if let Some(ref session) = agent.session_id {
             if let Err(e) = self.tmux.kill_session(session) {
                 warn!(agent_id = %agent.id, %e, "Failed to kill tmux session during restart");
             }
@@ -345,7 +345,7 @@ impl AgentManager {
 
         // Update state.
         agent.status = AgentStatus::Running;
-        agent.tmux_session = Some(session_name.clone());
+        agent.session_id = Some(session_name.clone());
         agent.updated_at = Utc::now();
         self.storage.update(&agent).await?;
 

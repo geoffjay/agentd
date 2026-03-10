@@ -76,8 +76,9 @@ impl AgentStorage {
             prompt: Set(agent.config.prompt.clone()),
             worktree: Set(if agent.config.worktree { 1 } else { 0 }),
             system_prompt: Set(agent.config.system_prompt.clone()),
-            tmux_session: Set(agent.tmux_session.clone()),
+            session_id: Set(agent.session_id.clone()),
             tool_policy: Set(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default()),
+            backend_type: Set(agent.backend_type.clone()),
             model: Set(agent.config.model.clone()),
             env: Set(serde_json::to_string(&agent.config.env).unwrap_or_else(|_| "{}".to_string())),
             created_at: Set(agent.created_at.to_rfc3339()),
@@ -98,13 +99,14 @@ impl AgentStorage {
         }
     }
 
-    /// Updates the mutable fields of an agent (status, tmux_session, tool_policy, model, updated_at).
+    /// Updates the mutable fields of an agent (status, session_id, backend_type, tool_policy, model, updated_at).
     pub async fn update(&self, agent: &Agent) -> Result<()> {
         use sea_orm::sea_query::Expr;
 
         let result = agent_entity::Entity::update_many()
             .col_expr(agent_entity::Column::Status, Expr::value(agent.status.to_string()))
-            .col_expr(agent_entity::Column::TmuxSession, Expr::value(agent.tmux_session.clone()))
+            .col_expr(agent_entity::Column::SessionId, Expr::value(agent.session_id.clone()))
+            .col_expr(agent_entity::Column::BackendType, Expr::value(agent.backend_type.clone()))
             .col_expr(
                 agent_entity::Column::ToolPolicy,
                 Expr::value(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default()),
@@ -466,7 +468,8 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
             env,
             auto_clear_threshold: model.auto_clear_threshold.and_then(|v| u64::try_from(v).ok()),
         },
-        tmux_session: model.tmux_session,
+        session_id: model.session_id,
+        backend_type: model.backend_type,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
@@ -551,13 +554,13 @@ mod tests {
         storage.add(&agent).await.unwrap();
 
         agent.status = AgentStatus::Running;
-        agent.tmux_session = Some("agentd-orch-test".to_string());
+        agent.session_id = Some("agentd-orch-test".to_string());
         agent.updated_at = Utc::now();
         storage.update(&agent).await.unwrap();
 
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
         assert_eq!(retrieved.status, AgentStatus::Running);
-        assert_eq!(retrieved.tmux_session, Some("agentd-orch-test".to_string()));
+        assert_eq!(retrieved.session_id, Some("agentd-orch-test".to_string()));
     }
 
     #[tokio::test]

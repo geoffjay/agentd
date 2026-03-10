@@ -845,9 +845,9 @@ async fn create_agent(
     // If --attach was requested, exec into the tmux session
     if attach {
         let session = agent
-            .tmux_session
+            .session_id
             .as_deref()
-            .context("Agent response missing 'tmux_session' field — cannot attach")?;
+            .context("Agent response missing 'session_id' field — cannot attach")?;
 
         println!();
         println!("{}", format!("Attaching to tmux session: {session}").cyan());
@@ -918,9 +918,9 @@ async fn attach_agent(
     }
 
     let session = agent
-        .tmux_session
+        .session_id
         .as_deref()
-        .context(format!("Agent '{}' has no tmux session. It may have crashed.", agent.name))?;
+        .context(format!("Agent '{}' has no session. It may have crashed.", agent.name))?;
 
     if std::process::Command::new("tmux")
         .arg("-V")
@@ -1846,8 +1846,8 @@ fn display_agent(agent: &AgentResponse) {
         AgentStatus::Failed => status_str.bright_red(),
     };
     println!("{}: {}", "Status".bold(), colored_status);
-    if let Some(session) = &agent.tmux_session {
-        println!("{}: {}", "Tmux Session".bold(), session);
+    if let Some(session) = &agent.session_id {
+        println!("{}: {}", "Session".bold(), session);
     }
     println!("{}: {}", "Working Dir".bold(), agent.config.working_dir);
     println!("{}: {}", "Shell".bold(), agent.config.shell);
@@ -1940,7 +1940,8 @@ mod tests {
                 env: Default::default(),
                 auto_clear_threshold: None,
             },
-            tmux_session: Some("agentd-orch-abc123".to_string()),
+            session_id: Some("agentd-orch-abc123".to_string()),
+            backend_type: Some("tmux".to_string()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
