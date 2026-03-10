@@ -4535,6 +4535,7 @@ version = "0.2.0"
 dependencies = [
  "agentd-common",
  "anyhow",
+ "async-trait",
  "axum",
  "chrono",
  "metrics",

@@ -29,10 +29,12 @@
 //! ```
 
 pub mod api;
+pub mod backend;
 pub mod client;
 pub mod tmux;
 pub mod types;
 
+pub use backend::{ExecutionBackend, SessionConfig, TmuxBackend};
 pub use client::WrapClient;
 pub use types::{
     HealthResponse, KillSessionResponse, LaunchRequest, LaunchResponse, SessionInfo,
