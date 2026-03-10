@@ -314,8 +314,14 @@ mod tests {
             Ok(check_result) => {
                 assert!(check_result.sessions.is_some());
             }
-            Err(TmuxError::NotInstalled) => {
-                // Expected if tmux is not installed
+            Err(TmuxError::NotInstalled) | Err(TmuxError::ServerNotRunning) => {
+                // Expected if tmux is not installed or server is not running
+            }
+            Err(TmuxError::CommandFailed(msg))
+                if msg.contains("No such file or directory")
+                    || msg.contains("no server running") =>
+            {
+                // Expected when tmux is installed but no server socket exists (e.g. CI)
             }
             Err(e) => {
                 panic!("Unexpected error: {e}");
@@ -485,8 +491,14 @@ mod tests {
                 assert!(check_result.sessions.is_some());
                 assert_eq!(check_result.running, check_result.session_count > 0);
             }
-            Err(TmuxError::NotInstalled) => {
-                // Expected if tmux is not installed
+            Err(TmuxError::NotInstalled) | Err(TmuxError::ServerNotRunning) => {
+                // Expected if tmux is not installed or server is not running
+            }
+            Err(TmuxError::CommandFailed(msg))
+                if msg.contains("No such file or directory")
+                    || msg.contains("no server running") =>
+            {
+                // Expected when tmux is installed but no server socket exists (e.g. CI)
             }
             Err(e) => {
                 // Other errors are unexpected in normal testing
