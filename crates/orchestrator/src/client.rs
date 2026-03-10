@@ -32,8 +32,9 @@ use crate::scheduler::types::{
     CreateWorkflowRequest, DispatchResponse, UpdateWorkflowRequest, WorkflowResponse,
 };
 use crate::types::{
-    AgentResponse, ApprovalActionRequest, CreateAgentRequest, HealthResponse, PaginatedResponse,
-    PendingApproval, SendMessageRequest, SendMessageResponse, SetModelRequest, ToolPolicy,
+    AgentResponse, AgentUsageStats, ApprovalActionRequest, ClearContextRequest,
+    ClearContextResponse, CreateAgentRequest, HealthResponse, PaginatedResponse, PendingApproval,
+    SendMessageRequest, SendMessageResponse, SetModelRequest, ToolPolicy,
 };
 
 /// Typed HTTP client for the orchestrator service.
@@ -133,6 +134,18 @@ impl OrchestratorClient {
     ) -> Result<AgentResponse> {
         let request = SetModelRequest { model, restart };
         self.put(&format!("/agents/{}/model", id), &request).await
+    }
+
+    // -- Usage & context operations --
+
+    /// Get usage statistics for an agent.
+    pub async fn get_agent_usage(&self, id: &Uuid) -> Result<AgentUsageStats> {
+        self.get(&format!("/agents/{}/usage", id)).await
+    }
+
+    /// Clear an agent's context and start a fresh session.
+    pub async fn clear_context(&self, id: &Uuid) -> Result<ClearContextResponse> {
+        self.post(&format!("/agents/{}/clear-context", id), &ClearContextRequest {}).await
     }
 
     // -- Approval operations --
