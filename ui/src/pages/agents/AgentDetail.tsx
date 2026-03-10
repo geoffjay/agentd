@@ -20,10 +20,12 @@ import { AgentLogView } from '@/components/agents/AgentLogView'
 import { AgentCommandInput } from '@/components/agents/AgentCommandInput'
 import { AgentPolicyEditor } from '@/components/agents/AgentPolicyEditor'
 import { AgentApprovals } from '@/components/agents/AgentApprovals'
+import { AgentUsagePanel } from '@/components/agents/AgentUsagePanel'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { CardSkeleton } from '@/components/common/LoadingSkeleton'
 import { useAgentDetail } from '@/hooks/useAgentDetail'
 import { useAgentStream } from '@/hooks/useAgentStream'
+import { useAgentUsage } from '@/hooks/useAgentUsage'
 import type { SetModelRequest, ToolPolicy } from '@/types/orchestrator'
 
 // ---------------------------------------------------------------------------
@@ -183,6 +185,7 @@ export function AgentDetail() {
   } = useAgentDetail(agentId)
 
   const { lines, status: streamStatus, clear: clearLog } = useAgentStream(agentId)
+  const { usage } = useAgentUsage(agentId)
 
   const [confirmTerminate, setConfirmTerminate] = useState(false)
   const [terminating, setTerminating] = useState(false)
@@ -378,6 +381,14 @@ export function AgentDetail() {
         <div className="flex flex-col gap-5">
           {/* Config panel */}
           <AgentConfigPanel agent={agent} />
+
+          {/* Usage panel — shown only when usage data is available */}
+          {usage && (
+            <AgentUsagePanel
+              usage={usage}
+              autoClearThreshold={agent.config.auto_clear_threshold}
+            />
+          )}
 
           {/* Tool policy */}
           <section
