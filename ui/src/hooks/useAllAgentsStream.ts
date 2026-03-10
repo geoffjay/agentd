@@ -18,7 +18,7 @@ import { WebSocketManager } from '@/services/websocket'
 import { serviceConfig } from '@/services/config'
 import { agentEventBus } from '@/services/eventBus'
 import type { ConnectionState } from '@/services/websocket'
-import type { AgentEvent } from '@/types/orchestrator'
+import type { AgentEvent, UsageUpdateEvent, ContextClearedEvent } from '@/types/orchestrator'
 import type { LogLine } from './useAgentStream'
 
 // ---------------------------------------------------------------------------
@@ -66,6 +66,10 @@ export interface UseAllAgentsStreamResult {
   /** Map of agentId → buffered log lines from the /stream endpoint */
   agentMessages: Map<string, LogLine[]>
   connectionState: ConnectionState
+  /** Map of agentId → latest usage snapshot from real-time events */
+  usageUpdates: Map<string, import('@/types/orchestrator').UsageUpdateEvent>
+  /** Map of agentId → latest context-cleared event */
+  contextClears: Map<string, import('@/types/orchestrator').ContextClearedEvent>
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +79,8 @@ export interface UseAllAgentsStreamResult {
 export function useAllAgentsStream(): UseAllAgentsStreamResult {
   const [agentMessages, setAgentMessages] = useState<Map<string, LogLine[]>>(new Map())
   const [connectionState, setConnectionState] = useState<ConnectionState>('Disconnected')
+  const [usageUpdates, setUsageUpdates] = useState<Map<string, UsageUpdateEvent>>(new Map())
+  const [contextClears, setContextClears] = useState<Map<string, ContextClearedEvent>>(new Map())
 
   const managerRef = useRef<WebSocketManager | null>(null)
 
@@ -103,6 +109,26 @@ export function useAllAgentsStream(): UseAllAgentsStreamResult {
       if (parsed.type === 'agent:output') {
         setAgentMessages((prev) => addLine(prev, parsed.agentId, makeLine(parsed.line)))
       }
+
+      // Track latest usage update per agent
+      if (parsed.type === 'agent:usage_update') {
+        const evt = parsed as UsageUpdateEvent
+        setUsageUpdates((prev) => {
+          const next = new Map(prev)
+          next.set(evt.agentId, evt)
+          return next
+        })
+      }
+
+      // Track context cleared events per agent
+      if (parsed.type === 'agent:context_cleared') {
+        const evt = parsed as ContextClearedEvent
+        setContextClears((prev) => {
+          const next = new Map(prev)
+          next.set(evt.agentId, evt)
+          return next
+        })
+      }
     })
 
     manager.connect()
@@ -115,5 +141,5 @@ export function useAllAgentsStream(): UseAllAgentsStreamResult {
     }
   }, [])
 
-  return { agentMessages, connectionState }
+  return { agentMessages, connectionState, usageUpdates, contextClears }
 }

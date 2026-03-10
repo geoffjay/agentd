@@ -30,7 +30,14 @@ export { useAgentDetail } from './useAgentDetail'
 export type { UseAgentDetailOptions, UseAgentDetailResult } from './useAgentDetail'
 
 export { useAgentStream } from './useAgentStream'
-export type { StreamStatus, LogLine, UseAgentStreamResult } from './useAgentStream'
+export type {
+  StreamStatus,
+  LogLine,
+  UseAgentStreamResult,
+  UseAgentStreamOptions,
+  UsageUpdateCallback,
+  ContextClearedCallback,
+} from './useAgentStream'
 
 export { useApprovals } from './useApprovals'
 export type { UseApprovalsOptions, UseApprovalsResult } from './useApprovals'

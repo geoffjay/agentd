@@ -320,6 +320,16 @@ export interface UsageUpdateEvent {
   type: 'agent:usage_update'
   agentId: string
   usage: UsageSnapshot
+  session_number: number
+  timestamp: string
+}
+
+/** Agent context was cleared and a new session started */
+export interface ContextClearedEvent {
+  type: 'agent:context_cleared'
+  agentId: string
+  new_session_number: number
+  previous_session_usage?: SessionUsage
   timestamp: string
 }
 
@@ -332,6 +342,7 @@ export type AgentEvent =
   | WorkflowTaskDispatchedEvent
   | WorkflowTaskCompletedEvent
   | UsageUpdateEvent
+  | ContextClearedEvent
 
 // ---------------------------------------------------------------------------
 // Query params

@@ -8,11 +8,18 @@
  * - Aggregate totals: total cost, total tokens, cache hit ratio
  * - Auto-refresh on a configurable interval (same options as useMetrics)
  * - Pauses when the tab is hidden
+ * - Real-time updates from WebSocket events (debounced to avoid excessive re-renders)
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { orchestratorClient } from '@/services/orchestrator'
-import type { Agent, AgentUsageStats } from '@/types/orchestrator'
+import { agentEventBus } from '@/services/eventBus'
+import type {
+  Agent,
+  AgentUsageStats,
+  UsageUpdateEvent,
+  ContextClearedEvent,
+} from '@/types/orchestrator'
 import type { RefreshInterval } from './useMetrics'
 
 // ---------------------------------------------------------------------------
@@ -66,11 +73,14 @@ const EMPTY_AGGREGATE: AggregateUsage = {
   cacheHitRatio: 0,
 }
 
+/** Debounce window for real-time event updates (ms) */
+const REALTIME_DEBOUNCE_MS = 2_000
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function computeAggregate(entries: AgentUsageEntry[]): AggregateUsage {
+export function computeAggregate(entries: AgentUsageEntry[]): AggregateUsage {
   let totalInputTokens = 0
   let totalOutputTokens = 0
   let totalCacheReadTokens = 0
@@ -104,6 +114,71 @@ function computeAggregate(entries: AgentUsageEntry[]): AggregateUsage {
   }
 }
 
+/**
+ * Apply a usage update event to an entries array, returning new entries + aggregate.
+ */
+function applyUsageEventToEntries(
+  entries: AgentUsageEntry[],
+  event: UsageUpdateEvent,
+): AgentUsageEntry[] {
+  return entries.map((entry) => {
+    if (entry.agentId !== event.agentId) return entry
+    const snapshot = event.usage
+    return {
+      ...entry,
+      stats: {
+        ...entry.stats,
+        cumulative: {
+          ...entry.stats.cumulative,
+          input_tokens: entry.stats.cumulative.input_tokens + snapshot.input_tokens,
+          output_tokens: entry.stats.cumulative.output_tokens + snapshot.output_tokens,
+          cache_read_input_tokens:
+            entry.stats.cumulative.cache_read_input_tokens + snapshot.cache_read_input_tokens,
+          cache_creation_input_tokens:
+            entry.stats.cumulative.cache_creation_input_tokens +
+            snapshot.cache_creation_input_tokens,
+          total_cost_usd: entry.stats.cumulative.total_cost_usd + snapshot.total_cost_usd,
+          num_turns: entry.stats.cumulative.num_turns + snapshot.num_turns,
+          duration_ms: entry.stats.cumulative.duration_ms + snapshot.duration_ms,
+          duration_api_ms: entry.stats.cumulative.duration_api_ms + snapshot.duration_api_ms,
+          result_count: entry.stats.cumulative.result_count + 1,
+        },
+      },
+    }
+  })
+}
+
+/**
+ * Apply a context cleared event: reset current session, bump session count.
+ */
+function applyContextClearToEntries(
+  entries: AgentUsageEntry[],
+  event: ContextClearedEvent,
+): AgentUsageEntry[] {
+  return entries.map((entry) => {
+    if (entry.agentId !== event.agentId) return entry
+    return {
+      ...entry,
+      stats: {
+        ...entry.stats,
+        current_session: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+          total_cost_usd: 0,
+          num_turns: 0,
+          duration_ms: 0,
+          duration_api_ms: 0,
+          result_count: 0,
+          started_at: event.timestamp,
+        },
+        session_count: entry.stats.session_count + 1,
+      },
+    }
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -116,12 +191,29 @@ export function useUsageMetrics(refreshInterval: RefreshInterval = 30_000): UseU
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const mountedRef = useRef(true)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Keep a mutable ref to entries so event handlers can read without stale closures
+  const entriesRef = useRef(entries)
+  entriesRef.current = entries
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
     }
+  }, [])
+
+  // Debounced commit: batches rapid event updates into a single state change
+  const scheduleCommit = useCallback((updatedEntries: AgentUsageEntry[]) => {
+    entriesRef.current = updatedEntries
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      if (!mountedRef.current) return
+      setEntries(entriesRef.current)
+      setAggregate(computeAggregate(entriesRef.current))
+      debounceRef.current = null
+    }, REALTIME_DEBOUNCE_MS)
   }, [])
 
   const fetchAll = useCallback(async () => {
@@ -149,6 +241,7 @@ export function useUsageMetrics(refreshInterval: RefreshInterval = 30_000): UseU
       }
 
       if (mountedRef.current) {
+        entriesRef.current = newEntries
         setEntries(newEntries)
         setAggregate(computeAggregate(newEntries))
         setError(undefined)
@@ -193,6 +286,36 @@ export function useUsageMetrics(refreshInterval: RefreshInterval = 30_000): UseU
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [refreshInterval, fetchAll])
+
+  // ---------------------------------------------------------------------------
+  // Real-time event bus subscriptions (debounced)
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    const unsubUsage = agentEventBus.on<UsageUpdateEvent>(
+      'agent:usage_update',
+      (event) => {
+        if (!mountedRef.current) return
+        const updated = applyUsageEventToEntries(entriesRef.current, event)
+        scheduleCommit(updated)
+      },
+    )
+
+    const unsubCleared = agentEventBus.on<ContextClearedEvent>(
+      'agent:context_cleared',
+      (event) => {
+        if (!mountedRef.current) return
+        const updated = applyContextClearToEntries(entriesRef.current, event)
+        scheduleCommit(updated)
+      },
+    )
+
+    return () => {
+      unsubUsage()
+      unsubCleared()
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [scheduleCommit])
 
   return {
     entries,

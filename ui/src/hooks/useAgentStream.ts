@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { WebSocketManager } from '@/services/websocket'
 import { serviceConfig } from '@/services/config'
+import { agentEventBus } from '@/services/eventBus'
+import type { AgentEvent, UsageUpdateEvent, ContextClearedEvent } from '@/types/orchestrator'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +26,19 @@ export interface LogLine {
   /** Raw text (may contain ANSI escape sequences) */
   text: string
   timestamp: string
+}
+
+/** Callback invoked when a real-time usage update event arrives */
+export type UsageUpdateCallback = (event: UsageUpdateEvent) => void
+
+/** Callback invoked when a context cleared event arrives */
+export type ContextClearedCallback = (event: ContextClearedEvent) => void
+
+export interface UseAgentStreamOptions {
+  /** Called when an agent:usage_update event arrives on the stream */
+  onUsageUpdate?: UsageUpdateCallback
+  /** Called when an agent:context_cleared event arrives on the stream */
+  onContextCleared?: ContextClearedCallback
 }
 
 export interface UseAgentStreamResult {
@@ -68,9 +83,19 @@ function agentStreamUrl(agentId: string): string {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useAgentStream(agentId: string): UseAgentStreamResult {
+export function useAgentStream(
+  agentId: string,
+  options: UseAgentStreamOptions = {},
+): UseAgentStreamResult {
   const [lines, setLines] = useState<LogLine[]>([])
   const [status, setStatus] = useState<StreamStatus>('connecting')
+
+  // Store callbacks in refs so the WebSocket effect doesn't re-run when
+  // callbacks change.
+  const onUsageUpdateRef = useRef(options.onUsageUpdate)
+  const onContextClearedRef = useRef(options.onContextCleared)
+  onUsageUpdateRef.current = options.onUsageUpdate
+  onContextClearedRef.current = options.onContextCleared
 
   const managerRef = useRef<WebSocketManager | null>(null)
 
@@ -98,6 +123,42 @@ export function useAgentStream(agentId: string): UseAgentStreamResult {
 
     const unsubMsg = manager.onMessage((event: MessageEvent) => {
       const rawText = String(event.data)
+
+      // Try to parse as JSON event first
+      let parsed: AgentEvent | null = null
+      try {
+        parsed = JSON.parse(rawText) as AgentEvent
+      } catch {
+        // Not JSON — treat as plain log output
+      }
+
+      if (parsed) {
+        // Emit to the global event bus so other hooks can react
+        agentEventBus.emit(parsed)
+
+        if (parsed.type === 'agent:usage_update') {
+          onUsageUpdateRef.current?.(parsed)
+          return
+        }
+
+        if (parsed.type === 'agent:context_cleared') {
+          onContextClearedRef.current?.(parsed)
+          return
+        }
+
+        // For agent:output events, extract the line text
+        if (parsed.type === 'agent:output') {
+          const incoming = [makeLogLine(parsed.line)]
+          setLines((prev) => capLines(prev, incoming))
+          return
+        }
+
+        // Other structured events are emitted to the bus but not added
+        // to the log buffer.
+        return
+      }
+
+      // Plain text fallback
       const incoming = rawText.split('\n').filter(Boolean).map(makeLogLine)
       setLines((prev) => capLines(prev, incoming))
     })
