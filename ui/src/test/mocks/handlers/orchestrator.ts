@@ -89,6 +89,29 @@ export const orchestratorHandlers = [
   ),
 
   // -------------------------------------------------------------------------
+  // Agent context management
+  // -------------------------------------------------------------------------
+
+  http.post(`${BASE}/agents/:id/clear-context`, ({ params }) =>
+    HttpResponse.json({
+      agent_id: String(params.id),
+      new_session_number: 2,
+      session_usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_read_input_tokens: 20,
+        cache_creation_input_tokens: 10,
+        total_cost_usd: 0.01,
+        num_turns: 2,
+        duration_ms: 1000,
+        duration_api_ms: 800,
+        result_count: 2,
+        started_at: '2024-01-01T00:00:00Z',
+      },
+    }),
+  ),
+
+  // -------------------------------------------------------------------------
   // Agent actions
   // -------------------------------------------------------------------------
 
