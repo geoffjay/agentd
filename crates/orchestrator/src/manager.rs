@@ -263,8 +263,13 @@ impl AgentManager {
     /// 5. Return a [`ClearContextResponse`] with the pre-clear stats and the new
     ///    session number.
     ///
-    /// If the restart fails the session is still ended and a new one is still
-    /// opened — the context is gone regardless of whether the relaunch succeeded.
+    /// If the agent is running and the restart fails, the session is still ended
+    /// and a new one is still opened. Note: `restart_agent` always attempts
+    /// `kill_session` before any hard-failure return, so in practice the old
+    /// process is dead before we reach this point. The narrow exception is if
+    /// `kill_session` itself fails (it only warns), in which case the old
+    /// process *may* still hold context. We still advance the session counter
+    /// to keep storage consistent.
     pub async fn clear_context(&self, id: &Uuid) -> anyhow::Result<ClearContextResponse> {
         let agent =
             self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
@@ -276,19 +281,22 @@ impl AgentManager {
         // 2. Close the active session (context is about to be wiped).
         self.storage.end_session(id).await?;
 
-        // 3. Restart the agent process.  Log but do not abort if this fails —
-        //    the conversation history is already gone from Claude's perspective
-        //    once the process is killed.
-        if let Err(e) = self.restart_agent(&agent).await {
-            error!(agent_id = %id, %e, "Failed to restart agent during clear_context; session bookkeeping will still proceed");
+        // 3. Only restart the agent process if it is currently running.
+        //    For non-running agents we just rotate the session without
+        //    spawning a new process.
+        if agent.status == AgentStatus::Running {
+            if let Err(e) = self.restart_agent(&agent).await {
+                error!(agent_id = %id, %e, "Failed to restart agent during clear_context; session bookkeeping will still proceed");
+            }
+        } else {
+            warn!(agent_id = %id, status = %agent.status, "clear_context called on non-running agent; skipping process restart");
         }
 
         // 4. Open a fresh session row.
         self.storage.start_new_session(id).await?;
 
-        // Derive the new session number from the updated stats.
-        let new_stats = self.storage.get_usage_stats(id).await?;
-        let new_session_number = new_stats.session_count;
+        // The new session number is deterministic: previous count + 1.
+        let new_session_number = stats.session_count + 1;
 
         info!(agent_id = %id, new_session_number, "Agent context cleared");
 
