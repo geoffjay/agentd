@@ -7,7 +7,9 @@ use crate::{
     entity::agent as agent_entity,
     entity::usage_session as session_entity,
     migration::Migrator,
-    types::{Agent, AgentConfig, AgentStatus, AgentUsageStats, SessionUsage, ToolPolicy, UsageSnapshot},
+    types::{
+        Agent, AgentConfig, AgentStatus, AgentUsageStats, SessionUsage, ToolPolicy, UsageSnapshot,
+    },
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
