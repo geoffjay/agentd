@@ -36,6 +36,7 @@ export interface AgentConfig {
   tool_policy: ToolPolicy
   model?: string
   env?: Record<string, string>
+  auto_clear_threshold?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +71,7 @@ export interface CreateAgentRequest {
   tool_policy: ToolPolicy
   model?: string
   env?: Record<string, string>
+  auto_clear_threshold?: number
 }
 
 /** Send a message to an agent */
@@ -214,6 +216,55 @@ export interface WorkflowConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Usage tracking and context management
+// ---------------------------------------------------------------------------
+
+/** Token counts, cost, and timing from a single `result` message */
+export interface UsageSnapshot {
+  input_tokens: number
+  output_tokens: number
+  cache_read_input_tokens: number
+  cache_creation_input_tokens: number
+  total_cost_usd: number
+  num_turns: number
+  duration_ms: number
+  duration_api_ms: number
+}
+
+/** Session-level aggregated usage */
+export interface SessionUsage {
+  input_tokens: number
+  output_tokens: number
+  cache_read_input_tokens: number
+  cache_creation_input_tokens: number
+  total_cost_usd: number
+  num_turns: number
+  duration_ms: number
+  duration_api_ms: number
+  result_count: number
+  started_at: string
+  ended_at?: string
+}
+
+/** Per-agent aggregated usage statistics */
+export interface AgentUsageStats {
+  agent_id: string
+  current_session?: SessionUsage
+  cumulative: SessionUsage
+  session_count: number
+}
+
+/** Request body for POST /agents/{id}/clear-context */
+export interface ClearContextRequest {}
+
+/** Response body for POST /agents/{id}/clear-context */
+export interface ClearContextResponse {
+  agent_id: string
+  session_usage?: SessionUsage
+  new_session_number: number
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket event types
 // ---------------------------------------------------------------------------
 
@@ -264,6 +315,14 @@ export interface WorkflowTaskCompletedEvent {
   timestamp: string
 }
 
+/** Real-time usage update for an agent (emitted after each result message) */
+export interface UsageUpdateEvent {
+  type: 'agent:usage_update'
+  agentId: string
+  usage: UsageSnapshot
+  timestamp: string
+}
+
 /** Union of all agent-related WebSocket events */
 export type AgentEvent =
   | AgentOutputEvent
@@ -272,6 +331,7 @@ export type AgentEvent =
   | ApprovalResolvedEvent
   | WorkflowTaskDispatchedEvent
   | WorkflowTaskCompletedEvent
+  | UsageUpdateEvent
 
 // ---------------------------------------------------------------------------
 // Query params
