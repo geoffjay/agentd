@@ -79,6 +79,7 @@ impl AgentStorage {
             env: Set(serde_json::to_string(&agent.config.env).unwrap_or_else(|_| "{}".to_string())),
             created_at: Set(agent.created_at.to_rfc3339()),
             updated_at: Set(agent.updated_at.to_rfc3339()),
+            auto_clear_threshold: Set(agent.config.auto_clear_threshold.map(|v| v as i64)),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -106,6 +107,10 @@ impl AgentStorage {
                 Expr::value(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default()),
             )
             .col_expr(agent_entity::Column::Model, Expr::value(agent.config.model.clone()))
+            .col_expr(
+                agent_entity::Column::AutoClearThreshold,
+                Expr::value(agent.config.auto_clear_threshold.map(|v| v as i64)),
+            )
             .col_expr(agent_entity::Column::UpdatedAt, Expr::value(agent.updated_at.to_rfc3339()))
             .filter(agent_entity::Column::Id.eq(agent.id.to_string()))
             .exec(&self.db)
@@ -197,6 +202,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
             tool_policy,
             model: model.model,
             env,
+            auto_clear_threshold: model.auto_clear_threshold.and_then(|v| u64::try_from(v).ok()),
         },
         tmux_session: model.tmux_session,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
@@ -234,6 +240,7 @@ mod tests {
                 tool_policy: ToolPolicy::default(),
                 model: None,
                 env: HashMap::new(),
+                auto_clear_threshold: None,
             },
         )
     }
@@ -364,5 +371,50 @@ mod tests {
         storage.add(&agent).await.unwrap();
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
         assert!(retrieved.config.env.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_add_with_auto_clear_threshold() {
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("threshold-agent");
+        agent.config.auto_clear_threshold = Some(50_000);
+
+        storage.add(&agent).await.unwrap();
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.auto_clear_threshold, Some(50_000));
+    }
+
+    #[tokio::test]
+    async fn test_auto_clear_threshold_defaults_to_none() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("no-threshold-agent");
+        assert_eq!(agent.config.auto_clear_threshold, None);
+
+        storage.add(&agent).await.unwrap();
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.auto_clear_threshold, None);
+    }
+
+    #[tokio::test]
+    async fn test_update_persists_auto_clear_threshold() {
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("threshold-update-agent");
+        storage.add(&agent).await.unwrap();
+
+        // Set a threshold and update.
+        agent.config.auto_clear_threshold = Some(100_000);
+        agent.updated_at = chrono::Utc::now();
+        storage.update(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.auto_clear_threshold, Some(100_000));
+
+        // Clear the threshold and update.
+        agent.config.auto_clear_threshold = None;
+        agent.updated_at = chrono::Utc::now();
+        storage.update(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.auto_clear_threshold, None);
     }
 }

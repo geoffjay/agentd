@@ -76,7 +76,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby={description ? 'confirm-dialog-desc' : undefined}
-        className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+        className="relative rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
       >
         {/* Close button */}
         <button

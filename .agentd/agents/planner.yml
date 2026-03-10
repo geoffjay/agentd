@@ -25,27 +25,3 @@ system_prompt: |
 
   Use the gh CLI to create issues on the geoffjay/agentd repository and add them
   to the GitHub project https://github.com/users/geoffjay/projects/5.
-
-# prompt: |
-#   Analyze the agentd project to identify the purpose of each service created in the crates/ directory. For each crate:
-#
-#   1. Read the open issues for the crate
-#   2. Read its Cargo.toml and main source files to understand what it does
-#   3. Identify its current state (complete, in-progress, stub)
-#   4. Note dependencies between crates
-#
-#   Then, based on your analysis, propose 5-10 issues for the GitHub project at https://github.com/users/geoffjay/projects/5. Focus on:
-#
-#   - Missing functionality or incomplete implementations
-#   - Documentation gaps
-#   - Testing gaps
-#   - Integration points between crates that need work
-#   - Operational concerns (logging, error handling, configuration)
-#
-#   For each proposed issue, create it using:
-#     gh issue create --repo geoffjay/agentd --title "..." --body "..." --label "..."
-#
-#   After creating each issue, add it to the project board:
-#     gh project item-add 5 --owner geoffjay --url <issue-url>
-#
-#   Start by listing the crates/ directory and reading each crate's Cargo.toml.

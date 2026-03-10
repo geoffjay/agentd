@@ -764,6 +764,7 @@ async fn create_agent(
         tool_policy,
         model: model.map(|s| s.to_string()),
         env,
+        auto_clear_threshold: None,
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -1744,6 +1745,7 @@ mod tests {
                 tool_policy: Default::default(),
                 model: None,
                 env: Default::default(),
+                auto_clear_threshold: None,
             },
             tmux_session: Some("agentd-orch-abc123".to_string()),
             created_at: Utc::now(),
