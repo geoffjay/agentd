@@ -46,3 +46,10 @@ export type { UseAgentEventsResult } from './useAgentEvents'
 
 export { useAgentUsage } from './useAgentUsage'
 export type { UseAgentUsageReturn } from './useAgentUsage'
+
+export { useUsageMetrics } from './useUsageMetrics'
+export type {
+  AgentUsageEntry,
+  AggregateUsage,
+  UseUsageMetricsResult,
+} from './useUsageMetrics'
