@@ -1275,10 +1275,8 @@ async fn usage_cmd(
         (None, None) => bail!("Either an agent ID or --name must be provided."),
     };
 
-    let stats = client
-        .get_agent_usage(&agent_id)
-        .await
-        .context("Failed to get agent usage stats")?;
+    let stats =
+        client.get_agent_usage(&agent_id).await.context("Failed to get agent usage stats")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&stats)?);
@@ -1301,10 +1299,8 @@ async fn clear_context_cmd(
         (None, None) => bail!("Either an agent ID or --name must be provided."),
     };
 
-    let response = client
-        .clear_context(&agent_id)
-        .await
-        .context("Failed to clear agent context")?;
+    let response =
+        client.clear_context(&agent_id).await.context("Failed to clear agent context")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);
@@ -1340,11 +1336,7 @@ fn display_usage_stats(stats: &AgentUsageStats) {
 fn display_session_usage(usage: &SessionUsage) {
     println!("  {}: {}", "Input Tokens".bold(), format_tokens(usage.input_tokens));
     println!("  {}: {}", "Output Tokens".bold(), format_tokens(usage.output_tokens));
-    println!(
-        "  {}: {}",
-        "Cache Read Tokens".bold(),
-        format_tokens(usage.cache_read_input_tokens)
-    );
+    println!("  {}: {}", "Cache Read Tokens".bold(), format_tokens(usage.cache_read_input_tokens));
     println!(
         "  {}: {}",
         "Cache Creation Tokens".bold(),
