@@ -13,7 +13,7 @@
 
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Copy, RefreshCw, Settings2, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Eraser, Loader2, RefreshCw, Settings2, Trash2 } from 'lucide-react'
 import { AgentStatusBadge } from '@/components/agents/AgentStatusBadge'
 import { AgentConfigPanel } from '@/components/agents/AgentConfigPanel'
 import { AgentLogView } from '@/components/agents/AgentLogView'
@@ -26,7 +26,8 @@ import { CardSkeleton } from '@/components/common/LoadingSkeleton'
 import { useAgentDetail } from '@/hooks/useAgentDetail'
 import { useAgentStream } from '@/hooks/useAgentStream'
 import { useAgentUsage } from '@/hooks/useAgentUsage'
-import type { SetModelRequest, ToolPolicy } from '@/types/orchestrator'
+import { useToast } from '@/hooks/useToast'
+import type { SessionUsage, SetModelRequest, ToolPolicy } from '@/types/orchestrator'
 
 // ---------------------------------------------------------------------------
 // Model selector constants
@@ -159,6 +160,102 @@ function ChangeModelDialog({ open, currentModel, onSave, onClose }: ChangeModelD
 }
 
 // ---------------------------------------------------------------------------
+// Clear Context dialog — shows session summary before clearing
+// ---------------------------------------------------------------------------
+
+const costFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 })
+
+interface ClearContextDialogProps {
+  open: boolean
+  session?: SessionUsage
+  loading: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function ClearContextDialog({ open, session, loading, onConfirm, onCancel }: ClearContextDialogProps) {
+  if (!open) return null
+
+  const totalTokens = session
+    ? session.input_tokens + session.output_tokens + session.cache_read_input_tokens + session.cache_creation_input_tokens
+    : 0
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" aria-hidden="true" onClick={onCancel} />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="clear-context-title"
+        aria-describedby="clear-context-desc"
+        className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+      >
+        <h2
+          id="clear-context-title"
+          className="text-base font-semibold text-gray-900 dark:text-white"
+        >
+          Clear context?
+        </h2>
+
+        <p id="clear-context-desc" className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          This will clear the agent&apos;s current context and start a new session. Current session usage will be saved.
+        </p>
+
+        {/* Session stats summary */}
+        {session && totalTokens > 0 && (
+          <div className="mt-3 rounded-md bg-gray-50 p-3 dark:bg-gray-700/50">
+            <p className="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+              Current session
+            </p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Input tokens</span>
+              <span className="text-right font-medium text-gray-700 dark:text-gray-300">
+                {session.input_tokens.toLocaleString()}
+              </span>
+              <span className="text-gray-500 dark:text-gray-400">Output tokens</span>
+              <span className="text-right font-medium text-gray-700 dark:text-gray-300">
+                {session.output_tokens.toLocaleString()}
+              </span>
+              <span className="text-gray-500 dark:text-gray-400">Cache tokens</span>
+              <span className="text-right font-medium text-gray-700 dark:text-gray-300">
+                {(session.cache_read_input_tokens + session.cache_creation_input_tokens).toLocaleString()}
+              </span>
+              <span className="text-gray-500 dark:text-gray-400">Cost</span>
+              <span className="text-right font-medium text-gray-700 dark:text-gray-300">
+                {costFmt.format(session.total_cost_usd)}
+              </span>
+              <span className="text-gray-500 dark:text-gray-400">Turns</span>
+              <span className="text-right font-medium text-gray-700 dark:text-gray-300">
+                {session.num_turns}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
+          >
+            {loading ? 'Clearing…' : 'Clear Context'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // AgentDetail
 // ---------------------------------------------------------------------------
 
@@ -185,10 +282,12 @@ export function AgentDetail() {
   } = useAgentDetail(agentId)
 
   const { lines, status: streamStatus, clear: clearLog } = useAgentStream(agentId)
-  const { usage } = useAgentUsage(agentId)
+  const { usage, clearContext, clearing } = useAgentUsage(agentId)
+  const toast = useToast()
 
   const [confirmTerminate, setConfirmTerminate] = useState(false)
   const [terminating, setTerminating] = useState(false)
+  const [confirmClearContext, setConfirmClearContext] = useState(false)
   const [showModelDialog, setShowModelDialog] = useState(false)
   const [policyEditing, setPolicyEditing] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -219,6 +318,20 @@ export function AgentDetail() {
   async function handlePolicySave(policy: ToolPolicy) {
     await updatePolicy(policy)
     setPolicyEditing(false)
+  }
+
+  async function handleClearContext() {
+    try {
+      const response = await clearContext()
+      setConfirmClearContext(false)
+      toast.success('Context cleared', {
+        message: `New session #${response.new_session_number} started`,
+      })
+    } catch (err) {
+      toast.error('Failed to clear context', {
+        message: err instanceof Error ? err.message : 'An unknown error occurred',
+      })
+    }
   }
 
   function copyId() {
@@ -341,6 +454,22 @@ export function AgentDetail() {
               Model
             </button>
 
+            {/* Clear context */}
+            <button
+              type="button"
+              onClick={() => setConfirmClearContext(true)}
+              disabled={!isRunning || clearing}
+              title={!isRunning ? 'Agent must be running to clear context' : undefined}
+              className="flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+            >
+              {clearing ? (
+                <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Eraser size={14} aria-hidden="true" />
+              )}
+              Clear Context
+            </button>
+
             {/* Terminate */}
             <button
               type="button"
@@ -455,6 +584,14 @@ export function AgentDetail() {
         loading={terminating}
         onConfirm={handleTerminate}
         onCancel={() => setConfirmTerminate(false)}
+      />
+
+      <ClearContextDialog
+        open={confirmClearContext}
+        session={usage?.current_session}
+        loading={clearing}
+        onConfirm={handleClearContext}
+        onCancel={() => setConfirmClearContext(false)}
       />
 
       <ChangeModelDialog
