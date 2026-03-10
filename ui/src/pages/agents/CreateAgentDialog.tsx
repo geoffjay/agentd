@@ -43,6 +43,7 @@ interface FormState {
   system_prompt: string
   tool_policy_type: string
   tool_list: string // comma-separated tool names
+  auto_clear_threshold: string // stored as string for input; parsed to number on submit
   env_keys: string[]
   env_values: string[]
 }
@@ -50,6 +51,7 @@ interface FormState {
 interface FormErrors {
   name?: string
   working_dir?: string
+  auto_clear_threshold?: string
   general?: string
 }
 
@@ -85,6 +87,9 @@ function buildRequest(form: FormState): CreateAgentRequest {
     if (key.trim()) env[key.trim()] = form.env_values[i] ?? ''
   })
 
+  const threshold = form.auto_clear_threshold.trim()
+  const parsedThreshold = threshold ? parseInt(threshold, 10) : undefined
+
   return {
     name: form.name.trim(),
     working_dir: form.working_dir.trim(),
@@ -95,6 +100,7 @@ function buildRequest(form: FormState): CreateAgentRequest {
     system_prompt: form.system_prompt.trim() || undefined,
     tool_policy: buildToolPolicy(form.tool_policy_type, form.tool_list),
     env: Object.keys(env).length > 0 ? env : undefined,
+    auto_clear_threshold: parsedThreshold && parsedThreshold > 0 ? parsedThreshold : undefined,
   }
 }
 
@@ -102,6 +108,13 @@ function validate(form: FormState): FormErrors {
   const errors: FormErrors = {}
   if (!form.name.trim()) errors.name = 'Name is required.'
   if (!form.working_dir.trim()) errors.working_dir = 'Working directory is required.'
+  const threshold = form.auto_clear_threshold.trim()
+  if (threshold) {
+    const n = parseInt(threshold, 10)
+    if (isNaN(n) || n <= 0 || !Number.isInteger(Number(threshold))) {
+      errors.auto_clear_threshold = 'Must be a positive integer.'
+    }
+  }
   return errors
 }
 
@@ -155,6 +168,7 @@ const DEFAULT_FORM: FormState = {
   system_prompt: '',
   tool_policy_type: 'allow_all',
   tool_list: '',
+  auto_clear_threshold: '',
   env_keys: [''],
   env_values: [''],
 }
@@ -424,6 +438,28 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                   />
                 </div>
               )}
+            </div>
+
+            {/* Auto-clear Threshold */}
+            <div>
+              <SectionLabel htmlFor="agent-auto-clear" label="Auto-clear Threshold" optional />
+              <input
+                id="agent-auto-clear"
+                type="number"
+                min="1"
+                step="1"
+                value={form.auto_clear_threshold}
+                onChange={(e) => update('auto_clear_threshold', e.target.value)}
+                placeholder="e.g. 100000"
+                className={[
+                  inputCls,
+                  errors.auto_clear_threshold ? 'border-red-500 focus:ring-red-500' : '',
+                ].join(' ')}
+              />
+              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                Automatically clear context when cumulative input tokens exceed this threshold. Leave empty to disable.
+              </p>
+              <FieldError msg={errors.auto_clear_threshold} />
             </div>
 
             {/* Shell */}

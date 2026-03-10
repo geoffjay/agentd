@@ -176,6 +176,16 @@ export function AgentConfigPanel({ agent }: AgentConfigPanelProps) {
 
           <ConfigRow label="Tool Policy">{policyLabel(config.tool_policy)}</ConfigRow>
 
+          <ConfigRow label="Auto-clear">
+            {config.auto_clear_threshold != null && config.auto_clear_threshold > 0 ? (
+              <span className="text-amber-600 dark:text-amber-400">
+                at {config.auto_clear_threshold.toLocaleString()} tokens
+              </span>
+            ) : (
+              <span className="text-gray-500 dark:text-gray-400">Disabled</span>
+            )}
+          </ConfigRow>
+
           {config.system_prompt && <SystemPromptRow prompt={config.system_prompt} />}
 
           {config.env && Object.keys(config.env).length > 0 && <EnvVarsRow env={config.env} />}
