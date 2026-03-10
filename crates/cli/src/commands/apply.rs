@@ -47,6 +47,9 @@ pub struct AgentTemplate {
     /// Environment variables to pass to the agent.
     #[serde(default)]
     pub env: HashMap<String, String>,
+    /// If set, automatically clear the agent's context when the cumulative
+    /// input-token count for the current session exceeds this threshold.
+    pub auto_clear_threshold: Option<u64>,
 }
 
 fn default_working_dir() -> String {
@@ -530,7 +533,7 @@ async fn apply_agent(
         tool_policy: tmpl.tool_policy.clone(),
         model: tmpl.model.clone(),
         env: tmpl.env.clone(),
-        auto_clear_threshold: None,
+        auto_clear_threshold: tmpl.auto_clear_threshold,
     };
 
     let agent = client.create_agent(&request).await?;
