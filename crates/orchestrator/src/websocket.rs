@@ -1,5 +1,5 @@
 use crate::approvals::ApprovalRegistry;
-use crate::types::{ApprovalDecision, ResultInfo, ToolPolicy};
+use crate::types::{ApprovalDecision, ResultInfo, ToolPolicy, UsageSnapshot};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -195,6 +195,52 @@ async fn handle_agent_socket(socket: WebSocket, agent_id: Uuid, registry: Connec
     info!(%agent_id, "Agent WebSocket connection ended");
 }
 
+/// Extract usage data from a Claude Code `result` message.
+///
+/// Token counts are read from the nested `usage` object. Top-level fields
+/// (`total_cost_usd`, `num_turns`, `duration_ms`, `duration_api_ms`) are read
+/// from the message root, falling back to the `usage` sub-object for
+/// backwards compatibility.
+///
+/// Returns `None` when the `usage` block is absent entirely.  Individual
+/// missing fields within the block default to `0` (or `0.0` for cost).
+fn extract_usage(msg: &Value) -> Option<UsageSnapshot> {
+    let usage = msg.get("usage")?;
+
+    Some(UsageSnapshot {
+        input_tokens: usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+        output_tokens: usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+        cache_read_input_tokens: usage
+            .get("cache_read_input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        cache_creation_input_tokens: usage
+            .get("cache_creation_input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        total_cost_usd: msg
+            .get("total_cost_usd")
+            .or_else(|| usage.get("total_cost_usd"))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0),
+        num_turns: msg
+            .get("num_turns")
+            .or_else(|| usage.get("num_turns"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        duration_ms: msg
+            .get("duration_ms")
+            .or_else(|| usage.get("duration_ms"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        duration_api_ms: msg
+            .get("duration_api_ms")
+            .or_else(|| usage.get("duration_api_ms"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+    })
+}
+
 /// Process an incoming NDJSON message from a claude code instance.
 async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &ConnectionRegistry) {
     // Claude sends NDJSON — each line is a separate JSON message.
@@ -237,36 +283,9 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 } else {
                     info!(%agent_id, "Agent query completed successfully");
                 }
-                let usage = msg.get("usage").map(|u| {
-                    Some(crate::types::UsageSnapshot {
-                        input_tokens: u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                        output_tokens: u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                        cache_read_input_tokens: u
-                            .get("cache_read_input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0),
-                        cache_creation_input_tokens: u
-                            .get("cache_creation_input_tokens")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0),
-                        total_cost_usd: u
-                            .get("total_cost_usd")
-                            .and_then(|v| v.as_f64())
-                            .unwrap_or(0.0),
-                        num_turns: u.get("num_turns").and_then(|v| v.as_u64()).unwrap_or(0),
-                        duration_ms: u.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(0),
-                        duration_api_ms: u
-                            .get("duration_api_ms")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0),
-                    })
-                });
+                let usage = extract_usage(&msg);
                 registry
-                    .notify_result(ResultInfo {
-                        agent_id: *agent_id,
-                        is_error,
-                        usage: usage.expect("usage"),
-                    })
+                    .notify_result(ResultInfo { agent_id: *agent_id, is_error, usage })
                     .await;
             }
             "control_request" => {
@@ -533,4 +552,135 @@ async fn send_raw(
         .map_err(|e| anyhow::anyhow!("Failed to send to agent: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_extract_usage_full() {
+        let msg = json!({
+            "type": "result",
+            "is_error": false,
+            "usage": {
+                "input_tokens": 1500,
+                "output_tokens": 800,
+                "cache_read_input_tokens": 200,
+                "cache_creation_input_tokens": 50
+            },
+            "total_cost_usd": 0.0123,
+            "num_turns": 3,
+            "duration_ms": 5000,
+            "duration_api_ms": 4200
+        });
+
+        let usage = extract_usage(&msg).expect("should extract usage");
+        assert_eq!(usage.input_tokens, 1500);
+        assert_eq!(usage.output_tokens, 800);
+        assert_eq!(usage.cache_read_input_tokens, 200);
+        assert_eq!(usage.cache_creation_input_tokens, 50);
+        assert!((usage.total_cost_usd - 0.0123).abs() < 1e-9);
+        assert_eq!(usage.num_turns, 3);
+        assert_eq!(usage.duration_ms, 5000);
+        assert_eq!(usage.duration_api_ms, 4200);
+    }
+
+    #[test]
+    fn test_extract_usage_missing_block_returns_none() {
+        let msg = json!({
+            "type": "result",
+            "is_error": false,
+            "total_cost_usd": 0.01
+        });
+
+        assert!(extract_usage(&msg).is_none());
+    }
+
+    #[test]
+    fn test_extract_usage_partial_fields_default_to_zero() {
+        // Only input_tokens present in the usage block; everything else defaults.
+        let msg = json!({
+            "type": "result",
+            "usage": {
+                "input_tokens": 42
+            }
+        });
+
+        let usage = extract_usage(&msg).expect("should extract usage");
+        assert_eq!(usage.input_tokens, 42);
+        assert_eq!(usage.output_tokens, 0);
+        assert_eq!(usage.cache_read_input_tokens, 0);
+        assert_eq!(usage.cache_creation_input_tokens, 0);
+        assert!((usage.total_cost_usd - 0.0).abs() < 1e-9);
+        assert_eq!(usage.num_turns, 0);
+        assert_eq!(usage.duration_ms, 0);
+        assert_eq!(usage.duration_api_ms, 0);
+    }
+
+    #[test]
+    fn test_extract_usage_empty_usage_object() {
+        let msg = json!({
+            "type": "result",
+            "usage": {}
+        });
+
+        let usage = extract_usage(&msg).expect("should extract usage from empty block");
+        assert_eq!(usage.input_tokens, 0);
+        assert_eq!(usage.output_tokens, 0);
+        assert!((usage.total_cost_usd - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_extract_usage_top_level_fields_preferred() {
+        // When both top-level and nested fields exist, top-level wins.
+        let msg = json!({
+            "type": "result",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "total_cost_usd": 0.001,
+                "num_turns": 1,
+                "duration_ms": 100,
+                "duration_api_ms": 80,
+            },
+            "total_cost_usd": 0.999,
+            "num_turns": 99,
+            "duration_ms": 9999,
+            "duration_api_ms": 8888,
+        });
+
+        let usage = extract_usage(&msg).expect("should extract usage");
+        // Top-level fields should take precedence.
+        assert!((usage.total_cost_usd - 0.999).abs() < 1e-9);
+        assert_eq!(usage.num_turns, 99);
+        assert_eq!(usage.duration_ms, 9999);
+        assert_eq!(usage.duration_api_ms, 8888);
+        // Token fields always come from the nested usage object.
+        assert_eq!(usage.input_tokens, 100);
+        assert_eq!(usage.output_tokens, 50);
+    }
+
+    #[test]
+    fn test_extract_usage_fallback_to_nested_for_top_level_fields() {
+        // When top-level fields are absent, fall back to the usage sub-object.
+        let msg = json!({
+            "type": "result",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "total_cost_usd": 0.005,
+                "num_turns": 2,
+                "duration_ms": 300,
+                "duration_api_ms": 250,
+            }
+        });
+
+        let usage = extract_usage(&msg).expect("should extract usage");
+        assert!((usage.total_cost_usd - 0.005).abs() < 1e-9);
+        assert_eq!(usage.num_turns, 2);
+        assert_eq!(usage.duration_ms, 300);
+        assert_eq!(usage.duration_api_ms, 250);
+    }
 }
