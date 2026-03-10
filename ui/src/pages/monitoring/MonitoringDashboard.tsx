@@ -12,11 +12,15 @@
 
 import { RefreshCw, Clock } from 'lucide-react'
 import { useMetrics } from '@/hooks/useMetrics'
+import { useUsageMetrics } from '@/hooks/useUsageMetrics'
 import { AgentActivityChart } from '@/components/monitoring/AgentActivityChart'
 import { NotificationMetricsChart } from '@/components/monitoring/NotificationMetricsChart'
 import { ServiceMetricsCard } from '@/components/monitoring/ServiceMetricsCard'
 import { SystemHealthPanel } from '@/components/monitoring/SystemHealthPanel'
 import { PlaceholderChart } from '@/components/monitoring/PlaceholderChart'
+import { TokenUsageChart } from '@/components/monitoring/TokenUsageChart'
+import { CacheEfficiencyChart } from '@/components/monitoring/CacheEfficiencyChart'
+import { CostOverviewChart } from '@/components/monitoring/CostOverviewChart'
 import type { RefreshInterval } from '@/hooks/useMetrics'
 
 // ---------------------------------------------------------------------------
@@ -51,6 +55,12 @@ export function MonitoringDashboard() {
     refreshInterval,
     setRefreshInterval,
   } = useMetrics(30_000)
+
+  const {
+    entries: usageEntries,
+    aggregate: usageAggregate,
+    loading: usageLoading,
+  } = useUsageMetrics(refreshInterval)
 
   // Map response times from serviceMetrics — they come from Prometheus
   // latency data when available, otherwise undefined (SystemHealthPanel
@@ -160,6 +170,28 @@ export function MonitoringDashboard() {
       <section aria-label="System health">
         <h2 className="sr-only">System Health</h2>
         <SystemHealthPanel serviceMetrics={serviceMetrics} loading={loading} />
+      </section>
+
+      {/* Token Usage & Prompt Cache section */}
+      <section aria-label="Token usage and prompt cache metrics">
+        <h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+          Token Usage &amp; Prompt Cache
+        </h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <TokenUsageChart entries={usageEntries} loading={usageLoading} />
+          <CacheEfficiencyChart
+            entries={usageEntries}
+            aggregate={usageAggregate}
+            loading={usageLoading}
+          />
+        </div>
+        <div className="mt-4">
+          <CostOverviewChart
+            entries={usageEntries}
+            aggregate={usageAggregate}
+            loading={usageLoading}
+          />
+        </div>
       </section>
 
       {/* Placeholder charts for future monitor service */}
