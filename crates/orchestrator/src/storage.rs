@@ -5,8 +5,11 @@
 
 use crate::{
     entity::agent as agent_entity,
+    entity::usage_session as session_entity,
     migration::Migrator,
-    types::{Agent, AgentConfig, AgentStatus, ToolPolicy},
+    types::{
+        Agent, AgentConfig, AgentStatus, AgentUsageStats, SessionUsage, ToolPolicy, UsageSnapshot,
+    },
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -150,6 +153,265 @@ impl AgentStorage {
         models.into_iter().map(model_to_agent).collect()
     }
 
+    // -----------------------------------------------------------------------
+    // Usage session methods
+    // -----------------------------------------------------------------------
+
+    /// Returns `MAX(session_number) + 1` for the given agent, or `1` if no
+    /// sessions exist yet.  Backend-agnostic (no raw SQL).
+    async fn next_session_number(&self, agent_id_str: &str) -> Result<i32> {
+        #[derive(Debug, sea_orm::FromQueryResult)]
+        struct MaxSession {
+            max_num: Option<i32>,
+        }
+
+        let result: Option<MaxSession> = session_entity::Entity::find()
+            .filter(session_entity::Column::AgentId.eq(agent_id_str))
+            .select_only()
+            .column_as(session_entity::Column::SessionNumber.max(), "max_num")
+            .into_model::<MaxSession>()
+            .one(&self.db)
+            .await?;
+
+        Ok(result.and_then(|r| r.max_num).unwrap_or(0) + 1)
+    }
+
+    /// Upserts the active session row for `agent_id`.
+    ///
+    /// If an active session (where `ended_at IS NULL`) already exists, the
+    /// snapshot values are *accumulated* into it and `result_count` is
+    /// incremented by 1.  If no active session exists, a new one is created
+    /// with `session_number = MAX(existing) + 1` and `started_at = now()`.
+    pub async fn record_session_usage(
+        &self,
+        agent_id: &Uuid,
+        snapshot: &UsageSnapshot,
+    ) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+
+        let agent_id_str = agent_id.to_string();
+
+        // Find existing active session.
+        let existing = session_entity::Entity::find()
+            .filter(session_entity::Column::AgentId.eq(&agent_id_str))
+            .filter(session_entity::Column::EndedAt.is_null())
+            .one(&self.db)
+            .await?;
+
+        if let Some(row) = existing {
+            // Accumulate into the existing row.
+            session_entity::Entity::update_many()
+                .col_expr(
+                    session_entity::Column::InputTokens,
+                    Expr::col(session_entity::Column::InputTokens)
+                        .add(snapshot.input_tokens as i64),
+                )
+                .col_expr(
+                    session_entity::Column::OutputTokens,
+                    Expr::col(session_entity::Column::OutputTokens)
+                        .add(snapshot.output_tokens as i64),
+                )
+                .col_expr(
+                    session_entity::Column::CacheReadInputTokens,
+                    Expr::col(session_entity::Column::CacheReadInputTokens)
+                        .add(snapshot.cache_read_input_tokens as i64),
+                )
+                .col_expr(
+                    session_entity::Column::CacheCreationInputTokens,
+                    Expr::col(session_entity::Column::CacheCreationInputTokens)
+                        .add(snapshot.cache_creation_input_tokens as i64),
+                )
+                .col_expr(
+                    session_entity::Column::TotalCostUsd,
+                    Expr::col(session_entity::Column::TotalCostUsd).add(snapshot.total_cost_usd),
+                )
+                .col_expr(
+                    session_entity::Column::NumTurns,
+                    Expr::col(session_entity::Column::NumTurns).add(snapshot.num_turns as i64),
+                )
+                .col_expr(
+                    session_entity::Column::DurationMs,
+                    Expr::col(session_entity::Column::DurationMs).add(snapshot.duration_ms as i64),
+                )
+                .col_expr(
+                    session_entity::Column::DurationApiMs,
+                    Expr::col(session_entity::Column::DurationApiMs)
+                        .add(snapshot.duration_api_ms as i64),
+                )
+                .col_expr(
+                    session_entity::Column::ResultCount,
+                    Expr::col(session_entity::Column::ResultCount).add(1i32),
+                )
+                .filter(session_entity::Column::Id.eq(row.id))
+                .exec(&self.db)
+                .await?;
+        } else {
+            // Create a new session starting now.
+            let next_number = self.next_session_number(&agent_id_str).await?;
+            let now = Utc::now().to_rfc3339();
+            let model = session_entity::ActiveModel {
+                agent_id: Set(agent_id_str),
+                session_number: Set(next_number),
+                input_tokens: Set(snapshot.input_tokens as i64),
+                output_tokens: Set(snapshot.output_tokens as i64),
+                cache_read_input_tokens: Set(snapshot.cache_read_input_tokens as i64),
+                cache_creation_input_tokens: Set(snapshot.cache_creation_input_tokens as i64),
+                total_cost_usd: Set(snapshot.total_cost_usd),
+                num_turns: Set(snapshot.num_turns as i64),
+                duration_ms: Set(snapshot.duration_ms as i64),
+                duration_api_ms: Set(snapshot.duration_api_ms as i64),
+                result_count: Set(1),
+                started_at: Set(now),
+                ended_at: Set(None),
+                ..Default::default()
+            };
+            session_entity::Entity::insert(model).exec(&self.db).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Closes the active session for `agent_id` by setting `ended_at = now()`.
+    ///
+    /// No-op if no active session exists.
+    pub async fn end_session(&self, agent_id: &Uuid) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+
+        let agent_id_str = agent_id.to_string();
+        let now = Utc::now().to_rfc3339();
+
+        session_entity::Entity::update_many()
+            .col_expr(session_entity::Column::EndedAt, Expr::value(Some(now)))
+            .filter(session_entity::Column::AgentId.eq(&agent_id_str))
+            .filter(session_entity::Column::EndedAt.is_null())
+            .exec(&self.db)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Starts a new session for `agent_id`.
+    ///
+    /// Queries the current maximum `session_number` for this agent and inserts
+    /// a new empty row with `session_number + 1` and `started_at = now()`.
+    pub async fn start_new_session(&self, agent_id: &Uuid) -> Result<()> {
+        let agent_id_str = agent_id.to_string();
+        let next_number = self.next_session_number(&agent_id_str).await?;
+        let now = Utc::now().to_rfc3339();
+
+        let model = session_entity::ActiveModel {
+            agent_id: Set(agent_id_str),
+            session_number: Set(next_number),
+            input_tokens: Set(0),
+            output_tokens: Set(0),
+            cache_read_input_tokens: Set(0),
+            cache_creation_input_tokens: Set(0),
+            total_cost_usd: Set(0.0),
+            num_turns: Set(0),
+            duration_ms: Set(0),
+            duration_api_ms: Set(0),
+            result_count: Set(0),
+            started_at: Set(now),
+            ended_at: Set(None),
+            ..Default::default()
+        };
+
+        session_entity::Entity::insert(model).exec(&self.db).await?;
+
+        Ok(())
+    }
+
+    /// Returns aggregated usage statistics for `agent_id`.
+    ///
+    /// * `current_session` – the active (open) session, if any.
+    /// * `cumulative` – sum across *all* sessions (open + closed).
+    /// * `session_count` – total number of session rows for this agent.
+    pub async fn get_usage_stats(&self, agent_id: &Uuid) -> Result<AgentUsageStats> {
+        let agent_id_str = agent_id.to_string();
+
+        // --- active session -------------------------------------------------
+        let active = session_entity::Entity::find()
+            .filter(session_entity::Column::AgentId.eq(&agent_id_str))
+            .filter(session_entity::Column::EndedAt.is_null())
+            .one(&self.db)
+            .await?;
+
+        let current_session = active.as_ref().map(model_to_session_usage).transpose()?;
+
+        // --- all sessions ---------------------------------------------------
+        let all_sessions: Vec<session_entity::Model> = session_entity::Entity::find()
+            .filter(session_entity::Column::AgentId.eq(&agent_id_str))
+            .all(&self.db)
+            .await?;
+
+        let session_count = all_sessions.len() as u32;
+
+        // Aggregate across all sessions.
+        let cumulative = if all_sessions.is_empty() {
+            // No sessions yet — return a zero-value cumulative with now as start.
+            SessionUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                total_cost_usd: 0.0,
+                num_turns: 0,
+                duration_ms: 0,
+                duration_api_ms: 0,
+                result_count: 0,
+                started_at: Utc::now(),
+                ended_at: None,
+            }
+        } else {
+            let mut input_tokens: u64 = 0;
+            let mut output_tokens: u64 = 0;
+            let mut cache_read: u64 = 0;
+            let mut cache_creation: u64 = 0;
+            let mut total_cost: f64 = 0.0;
+            let mut num_turns: u64 = 0;
+            let mut duration_ms: u64 = 0;
+            let mut duration_api_ms: u64 = 0;
+            let mut result_count: u32 = 0;
+            let mut earliest_start: Option<DateTime<Utc>> = None;
+
+            for row in &all_sessions {
+                input_tokens += row.input_tokens.max(0) as u64;
+                output_tokens += row.output_tokens.max(0) as u64;
+                cache_read += row.cache_read_input_tokens.max(0) as u64;
+                cache_creation += row.cache_creation_input_tokens.max(0) as u64;
+                total_cost += row.total_cost_usd;
+                num_turns += row.num_turns.max(0) as u64;
+                duration_ms += row.duration_ms.max(0) as u64;
+                duration_api_ms += row.duration_api_ms.max(0) as u64;
+                result_count += row.result_count.max(0) as u32;
+
+                let started = DateTime::parse_from_rfc3339(&row.started_at)
+                    .map(|dt| dt.with_timezone(&Utc))?;
+                match earliest_start {
+                    None => earliest_start = Some(started),
+                    Some(prev) if started < prev => earliest_start = Some(started),
+                    _ => {}
+                }
+            }
+
+            SessionUsage {
+                input_tokens,
+                output_tokens,
+                cache_read_input_tokens: cache_read,
+                cache_creation_input_tokens: cache_creation,
+                total_cost_usd: total_cost,
+                num_turns,
+                duration_ms,
+                duration_api_ms,
+                result_count,
+                started_at: earliest_start.unwrap_or_else(Utc::now),
+                ended_at: None,
+            }
+        };
+
+        Ok(AgentUsageStats { agent_id: *agent_id, current_session, cumulative, session_count })
+    }
+
     /// Lists agents with pagination; returns `(items, total_count)`.
     pub async fn list_paginated(
         &self,
@@ -207,6 +469,30 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
         tmux_session: model.tmux_session,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
+    })
+}
+
+/// Convert a raw [`session_entity::Model`] into a domain [`SessionUsage`].
+fn model_to_session_usage(model: &session_entity::Model) -> Result<SessionUsage> {
+    let started_at = DateTime::parse_from_rfc3339(&model.started_at)?.with_timezone(&Utc);
+    let ended_at = model
+        .ended_at
+        .as_deref()
+        .map(|s| DateTime::parse_from_rfc3339(s).map(|dt| dt.with_timezone(&Utc)))
+        .transpose()?;
+
+    Ok(SessionUsage {
+        input_tokens: model.input_tokens.max(0) as u64,
+        output_tokens: model.output_tokens.max(0) as u64,
+        cache_read_input_tokens: model.cache_read_input_tokens.max(0) as u64,
+        cache_creation_input_tokens: model.cache_creation_input_tokens.max(0) as u64,
+        total_cost_usd: model.total_cost_usd,
+        num_turns: model.num_turns.max(0) as u64,
+        duration_ms: model.duration_ms.max(0) as u64,
+        duration_api_ms: model.duration_api_ms.max(0) as u64,
+        result_count: model.result_count.max(0) as u32,
+        started_at,
+        ended_at,
     })
 }
 
@@ -416,5 +702,178 @@ mod tests {
 
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
         assert_eq!(retrieved.config.auto_clear_threshold, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // Usage session tests
+    // -----------------------------------------------------------------------
+
+    fn test_snapshot(input: u64, output: u64, cost: f64) -> UsageSnapshot {
+        UsageSnapshot {
+            input_tokens: input,
+            output_tokens: output,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            total_cost_usd: cost,
+            num_turns: 1,
+            duration_ms: 100,
+            duration_api_ms: 50,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_record_session_creates_first_session() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("usage-agent");
+        storage.add(&agent).await.unwrap();
+
+        let snap = test_snapshot(100, 50, 0.01);
+        storage.record_session_usage(&agent.id, &snap).await.unwrap();
+
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        assert_eq!(stats.session_count, 1);
+        let current = stats.current_session.unwrap();
+        assert_eq!(current.input_tokens, 100);
+        assert_eq!(current.output_tokens, 50);
+        assert_eq!(current.result_count, 1);
+        assert_eq!(current.ended_at, None);
+    }
+
+    #[tokio::test]
+    async fn test_record_session_accumulates() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("usage-agent-accum");
+        storage.add(&agent).await.unwrap();
+
+        storage.record_session_usage(&agent.id, &test_snapshot(100, 50, 0.01)).await.unwrap();
+        storage.record_session_usage(&agent.id, &test_snapshot(200, 80, 0.02)).await.unwrap();
+
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        // Still one session (upsert, not insert).
+        assert_eq!(stats.session_count, 1);
+        let current = stats.current_session.unwrap();
+        assert_eq!(current.input_tokens, 300);
+        assert_eq!(current.output_tokens, 130);
+        assert!((current.total_cost_usd - 0.03).abs() < 1e-9);
+        assert_eq!(current.result_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_end_session() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("usage-agent-end");
+        storage.add(&agent).await.unwrap();
+
+        storage.record_session_usage(&agent.id, &test_snapshot(10, 5, 0.001)).await.unwrap();
+
+        // Active session present before ending.
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        assert!(stats.current_session.is_some());
+
+        storage.end_session(&agent.id).await.unwrap();
+
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        assert!(stats.current_session.is_none(), "session should be closed");
+        assert_eq!(stats.session_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_end_session_noop_when_no_active_session() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("usage-agent-noop");
+        storage.add(&agent).await.unwrap();
+
+        // Should not error even when there is no active session.
+        storage.end_session(&agent.id).await.unwrap();
+
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        assert!(stats.current_session.is_none());
+        assert_eq!(stats.session_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_start_new_session() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("usage-agent-new-session");
+        storage.add(&agent).await.unwrap();
+
+        // First session via record.
+        storage.record_session_usage(&agent.id, &test_snapshot(10, 5, 0.001)).await.unwrap();
+        storage.end_session(&agent.id).await.unwrap();
+
+        // Start second session.
+        storage.start_new_session(&agent.id).await.unwrap();
+
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        assert_eq!(stats.session_count, 2);
+        // New session is active but empty.
+        let current = stats.current_session.unwrap();
+        assert_eq!(current.input_tokens, 0);
+        assert_eq!(current.result_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_cumulative_aggregates_across_sessions() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("usage-agent-cumulative");
+        storage.add(&agent).await.unwrap();
+
+        // Session 1: record, then end.
+        storage.record_session_usage(&agent.id, &test_snapshot(100, 40, 0.01)).await.unwrap();
+        storage.end_session(&agent.id).await.unwrap();
+
+        // Session 2: record via start_new_session + record.
+        storage.start_new_session(&agent.id).await.unwrap();
+        storage.record_session_usage(&agent.id, &test_snapshot(200, 60, 0.02)).await.unwrap();
+
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        assert_eq!(stats.session_count, 2);
+
+        // Current session is the open one (session 2).
+        let current = stats.current_session.unwrap();
+        assert_eq!(current.input_tokens, 200);
+
+        // Cumulative should sum both sessions.
+        assert_eq!(stats.cumulative.input_tokens, 300);
+        assert_eq!(stats.cumulative.output_tokens, 100);
+        assert!((stats.cumulative.total_cost_usd - 0.03).abs() < 1e-9);
+        assert_eq!(stats.cumulative.result_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_record_end_record_creates_session_2() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("usage-agent-reopen");
+        storage.add(&agent).await.unwrap();
+
+        // Session 1 via record, then end.
+        storage.record_session_usage(&agent.id, &test_snapshot(100, 50, 0.01)).await.unwrap();
+        storage.end_session(&agent.id).await.unwrap();
+
+        // Session 2 via record again (no explicit start_new_session).
+        storage.record_session_usage(&agent.id, &test_snapshot(200, 80, 0.02)).await.unwrap();
+
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        assert_eq!(stats.session_count, 2, "should have two sessions");
+
+        // The active session should be session 2 with the second snapshot's data.
+        let current = stats.current_session.unwrap();
+        assert_eq!(current.input_tokens, 200);
+        assert_eq!(current.output_tokens, 80);
+        assert_eq!(current.result_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_usage_stats_no_sessions() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("usage-agent-empty");
+        storage.add(&agent).await.unwrap();
+
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        assert_eq!(stats.agent_id, agent.id);
+        assert_eq!(stats.session_count, 0);
+        assert!(stats.current_session.is_none());
+        assert_eq!(stats.cumulative.input_tokens, 0);
+        assert_eq!(stats.cumulative.result_count, 0);
     }
 }

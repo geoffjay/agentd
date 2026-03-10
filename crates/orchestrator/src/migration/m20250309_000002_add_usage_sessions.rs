@@ -130,6 +130,20 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Unique constraint on (agent_id, session_number) to prevent duplicates.
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_usage_sessions_agent_session_unique")
+                    .table(AgentUsageSessions::Table)
+                    .col(AgentUsageSessions::AgentId)
+                    .col(AgentUsageSessions::SessionNumber)
+                    .unique()
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
         Ok(())
     }
 

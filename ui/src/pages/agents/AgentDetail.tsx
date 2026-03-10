@@ -32,9 +32,9 @@ import type { SetModelRequest, ToolPolicy } from '@/types/orchestrator'
 
 const MODELS = [
   { label: 'Default (server)', value: '' },
-  { label: 'claude-sonnet-4-5-20251001', value: 'claude-sonnet-4-5-20251001' },
-  { label: 'claude-opus-4-5-20251001', value: 'claude-opus-4-5-20251001' },
-  { label: 'claude-haiku-4-5-20251001', value: 'claude-haiku-4-5-20251001' },
+  { label: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6' },
+  { label: 'Claude Opus 4.6', value: 'claude-opus-4-6' },
+  { label: 'Claude Haiku 4.6', value: 'claude-haiku-4-6' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ function ChangeModelDialog({ open, currentModel, onSave, onClose }: ChangeModelD
         role="dialog"
         aria-modal="true"
         aria-labelledby="change-model-title"
-        className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+        className="relative rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
       >
         <h2
           id="change-model-title"
