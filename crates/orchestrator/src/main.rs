@@ -14,10 +14,13 @@ use manager::AgentManager;
 use metrics_exporter_prometheus::PrometheusHandle;
 use scheduler::storage::SchedulerStorage;
 use scheduler::Scheduler;
+use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
 use storage::AgentStorage;
-use tracing::info;
+use tokio::sync::RwLock;
+use tracing::{error, info};
+use uuid::Uuid;
 use websocket::ConnectionRegistry;
 use wrap::tmux::TmuxManager;
 
@@ -75,6 +78,118 @@ async fn main() -> anyhow::Result<()> {
                 let sched = sched.clone();
                 tokio::spawn(async move {
                     sched.notify_task_complete(info.agent_id, info.is_error).await;
+                });
+            }))
+            .await;
+    }
+
+    // Register usage persistence and auto-clear callback.
+    {
+        let storage = storage.clone();
+        let manager = manager.clone();
+        let clearing = Arc::new(RwLock::new(HashSet::<Uuid>::new()));
+        registry
+            .on_result(Arc::new(move |info| {
+                let storage = storage.clone();
+                let manager = manager.clone();
+                let clearing = clearing.clone();
+                tokio::spawn(async move {
+                    // Skip results without usage data.
+                    let usage = match info.usage {
+                        Some(ref u) => u.clone(),
+                        None => return,
+                    };
+
+                    // 1. Persist usage to DB.
+                    if let Err(e) =
+                        storage.record_session_usage(&info.agent_id, &usage).await
+                    {
+                        error!(
+                            agent_id = %info.agent_id,
+                            %e,
+                            "Failed to persist usage data"
+                        );
+                        return;
+                    }
+
+                    // 2. Check auto-clear threshold.
+                    let agent = match storage.get(&info.agent_id).await {
+                        Ok(Some(a)) => a,
+                        Ok(None) => return,
+                        Err(e) => {
+                            error!(
+                                agent_id = %info.agent_id,
+                                %e,
+                                "Failed to look up agent for auto-clear check"
+                            );
+                            return;
+                        }
+                    };
+
+                    let threshold = match agent.config.auto_clear_threshold {
+                        Some(t) => t,
+                        None => return,
+                    };
+
+                    // Get current session stats to check accumulated input_tokens.
+                    let stats = match storage.get_usage_stats(&info.agent_id).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error!(
+                                agent_id = %info.agent_id,
+                                %e,
+                                "Failed to get usage stats for auto-clear check"
+                            );
+                            return;
+                        }
+                    };
+
+                    let current_input = stats
+                        .current_session
+                        .as_ref()
+                        .map(|s| s.input_tokens)
+                        .unwrap_or(0);
+
+                    if current_input < threshold {
+                        return;
+                    }
+
+                    // 3. Re-entrancy guard: prevent concurrent auto-clears for
+                    //    the same agent.
+                    {
+                        let mut guard = clearing.write().await;
+                        if guard.contains(&info.agent_id) {
+                            return;
+                        }
+                        guard.insert(info.agent_id);
+                    }
+
+                    info!(
+                        agent_id = %info.agent_id,
+                        current_input,
+                        threshold,
+                        "Auto-clearing agent context (threshold exceeded)"
+                    );
+
+                    match manager.clear_context(&info.agent_id).await {
+                        Ok(resp) => {
+                            info!(
+                                agent_id = %info.agent_id,
+                                new_session = resp.new_session_number,
+                                "Auto-clear completed"
+                            );
+                        }
+                        Err(e) => {
+                            error!(
+                                agent_id = %info.agent_id,
+                                %e,
+                                "Auto-clear failed"
+                            );
+                        }
+                    }
+
+                    // Always remove from clearing set (success or error).
+                    clearing.write().await.remove(&info.agent_id);
                 });
             }))
             .await;
