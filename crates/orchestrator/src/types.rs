@@ -356,7 +356,6 @@ pub struct UsageSnapshot {
 
 /// Session-level aggregated usage — shared shape for both the active session
 /// and the cumulative lifetime totals in [`AgentUsageStats`].
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionUsage {
     pub input_tokens: u64,
@@ -375,7 +374,6 @@ pub struct SessionUsage {
 
 /// Per-agent aggregated usage statistics, including the active session and
 /// lifetime cumulative totals.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentUsageStats {
     pub agent_id: Uuid,

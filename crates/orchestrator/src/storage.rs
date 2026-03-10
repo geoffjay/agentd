@@ -14,8 +14,8 @@ use crate::{
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, FromQueryResult, Order,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
 };
 use sea_orm_migration::prelude::MigratorTrait;
 use std::collections::HashMap;
@@ -157,12 +157,31 @@ impl AgentStorage {
     // Usage session methods
     // -----------------------------------------------------------------------
 
+    /// Returns `MAX(session_number) + 1` for the given agent, or `1` if no
+    /// sessions exist yet.  Backend-agnostic (no raw SQL).
+    async fn next_session_number(&self, agent_id_str: &str) -> Result<i32> {
+        #[derive(Debug, sea_orm::FromQueryResult)]
+        struct MaxSession {
+            max_num: Option<i32>,
+        }
+
+        let result: Option<MaxSession> = session_entity::Entity::find()
+            .filter(session_entity::Column::AgentId.eq(agent_id_str))
+            .select_only()
+            .column_as(session_entity::Column::SessionNumber.max(), "max_num")
+            .into_model::<MaxSession>()
+            .one(&self.db)
+            .await?;
+
+        Ok(result.and_then(|r| r.max_num).unwrap_or(0) + 1)
+    }
+
     /// Upserts the active session row for `agent_id`.
     ///
     /// If an active session (where `ended_at IS NULL`) already exists, the
     /// snapshot values are *accumulated* into it and `result_count` is
     /// incremented by 1.  If no active session exists, a new one is created
-    /// with `session_number = 1` and `started_at = now()`.
+    /// with `session_number = MAX(existing) + 1` and `started_at = now()`.
     pub async fn record_session_usage(
         &self,
         agent_id: &Uuid,
@@ -228,10 +247,11 @@ impl AgentStorage {
                 .await?;
         } else {
             // Create a new session starting now.
+            let next_number = self.next_session_number(&agent_id_str).await?;
             let now = Utc::now().to_rfc3339();
             let model = session_entity::ActiveModel {
                 agent_id: Set(agent_id_str),
-                session_number: Set(1),
+                session_number: Set(next_number),
                 input_tokens: Set(snapshot.input_tokens as i64),
                 output_tokens: Set(snapshot.output_tokens as i64),
                 cache_read_input_tokens: Set(snapshot.cache_read_input_tokens as i64),
@@ -275,25 +295,8 @@ impl AgentStorage {
     /// Queries the current maximum `session_number` for this agent and inserts
     /// a new empty row with `session_number + 1` and `started_at = now()`.
     pub async fn start_new_session(&self, agent_id: &Uuid) -> Result<()> {
-        use sea_orm::Statement;
         let agent_id_str = agent_id.to_string();
-
-        // Find the current maximum session number.
-        #[derive(Debug, FromQueryResult)]
-        struct MaxSession {
-            max_num: Option<i32>,
-        }
-
-        let row: Option<MaxSession> =
-            MaxSession::find_by_statement(Statement::from_sql_and_values(
-                sea_orm::DatabaseBackend::Sqlite,
-                "SELECT MAX(session_number) AS max_num FROM agent_usage_sessions WHERE agent_id = ?",
-                [agent_id_str.clone().into()],
-            ))
-            .one(&self.db)
-            .await?;
-
-        let next_number = row.and_then(|r| r.max_num).unwrap_or(0) + 1;
+        let next_number = self.next_session_number(&agent_id_str).await?;
         let now = Utc::now().to_rfc3339();
 
         let model = session_entity::ActiveModel {
@@ -383,8 +386,7 @@ impl AgentStorage {
                 result_count += row.result_count.max(0) as u32;
 
                 let started = DateTime::parse_from_rfc3339(&row.started_at)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
+                    .map(|dt| dt.with_timezone(&Utc))?;
                 match earliest_start {
                     None => earliest_start = Some(started),
                     Some(prev) if started < prev => earliest_start = Some(started),
@@ -836,6 +838,29 @@ mod tests {
         assert_eq!(stats.cumulative.output_tokens, 100);
         assert!((stats.cumulative.total_cost_usd - 0.03).abs() < 1e-9);
         assert_eq!(stats.cumulative.result_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_record_end_record_creates_session_2() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("usage-agent-reopen");
+        storage.add(&agent).await.unwrap();
+
+        // Session 1 via record, then end.
+        storage.record_session_usage(&agent.id, &test_snapshot(100, 50, 0.01)).await.unwrap();
+        storage.end_session(&agent.id).await.unwrap();
+
+        // Session 2 via record again (no explicit start_new_session).
+        storage.record_session_usage(&agent.id, &test_snapshot(200, 80, 0.02)).await.unwrap();
+
+        let stats = storage.get_usage_stats(&agent.id).await.unwrap();
+        assert_eq!(stats.session_count, 2, "should have two sessions");
+
+        // The active session should be session 2 with the second snapshot's data.
+        let current = stats.current_session.unwrap();
+        assert_eq!(current.input_tokens, 200);
+        assert_eq!(current.output_tokens, 80);
+        assert_eq!(current.result_count, 1);
     }
 
     #[tokio::test]
