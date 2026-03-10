@@ -284,9 +284,7 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                     info!(%agent_id, "Agent query completed successfully");
                 }
                 let usage = extract_usage(&msg);
-                registry
-                    .notify_result(ResultInfo { agent_id: *agent_id, is_error, usage })
-                    .await;
+                registry.notify_result(ResultInfo { agent_id: *agent_id, is_error, usage }).await;
             }
             "control_request" => {
                 handle_control_request(agent_id, &msg, registry).await;
