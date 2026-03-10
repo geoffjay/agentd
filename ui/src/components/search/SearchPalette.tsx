@@ -133,7 +133,7 @@ export function SearchPalette({ isOpen, onClose }: SearchPaletteProps) {
 
       {/* Palette panel */}
       <div
-        className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+        className="relative z-10 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
         onKeyDown={handleKeyDown}
       >
         {/* Search input row */}

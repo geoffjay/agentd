@@ -111,7 +111,7 @@ export function ApprovalQueuePage() {
     <main className="mx-auto max-w-4xl px-4 py-6">
       {/* Page header */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold text-white">Approval Queue</h1>
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Approval Queue</h1>
         <ApprovalBadge count={totalPendingCount} showZero />
         <div className="flex-1" />
 
