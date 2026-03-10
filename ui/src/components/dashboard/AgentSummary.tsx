@@ -5,7 +5,7 @@
 
 import { useNavigate } from 'react-router-dom'
 import { ResponsivePie } from '@nivo/pie'
-import { Plus, RefreshCw } from 'lucide-react'
+import { DollarSign, Hash, Layers, Plus, RefreshCw } from 'lucide-react'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { ChartSkeleton, ListItemSkeleton } from '@/components/common/LoadingSkeleton'
 import type { UseAgentSummaryResult } from '@/hooks/useAgentSummary'
@@ -60,6 +60,7 @@ export function AgentSummary({
   counts,
   recentAgents,
   total,
+  aggregateUsage,
   loading,
   error,
   onCreateAgent,
@@ -176,6 +177,45 @@ export function AgentSummary({
                   </span>
                 ) : null,
               )}
+            </div>
+          )}
+
+          {/* Aggregate usage stats */}
+          {aggregateUsage && (
+            <div className="mt-3 grid grid-cols-3 gap-2" data-testid="aggregate-usage">
+              <div className="rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
+                <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                  <DollarSign size={12} />
+                  Total Cost
+                </div>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+                  ${aggregateUsage.totalCostUsd < 0.01 && aggregateUsage.totalCostUsd > 0
+                    ? '<0.01'
+                    : aggregateUsage.totalCostUsd.toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
+                <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                  <Hash size={12} />
+                  Tokens
+                </div>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+                  {aggregateUsage.totalTokens >= 1_000_000
+                    ? `${(aggregateUsage.totalTokens / 1_000_000).toFixed(1)}M`
+                    : aggregateUsage.totalTokens >= 1_000
+                      ? `${(aggregateUsage.totalTokens / 1_000).toFixed(1)}k`
+                      : aggregateUsage.totalTokens}
+                </p>
+              </div>
+              <div className="rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
+                <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                  <Layers size={12} />
+                  Cache Hit
+                </div>
+                <p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+                  {aggregateUsage.cacheHitPercent.toFixed(0)}%
+                </p>
+              </div>
             </div>
           )}
 
