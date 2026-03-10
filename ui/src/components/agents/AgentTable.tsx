@@ -15,7 +15,7 @@ import { ArrowUpDown, ChevronDown, ChevronUp, Eye, Trash2 } from 'lucide-react'
 import { AgentStatusBadge } from './AgentStatusBadge'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { ListItemSkeleton } from '@/components/common/LoadingSkeleton'
-import type { Agent } from '@/types/orchestrator'
+import type { Agent, AgentUsageStats } from '@/types/orchestrator'
 import type { SortDir, SortField } from '@/hooks/useAgents'
 
 // ---------------------------------------------------------------------------
@@ -32,6 +32,8 @@ export interface AgentTableProps {
   onBulkDelete: (ids: string[]) => Promise<void>
   selectedIds: string[]
   onSelectChange: (ids: string[]) => void
+  /** Per-agent usage stats keyed by agent ID */
+  usageMap?: Map<string, AgentUsageStats>
 }
 
 // ---------------------------------------------------------------------------
@@ -76,7 +78,7 @@ function SortHeader({ field, label, currentSort, currentDir, onSort }: SortHeade
 function EmptyState() {
   return (
     <tr>
-      <td colSpan={7} className="py-12 text-center">
+      <td colSpan={10} className="py-12 text-center">
         <p className="text-sm text-gray-500 dark:text-gray-400">No agents found.</p>
         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
           Create your first agent using the button above.
@@ -90,14 +92,45 @@ function EmptyState() {
 // Row
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
+
+/** Format a USD cost value for display */
+function formatCost(usd: number): string {
+  if (usd < 0.01) return '<$0.01'
+  return `$${usd.toFixed(2)}`
+}
+
+/** Format a token count compactly (e.g. 1.2k, 3.4M) */
+function formatTokens(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`
+  return String(count)
+}
+
+/** Compute cache hit ratio as a percentage string */
+function formatCacheHit(stats: AgentUsageStats): string {
+  const c = stats.cumulative
+  const total = c.cache_read_input_tokens + c.cache_creation_input_tokens + c.input_tokens
+  if (total === 0) return '—'
+  const ratio = c.cache_read_input_tokens / total
+  return `${(ratio * 100).toFixed(0)}%`
+}
+
+// ---------------------------------------------------------------------------
+// Row
+// ---------------------------------------------------------------------------
+
 interface AgentRowProps {
   agent: Agent
   selected: boolean
   onSelect: (id: string, checked: boolean) => void
   onDelete: (id: string) => void
+  usage?: AgentUsageStats
 }
 
-function AgentRow({ agent, selected, onSelect, onDelete }: AgentRowProps) {
+function AgentRow({ agent, selected, onSelect, onDelete, usage }: AgentRowProps) {
   const navigate = useNavigate()
 
   const formattedDate = new Date(agent.created_at).toLocaleDateString(undefined, {
@@ -108,6 +141,8 @@ function AgentRow({ agent, selected, onSelect, onDelete }: AgentRowProps) {
 
   const workingDir = agent.config.working_dir
   const displayDir = workingDir.length > 30 ? `…${workingDir.slice(-29)}` : workingDir
+
+  const dash = <span className="text-gray-300 dark:text-gray-600">—</span>
 
   return (
     <tr
@@ -143,6 +178,21 @@ function AgentRow({ agent, selected, onSelect, onDelete }: AgentRowProps) {
       {/* Model */}
       <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
         {agent.config.model ?? <span className="italic opacity-50">default</span>}
+      </td>
+
+      {/* Cost */}
+      <td className="hidden px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap lg:table-cell">
+        {usage ? formatCost(usage.cumulative.total_cost_usd) : dash}
+      </td>
+
+      {/* Tokens */}
+      <td className="hidden px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap lg:table-cell">
+        {usage ? formatTokens(usage.cumulative.input_tokens + usage.cumulative.output_tokens) : dash}
+      </td>
+
+      {/* Cache Hit */}
+      <td className="hidden px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap xl:table-cell">
+        {usage ? formatCacheHit(usage) : dash}
       </td>
 
       {/* Working Directory */}
@@ -194,6 +244,7 @@ export function AgentTable({
   onBulkDelete,
   selectedIds,
   onSelectChange,
+  usageMap,
 }: AgentTableProps) {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [bulkDeletePending, setBulkDeletePending] = useState(false)
@@ -303,6 +354,33 @@ export function AgentTable({
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
                 Model
               </th>
+              <th className="hidden px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400 lg:table-cell">
+                <SortHeader
+                  field="cost"
+                  label="Cost"
+                  currentSort={sortBy}
+                  currentDir={sortDir}
+                  onSort={onSort}
+                />
+              </th>
+              <th className="hidden px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400 lg:table-cell">
+                <SortHeader
+                  field="tokens"
+                  label="Tokens"
+                  currentSort={sortBy}
+                  currentDir={sortDir}
+                  onSort={onSort}
+                />
+              </th>
+              <th className="hidden px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400 xl:table-cell">
+                <SortHeader
+                  field="cache"
+                  label="Cache Hit"
+                  currentSort={sortBy}
+                  currentDir={sortDir}
+                  onSort={onSort}
+                />
+              </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
                 Working Directory
               </th>
@@ -324,7 +402,7 @@ export function AgentTable({
           <tbody className="divide-y divide-gray-100 bg-white dark:divide-gray-700 dark:bg-gray-900">
             {loading ? (
               <tr>
-                <td colSpan={7} className="p-4">
+                <td colSpan={10} className="p-4">
                   <ListItemSkeleton rows={5} />
                 </td>
               </tr>
@@ -338,6 +416,7 @@ export function AgentTable({
                   selected={selectedIds.includes(agent.id)}
                   onSelect={toggleOne}
                   onDelete={(id) => setDeleteTarget(id)}
+                  usage={usageMap?.get(agent.id)}
                 />
               ))
             )}

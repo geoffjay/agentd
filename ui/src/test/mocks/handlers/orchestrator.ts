@@ -54,6 +54,41 @@ export const orchestratorHandlers = [
   }),
 
   // -------------------------------------------------------------------------
+  // Agent usage
+  // -------------------------------------------------------------------------
+
+  http.get(`${BASE}/agents/:id/usage`, ({ params }) =>
+    HttpResponse.json({
+      agent_id: String(params.id),
+      current_session: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_read_input_tokens: 20,
+        cache_creation_input_tokens: 10,
+        total_cost_usd: 0.01,
+        num_turns: 2,
+        duration_ms: 1000,
+        duration_api_ms: 800,
+        result_count: 2,
+        started_at: '2024-01-01T00:00:00Z',
+      },
+      cumulative: {
+        input_tokens: 200,
+        output_tokens: 100,
+        cache_read_input_tokens: 40,
+        cache_creation_input_tokens: 20,
+        total_cost_usd: 0.02,
+        num_turns: 4,
+        duration_ms: 2000,
+        duration_api_ms: 1600,
+        result_count: 4,
+        started_at: '2024-01-01T00:00:00Z',
+      },
+      session_count: 1,
+    }),
+  ),
+
+  // -------------------------------------------------------------------------
   // Agent actions
   // -------------------------------------------------------------------------
 

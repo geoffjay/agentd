@@ -11,13 +11,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { orchestratorClient } from '@/services/orchestrator'
-import type { Agent, AgentStatus, CreateAgentRequest } from '@/types/orchestrator'
+import type { Agent, AgentStatus, AgentUsageStats, CreateAgentRequest } from '@/types/orchestrator'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type SortField = 'name' | 'status' | 'created_at'
+export type SortField = 'name' | 'status' | 'created_at' | 'cost' | 'tokens' | 'cache'
 export type SortDir = 'asc' | 'desc'
 
 export interface UseAgentsOptions {
@@ -46,6 +46,8 @@ export interface UseAgentsResult {
   total: number
   /** All agents returned by the API (before client-side filtering) */
   allAgents: Agent[]
+  /** Per-agent usage stats keyed by agent ID */
+  usageMap: Map<string, AgentUsageStats>
   loading: boolean
   /** True while a background refresh is running (initial load uses loading) */
   refreshing: boolean
@@ -64,7 +66,13 @@ export interface UseAgentsResult {
 // Sorting helpers
 // ---------------------------------------------------------------------------
 
-function compareAgents(a: Agent, b: Agent, field: SortField, dir: SortDir): number {
+function compareAgents(
+  a: Agent,
+  b: Agent,
+  field: SortField,
+  dir: SortDir,
+  usageMap?: Map<string, AgentUsageStats>,
+): number {
   let result = 0
   if (field === 'name') {
     result = a.name.localeCompare(b.name)
@@ -72,6 +80,26 @@ function compareAgents(a: Agent, b: Agent, field: SortField, dir: SortDir): numb
     result = a.status.localeCompare(b.status)
   } else if (field === 'created_at') {
     result = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  } else if (field === 'cost' && usageMap) {
+    const aCost = usageMap.get(a.id)?.cumulative.total_cost_usd ?? 0
+    const bCost = usageMap.get(b.id)?.cumulative.total_cost_usd ?? 0
+    result = aCost - bCost
+  } else if (field === 'tokens' && usageMap) {
+    const aTokens = usageMap.get(a.id)?.cumulative.input_tokens ?? 0
+    const bTokens = usageMap.get(b.id)?.cumulative.input_tokens ?? 0
+    result = aTokens - bTokens
+  } else if (field === 'cache' && usageMap) {
+    const aStats = usageMap.get(a.id)?.cumulative
+    const bStats = usageMap.get(b.id)?.cumulative
+    const aRatio = aStats
+      ? aStats.cache_read_input_tokens /
+        (aStats.cache_read_input_tokens + aStats.cache_creation_input_tokens + aStats.input_tokens || 1)
+      : 0
+    const bRatio = bStats
+      ? bStats.cache_read_input_tokens /
+        (bStats.cache_read_input_tokens + bStats.cache_creation_input_tokens + bStats.input_tokens || 1)
+      : 0
+    result = aRatio - bRatio
   }
   return dir === 'asc' ? result : -result
 }
@@ -94,6 +122,7 @@ export function useAgents({
   refreshInterval = DEFAULT_REFRESH_INTERVAL,
 }: UseAgentsOptions = {}): UseAgentsResult {
   const [allAgents, setAllAgents] = useState<Agent[]>([])
+  const [usageMap, setUsageMap] = useState<Map<string, AgentUsageStats>>(new Map())
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | undefined>()
@@ -121,6 +150,20 @@ export function useAgents({
         }
         const result = await orchestratorClient.listAgents(params)
         setAllAgents(result.items)
+
+        // Fetch usage for each agent in parallel (best-effort)
+        const usageResults = await Promise.allSettled(
+          result.items.map((agent) => orchestratorClient.getAgentUsage(agent.id)),
+        )
+        const newUsageMap = new Map<string, AgentUsageStats>()
+        for (let i = 0; i < result.items.length; i++) {
+          const r = usageResults[i]
+          if (r.status === 'fulfilled') {
+            newUsageMap.set(result.items[i].id, r.value)
+          }
+        }
+        setUsageMap(newUsageMap)
+
         setError(undefined)
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to load agents'
@@ -169,7 +212,7 @@ export function useAgents({
     return true
   })
 
-  const sorted = [...filtered].sort((a, b) => compareAgents(a, b, sortBy, sortDir))
+  const sorted = [...filtered].sort((a, b) => compareAgents(a, b, sortBy, sortDir, usageMap))
 
   const total = sorted.length
   const start = (page - 1) * pageSize
@@ -204,6 +247,7 @@ export function useAgents({
     agents,
     total,
     allAgents,
+    usageMap,
     loading,
     refreshing,
     error,
