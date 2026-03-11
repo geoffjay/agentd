@@ -497,17 +497,3 @@ async fn docker_send_command_exec() {
     cleanup(&backend, &config.session_name).await;
 }
 
-// ---------------------------------------------------------------------------
-// WebSocket URL generation (unit-level, but validated here too)
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore]
-async fn docker_ws_url_generation() {
-    let backend = test_backend();
-    let url = backend.agent_ws_url("agentd-docker-test-myid", None);
-    assert!(url.is_some());
-    let url = url.unwrap();
-    assert!(url.contains("host.docker.internal"), "Bridge mode should use host.docker.internal");
-    assert!(url.contains("/ws/myid"), "URL should contain agent ID");
-}

@@ -77,7 +77,7 @@ agent orchestrator delete-agent <ID>
 |------|-------------|
 | `--docker-image <IMAGE>` | Override the container image for this agent |
 | `--cpu-limit <CPUS>` | CPU limit (e.g., `2.0` for 2 CPUs) |
-| `--memory-limit <BYTES>` | Memory limit in bytes (e.g., `2147483648` for 2 GiB) |
+| `--memory-limit <MB>` | Memory limit in megabytes (e.g., `2048` for 2 GiB) |
 | `--mount <HOST:CONTAINER[:ro\|rw]>` | Additional volume mounts (repeatable) |
 
 ### Network Policies

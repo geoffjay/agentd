@@ -1210,4 +1210,19 @@ mod tests {
         let _ = SessionHealth::Starting;
         let _ = SessionHealth::Unknown;
     }
+
+    // -- WebSocket URL generation (no Docker daemon needed) --
+
+    #[test]
+    fn ws_url_contains_host_and_agent_id() {
+        let backend = test_backend();
+        let url = backend.agent_ws_url("test-prefix-myid", None);
+        assert!(url.is_some());
+        let url = url.unwrap();
+        assert!(
+            url.contains("host.docker.internal"),
+            "Bridge mode should use host.docker.internal"
+        );
+        assert!(url.contains("/ws/myid"), "URL should contain agent ID");
+    }
 }

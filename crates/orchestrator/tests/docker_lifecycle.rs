@@ -90,14 +90,14 @@ async fn full_agent_lifecycle() {
 }
 
 // ---------------------------------------------------------------------------
-// Reconciliation with stale containers
+// Multiple sessions cleanup
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore]
-async fn reconciliation_stale_containers() {
+async fn multiple_sessions_cleanup() {
     let backend = test_backend();
-    let configs: Vec<_> = (0..3).map(|i| test_config(&format!("reconcile-{}", i))).collect();
+    let configs: Vec<_> = (0..3).map(|i| test_config(&format!("cleanup-{}", i))).collect();
 
     for c in &configs {
         cleanup(&backend, &c.session_name).await;
