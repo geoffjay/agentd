@@ -27,3 +27,4 @@ agentd-common = { path = "../common" }
 async-trait = "0.1"
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+bollard = "0.18"

@@ -294,8 +294,7 @@ fn extract_assistant_text(message: &Value) -> Vec<String> {
                         }
                     }
                     "tool_use" => {
-                        let tool =
-                            block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let tool = block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
                         lines.push(format!("[Tool: {}]", tool));
                     }
                     _ => {}
@@ -403,13 +402,7 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                     let _ = registry.stream_tx.send(event.to_string());
                 }
 
-                registry
-                    .notify_result(ResultInfo {
-                        agent_id: *agent_id,
-                        is_error,
-                        usage,
-                    })
-                    .await;
+                registry.notify_result(ResultInfo { agent_id: *agent_id, is_error, usage }).await;
             }
             "control_request" => {
                 handle_control_request(agent_id, &msg, registry).await;
