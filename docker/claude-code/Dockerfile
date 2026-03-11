@@ -70,7 +70,7 @@ RUN claude --version
 # ── Health check ────────────────────────────────────────────────────
 # Docker HEALTHCHECK used by the orchestrator to detect container liveness.
 # Checks that the claude CLI binary is still accessible and functional.
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD claude --version || exit 1
 
 CMD ["claude"]

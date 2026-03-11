@@ -44,7 +44,7 @@ use bollard::container::{
     StartContainerOptions, StopContainerOptions,
 };
 use bollard::exec::CreateExecOptions;
-use bollard::models::ContainerStateStatusEnum;
+use bollard::models::{ContainerStateStatusEnum, HealthStatusEnum};
 use bollard::Docker;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -317,7 +317,7 @@ impl DockerBackend {
                     .state
                     .as_ref()
                     .and_then(|s| s.status.as_ref())
-                    .map(|s| format!("{:?}", s).to_lowercase());
+                    .map(|s| s.to_string());
                 Ok(status)
             }
             Err(e) if is_not_found(&e) => Ok(None),
@@ -714,19 +714,14 @@ impl ExecutionBackend for DockerBackend {
                 }
 
                 // Check the Docker HEALTHCHECK status if present.
+                // Match on bollard's `HealthStatusEnum` variants directly
+                // rather than using Debug formatting, which would be fragile
+                // across bollard version bumps.
                 match state.health.as_ref().and_then(|h| h.status.as_ref()) {
-                    Some(status) => {
-                        let health_str = format!("{:?}", status).to_lowercase();
-                        if health_str.contains("healthy") && !health_str.contains("unhealthy") {
-                            Ok(SessionHealth::Healthy)
-                        } else if health_str.contains("unhealthy") {
-                            Ok(SessionHealth::Unhealthy)
-                        } else if health_str.contains("starting") {
-                            Ok(SessionHealth::Starting)
-                        } else {
-                            Ok(SessionHealth::Unknown)
-                        }
-                    }
+                    Some(HealthStatusEnum::HEALTHY) => Ok(SessionHealth::Healthy),
+                    Some(HealthStatusEnum::UNHEALTHY) => Ok(SessionHealth::Unhealthy),
+                    Some(HealthStatusEnum::STARTING) => Ok(SessionHealth::Starting),
+                    Some(_) => Ok(SessionHealth::Unknown),
                     // No HEALTHCHECK configured — if running, assume healthy.
                     None => Ok(SessionHealth::Healthy),
                 }
@@ -1190,15 +1185,6 @@ mod tests {
         // Without override, falls back to backend default (Internet → host.docker.internal).
         let url_default = backend.agent_ws_url("test-prefix-abc123", None);
         assert_eq!(url_default, Some("ws://host.docker.internal:7006/ws/abc123".to_string()));
-    }
-
-    // -- container_state --
-
-    #[test]
-    fn container_state_method_exists() {
-        // Verify that container_state is callable (actual Docker tests require a daemon).
-        let backend = test_backend();
-        let _ = &backend; // Ensure the method exists on DockerBackend.
     }
 
     // -- SessionExitInfo construction --

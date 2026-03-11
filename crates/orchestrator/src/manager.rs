@@ -245,7 +245,9 @@ impl AgentManager {
                 }
             } else if !self.registry.is_connected(&agent.id).await {
                 // Case 2: session alive but WebSocket connection is stale.
-                // Check health before restarting.
+                // Fetch health for observability/logging only — the restart is
+                // unconditional because the stale WebSocket must be replaced
+                // regardless of container health status.
                 let health = self
                     .backend
                     .session_health(&session_name)
