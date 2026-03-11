@@ -16,6 +16,7 @@ use scheduler::storage::SchedulerStorage;
 use scheduler::Scheduler;
 use std::collections::HashSet;
 use std::env;
+use std::future::IntoFuture;
 use std::sync::Arc;
 use storage::AgentStorage;
 use tokio::sync::RwLock;
@@ -57,13 +58,8 @@ async fn main() -> anyhow::Result<()> {
     let port = env::var("PORT").unwrap_or_else(|_| "17006".to_string());
     let ws_base_url = format!("ws://127.0.0.1:{}", port);
 
-    // Agent manager.
-    let manager = AgentManager::new(storage.clone(), tmux, registry.clone(), ws_base_url);
-
-    // Reconcile DB state with tmux sessions from any previous run.
-    manager.reconcile().await?;
-
-    let manager = Arc::new(manager);
+    // Agent manager (Arc'd immediately so it can be shared with callbacks and API state).
+    let manager = Arc::new(AgentManager::new(storage.clone(), tmux, registry.clone(), ws_base_url));
 
     // Scheduler for autonomous workflows (shares the same SeaORM connection).
     // Schema is already applied by AgentStorage::with_path() via Migrator::up().
@@ -190,14 +186,11 @@ async fn main() -> anyhow::Result<()> {
             .await;
     }
 
-    // Resume any enabled workflows from the database.
-    scheduler.resume_workflows().await?;
-
     // Initialize Prometheus metrics
     let metrics_handle = init_metrics();
 
     // Build router with metrics endpoint and request tracing middleware.
-    let state = ApiState { manager, registry, scheduler: scheduler.clone() };
+    let state = ApiState { manager: manager.clone(), registry, scheduler: scheduler.clone() };
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
@@ -206,13 +199,33 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
-    // Bind and serve.
+    // Bind and start serving BEFORE reconciliation. Reconcile restarts agent
+    // processes that connect back to our WebSocket endpoint — the server must
+    // be accepting connections before those agents are launched.
     let addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Orchestrator API listening on http://{}", addr);
     info!("WebSocket endpoint at ws://{}/ws/{{agent_id}}", addr);
 
-    axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()).await?;
+    let server = tokio::spawn(
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown_signal())
+            .into_future(),
+    );
+
+    // Now that the server is accepting connections, reconcile stale agents.
+    // Restarted Claude processes will connect to the already-listening WebSocket
+    // endpoint instead of failing because the port isn't bound yet.
+    if let Err(e) = manager.reconcile().await {
+        error!(%e, "Agent reconciliation failed");
+    }
+
+    // Resume any enabled workflows from the database.
+    if let Err(e) = scheduler.resume_workflows().await {
+        error!(%e, "Failed to resume workflows");
+    }
+
+    server.await??;
 
     // Graceful shutdown: stop all workflow runners.
     scheduler.shutdown_all().await;
