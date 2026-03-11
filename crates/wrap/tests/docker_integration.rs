@@ -496,4 +496,3 @@ async fn docker_send_command_exec() {
 
     cleanup(&backend, &config.session_name).await;
 }
-
