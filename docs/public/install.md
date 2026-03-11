@@ -7,10 +7,12 @@ This guide covers installation of the agentd system on macOS.
 The agentd system consists of:
 
 - **agent** - Command-line interface for interacting with services
+- **agentd-orchestrator** - Core agent lifecycle service (REST + WebSocket on port 17006 dev / 7006 prod)
 - **agentd-notify** - Notification service (REST API on port 17004 dev / 7004 prod)
 - **agentd-ask** - Ask service for interactive questions (REST API on port 17001 dev / 7001 prod)
-- **agentd-hook** - Hook service for shell integration
-- **agentd-monitor** - Monitoring service
+- **agentd-wrap** - Tmux session launcher (REST API on port 17005 dev / 7005 prod)
+- **agentd-hook** - Hook service for shell integration (planned)
+- **agentd-monitor** - Monitoring service (planned)
 
 ## Prerequisites
 
@@ -102,20 +104,26 @@ cargo xtask service-status
 
 **Binaries** (in `/usr/local/bin/` or `$PREFIX/bin`):
 - `agent` - CLI
+- `agentd-orchestrator` - Core agent lifecycle service
 - `agentd-notify` - Notification service
 - `agentd-ask` - Ask service
+- `agentd-wrap` - Tmux session launcher
 - `agentd-hook` - Hook service
 - `agentd-monitor` - Monitor service
 
 **Service Files** (in `~/Library/LaunchAgents/`):
+- `com.geoffjay.agentd-orchestrator.plist`
 - `com.geoffjay.agentd-notify.plist`
 - `com.geoffjay.agentd-ask.plist`
+- `com.geoffjay.agentd-wrap.plist`
 - `com.geoffjay.agentd-hook.plist`
 - `com.geoffjay.agentd-monitor.plist`
 
 **Log Files** (in `/usr/local/var/log/` or `$PREFIX/var/log`):
+- `agentd-orchestrator.log` / `agentd-orchestrator.err`
 - `agentd-notify.log` / `agentd-notify.err`
 - `agentd-ask.log` / `agentd-ask.err`
+- `agentd-wrap.log` / `agentd-wrap.err`
 - `agentd-hook.log` / `agentd-hook.err`
 - `agentd-monitor.log` / `agentd-monitor.err`
 
