@@ -47,6 +47,9 @@ export default defineConfig(({ mode }) => {
           rewrite: (path) => path.replace(/^\/api\/orchestrator/, ''),
         },
       },
+      watch: {
+        ignored: ['design/**/*'],
+      },
     },
     test: {
       globals: true,
