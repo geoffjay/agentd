@@ -1,0 +1,42 @@
+# Build artifacts
+target/
+*.rlib
+*.d
+
+# Version control
+.git/
+.gitignore
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+secrets/
+
+# Documentation build output
+docs/book/
+
+# CI/CD
+.github/
+
+# Node modules (if any local tooling)
+node_modules/
+
+# Test databases and temp files
+*.db
+*.db-shm
+*.db-wal
+
+# UI build artifacts
+ui/node_modules/
+ui/dist/
