@@ -23,7 +23,7 @@ use tokio::sync::RwLock;
 use tracing::{error, info};
 use uuid::Uuid;
 use websocket::ConnectionRegistry;
-use wrap::tmux::TmuxManager;
+use wrap::backend::{ExecutionBackend, TmuxBackend};
 
 fn init_metrics() -> PrometheusHandle {
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
@@ -48,8 +48,8 @@ async fn main() -> anyhow::Result<()> {
     info!("Agent storage initialized at: {:?}", AgentStorage::get_db_path()?);
     let storage = Arc::new(storage);
 
-    // Tmux manager with orchestrator-specific prefix.
-    let tmux = TmuxManager::new("agentd-orch");
+    // Execution backend — defaults to tmux. Future: select based on config/env.
+    let backend: Arc<dyn ExecutionBackend> = Arc::new(TmuxBackend::new("agentd-orch"));
 
     // WebSocket connection registry.
     let registry = ConnectionRegistry::new();
@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
     let ws_base_url = format!("ws://127.0.0.1:{}", port);
 
     // Agent manager (Arc'd immediately so it can be shared with callbacks and API state).
-    let manager = Arc::new(AgentManager::new(storage.clone(), tmux, registry.clone(), ws_base_url));
+    let manager = Arc::new(AgentManager::new(storage.clone(), backend, registry.clone(), ws_base_url));
 
     // Scheduler for autonomous workflows (shares the same SeaORM connection).
     // Schema is already applied by AgentStorage::with_path() via Migrator::up().

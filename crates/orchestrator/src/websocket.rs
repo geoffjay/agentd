@@ -35,6 +35,8 @@ pub struct ConnectionRegistry {
     policies: Arc<RwLock<HashMap<Uuid, ToolPolicy>>>,
     /// Broadcast channel for the multiplexed agent stream.
     stream_tx: broadcast::Sender<String>,
+    /// Notifies waiters when any agent connects.
+    connect_notify: Arc<tokio::sync::Notify>,
     /// In-memory store of pending human tool approvals.
     pub approvals: ApprovalRegistry,
 }
@@ -53,6 +55,7 @@ impl ConnectionRegistry {
             result_callbacks: Arc::new(RwLock::new(Vec::new())),
             policies: Arc::new(RwLock::new(HashMap::new())),
             stream_tx,
+            connect_notify: Arc::new(tokio::sync::Notify::new()),
             approvals: ApprovalRegistry::new(300), // 5-minute default timeout
         }
     }
@@ -69,7 +72,32 @@ impl ConnectionRegistry {
 
     pub async fn register(&self, agent_id: Uuid, conn: AgentConnection) {
         self.connections.write().await.insert(agent_id, conn);
+        self.connect_notify.notify_waiters();
         info!(%agent_id, "Agent WebSocket registered");
+    }
+
+    /// Wait until a specific agent connects, or until the timeout expires.
+    ///
+    /// Returns `true` if the agent connected, `false` on timeout.
+    pub async fn wait_for_agent(&self, agent_id: &Uuid, timeout: std::time::Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if self.is_connected(agent_id).await {
+                return true;
+            }
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            tokio::select! {
+                _ = self.connect_notify.notified() => {
+                    // An agent connected — loop to check if it's ours.
+                }
+                _ = tokio::time::sleep(remaining) => {
+                    return self.is_connected(agent_id).await;
+                }
+            }
+        }
     }
 
     pub async fn unregister(&self, agent_id: &Uuid) {
@@ -119,6 +147,11 @@ impl ConnectionRegistry {
 
     pub async fn connected_count(&self) -> usize {
         self.connections.read().await.len()
+    }
+
+    /// Return the set of currently connected agent IDs.
+    pub async fn connected_ids(&self) -> Vec<Uuid> {
+        self.connections.read().await.keys().copied().collect()
     }
 
     /// Register a callback to be invoked when any agent produces a "result" message.
@@ -281,6 +314,9 @@ fn broadcast_output(agent_id: &Uuid, text: &str, registry: &ConnectionRegistry) 
         }
         let event = serde_json::json!({
             "type": "agent:output",
+            // snake_case for the /stream/{agent_id} filter
+            "agent_id": agent_id.to_string(),
+            // camelCase for the frontend AgentEvent type
             "agentId": agent_id.to_string(),
             "line": line,
             "timestamp": Utc::now().to_rfc3339(),
@@ -349,6 +385,7 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 if let Some(ref usage_snap) = usage {
                     let event = serde_json::json!({
                         "type": "agent:usage_update",
+                        "agent_id": agent_id.to_string(),
                         "agentId": agent_id.to_string(),
                         "usage": {
                             "input_tokens": usage_snap.input_tokens,

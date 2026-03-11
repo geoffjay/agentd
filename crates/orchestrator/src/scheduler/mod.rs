@@ -111,7 +111,12 @@ impl Scheduler {
     }
 
     /// Called on startup to resume enabled workflows whose agents are connected.
-    pub async fn resume_workflows(&self) -> anyhow::Result<()> {
+    ///
+    /// Agents restarted during reconcile may take several seconds to initialise
+    /// and establish their WebSocket connection. For workflows whose agent is
+    /// not yet connected, a background task waits up to 60 seconds for the
+    /// agent to appear before giving up.
+    pub async fn resume_workflows(self: &Arc<Self>) -> anyhow::Result<()> {
         // First, mark any in-flight dispatches from a previous run as failed.
         let failed = self.storage.fail_inflight_dispatches().await?;
         if failed > 0 {
@@ -134,15 +139,46 @@ impl Scheduler {
                     error!(%e, "Failed to resume workflow");
                 }
             } else {
-                info!(
-                    workflow_id = %workflow.id,
-                    agent_id = %workflow.agent_id,
-                    "Skipping workflow resume: agent not connected"
-                );
+                // Agent not connected yet — wait for it in the background.
+                let scheduler = Arc::clone(self);
+                tokio::spawn(async move {
+                    info!(
+                        workflow_id = %workflow.id,
+                        agent_id = %workflow.agent_id,
+                        "Waiting for agent to connect before resuming workflow"
+                    );
+                    let timeout = std::time::Duration::from_secs(60);
+                    if scheduler.registry.wait_for_agent(&workflow.agent_id, timeout).await {
+                        info!(
+                            workflow_id = %workflow.id,
+                            agent_id = %workflow.agent_id,
+                            "Agent connected, resuming workflow"
+                        );
+                        if let Err(e) = scheduler.start_workflow(workflow).await {
+                            error!(%e, "Failed to resume workflow after agent connected");
+                        }
+                    } else {
+                        warn!(
+                            workflow_id = %workflow.id,
+                            agent_id = %workflow.agent_id,
+                            "Agent did not connect within 60s, workflow not resumed"
+                        );
+                    }
+                });
             }
         }
 
         Ok(())
+    }
+
+    /// Return the set of currently running workflow IDs and their assigned agent IDs.
+    pub async fn running_workflows(&self) -> Vec<(Uuid, Uuid)> {
+        self.runners
+            .read()
+            .await
+            .iter()
+            .map(|(wf_id, rw)| (*wf_id, rw.agent_id))
+            .collect()
     }
 
     /// Shutdown all running workflows gracefully.

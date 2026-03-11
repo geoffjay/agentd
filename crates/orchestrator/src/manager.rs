@@ -6,12 +6,16 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 use uuid::Uuid;
-use wrap::tmux::TmuxManager;
+use wrap::backend::ExecutionBackend;
 
 /// Manages the lifecycle of AI agent processes.
+///
+/// Uses an [`ExecutionBackend`] trait object to interact with the underlying
+/// session manager (tmux, Docker, etc.), making the orchestrator
+/// backend-agnostic.
 pub struct AgentManager {
     storage: Arc<AgentStorage>,
-    tmux: TmuxManager,
+    backend: Arc<dyn ExecutionBackend>,
     registry: ConnectionRegistry,
     /// The base URL agents will use to connect back via WebSocket.
     ws_base_url: String,
@@ -20,18 +24,18 @@ pub struct AgentManager {
 impl AgentManager {
     pub fn new(
         storage: Arc<AgentStorage>,
-        tmux: TmuxManager,
+        backend: Arc<dyn ExecutionBackend>,
         registry: ConnectionRegistry,
         ws_base_url: String,
     ) -> Self {
-        Self { storage, tmux, registry, ws_base_url }
+        Self { storage, backend, registry, ws_base_url }
     }
 
     pub fn registry(&self) -> &ConnectionRegistry {
         &self.registry
     }
 
-    /// Spawn a new agent: create DB record, tmux session, and launch claude.
+    /// Spawn a new agent: create DB record, backend session, and launch claude.
     ///
     /// If the agent config includes a prompt, it is NOT passed via `-p` (which
     /// would cause claude to exit after processing it). Instead, claude is
@@ -40,26 +44,38 @@ impl AgentManager {
     /// follow-up messages.
     pub async fn spawn_agent(&self, name: String, config: AgentConfig) -> anyhow::Result<Agent> {
         let mut agent = Agent::new(name, config);
-        let session_name = format!("{}-{}", self.tmux.prefix(), agent.id);
+        let session_name = format!("{}-{}", self.backend.prefix(), agent.id);
 
         // Persist agent record.
         self.storage.add(&agent).await?;
 
-        // Create tmux session in the agent's working directory.
-        if let Err(e) = self.tmux.create_session(&session_name, &agent.config.working_dir, None) {
+        // Create a session in the agent's working directory.
+        let session_config = wrap::backend::SessionConfig {
+            session_name: session_name.clone(),
+            working_dir: agent.config.working_dir.clone(),
+            agent_type: "claude-code".into(),
+            model_provider: "anthropic".into(),
+            model_name: agent.config.model.clone().unwrap_or_default(),
+            layout: None,
+        };
+
+        if let Err(e) = self.backend.create_session(&session_config).await {
             agent.status = AgentStatus::Failed;
             agent.updated_at = Utc::now();
             let _ = self.storage.update(&agent).await;
-            return Err(anyhow::anyhow!("Failed to create tmux session: {}", e));
+            return Err(anyhow::anyhow!("Failed to create session: {}", e));
         }
 
         // Build the claude command (never uses -p; prompt sent via WebSocket).
-        let ws_url = format!("{}/ws/{}", self.ws_base_url, agent.id);
+        let ws_url = self
+            .backend
+            .agent_ws_url(&session_name)
+            .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
         let claude_cmd = build_claude_command(&agent.config, &ws_url);
 
-        // Send the command into the tmux session.
-        if let Err(e) = self.tmux.send_command(&session_name, &claude_cmd) {
-            let _ = self.tmux.kill_session(&session_name);
+        // Send the command into the session.
+        if let Err(e) = self.backend.send_command(&session_name, &claude_cmd).await {
+            let _ = self.backend.kill_session(&session_name).await;
             agent.status = AgentStatus::Failed;
             agent.updated_at = Utc::now();
             let _ = self.storage.update(&agent).await;
@@ -123,8 +139,8 @@ impl AgentManager {
             self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
 
         if let Some(ref session) = agent.session_id {
-            if let Err(e) = self.tmux.kill_session(session) {
-                warn!(agent_id = %id, %e, "Failed to kill tmux session");
+            if let Err(e) = self.backend.kill_session(session).await {
+                warn!(agent_id = %id, %e, "Failed to kill session");
             }
         }
 
@@ -159,11 +175,10 @@ impl AgentManager {
         let agents = self.storage.list(Some(AgentStatus::Running)).await?;
 
         for agent in agents {
-            let session_alive = agent
-                .session_id
-                .as_ref()
-                .map(|s| self.tmux.session_exists(s).unwrap_or(false))
-                .unwrap_or(false);
+            let session_alive = match agent.session_id.as_ref() {
+                Some(s) => self.backend.session_exists(s).await.unwrap_or(false),
+                None => false,
+            };
 
             if !session_alive {
                 // Case 1: tmux session is gone — mark as Failed.
@@ -308,35 +323,47 @@ impl AgentManager {
         self.storage.get_usage_stats(id).await
     }
 
-    /// Restart a running agent: kill the current tmux session and re-launch Claude.
+    /// Restart a running agent: kill the current session and re-launch Claude.
     ///
     /// Preserves the agent's ID, name, and config. The prompt is NOT re-sent
     /// since the agent is being restarted mid-lifecycle.
     async fn restart_agent(&self, agent: &Agent) -> anyhow::Result<Agent> {
         let mut agent = agent.clone();
 
-        // Kill the existing tmux session.
+        // Kill the existing session.
         if let Some(ref session) = agent.session_id {
-            if let Err(e) = self.tmux.kill_session(session) {
-                warn!(agent_id = %agent.id, %e, "Failed to kill tmux session during restart");
+            if let Err(e) = self.backend.kill_session(session).await {
+                warn!(agent_id = %agent.id, %e, "Failed to kill session during restart");
             }
         }
 
-        // Create a new tmux session.
-        let session_name = format!("{}-{}", self.tmux.prefix(), agent.id);
-        if let Err(e) = self.tmux.create_session(&session_name, &agent.config.working_dir, None) {
+        // Create a new session.
+        let session_name = format!("{}-{}", self.backend.prefix(), agent.id);
+        let session_config = wrap::backend::SessionConfig {
+            session_name: session_name.clone(),
+            working_dir: agent.config.working_dir.clone(),
+            agent_type: "claude-code".into(),
+            model_provider: "anthropic".into(),
+            model_name: agent.config.model.clone().unwrap_or_default(),
+            layout: None,
+        };
+
+        if let Err(e) = self.backend.create_session(&session_config).await {
             agent.status = AgentStatus::Failed;
             agent.updated_at = Utc::now();
             let _ = self.storage.update(&agent).await;
-            return Err(anyhow::anyhow!("Failed to create tmux session on restart: {}", e));
+            return Err(anyhow::anyhow!("Failed to create session on restart: {}", e));
         }
 
         // Build and send the claude command with the updated config.
-        let ws_url = format!("{}/ws/{}", self.ws_base_url, agent.id);
+        let ws_url = self
+            .backend
+            .agent_ws_url(&session_name)
+            .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
         let claude_cmd = build_claude_command(&agent.config, &ws_url);
 
-        if let Err(e) = self.tmux.send_command(&session_name, &claude_cmd) {
-            let _ = self.tmux.kill_session(&session_name);
+        if let Err(e) = self.backend.send_command(&session_name, &claude_cmd).await {
+            let _ = self.backend.kill_session(&session_name).await;
             agent.status = AgentStatus::Failed;
             agent.updated_at = Utc::now();
             let _ = self.storage.update(&agent).await;

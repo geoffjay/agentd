@@ -12,7 +12,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
@@ -53,6 +54,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/approvals/{id}", get(get_approval))
         .route("/approvals/{id}/approve", post(approve_tool))
         .route("/approvals/{id}/deny", post(deny_tool))
+        .route("/debug/agents", get(debug_agents))
         .with_state(state);
 
     api_routes.merge(ws_agent_routes).merge(ws_stream_routes).merge(wf_routes)
@@ -333,6 +335,99 @@ async fn list_agent_approvals(
     let items: Vec<PendingApproval> = approvals.into_iter().skip(offset).take(limit).collect();
 
     Ok(Json(PaginatedResponse { items, total, limit, offset }))
+}
+
+// -- Debug endpoint --
+
+#[derive(Serialize)]
+struct DebugAgentEntry {
+    id: Uuid,
+    name: String,
+    status: AgentStatus,
+    session_id: Option<String>,
+    ws_connected: bool,
+    model: Option<String>,
+    workflows: Vec<Uuid>,
+}
+
+#[derive(Serialize)]
+struct DebugResponse {
+    agents: Vec<DebugAgentEntry>,
+    /// Agent IDs that have a WebSocket connection but no DB record.
+    orphan_connections: Vec<Uuid>,
+    /// Summary counts for quick scanning.
+    summary: DebugSummary,
+}
+
+#[derive(Serialize)]
+struct DebugSummary {
+    total_agents: usize,
+    running: usize,
+    ws_connected: usize,
+    running_but_disconnected: Vec<Uuid>,
+    connected_but_not_running: Vec<Uuid>,
+    active_workflows: usize,
+}
+
+async fn debug_agents(State(state): State<ApiState>) -> Result<impl IntoResponse, ApiError> {
+    let agents = state.manager.list_agents(None).await?;
+    let connected_ids = state.registry.connected_ids().await;
+    let running_workflows = state.scheduler.running_workflows().await;
+
+    // Build a map of agent_id → list of running workflow IDs.
+    let mut wf_map: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for (wf_id, agent_id) in &running_workflows {
+        wf_map.entry(*agent_id).or_default().push(*wf_id);
+    }
+
+    let connected_set: std::collections::HashSet<Uuid> = connected_ids.iter().copied().collect();
+    let agent_id_set: std::collections::HashSet<Uuid> = agents.iter().map(|a| a.id).collect();
+
+    let mut running_but_disconnected = Vec::new();
+    let mut connected_but_not_running = Vec::new();
+    let mut running_count = 0;
+
+    let entries: Vec<DebugAgentEntry> = agents
+        .iter()
+        .map(|agent| {
+            let ws_connected = connected_set.contains(&agent.id);
+            let is_running = agent.status == AgentStatus::Running;
+
+            if is_running {
+                running_count += 1;
+            }
+            if is_running && !ws_connected {
+                running_but_disconnected.push(agent.id);
+            }
+            if ws_connected && !is_running {
+                connected_but_not_running.push(agent.id);
+            }
+
+            DebugAgentEntry {
+                id: agent.id,
+                name: agent.name.clone(),
+                status: agent.status.clone(),
+                session_id: agent.session_id.clone(),
+                ws_connected,
+                model: agent.config.model.clone(),
+                workflows: wf_map.remove(&agent.id).unwrap_or_default(),
+            }
+        })
+        .collect();
+
+    let orphan_connections: Vec<Uuid> =
+        connected_ids.iter().filter(|id| !agent_id_set.contains(id)).copied().collect();
+
+    let summary = DebugSummary {
+        total_agents: entries.len(),
+        running: running_count,
+        ws_connected: connected_set.len(),
+        running_but_disconnected,
+        connected_but_not_running,
+        active_workflows: running_workflows.len(),
+    };
+
+    Ok(Json(DebugResponse { agents: entries, orphan_connections, summary }))
 }
 
 // -- Error handling --
