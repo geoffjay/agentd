@@ -85,6 +85,8 @@ nav:
   - Getting Started: public/getting-started.md
   - Configuration: public/configuration.md
   - Installation: public/install.md
+  - Tool Policies: public/tool-policies.md
+  - Templates: public/templates.md
   - Services:
       - Orchestrator: public/services/orchestrator.md
       - Notify: public/services/notify.md
@@ -92,6 +94,7 @@ nav:
       - Wrap: public/services/wrap.md
   - Development:
       - Error Handling & Logging: public/error-handling.md
+      - Storage Patterns: storage.md
 
 extra:
   social:

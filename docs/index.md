@@ -96,9 +96,9 @@ agentd is structured as a Rust workspace with the following crates:
 | `notify` | `agentd-notify` | Notification REST API |
 | `ask` | `agentd-ask` | Interactive question service |
 | `cli` | `agent` | Command-line interface |
-| `hook` | `agentd-hook` | Shell integration hooks |
-| `monitor` | `agentd-monitor` | Service monitoring |
-| `wrap` | _(library)_ | Tmux session management |
+| `hook` | `agentd-hook` | Shell integration hooks (planned) |
+| `monitor` | `agentd-monitor` | Service monitoring (planned) |
+| `wrap` | `agentd-wrap` | Tmux session management REST API |
 
 ## Requirements
 

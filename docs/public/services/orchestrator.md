@@ -64,31 +64,45 @@ GET /health
 ### List Agents
 
 ```
-GET /agents?status={status}
+GET /agents?status={status}&limit={limit}&offset={offset}
 ```
 
 **Query Parameters:**
-- `status` (optional): Filter by status - `pending`, `running`, `stopped`, `failed`
+- `status` (optional): Filter by status — `pending`, `running`, `stopped`, `failed`
+- `limit` (optional): Page size (default: 50, max: 200)
+- `offset` (optional): Number of records to skip (default: 0)
 
-**Response:**
+**Response:** Paginated list of agent objects.
 ```json
-[
-  {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "my-agent",
-    "status": "running",
-    "config": {
-      "working_dir": "/home/user/project",
-      "shell": "zsh",
-      "interactive": false,
-      "worktree": false
-    },
-    "tmux_session": "agentd-orch-550e8400-e29b-41d4-a716-446655440000",
-    "created_at": "2026-02-28T12:00:00Z",
-    "updated_at": "2026-02-28T12:00:00Z"
-  }
-]
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "my-agent",
+      "status": "running",
+      "config": {
+        "working_dir": "/home/user/project",
+        "shell": "zsh",
+        "interactive": false,
+        "worktree": false,
+        "tool_policy": {"mode": "allow_all"},
+        "model": "sonnet",
+        "env": {"ANTHROPIC_API_KEY": "***"}
+      },
+      "session_id": "agentd-orch-550e8400-e29b-41d4-a716-446655440000",
+      "backend_type": "tmux",
+      "created_at": "2026-02-28T12:00:00Z",
+      "updated_at": "2026-02-28T12:00:00Z"
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
 ```
+
+!!! note "Environment variable redaction"
+    The `env` field in the response shows key names but values are always replaced with `"***"` to prevent secrets from leaking via the API.
 
 ---
 
@@ -112,7 +126,12 @@ Content-Type: application/json
 | `interactive` | bool | no | `false` | Start in interactive mode without WebSocket |
 | `prompt` | string | no | | Initial prompt sent via WebSocket after agent connects |
 | `worktree` | bool | no | `false` | Start with `--worktree` for isolated git worktree |
-| `system_prompt` | string | no | | System prompt (`--system-prompt`) |
+| `system_prompt` | string | no | | System prompt passed via `--system-prompt` |
+| `tool_policy` | object | no | `{"mode":"allow_all"}` | Tool use restrictions (see [Tool Policy](#tool-policy)) |
+| `model` | string | no | | Model to use — accepts aliases (`sonnet`, `opus`, `haiku`) or full names (`claude-sonnet-4-6`). Maps to the `--model` flag. |
+| `env` | object | no | `{}` | Environment variables set when launching the agent. Commonly used for `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`. Values are write-only — the API returns `"***"` in responses. |
+| `auto_clear_threshold` | integer | no | | Automatically clear context when cumulative input tokens for the session exceeds this value. |
+| `network_policy` | string | no | | Network policy for Docker-backed agents (`internet`, `isolated`, `host`). Ignored for tmux backends. |
 
 **Response:** `201 Created` with agent object.
 
@@ -126,7 +145,116 @@ Content-Type: application/json
 GET /agents/{id}
 ```
 
-**Response:** Single agent object.
+**Response:** Single agent object (same shape as items in the List Agents response).
+
+---
+
+### Set Agent Model
+
+Update the model used by an agent.
+
+```
+PUT /agents/{id}/model
+Content-Type: application/json
+```
+
+**Request Body:**
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `model` | string\|null | yes | | Model to use (e.g. `"sonnet"`, `"opus"`, `"claude-sonnet-4-6"`). Pass `null` to clear and inherit Claude Code's default. |
+| `restart` | bool | no | `false` | If `true`, kill and re-launch the agent process immediately with the new model. If `false`, the change takes effect on next restart. |
+
+**Response:** Updated agent object.
+
+**Example:**
+```bash
+# Switch to opus and restart immediately
+curl -X PUT http://127.0.0.1:17006/agents/<ID>/model \
+  -H "Content-Type: application/json" \
+  -d '{"model": "opus", "restart": true}'
+```
+
+---
+
+### Get Agent Usage
+
+Get token usage and cost statistics for an agent.
+
+```
+GET /agents/{id}/usage
+```
+
+**Response:**
+```json
+{
+  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "current_session": {
+    "input_tokens": 12500,
+    "output_tokens": 3200,
+    "cache_read_input_tokens": 8000,
+    "cache_creation_input_tokens": 4500,
+    "total_cost_usd": 0.0184,
+    "num_turns": 3,
+    "duration_ms": 45230,
+    "duration_api_ms": 38100,
+    "result_count": 3,
+    "started_at": "2026-03-10T09:00:00Z",
+    "ended_at": null
+  },
+  "cumulative": {
+    "input_tokens": 58000,
+    "output_tokens": 14200,
+    "cache_read_input_tokens": 32000,
+    "cache_creation_input_tokens": 26000,
+    "total_cost_usd": 0.0821,
+    "num_turns": 12,
+    "duration_ms": 198000,
+    "duration_api_ms": 167000,
+    "result_count": 12,
+    "started_at": "2026-03-10T08:00:00Z",
+    "ended_at": null
+  },
+  "session_count": 4
+}
+```
+
+`current_session` is `null` when the agent has no active WebSocket connection.
+
+---
+
+### Clear Agent Context
+
+Reset the agent's conversation context, starting a fresh session. Useful when the agent is approaching context limits or when you want to start a new task cleanly.
+
+```
+POST /agents/{id}/clear-context
+Content-Type: application/json
+```
+
+**Request Body:** Empty object `{}` (reserved for future options).
+
+**Response:**
+```json
+{
+  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "session_usage": {
+    "input_tokens": 45000,
+    "output_tokens": 11200,
+    "total_cost_usd": 0.0637,
+    "num_turns": 9,
+    "result_count": 9,
+    "started_at": "2026-03-10T08:00:00Z",
+    "ended_at": "2026-03-10T09:30:00Z"
+  },
+  "new_session_number": 5
+}
+```
+
+`session_usage` contains the stats for the session that was just ended. `new_session_number` is the 1-based index of the new session going forward.
+
+!!! tip "Auto-clear threshold"
+    Set `auto_clear_threshold` when creating an agent to automatically clear context when input tokens exceed the threshold, without manual intervention.
 
 ---
 
@@ -265,14 +393,18 @@ Content-Type: application/json
 #### List Workflows
 
 ```
-GET /workflows
+GET /workflows?limit={limit}&offset={offset}
 ```
+
+**Response:** Paginated list of workflow objects.
 
 #### Get Workflow
 
 ```
 GET /workflows/{id}
 ```
+
+**Response:** Single workflow object.
 
 #### Update Workflow
 
@@ -281,7 +413,7 @@ PUT /workflows/{id}
 Content-Type: application/json
 ```
 
-Supports partial updates: `name`, `prompt_template`, `poll_interval_secs`, `enabled`.
+Supports partial updates: `name`, `prompt_template`, `poll_interval_secs`, `enabled`, `tool_policy`. Enabling or disabling a workflow (`"enabled": true/false`) immediately starts or stops its polling loop.
 
 #### Delete Workflow
 
@@ -289,13 +421,36 @@ Supports partial updates: `name`, `prompt_template`, `poll_interval_secs`, `enab
 DELETE /workflows/{id}
 ```
 
+**Response:** `204 No Content`
+
 #### Dispatch History
 
 ```
-GET /workflows/{id}/history
+GET /workflows/{id}/history?limit={limit}&offset={offset}
 ```
 
-Returns the log of dispatched tasks with their status (`dispatched`, `completed`, `failed`).
+**Response:** Paginated log of dispatched tasks.
+
+```json
+{
+  "items": [
+    {
+      "id": "...",
+      "workflow_id": "...",
+      "source_id": "42",
+      "status": "completed",
+      "prompt": "Work on issue #42: Fix login bug\n\n...",
+      "dispatched_at": "2026-03-10T09:00:00Z",
+      "completed_at": "2026-03-10T09:12:00Z"
+    }
+  ],
+  "total": 7,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+Dispatch statuses: `dispatched` (in progress), `completed` (agent finished), `failed` (error or agent not available).
 
 ---
 
@@ -331,22 +486,136 @@ agent orchestrator create-agent --name safe --tool-policy '{"mode":"deny_list","
 
 When an agent runs with `require_approval` policy, tool requests are held pending until a human approves or denies them.
 
+#### List All Approvals
+
 ```
-GET  /approvals                    # list all pending approvals
-GET  /approvals/{id}               # get single approval
-POST /approvals/{id}/approve       # approve tool request
-POST /approvals/{id}/deny          # deny tool request
-GET  /agents/{id}/approvals        # list approvals for an agent
+GET /approvals?status={status}&limit={limit}&offset={offset}
 ```
+
+**Query Parameters:**
+- `status` (optional): Filter by status — `pending`, `approved`, `denied`, `timed_out`
+- `limit` (optional): Page size (default: 50, max: 200)
+- `offset` (optional): Records to skip (default: 0)
+
+**Response:** Paginated list of approval objects.
+```json
+{
+  "items": [
+    {
+      "id": "abc12345-...",
+      "agent_id": "550e8400-...",
+      "request_id": "req-xyz",
+      "tool_name": "Bash",
+      "tool_input": {"command": "cargo test"},
+      "status": "pending",
+      "created_at": "2026-03-10T10:00:00Z",
+      "expires_at": "2026-03-10T10:05:00Z"
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+#### Get Approval
+
+```
+GET /approvals/{id}
+```
+
+**Response:** Single approval object.
+
+#### Approve Tool Request
+
+```
+POST /approvals/{id}/approve
+Content-Type: application/json
+```
+
+**Request Body:** (optional)
+```json
+{"reason": "Reviewed and approved"}
+```
+
+**Response:** Updated approval object with `"status": "approved"`.
+
+#### Deny Tool Request
+
+```
+POST /approvals/{id}/deny
+Content-Type: application/json
+```
+
+**Request Body:** (optional)
+```json
+{"reason": "Too risky in this context"}
+```
+
+**Response:** Updated approval object with `"status": "denied"`.
+
+#### List Approvals for an Agent
+
+```
+GET /agents/{id}/approvals?status={status}&limit={limit}&offset={offset}
+```
+
+Same query parameters and response shape as List All Approvals, filtered to a single agent.
+
+---
 
 **CLI:**
 ```bash
 agent orchestrator list-approvals
+agent orchestrator list-approvals --agent-id <AGENT_ID>
 agent orchestrator approve <APPROVAL_ID>
 agent orchestrator deny <APPROVAL_ID>
 ```
 
 Pending approvals auto-deny after 5 minutes if not acted on. Approval events are broadcast on the `/stream` WebSocket.
+
+---
+
+### Debug Endpoint
+
+Provides a detailed diagnostic view of agent state, WebSocket connectivity, and active workflows in a single response. Intended for troubleshooting, not production monitoring.
+
+```
+GET /debug/agents
+```
+
+**Response:**
+```json
+{
+  "agents": [
+    {
+      "id": "550e8400-...",
+      "name": "worker",
+      "status": "running",
+      "session_id": "agentd-orch-550e8400-...",
+      "ws_connected": true,
+      "model": "sonnet",
+      "workflows": ["wf-uuid-1"]
+    }
+  ],
+  "orphan_connections": [],
+  "summary": {
+    "total_agents": 1,
+    "running": 1,
+    "ws_connected": 1,
+    "running_but_disconnected": [],
+    "connected_but_not_running": [],
+    "active_workflows": 1
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `agents` | All agents in the database with their current WebSocket connection state |
+| `orphan_connections` | Agent IDs that have a live WebSocket connection but no database record |
+| `summary.running_but_disconnected` | Agents marked `running` in DB whose WebSocket disconnected — likely crashed |
+| `summary.connected_but_not_running` | WebSocket-connected agents not marked `running` in DB — transient state |
 
 ---
 
