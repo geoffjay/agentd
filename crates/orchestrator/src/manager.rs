@@ -179,7 +179,8 @@ impl AgentManager {
     /// DB record).
     pub async fn reconcile(&self) -> anyhow::Result<()> {
         let agents = self.storage.list(Some(AgentStatus::Running)).await?;
-        let mut known_sessions: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut known_sessions: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for agent in &agents {
             if let Some(ref s) = agent.session_id {
@@ -245,9 +246,11 @@ impl AgentManager {
             } else if !self.registry.is_connected(&agent.id).await {
                 // Case 2: session alive but WebSocket connection is stale.
                 // Check health before restarting.
-                let health = self.backend.session_health(&session_name).await.unwrap_or(
-                    wrap::backend::SessionHealth::Unknown,
-                );
+                let health = self
+                    .backend
+                    .session_health(&session_name)
+                    .await
+                    .unwrap_or(wrap::backend::SessionHealth::Unknown);
 
                 warn!(
                     agent_id = %agent.id,
@@ -272,10 +275,7 @@ impl AgentManager {
 
     /// Remove backend sessions that are labeled with this backend's prefix
     /// but have no corresponding agent record in the database.
-    async fn cleanup_orphaned_sessions(
-        &self,
-        known_sessions: &std::collections::HashSet<String>,
-    ) {
+    async fn cleanup_orphaned_sessions(&self, known_sessions: &std::collections::HashSet<String>) {
         let backend_sessions = match self.backend.list_sessions().await {
             Ok(s) => s,
             Err(e) => {

@@ -86,10 +86,7 @@ async fn main() -> anyhow::Result<()> {
             Arc::new(docker_backend)
         }
         other => {
-            anyhow::bail!(
-                "Unknown AGENTD_BACKEND value '{}'. Valid options: tmux, docker",
-                other
-            );
+            anyhow::bail!("Unknown AGENTD_BACKEND value '{}'. Valid options: tmux, docker", other);
         }
     };
 
@@ -266,9 +263,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Graceful shutdown: stop all managed agent sessions.
     // AGENTD_SHUTDOWN_LEAVE_RUNNING=true leaves sessions alive for reconnection.
-    let leave_running = env::var("AGENTD_SHUTDOWN_LEAVE_RUNNING")
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false);
+    let leave_running =
+        env::var("AGENTD_SHUTDOWN_LEAVE_RUNNING").map(|v| v == "true" || v == "1").unwrap_or(false);
     manager.shutdown_all(leave_running).await;
 
     // Graceful shutdown: stop all workflow runners.

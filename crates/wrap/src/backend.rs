@@ -184,7 +184,10 @@ pub trait ExecutionBackend: Send + Sync {
     ///
     /// Returns `None` if the session is still running, was never created, or
     /// the backend does not support exit code retrieval.
-    async fn session_exit_info(&self, _session_name: &str) -> anyhow::Result<Option<SessionExitInfo>> {
+    async fn session_exit_info(
+        &self,
+        _session_name: &str,
+    ) -> anyhow::Result<Option<SessionExitInfo>> {
         Ok(None)
     }
 

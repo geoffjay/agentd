@@ -552,7 +552,11 @@ async fn apply_agent(
         auto_clear_threshold: tmpl.auto_clear_threshold,
         network_policy: parsed_network_policy,
         docker_image: tmpl.docker_image.clone(),
-        extra_mounts: if tmpl.extra_mounts.is_empty() { None } else { Some(tmpl.extra_mounts.clone()) },
+        extra_mounts: if tmpl.extra_mounts.is_empty() {
+            None
+        } else {
+            Some(tmpl.extra_mounts.clone())
+        },
         resource_limits: tmpl.resource_limits.clone(),
     };
 

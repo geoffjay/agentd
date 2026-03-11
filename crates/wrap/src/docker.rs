@@ -321,11 +321,7 @@ impl DockerBackend {
                 Ok(status)
             }
             Err(e) if is_not_found(&e) => Ok(None),
-            Err(e) => Err(anyhow::anyhow!(
-                "Failed to inspect container '{}': {}",
-                session_name,
-                e
-            )),
+            Err(e) => Err(anyhow::anyhow!("Failed to inspect container '{}': {}", session_name, e)),
         }
     }
 

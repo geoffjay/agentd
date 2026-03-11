@@ -86,12 +86,16 @@ impl AgentStorage {
             auto_clear_threshold: Set(agent.config.auto_clear_threshold.map(|v| v as i64)),
             network_policy: Set(agent.config.network_policy.as_ref().map(|p| p.to_string())),
             docker_image: Set(agent.config.docker_image.clone()),
-            extra_mounts: Set(agent.config.extra_mounts.as_ref().map(|m| {
-                serde_json::to_string(m).unwrap_or_else(|_| "[]".to_string())
-            })),
-            resource_limits: Set(agent.config.resource_limits.as_ref().map(|r| {
-                serde_json::to_string(r).unwrap_or_else(|_| "{}".to_string())
-            })),
+            extra_mounts: Set(agent
+                .config
+                .extra_mounts
+                .as_ref()
+                .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "[]".to_string()))),
+            resource_limits: Set(agent
+                .config
+                .resource_limits
+                .as_ref()
+                .map(|r| serde_json::to_string(r).unwrap_or_else(|_| "{}".to_string()))),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -510,10 +514,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
                 .transpose()
                 .unwrap_or(None),
             docker_image: model.docker_image,
-            extra_mounts: model
-                .extra_mounts
-                .as_deref()
-                .and_then(|s| serde_json::from_str(s).ok()),
+            extra_mounts: model.extra_mounts.as_deref().and_then(|s| serde_json::from_str(s).ok()),
             resource_limits: model
                 .resource_limits
                 .as_deref()
