@@ -406,10 +406,7 @@ impl ExecutionBackend for DockerBackend {
 
         // Resolve the network policy — use the session-level override if
         // present, otherwise fall back to the backend default.
-        let effective_policy = config
-            .network_policy
-            .as_ref()
-            .unwrap_or(&self.network_policy);
+        let effective_policy = config.network_policy.as_ref().unwrap_or(&self.network_policy);
 
         let network_mode = effective_policy.to_network_mode().to_string();
 
@@ -427,10 +424,8 @@ impl ExecutionBackend for DockerBackend {
         // can always reach the host. On macOS/Windows (Docker Desktop)
         // this is already available but the extra entry is harmless.
         if *effective_policy != NetworkPolicy::HostNetwork {
-            host_config.extra_hosts = Some(vec![format!(
-                "{}:{}",
-                DOCKER_HOST_INTERNAL, HOST_GATEWAY
-            )]);
+            host_config.extra_hosts =
+                Some(vec![format!("{}:{}", DOCKER_HOST_INTERNAL, HOST_GATEWAY)]);
         }
 
         // For isolated containers, drop all capabilities and block
@@ -665,9 +660,7 @@ impl ExecutionBackend for DockerBackend {
             }
             NetworkPolicy::Internet | NetworkPolicy::Isolated => {
                 // Bridge networking — use Docker's host gateway.
-                Some(format!(
-                    "ws://{DOCKER_HOST_INTERNAL}:{port}/ws/{agent_id}"
-                ))
+                Some(format!("ws://{DOCKER_HOST_INTERNAL}:{port}/ws/{agent_id}"))
             }
         }
     }
@@ -967,20 +960,14 @@ mod tests {
     fn network_policy_from_str() {
         assert_eq!("internet".parse::<NetworkPolicy>().unwrap(), NetworkPolicy::Internet);
         assert_eq!("isolated".parse::<NetworkPolicy>().unwrap(), NetworkPolicy::Isolated);
-        assert_eq!(
-            "host_network".parse::<NetworkPolicy>().unwrap(),
-            NetworkPolicy::HostNetwork
-        );
+        assert_eq!("host_network".parse::<NetworkPolicy>().unwrap(), NetworkPolicy::HostNetwork);
         assert!("invalid".parse::<NetworkPolicy>().is_err());
     }
 
     #[test]
     fn network_policy_serde_roundtrip() {
-        for policy in [
-            NetworkPolicy::Internet,
-            NetworkPolicy::Isolated,
-            NetworkPolicy::HostNetwork,
-        ] {
+        for policy in [NetworkPolicy::Internet, NetworkPolicy::Isolated, NetworkPolicy::HostNetwork]
+        {
             let json = serde_json::to_string(&policy).unwrap();
             let deserialized: NetworkPolicy = serde_json::from_str(&json).unwrap();
             assert_eq!(deserialized, policy);
@@ -989,18 +976,9 @@ mod tests {
 
     #[test]
     fn network_policy_serde_values() {
-        assert_eq!(
-            serde_json::to_string(&NetworkPolicy::Internet).unwrap(),
-            "\"internet\""
-        );
-        assert_eq!(
-            serde_json::to_string(&NetworkPolicy::Isolated).unwrap(),
-            "\"isolated\""
-        );
-        assert_eq!(
-            serde_json::to_string(&NetworkPolicy::HostNetwork).unwrap(),
-            "\"host_network\""
-        );
+        assert_eq!(serde_json::to_string(&NetworkPolicy::Internet).unwrap(), "\"internet\"");
+        assert_eq!(serde_json::to_string(&NetworkPolicy::Isolated).unwrap(), "\"isolated\"");
+        assert_eq!(serde_json::to_string(&NetworkPolicy::HostNetwork).unwrap(), "\"host_network\"");
     }
 
     // -- agent_ws_url with NetworkPolicy --
@@ -1009,10 +987,7 @@ mod tests {
     fn agent_ws_url_internet_mode() {
         let backend = test_backend(); // Internet policy by default
         let url = backend.agent_ws_url("test-prefix-abc123");
-        assert_eq!(
-            url,
-            Some("ws://host.docker.internal:7006/ws/abc123".to_string())
-        );
+        assert_eq!(url, Some("ws://host.docker.internal:7006/ws/abc123".to_string()));
     }
 
     #[test]
@@ -1021,10 +996,7 @@ mod tests {
         backend.network_policy = NetworkPolicy::Isolated;
         let url = backend.agent_ws_url("test-prefix-abc123");
         // Isolated still needs host gateway for WebSocket.
-        assert_eq!(
-            url,
-            Some("ws://host.docker.internal:7006/ws/abc123".to_string())
-        );
+        assert_eq!(url, Some("ws://host.docker.internal:7006/ws/abc123".to_string()));
     }
 
     #[test]
@@ -1032,10 +1004,7 @@ mod tests {
         let mut backend = test_backend();
         backend.orchestrator_port = 9999;
         let url = backend.agent_ws_url("test-prefix-abc123");
-        assert_eq!(
-            url,
-            Some("ws://host.docker.internal:9999/ws/abc123".to_string())
-        );
+        assert_eq!(url, Some("ws://host.docker.internal:9999/ws/abc123".to_string()));
     }
 
     #[test]
