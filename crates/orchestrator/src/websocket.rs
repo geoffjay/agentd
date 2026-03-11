@@ -7,6 +7,7 @@ use axum::{
     },
     response::IntoResponse,
 };
+use chrono::Utc;
 use futures::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -241,6 +242,53 @@ fn extract_usage(msg: &Value) -> Option<UsageSnapshot> {
     })
 }
 
+/// Extract displayable text lines from a Claude Code `assistant` message.
+///
+/// The `message` object may have a `content` field that is either a plain
+/// string or an array of content blocks (text blocks, tool_use blocks, etc.).
+fn extract_assistant_text(message: &Value) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(content) = message.get("content") {
+        if let Some(text) = content.as_str() {
+            lines.push(text.to_string());
+        } else if let Some(blocks) = content.as_array() {
+            for block in blocks {
+                let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                match block_type {
+                    "text" => {
+                        if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+                            lines.push(text.to_string());
+                        }
+                    }
+                    "tool_use" => {
+                        let tool =
+                            block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        lines.push(format!("[Tool: {}]", tool));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    lines
+}
+
+/// Broadcast a single `agent:output` event on the multiplexed stream.
+fn broadcast_output(agent_id: &Uuid, text: &str, registry: &ConnectionRegistry) {
+    for line in text.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let event = serde_json::json!({
+            "type": "agent:output",
+            "agentId": agent_id.to_string(),
+            "line": line,
+            "timestamp": Utc::now().to_rfc3339(),
+        });
+        let _ = registry.stream_tx.send(event.to_string());
+    }
+}
+
 /// Process an incoming NDJSON message from a claude code instance.
 async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &ConnectionRegistry) {
     // Claude sends NDJSON — each line is a separate JSON message.
@@ -258,13 +306,6 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
             }
         };
 
-        // Broadcast to the multiplexed stream (tagged with agent_id).
-        let mut stream_msg = msg.clone();
-        if let Some(obj) = stream_msg.as_object_mut() {
-            obj.insert("agent_id".to_string(), Value::String(agent_id.to_string()));
-        }
-        let _ = registry.stream_tx.send(stream_msg.to_string());
-
         let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
         debug!(%agent_id, %msg_type, "Received message from agent");
 
@@ -275,6 +316,12 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
             }
             "assistant" => {
                 debug!(%agent_id, "Assistant response received");
+                // Extract text content and broadcast as agent:output events.
+                if let Some(message) = msg.get("message") {
+                    for text in extract_assistant_text(message) {
+                        broadcast_output(agent_id, &text, registry);
+                    }
+                }
             }
             "result" => {
                 let is_error = msg.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -283,8 +330,49 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 } else {
                     info!(%agent_id, "Agent query completed successfully");
                 }
+
+                // Broadcast result text as agent:output
+                if let Some(result_text) = msg.get("result").and_then(|v| v.as_str()) {
+                    if !result_text.is_empty() {
+                        let label = if is_error { "Error" } else { "Result" };
+                        broadcast_output(
+                            agent_id,
+                            &format!("[{}] {}", label, result_text),
+                            registry,
+                        );
+                    }
+                }
+
                 let usage = extract_usage(&msg);
-                registry.notify_result(ResultInfo { agent_id: *agent_id, is_error, usage }).await;
+
+                // Broadcast agent:usage_update event for UI consumers
+                if let Some(ref usage_snap) = usage {
+                    let event = serde_json::json!({
+                        "type": "agent:usage_update",
+                        "agentId": agent_id.to_string(),
+                        "usage": {
+                            "input_tokens": usage_snap.input_tokens,
+                            "output_tokens": usage_snap.output_tokens,
+                            "cache_read_input_tokens": usage_snap.cache_read_input_tokens,
+                            "cache_creation_input_tokens": usage_snap.cache_creation_input_tokens,
+                            "total_cost_usd": usage_snap.total_cost_usd,
+                            "num_turns": usage_snap.num_turns,
+                            "duration_ms": usage_snap.duration_ms,
+                            "duration_api_ms": usage_snap.duration_api_ms,
+                        },
+                        "session_number": 0,
+                        "timestamp": Utc::now().to_rfc3339(),
+                    });
+                    let _ = registry.stream_tx.send(event.to_string());
+                }
+
+                registry
+                    .notify_result(ResultInfo {
+                        agent_id: *agent_id,
+                        is_error,
+                        usage,
+                    })
+                    .await;
             }
             "control_request" => {
                 handle_control_request(agent_id, &msg, registry).await;
