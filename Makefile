@@ -6,7 +6,7 @@
 #   make test              Run all tests
 #   make docker-build-claude  Build the Claude Code Docker image locally
 
-.PHONY: help build test clippy fmt docker-build-claude docker-run-claude
+.PHONY: help build test clippy fmt fmt-fix docker-build-claude docker-build-claude-multiarch docker-run-claude
 
 # Default image name — matches the DEFAULT_IMAGE constant in crates/wrap/src/docker.rs
 CLAUDE_IMAGE ?= agentd-claude:latest
