@@ -14,6 +14,7 @@ pub use sea_orm_migration::prelude::*;
 mod m20250305_000001_create_tables;
 mod m20250309_000002_add_usage_sessions;
 mod m20250310_000003_rename_tmux_session;
+mod m20250311_000004_add_network_policy;
 
 /// The migration runner — applies all known migrations in order.
 pub struct Migrator;
@@ -25,6 +26,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250305_000001_create_tables::Migration),
             Box::new(m20250309_000002_add_usage_sessions::Migration),
             Box::new(m20250310_000003_rename_tmux_session::Migration),
+            Box::new(m20250311_000004_add_network_policy::Migration),
         ]
     }
 }

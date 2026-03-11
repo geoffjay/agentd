@@ -114,16 +114,18 @@ pub enum NetworkPolicy {
     #[default]
     Internet,
 
-    /// No network access at all (`--network none`).
+    /// Bridge network with DNS disabled to restrict outbound access.
     ///
-    /// The container cannot make any network connections, including to
-    /// the host. A dedicated Docker network is created to allow only
+    /// The container uses `--network bridge` but with an empty DNS
+    /// configuration, which prevents name resolution for external
+    /// hosts. The container can still reach the host gateway via
+    /// `host.docker.internal` (added as an extra-hosts entry) for
     /// the WebSocket connection back to the orchestrator.
     ///
-    /// **Note**: Because `--network none` removes all network
-    /// interfaces, isolated containers use a dedicated `agentd-isolated`
-    /// network that only provides a route to the host gateway. No
-    /// outbound internet routes are configured.
+    /// **Note**: This is not a hard network boundary — the container
+    /// can still reach the internet via hardcoded IP addresses. For
+    /// full network isolation, use a custom Docker network with no
+    /// default route, or `--network none` with a sidecar proxy.
     Isolated,
 
     /// Host network mode (`--network host`).
@@ -413,7 +415,7 @@ impl ExecutionBackend for DockerBackend {
         // Build host config with network policy applied.
         let mut host_config = bollard::models::HostConfig {
             binds: Some(vec![format!("{}:/workspace:rw", config.working_dir)]),
-            network_mode: Some(network_mode.clone()),
+            network_mode: Some(network_mode),
             memory: Some(self.resource_limits.memory_bytes),
             nano_cpus: Some(self.resource_limits.nano_cpus),
             ..Default::default()
@@ -641,7 +643,9 @@ impl ExecutionBackend for DockerBackend {
 
     /// Returns a WebSocket URL that containers can use to reach the host.
     ///
-    /// The URL is determined by the [`NetworkPolicy`]:
+    /// The URL is determined by the effective [`NetworkPolicy`] — the
+    /// per-session override from `config` if present, otherwise the backend
+    /// default:
     ///
     /// - **`HostNetwork`**: `ws://127.0.0.1:{port}/ws/{id}` — the
     ///   container shares the host's network stack.
@@ -649,11 +653,16 @@ impl ExecutionBackend for DockerBackend {
     ///   — the container uses Docker's host gateway to reach the host.
     ///   An extra-hosts entry is added during `create_session` to ensure
     ///   `host.docker.internal` resolves on all platforms.
-    fn agent_ws_url(&self, session_name: &str) -> Option<String> {
+    fn agent_ws_url(&self, session_name: &str, config: Option<&SessionConfig>) -> Option<String> {
         let agent_id = self.extract_agent_id(session_name);
         let port = self.orchestrator_port;
 
-        match self.network_policy {
+        // Use per-session override if available, otherwise the backend default.
+        let effective_policy = config
+            .and_then(|c| c.network_policy.as_ref())
+            .unwrap_or(&self.network_policy);
+
+        match effective_policy {
             NetworkPolicy::HostNetwork => {
                 // Host networking — container shares the host's network stack.
                 Some(format!("ws://127.0.0.1:{port}/ws/{agent_id}"))
@@ -804,7 +813,7 @@ mod tests {
     #[test]
     fn agent_ws_url_bridge_mode() {
         let backend = test_backend();
-        let url = backend.agent_ws_url("test-prefix-abc123");
+        let url = backend.agent_ws_url("test-prefix-abc123", None);
         assert_eq!(url, Some("ws://host.docker.internal:7006/ws/abc123".to_string()));
     }
 
@@ -812,14 +821,14 @@ mod tests {
     fn agent_ws_url_host_mode() {
         let mut backend = test_backend();
         backend.network_policy = NetworkPolicy::HostNetwork;
-        let url = backend.agent_ws_url("test-prefix-abc123");
+        let url = backend.agent_ws_url("test-prefix-abc123", None);
         assert_eq!(url, Some("ws://127.0.0.1:7006/ws/abc123".to_string()));
     }
 
     #[test]
     fn agent_ws_url_returns_some() {
         let backend = test_backend();
-        assert!(backend.agent_ws_url("any-session").is_some());
+        assert!(backend.agent_ws_url("any-session", None).is_some());
     }
 
     // -- extract_agent_id --
@@ -986,7 +995,7 @@ mod tests {
     #[test]
     fn agent_ws_url_internet_mode() {
         let backend = test_backend(); // Internet policy by default
-        let url = backend.agent_ws_url("test-prefix-abc123");
+        let url = backend.agent_ws_url("test-prefix-abc123", None);
         assert_eq!(url, Some("ws://host.docker.internal:7006/ws/abc123".to_string()));
     }
 
@@ -994,7 +1003,7 @@ mod tests {
     fn agent_ws_url_isolated_mode() {
         let mut backend = test_backend();
         backend.network_policy = NetworkPolicy::Isolated;
-        let url = backend.agent_ws_url("test-prefix-abc123");
+        let url = backend.agent_ws_url("test-prefix-abc123", None);
         // Isolated still needs host gateway for WebSocket.
         assert_eq!(url, Some("ws://host.docker.internal:7006/ws/abc123".to_string()));
     }
@@ -1003,7 +1012,7 @@ mod tests {
     fn agent_ws_url_custom_port() {
         let mut backend = test_backend();
         backend.orchestrator_port = 9999;
-        let url = backend.agent_ws_url("test-prefix-abc123");
+        let url = backend.agent_ws_url("test-prefix-abc123", None);
         assert_eq!(url, Some("ws://host.docker.internal:9999/ws/abc123".to_string()));
     }
 
@@ -1012,7 +1021,7 @@ mod tests {
         let mut backend = test_backend();
         backend.network_policy = NetworkPolicy::HostNetwork;
         backend.orchestrator_port = 8080;
-        let url = backend.agent_ws_url("test-prefix-abc123");
+        let url = backend.agent_ws_url("test-prefix-abc123", None);
         assert_eq!(url, Some("ws://127.0.0.1:8080/ws/abc123".to_string()));
     }
 
@@ -1022,5 +1031,27 @@ mod tests {
     fn docker_backend_with_orchestrator_port() {
         let backend = test_backend();
         assert_eq!(backend.orchestrator_port(), DEFAULT_ORCHESTRATOR_PORT);
+
+        // Verify the builder actually changes the port.
+        let custom = DockerBackend::new("test", "image:latest")
+            .unwrap()
+            .with_orchestrator_port(9090);
+        assert_eq!(custom.orchestrator_port(), 9090);
+    }
+
+    #[test]
+    fn agent_ws_url_uses_session_config_policy_override() {
+        let backend = test_backend(); // default: Internet
+        let config = SessionConfig {
+            network_policy: Some(NetworkPolicy::HostNetwork),
+            ..test_session_config()
+        };
+        // With a per-session override, the URL should use 127.0.0.1 (host network).
+        let url = backend.agent_ws_url("test-prefix-abc123", Some(&config));
+        assert_eq!(url, Some("ws://127.0.0.1:7006/ws/abc123".to_string()));
+
+        // Without override, falls back to backend default (Internet → host.docker.internal).
+        let url_default = backend.agent_ws_url("test-prefix-abc123", None);
+        assert_eq!(url_default, Some("ws://host.docker.internal:7006/ws/abc123".to_string()));
     }
 }

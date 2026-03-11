@@ -35,6 +35,9 @@ pub struct Model {
     /// Optional token-count threshold that triggers an automatic context clear.
     /// Stored as nullable INTEGER; maps to `Option<u64>` in the domain layer.
     pub auto_clear_threshold: Option<i64>,
+    /// Optional network policy for Docker containers (e.g., "internet", "isolated", "host_network").
+    /// Stored as nullable TEXT; maps to `Option<NetworkPolicy>` in the domain layer.
+    pub network_policy: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

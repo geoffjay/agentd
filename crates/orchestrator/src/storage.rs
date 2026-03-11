@@ -84,6 +84,9 @@ impl AgentStorage {
             created_at: Set(agent.created_at.to_rfc3339()),
             updated_at: Set(agent.updated_at.to_rfc3339()),
             auto_clear_threshold: Set(agent.config.auto_clear_threshold.map(|v| v as i64)),
+            network_policy: Set(
+                agent.config.network_policy.as_ref().map(|p| p.to_string()),
+            ),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -115,6 +118,10 @@ impl AgentStorage {
             .col_expr(
                 agent_entity::Column::AutoClearThreshold,
                 Expr::value(agent.config.auto_clear_threshold.map(|v| v as i64)),
+            )
+            .col_expr(
+                agent_entity::Column::NetworkPolicy,
+                Expr::value(agent.config.network_policy.as_ref().map(|p| p.to_string())),
             )
             .col_expr(agent_entity::Column::UpdatedAt, Expr::value(agent.updated_at.to_rfc3339()))
             .filter(agent_entity::Column::Id.eq(agent.id.to_string()))
@@ -467,7 +474,12 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
             model: model.model,
             env,
             auto_clear_threshold: model.auto_clear_threshold.and_then(|v| u64::try_from(v).ok()),
-            network_policy: None,
+            network_policy: model
+                .network_policy
+                .as_deref()
+                .map(|s| s.parse())
+                .transpose()
+                .unwrap_or(None),
         },
         session_id: model.session_id,
         backend_type: model.backend_type,

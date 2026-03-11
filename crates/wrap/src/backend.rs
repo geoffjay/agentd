@@ -117,8 +117,13 @@ pub trait ExecutionBackend: Send + Sync {
 
     /// Returns the WebSocket URL for streaming agent output, if supported.
     ///
+    /// The optional `config` parameter allows backends to use per-session
+    /// overrides (e.g., [`NetworkPolicy`](crate::docker::NetworkPolicy)) when
+    /// constructing the URL. Callers that don't have a config can pass `None`,
+    /// in which case the backend's default settings are used.
+    ///
     /// Not all backends support WebSocket streaming. Returns `None` by default.
-    fn agent_ws_url(&self, _session_name: &str) -> Option<String> {
+    fn agent_ws_url(&self, _session_name: &str, _config: Option<&SessionConfig>) -> Option<String> {
         None
     }
 }
@@ -226,7 +231,7 @@ impl ExecutionBackend for TmuxBackend {
         self.tmux.prefix()
     }
 
-    fn agent_ws_url(&self, _session_name: &str) -> Option<String> {
+    fn agent_ws_url(&self, _session_name: &str, _config: Option<&SessionConfig>) -> Option<String> {
         // Tmux sessions don't natively support WebSocket streaming
         None
     }
@@ -262,7 +267,7 @@ mod tests {
     #[test]
     fn tmux_backend_ws_url_returns_none() {
         let backend = TmuxBackend::new("agentd");
-        assert_eq!(backend.agent_ws_url("some-session"), None);
+        assert_eq!(backend.agent_ws_url("some-session", None), None);
     }
 
     #[test]
