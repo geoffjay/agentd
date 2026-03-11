@@ -313,11 +313,8 @@ impl DockerBackend {
     pub async fn container_state(&self, session_name: &str) -> anyhow::Result<Option<String>> {
         match self.docker.inspect_container(session_name, None).await {
             Ok(info) => {
-                let status = info
-                    .state
-                    .as_ref()
-                    .and_then(|s| s.status.as_ref())
-                    .map(|s| s.to_string());
+                let status =
+                    info.state.as_ref().and_then(|s| s.status.as_ref()).map(|s| s.to_string());
                 Ok(status)
             }
             Err(e) if is_not_found(&e) => Ok(None),
