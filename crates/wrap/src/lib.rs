@@ -31,14 +31,12 @@
 pub mod api;
 pub mod backend;
 pub mod client;
-#[cfg(feature = "docker")]
 pub mod docker;
 pub mod tmux;
 pub mod types;
 
 pub use backend::{ExecutionBackend, SessionConfig, TmuxBackend};
 pub use client::WrapClient;
-#[cfg(feature = "docker")]
 pub use docker::DockerBackend;
 pub use types::{
     HealthResponse, KillSessionResponse, LaunchRequest, LaunchResponse, SessionInfo,
