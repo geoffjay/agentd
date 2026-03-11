@@ -9,7 +9,7 @@
  * - Error display inline
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Send } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -63,13 +63,31 @@ export function AgentCommandInput({
   const historyRef = useRef<string[]>(loadHistory(agentId))
   /** -1 = not browsing, otherwise index into history from the end */
   const historyIndexRef = useRef(-1)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const MIN_ROWS = 3
+  const MAX_ROWS = 10
 
   // Reload history when agentId changes
   useEffect(() => {
     historyRef.current = loadHistory(agentId)
     historyIndexRef.current = -1
   }, [agentId])
+
+  // Auto-resize textarea between MIN_ROWS and MAX_ROWS
+  const autoResize = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    const lineHeight = parseInt(getComputedStyle(el).lineHeight || '16', 10)
+    el.style.height = 'auto'
+    const maxHeight = lineHeight * MAX_ROWS
+    const minHeight = lineHeight * MIN_ROWS
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)}px`
+  }, [])
+
+  useLayoutEffect(() => {
+    autoResize()
+  }, [value, autoResize])
 
   const handleSend = useCallback(async () => {
     const trimmed = value.trim()
@@ -101,7 +119,7 @@ export function AgentCommandInput({
     }
   }, [value, sending, enabled, onSend, agentId])
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -111,7 +129,11 @@ export function AgentCommandInput({
     const history = historyRef.current
     if (history.length === 0) return
 
-    if (e.key === 'ArrowUp') {
+    const el = inputRef.current
+    const cursorAtStart = el ? el.selectionStart === 0 && el.selectionEnd === 0 : true
+    const cursorAtEnd = el ? el.selectionStart === el.value.length : true
+
+    if (e.key === 'ArrowUp' && cursorAtStart) {
       e.preventDefault()
       const nextIdx =
         historyIndexRef.current === -1
@@ -121,7 +143,7 @@ export function AgentCommandInput({
       setValue(history[nextIdx] ?? '')
     }
 
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' && cursorAtEnd) {
       e.preventDefault()
       if (historyIndexRef.current === -1) return
       const nextIdx = historyIndexRef.current + 1
@@ -150,16 +172,16 @@ export function AgentCommandInput({
       )}
       <div
         className={[
-          'flex items-center gap-2 rounded-lg border bg-gray-900 px-3 py-2 transition-colors',
+          'flex items-start gap-2 rounded-lg border bg-gray-900 px-3 py-2 transition-colors',
           borderColor,
           !enabled ? 'opacity-60' : '',
         ].join(' ')}
         title={!enabled ? disabledReason : undefined}
       >
-        <span className="shrink-0 select-none font-mono text-xs text-gray-500">$</span>
-        <input
+        <span className="mt-1 shrink-0 select-none font-mono text-xs text-gray-500">$</span>
+        <textarea
           ref={inputRef}
-          type="text"
+          rows={MIN_ROWS}
           aria-label="Send message to agent"
           placeholder={
             !enabled ? (disabledReason ?? 'Unavailable') : 'Type a message and press Enter…'
@@ -171,14 +193,14 @@ export function AgentCommandInput({
             historyIndexRef.current = -1
           }}
           onKeyDown={handleKeyDown}
-          className="flex-1 bg-transparent font-mono text-xs text-gray-200 placeholder:text-gray-600 focus:outline-none disabled:cursor-not-allowed"
+          className="flex-1 resize-none mt-1 overflow-y-auto bg-transparent font-mono text-xs leading-4 text-gray-200 placeholder:text-gray-600 focus:outline-none disabled:cursor-not-allowed"
         />
         <button
           type="button"
           aria-label="Send message"
           onClick={handleSend}
           disabled={!enabled || sending || !value.trim()}
-          className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="mt-1 shrink-0 self-end rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Send size={13} aria-hidden="true" />
         </button>
