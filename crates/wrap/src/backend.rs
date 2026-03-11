@@ -24,6 +24,7 @@
 //!     model_provider: "anthropic".into(),
 //!     model_name: "claude-sonnet-4.5".into(),
 //!     layout: None,
+//!     network_policy: None,
 //! };
 //!
 //! backend.create_session(&config).await?;
@@ -62,6 +63,12 @@ pub struct SessionConfig {
 
     /// Optional layout configuration (tmux-specific, ignored by other backends)
     pub layout: Option<TmuxLayout>,
+
+    /// Optional network policy override for Docker backends.
+    ///
+    /// When `None`, the backend's default policy is used. Tmux backends
+    /// ignore this field.
+    pub network_policy: Option<crate::docker::NetworkPolicy>,
 }
 
 /// Async trait for execution backends that manage agent sessions.
@@ -110,8 +117,13 @@ pub trait ExecutionBackend: Send + Sync {
 
     /// Returns the WebSocket URL for streaming agent output, if supported.
     ///
+    /// The optional `config` parameter allows backends to use per-session
+    /// overrides (e.g., [`NetworkPolicy`](crate::docker::NetworkPolicy)) when
+    /// constructing the URL. Callers that don't have a config can pass `None`,
+    /// in which case the backend's default settings are used.
+    ///
     /// Not all backends support WebSocket streaming. Returns `None` by default.
-    fn agent_ws_url(&self, _session_name: &str) -> Option<String> {
+    fn agent_ws_url(&self, _session_name: &str, _config: Option<&SessionConfig>) -> Option<String> {
         None
     }
 }
@@ -219,7 +231,7 @@ impl ExecutionBackend for TmuxBackend {
         self.tmux.prefix()
     }
 
-    fn agent_ws_url(&self, _session_name: &str) -> Option<String> {
+    fn agent_ws_url(&self, _session_name: &str, _config: Option<&SessionConfig>) -> Option<String> {
         // Tmux sessions don't natively support WebSocket streaming
         None
     }
@@ -255,7 +267,7 @@ mod tests {
     #[test]
     fn tmux_backend_ws_url_returns_none() {
         let backend = TmuxBackend::new("agentd");
-        assert_eq!(backend.agent_ws_url("some-session"), None);
+        assert_eq!(backend.agent_ws_url("some-session", None), None);
     }
 
     #[test]
@@ -267,6 +279,7 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: None,
+            network_policy: None,
         };
         assert_eq!(build_agent_command(&config).unwrap(), "claude");
     }
@@ -280,6 +293,7 @@ mod tests {
             model_provider: "openai".into(),
             model_name: "gpt-4".into(),
             layout: None,
+            network_policy: None,
         };
         assert_eq!(
             build_agent_command(&config).unwrap(),
@@ -296,6 +310,7 @@ mod tests {
             model_provider: "google".into(),
             model_name: "gemini-pro".into(),
             layout: None,
+            network_policy: None,
         };
         assert_eq!(build_agent_command(&config).unwrap(), "gemini --model gemini-pro");
     }
@@ -309,6 +324,7 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: None,
+            network_policy: None,
         };
         assert_eq!(build_agent_command(&config).unwrap(), "crush");
     }
@@ -322,6 +338,7 @@ mod tests {
             model_provider: "none".into(),
             model_name: "none".into(),
             layout: None,
+            network_policy: None,
         };
         let err = build_agent_command(&config).unwrap_err();
         assert!(err.to_string().contains("Unsupported agent type"));
@@ -336,6 +353,7 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: None,
+            network_policy: None,
         };
         let debug = format!("{:?}", config);
         assert!(debug.contains("test"));
@@ -351,6 +369,7 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: Some(TmuxLayout { layout_type: "vertical".into(), panes: Some(2) }),
+            network_policy: None,
         };
         let cloned = config.clone();
         assert_eq!(cloned.session_name, "test");

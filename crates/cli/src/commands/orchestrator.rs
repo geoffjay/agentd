@@ -182,6 +182,17 @@ pub enum OrchestratorCommand {
         /// If not specified, no automatic context clearing is performed.
         #[arg(long)]
         auto_clear_threshold: Option<u64>,
+
+        /// Network policy for Docker-backed agents (internet, isolated, host_network).
+        ///
+        /// Controls container networking:
+        ///   internet     — bridge network with outbound access (default)
+        ///   isolated     — bridge network with DNS disabled (no outbound name resolution)
+        ///   host_network — host network mode (Linux only)
+        ///
+        /// Ignored for tmux-backed agents.
+        #[arg(long)]
+        network_policy: Option<String>,
     },
 
     /// Get details of a specific agent.
@@ -615,6 +626,7 @@ impl OrchestratorCommand {
                 tool_policy,
                 env_vars,
                 auto_clear_threshold,
+                network_policy,
             } => {
                 create_agent(
                     client,
@@ -633,6 +645,7 @@ impl OrchestratorCommand {
                     tool_policy.as_deref(),
                     env_vars,
                     *auto_clear_threshold,
+                    network_policy.as_deref(),
                     json,
                 )
                 .await
@@ -798,6 +811,7 @@ async fn create_agent(
     tool_policy_json: Option<&str>,
     env_vars: &[String],
     auto_clear_threshold: Option<u64>,
+    network_policy: Option<&str>,
     json: bool,
 ) -> Result<()> {
     // Resolve working directory: use provided value or default to $PWD
@@ -817,6 +831,12 @@ async fn create_agent(
     // Entries missing '=' produce a clear error.
     let env = parse_env_vars(env_vars)?;
 
+    // Parse network policy string into the enum.
+    let parsed_network_policy =
+        network_policy.map(|s| s.parse::<wrap::docker::NetworkPolicy>()).transpose().context(
+            "Invalid --network-policy value. Valid options: internet, isolated, host_network",
+        )?;
+
     let request = CreateAgentRequest {
         name: name.to_string(),
         working_dir: resolved_working_dir,
@@ -830,6 +850,7 @@ async fn create_agent(
         model: model.map(|s| s.to_string()),
         env,
         auto_clear_threshold,
+        network_policy: parsed_network_policy,
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -1939,6 +1960,7 @@ mod tests {
                 model: None,
                 env: Default::default(),
                 auto_clear_threshold: None,
+                network_policy: None,
             },
             session_id: Some("agentd-orch-abc123".to_string()),
             backend_type: Some("tmux".to_string()),

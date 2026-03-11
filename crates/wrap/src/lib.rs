@@ -37,7 +37,7 @@ pub mod types;
 
 pub use backend::{ExecutionBackend, SessionConfig, TmuxBackend};
 pub use client::WrapClient;
-pub use docker::DockerBackend;
+pub use docker::{DockerBackend, NetworkPolicy};
 pub use types::{
     HealthResponse, KillSessionResponse, LaunchRequest, LaunchResponse, SessionInfo,
     SessionListResponse, TmuxLayout,

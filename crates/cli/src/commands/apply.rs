@@ -50,6 +50,8 @@ pub struct AgentTemplate {
     /// If set, automatically clear the agent's context when the cumulative
     /// input-token count for the current session exceeds this threshold.
     pub auto_clear_threshold: Option<u64>,
+    /// Network policy for Docker-backed agents (internet, isolated, host_network).
+    pub network_policy: Option<String>,
 }
 
 fn default_working_dir() -> String {
@@ -521,6 +523,13 @@ async fn apply_agent(
         full.canonicalize().unwrap_or(full).to_string_lossy().to_string()
     };
 
+    let parsed_network_policy = tmpl
+        .network_policy
+        .as_deref()
+        .map(|s| s.parse::<wrap::docker::NetworkPolicy>())
+        .transpose()
+        .map_err(|e| anyhow::anyhow!("Invalid network_policy in agent '{}': {}", tmpl.name, e))?;
+
     let request = CreateAgentRequest {
         name: tmpl.name.clone(),
         working_dir,
@@ -534,6 +543,7 @@ async fn apply_agent(
         model: tmpl.model.clone(),
         env: tmpl.env.clone(),
         auto_clear_threshold: tmpl.auto_clear_threshold,
+        network_policy: parsed_network_policy,
     };
 
     let agent = client.create_agent(&request).await?;

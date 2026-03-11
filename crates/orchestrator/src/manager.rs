@@ -57,6 +57,7 @@ impl AgentManager {
             model_provider: "anthropic".into(),
             model_name: agent.config.model.clone().unwrap_or_default(),
             layout: None,
+            network_policy: agent.config.network_policy.clone(),
         };
 
         if let Err(e) = self.backend.create_session(&session_config).await {
@@ -69,7 +70,7 @@ impl AgentManager {
         // Build the claude command (never uses -p; prompt sent via WebSocket).
         let ws_url = self
             .backend
-            .agent_ws_url(&session_name)
+            .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
         let claude_cmd = build_claude_command(&agent.config, &ws_url);
 
@@ -346,6 +347,7 @@ impl AgentManager {
             model_provider: "anthropic".into(),
             model_name: agent.config.model.clone().unwrap_or_default(),
             layout: None,
+            network_policy: agent.config.network_policy.clone(),
         };
 
         if let Err(e) = self.backend.create_session(&session_config).await {
@@ -358,7 +360,7 @@ impl AgentManager {
         // Build and send the claude command with the updated config.
         let ws_url = self
             .backend
-            .agent_ws_url(&session_name)
+            .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
         let claude_cmd = build_claude_command(&agent.config, &ws_url);
 
@@ -500,6 +502,7 @@ mod tests {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
+            network_policy: None,
         }
     }
 
