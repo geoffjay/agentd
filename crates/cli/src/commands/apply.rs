@@ -52,6 +52,13 @@ pub struct AgentTemplate {
     pub auto_clear_threshold: Option<u64>,
     /// Network policy for Docker-backed agents (internet, isolated, host_network).
     pub network_policy: Option<String>,
+    /// Custom Docker image override for this agent.
+    pub docker_image: Option<String>,
+    /// Additional volume mounts for Docker containers.
+    #[serde(default)]
+    pub extra_mounts: Vec<orchestrator::types::VolumeMount>,
+    /// Resource limits for Docker containers.
+    pub resource_limits: Option<orchestrator::types::ResourceLimits>,
 }
 
 fn default_working_dir() -> String {
@@ -544,9 +551,9 @@ async fn apply_agent(
         env: tmpl.env.clone(),
         auto_clear_threshold: tmpl.auto_clear_threshold,
         network_policy: parsed_network_policy,
-        docker_image: None,
-        extra_mounts: None,
-        resource_limits: None,
+        docker_image: tmpl.docker_image.clone(),
+        extra_mounts: if tmpl.extra_mounts.is_empty() { None } else { Some(tmpl.extra_mounts.clone()) },
+        resource_limits: tmpl.resource_limits.clone(),
     };
 
     let agent = client.create_agent(&request).await?;
