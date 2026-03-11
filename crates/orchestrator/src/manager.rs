@@ -157,50 +157,105 @@ impl AgentManager {
         Ok(agent)
     }
 
-    /// Reconcile DB state with actual tmux sessions and WebSocket connections on startup.
+    /// Reconcile DB state with actual backend sessions and WebSocket connections on startup.
     ///
-    /// Handles three cases for agents marked as `Running`:
+    /// Handles agents marked as `Running` against the actual backend state:
     ///
-    /// 1. **tmux session is gone** — the process died unexpectedly.  Mark the
-    ///    agent as `Failed`.
+    /// 1. **Session is gone** — the process/container died unexpectedly.
+    ///    Check exit info to determine status: exit code 0 → `Stopped`,
+    ///    non-zero or unknown → `Failed`.
     ///
-    /// 2. **tmux session is alive but agent is not connected to the registry** —
+    /// 2. **Session is alive but agent is not connected to the registry** —
     ///    the orchestrator was restarted and the in-memory `ConnectionRegistry`
-    ///    was reset.  The Claude process is still running in tmux but holds a
-    ///    stale WebSocket connection to the old orchestrator instance.  Kill the
-    ///    session and re-launch Claude so it establishes a fresh connection.
+    ///    was reset. The Claude process is still running but holds a stale
+    ///    WebSocket connection. Kill the session and re-launch so it
+    ///    establishes a fresh connection.
     ///
-    /// 3. **tmux session is alive and agent is connected** — everything is fine,
+    /// 3. **Session is alive and agent is connected** — everything is fine,
     ///    nothing to do.
+    ///
+    /// After handling known agents, cleans up any orphaned backend sessions
+    /// (containers/tmux sessions with the correct prefix but no matching
+    /// DB record).
     pub async fn reconcile(&self) -> anyhow::Result<()> {
         let agents = self.storage.list(Some(AgentStatus::Running)).await?;
+        let mut known_sessions: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for agent in &agents {
+            if let Some(ref s) = agent.session_id {
+                known_sessions.insert(s.clone());
+            }
+        }
 
         for agent in agents {
-            let session_alive = match agent.session_id.as_ref() {
-                Some(s) => self.backend.session_exists(s).await.unwrap_or(false),
-                None => false,
+            let session_name = match agent.session_id.clone() {
+                Some(s) => s,
+                None => {
+                    // No session ID — mark as Failed.
+                    let mut agent = agent;
+                    warn!(agent_id = %agent.id, "Agent marked running but has no session ID, marking failed");
+                    agent.status = AgentStatus::Failed;
+                    agent.updated_at = Utc::now();
+                    let _ = self.storage.update(&agent).await;
+                    continue;
+                }
             };
 
+            let session_alive = self.backend.session_exists(&session_name).await.unwrap_or(false);
+
             if !session_alive {
-                // Case 1: tmux session is gone — mark as Failed.
+                // Case 1: session is gone — check exit info for diagnostics.
                 let mut agent = agent;
-                warn!(
-                    agent_id = %agent.id,
-                    "Agent marked running but tmux session is gone, marking failed"
-                );
-                agent.status = AgentStatus::Failed;
+                let exit_info = self.backend.session_exit_info(&session_name).await.ok().flatten();
+
+                let new_status = match &exit_info {
+                    Some(info) if info.exit_code == 0 => {
+                        info!(
+                            agent_id = %agent.id,
+                            session = %session_name,
+                            "Agent session exited cleanly (exit code 0), marking stopped"
+                        );
+                        AgentStatus::Stopped
+                    }
+                    Some(info) => {
+                        warn!(
+                            agent_id = %agent.id,
+                            session = %session_name,
+                            exit_code = info.exit_code,
+                            error = ?info.error,
+                            "Agent session exited with error, marking failed"
+                        );
+                        AgentStatus::Failed
+                    }
+                    None => {
+                        warn!(
+                            agent_id = %agent.id,
+                            session = %session_name,
+                            "Agent marked running but session is gone, marking failed"
+                        );
+                        AgentStatus::Failed
+                    }
+                };
+
+                agent.status = new_status;
                 agent.updated_at = Utc::now();
                 if let Err(e) = self.storage.update(&agent).await {
                     error!(agent_id = %agent.id, %e, "Failed to update agent status");
                 }
             } else if !self.registry.is_connected(&agent.id).await {
-                // Case 2: tmux session alive but WebSocket connection is stale
-                // (orchestrator was restarted and ConnectionRegistry was reset).
-                // Kill the old Claude process and relaunch so it reconnects.
+                // Case 2: session alive but WebSocket connection is stale.
+                // Check health before restarting.
+                let health = self.backend.session_health(&session_name).await.unwrap_or(
+                    wrap::backend::SessionHealth::Unknown,
+                );
+
                 warn!(
                     agent_id = %agent.id,
-                    "Agent has live tmux session but is not connected to registry after startup, restarting"
+                    session = %session_name,
+                    health = %health,
+                    "Agent has live session but is not connected to registry, restarting"
                 );
+
                 if let Err(e) = self.restart_agent(&agent).await {
                     error!(agent_id = %agent.id, %e, "Failed to restart stale agent during reconcile");
                 }
@@ -208,7 +263,40 @@ impl AgentManager {
             // Case 3: alive and connected — nothing to do.
         }
 
+        // Clean up orphaned backend sessions (sessions with our prefix but
+        // no matching DB record).
+        self.cleanup_orphaned_sessions(&known_sessions).await;
+
         Ok(())
+    }
+
+    /// Remove backend sessions that are labeled with this backend's prefix
+    /// but have no corresponding agent record in the database.
+    async fn cleanup_orphaned_sessions(
+        &self,
+        known_sessions: &std::collections::HashSet<String>,
+    ) {
+        let backend_sessions = match self.backend.list_sessions().await {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(%e, "Failed to list backend sessions for orphan cleanup");
+                return;
+            }
+        };
+
+        for session in backend_sessions {
+            if !known_sessions.contains(&session) {
+                warn!(
+                    session = %session,
+                    "Found orphaned backend session with no DB record, removing"
+                );
+                if let Err(e) = self.backend.kill_session(&session).await {
+                    error!(session = %session, %e, "Failed to clean up orphaned session");
+                } else {
+                    info!(session = %session, "Orphaned session cleaned up");
+                }
+            }
+        }
     }
 
     /// Get an agent by ID (delegates to storage).
@@ -322,6 +410,45 @@ impl AgentManager {
     /// Return the current and cumulative usage statistics for an agent.
     pub async fn get_usage_stats(&self, id: &Uuid) -> anyhow::Result<AgentUsageStats> {
         self.storage.get_usage_stats(id).await
+    }
+
+    /// Graceful shutdown: stop all managed agent sessions.
+    ///
+    /// Iterates over all running agents, marks them as `Stopped` in the
+    /// database, then delegates to the backend's `shutdown_all_sessions`
+    /// to clean up the actual processes/containers.
+    ///
+    /// The `leave_running` flag controls whether backend sessions are
+    /// actually stopped or left running for reconnection on restart:
+    /// - `false` (default): stop all sessions
+    /// - `true`: only update DB status, leave sessions running
+    pub async fn shutdown_all(&self, leave_running: bool) {
+        info!(leave_running, "Shutting down all managed agents");
+
+        // Update all running agents to Stopped in the database.
+        let agents = match self.storage.list(Some(AgentStatus::Running)).await {
+            Ok(a) => a,
+            Err(e) => {
+                error!(%e, "Failed to list running agents during shutdown");
+                return;
+            }
+        };
+
+        for mut agent in agents {
+            agent.status = AgentStatus::Stopped;
+            agent.updated_at = Utc::now();
+            if let Err(e) = self.storage.update(&agent).await {
+                error!(agent_id = %agent.id, %e, "Failed to update agent status during shutdown");
+            }
+        }
+
+        if !leave_running {
+            if let Err(e) = self.backend.shutdown_all_sessions().await {
+                error!(%e, "Failed to shut down backend sessions");
+            }
+        } else {
+            info!("Leaving backend sessions running for reconnection on restart");
+        }
     }
 
     /// Restart a running agent: kill the current session and re-launch Claude.
