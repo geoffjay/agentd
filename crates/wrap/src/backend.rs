@@ -95,6 +95,13 @@ pub trait ExecutionBackend: Send + Sync {
     /// should not return an error.
     async fn kill_session(&self, session_name: &str) -> anyhow::Result<()>;
 
+    /// Sends an arbitrary command to an existing session.
+    ///
+    /// This is used by the orchestrator to launch a fully constructed CLI
+    /// command (with `--sdk-url`, env vars, model flags, etc.) inside a
+    /// session that was previously created via [`create_session`].
+    async fn send_command(&self, session_name: &str, command: &str) -> anyhow::Result<()>;
+
     /// Lists all active session names managed by this backend.
     async fn list_sessions(&self) -> anyhow::Result<Vec<String>>;
 
@@ -187,6 +194,14 @@ impl ExecutionBackend for TmuxBackend {
         let name = session_name.to_string();
 
         tokio::task::spawn_blocking(move || tmux.session_exists(&name)).await?
+    }
+
+    async fn send_command(&self, session_name: &str, command: &str) -> anyhow::Result<()> {
+        let tmux = self.tmux.clone();
+        let name = session_name.to_string();
+        let cmd = command.to_string();
+
+        tokio::task::spawn_blocking(move || tmux.send_command(&name, &cmd)).await?
     }
 
     async fn kill_session(&self, session_name: &str) -> anyhow::Result<()> {

@@ -35,6 +35,8 @@ pub struct ConnectionRegistry {
     policies: Arc<RwLock<HashMap<Uuid, ToolPolicy>>>,
     /// Broadcast channel for the multiplexed agent stream.
     stream_tx: broadcast::Sender<String>,
+    /// Notifies waiters when any agent connects.
+    connect_notify: Arc<tokio::sync::Notify>,
     /// In-memory store of pending human tool approvals.
     pub approvals: ApprovalRegistry,
 }
@@ -53,6 +55,7 @@ impl ConnectionRegistry {
             result_callbacks: Arc::new(RwLock::new(Vec::new())),
             policies: Arc::new(RwLock::new(HashMap::new())),
             stream_tx,
+            connect_notify: Arc::new(tokio::sync::Notify::new()),
             approvals: ApprovalRegistry::new(300), // 5-minute default timeout
         }
     }
@@ -69,7 +72,32 @@ impl ConnectionRegistry {
 
     pub async fn register(&self, agent_id: Uuid, conn: AgentConnection) {
         self.connections.write().await.insert(agent_id, conn);
+        self.connect_notify.notify_waiters();
         info!(%agent_id, "Agent WebSocket registered");
+    }
+
+    /// Wait until a specific agent connects, or until the timeout expires.
+    ///
+    /// Returns `true` if the agent connected, `false` on timeout.
+    pub async fn wait_for_agent(&self, agent_id: &Uuid, timeout: std::time::Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if self.is_connected(agent_id).await {
+                return true;
+            }
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            tokio::select! {
+                _ = self.connect_notify.notified() => {
+                    // An agent connected — loop to check if it's ours.
+                }
+                _ = tokio::time::sleep(remaining) => {
+                    return self.is_connected(agent_id).await;
+                }
+            }
+        }
     }
 
     pub async fn unregister(&self, agent_id: &Uuid) {
