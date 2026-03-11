@@ -9,6 +9,10 @@ license.workspace = true
 name = "agentd-wrap"
 path = "src/main.rs"
 
+[features]
+default = []
+docker = ["bollard"]
+
 [dependencies]
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -27,3 +31,4 @@ agentd-common = { path = "../common" }
 async-trait = "0.1"
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+bollard = { version = "0.18", optional = true }
