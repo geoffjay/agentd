@@ -383,7 +383,7 @@ fn build_agent_cmd(config: &SessionConfig) -> anyhow::Result<Vec<String>> {
         "gemini" => {
             Ok(vec!["gemini".to_string(), "--model".to_string(), config.model_name.clone()])
         }
-        "general" => Ok(vec!["/bin/bash".to_string()]),
+        "general" => Ok(vec!["/bin/sh".to_string()]),
         other => Err(anyhow::anyhow!("Unsupported agent type: {}", other)),
     }
 }
@@ -928,7 +928,7 @@ mod tests {
     fn build_agent_cmd_general() {
         let config = SessionConfig { agent_type: "general".into(), ..test_session_config() };
         let cmd = build_agent_cmd(&config).unwrap();
-        assert_eq!(cmd, vec!["/bin/bash"]);
+        assert_eq!(cmd, vec!["/bin/sh"]);
     }
 
     #[test]
