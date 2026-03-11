@@ -503,6 +503,9 @@ mod tests {
             env: HashMap::new(),
             auto_clear_threshold: None,
             network_policy: None,
+            docker_image: None,
+            extra_mounts: None,
+            resource_limits: None,
         }
     }
 
