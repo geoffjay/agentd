@@ -25,10 +25,10 @@ import type { AgentStatus } from '@/types/orchestrator'
 export type RefreshInterval = 10_000 | 30_000 | 60_000 | 300_000
 
 export interface AgentStatusCounts {
-  Running: number
-  Pending: number
-  Stopped: number
-  Failed: number
+  running: number
+  pending: number
+  stopped: number
+  failed: number
 }
 
 export interface NotificationCounts {
@@ -85,7 +85,7 @@ const SERVICE_ENDPOINTS = [
   { key: 'ask', name: 'Ask', port: 17001, url: () => serviceConfig.askServiceUrl },
 ]
 
-const EMPTY_AGENT_COUNTS: AgentStatusCounts = { Running: 0, Pending: 0, Stopped: 0, Failed: 0 }
+const EMPTY_AGENT_COUNTS: AgentStatusCounts = { running: 0, pending: 0, stopped: 0, failed: 0 }
 const EMPTY_NOTIF_COUNTS: NotificationCounts = { Low: 0, Normal: 0, High: 0, Urgent: 0, total: 0 }
 
 // How many data points to keep for time-series (one per refresh)
@@ -139,7 +139,7 @@ export function useMetrics(initialInterval: RefreshInterval = 30_000): UseMetric
       // Agent counts
       if (agentResult.status === 'fulfilled') {
         const agents = agentResult.value.items
-        const counts: AgentStatusCounts = { Running: 0, Pending: 0, Stopped: 0, Failed: 0 }
+        const counts: AgentStatusCounts = { running: 0, pending: 0, stopped: 0, failed: 0 }
         for (const agent of agents) {
           const s = agent.status as AgentStatus
           if (s in counts) counts[s]++
@@ -149,7 +149,7 @@ export function useMetrics(initialInterval: RefreshInterval = 30_000): UseMetric
         // Append to time series
         const point: AgentTimePoint = {
           x: new Date().toISOString(),
-          y: counts.Running,
+          y: counts.running,
         }
         historyRef.current = [...historyRef.current, point].slice(-MAX_HISTORY_POINTS)
         setAgentTimeSeries([...historyRef.current])

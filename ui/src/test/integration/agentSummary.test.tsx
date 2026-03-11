@@ -37,9 +37,9 @@ describe('useAgentSummary (MSW integration)', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    expect(result.current.counts.Running).toBe(2)
-    expect(result.current.counts.Failed).toBe(1)
-    expect(result.current.counts.Stopped).toBe(1)
+    expect(result.current.counts.running).toBe(2)
+    expect(result.current.counts.failed).toBe(1)
+    expect(result.current.counts.stopped).toBe(1)
     expect(result.current.total).toBe(4)
   })
 

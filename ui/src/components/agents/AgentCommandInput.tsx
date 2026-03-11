@@ -156,7 +156,7 @@ export function AgentCommandInput({
         ].join(' ')}
         title={!enabled ? disabledReason : undefined}
       >
-        <span className="flex-shrink-0 select-none font-mono text-xs text-gray-500">$</span>
+        <span className="shrink-0 select-none font-mono text-xs text-gray-500">$</span>
         <input
           ref={inputRef}
           type="text"
@@ -178,7 +178,7 @@ export function AgentCommandInput({
           aria-label="Send message"
           onClick={handleSend}
           disabled={!enabled || sending || !value.trim()}
-          className="flex-shrink-0 rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Send size={13} aria-hidden="true" />
         </button>

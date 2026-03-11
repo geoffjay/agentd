@@ -18,6 +18,7 @@ import {
   Home,
   Webhook,
   X,
+  Hexagon,
 } from 'lucide-react'
 import { useLayout } from './context'
 import { useApprovals } from '@/hooks/useApprovals'
@@ -138,7 +139,7 @@ export function Sidebar() {
       {sidebarOpen && (
         <div
           aria-hidden="true"
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -147,7 +148,7 @@ export function Sidebar() {
       <aside
         aria-label="Sidebar navigation"
         className={[
-          'fixed bottom-0 top-16 z-40 flex flex-col border-r border-gray-700 bg-gray-900 transition-all duration-300 ease-in-out',
+          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-gray-700 bg-gray-900 transition-all duration-300 ease-in-out',
           // Width: collapsed = 64px, expanded = 240px
           sidebarOpen ? 'w-60' : 'w-16',
           // On mobile: slide in/out from left
@@ -156,16 +157,23 @@ export function Sidebar() {
           .filter(Boolean)
           .join(' ')}
       >
-        {/* Mobile close button */}
-        <div className="flex items-center justify-end px-3 py-2 lg:hidden">
-          <button
-            type="button"
-            aria-label="Close sidebar"
-            onClick={() => setSidebarOpen(false)}
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
-          >
-            <X size={18} />
-          </button>
+        {/* Logo / branding */}
+        <div className="flex h-16 shrink-0 items-center gap-2 px-4">
+          <Link to="/" className="flex items-center gap-2 text-lg m-auto font-semibold text-white hover:text-primary-400" aria-label="agentd home">
+            <Hexagon size={20} className="shrink-0 text-primary-400" />
+            {sidebarOpen && <span>agentd</span>}
+          </Link>
+          {/* Mobile close button */}
+          <div className="ml-auto lg:hidden">
+            <button
+              type="button"
+              aria-label="Close sidebar"
+              onClick={() => setSidebarOpen(false)}
+              className="rounded-md p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Nav items */}

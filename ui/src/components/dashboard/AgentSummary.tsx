@@ -16,10 +16,10 @@ import type { Agent } from '@/types/orchestrator'
 // ---------------------------------------------------------------------------
 
 const STATUS_COLORS: Record<string, string> = {
-  Running: '#22c55e',
-  Pending: '#f59e0b',
-  Stopped: '#94a3b8',
-  Failed: '#ef4444',
+  running: '#8ac926',
+  pending: '#ffca3a',
+  stopped: '#94a3b8',
+  failed: '#ff595e',
 }
 
 // ---------------------------------------------------------------------------
@@ -66,10 +66,10 @@ export function AgentSummary({
   onCreateAgent,
 }: AgentSummaryProps) {
   const pieData = [
-    { id: 'Running', label: 'Running', value: counts.Running, color: STATUS_COLORS.Running },
-    { id: 'Pending', label: 'Pending', value: counts.Pending, color: STATUS_COLORS.Pending },
-    { id: 'Stopped', label: 'Stopped', value: counts.Stopped, color: STATUS_COLORS.Stopped },
-    { id: 'Failed', label: 'Failed', value: counts.Failed, color: STATUS_COLORS.Failed },
+    { id: 'Running', label: 'Running', value: counts.running, color: STATUS_COLORS.running },
+    { id: 'Pending', label: 'Pending', value: counts.pending, color: STATUS_COLORS.pending },
+    { id: 'Stopped', label: 'Stopped', value: counts.stopped, color: STATUS_COLORS.stopped },
+    { id: 'Failed', label: 'Failed', value: counts.failed, color: STATUS_COLORS.failed },
   ].filter((d) => d.value > 0)
 
   const hasData = total > 0
@@ -105,7 +105,7 @@ export function AgentSummary({
 
       {/* Error state */}
       {error && (
-        <div className="mt-4 flex items-center gap-2 text-sm text-red-500">
+        <div className="mt-4 flex items-center gap-2 text-sm text-error-500">
           <RefreshCw size={14} />
           {error}
         </div>
@@ -126,7 +126,7 @@ export function AgentSummary({
         <>
           {/* Donut chart */}
           {hasData ? (
-            <div className="mt-4 h-40">
+            <div className="relative mt-4 h-40 w-full">
               <ResponsivePie
                 data={pieData}
                 colors={{ datum: 'data.color' }}

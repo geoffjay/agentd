@@ -8,10 +8,10 @@ import { orchestratorClient } from '@/services/orchestrator'
 import type { Agent, AgentStatus, AgentUsageStats } from '@/types/orchestrator'
 
 export interface AgentStatusCounts {
-  Running: number
-  Pending: number
-  Stopped: number
-  Failed: number
+  running: number
+  pending: number
+  stopped: number
+  failed: number
 }
 
 /** Aggregate usage stats across all agents */
@@ -31,7 +31,7 @@ export interface UseAgentSummaryResult {
   error?: string
 }
 
-const EMPTY_COUNTS: AgentStatusCounts = { Running: 0, Pending: 0, Stopped: 0, Failed: 0 }
+const EMPTY_COUNTS: AgentStatusCounts = { running: 0, pending: 0, stopped: 0, failed: 0 }
 
 function computeAggregateUsage(usageList: AgentUsageStats[]): AggregateUsageSummary {
   let totalCostUsd = 0
@@ -71,7 +71,7 @@ export function useAgentSummary(): UseAgentSummaryResult {
       const result = await orchestratorClient.listAgents({ limit: 200 })
       const agents = result.items
 
-      const newCounts: AgentStatusCounts = { Running: 0, Pending: 0, Stopped: 0, Failed: 0 }
+      const newCounts: AgentStatusCounts = { running: 0, pending: 0, stopped: 0, failed: 0 }
       for (const agent of agents) {
         const s = agent.status as AgentStatus
         if (s in newCounts) newCounts[s]++

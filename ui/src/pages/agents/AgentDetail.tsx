@@ -92,7 +92,7 @@ function ChangeModelDialog({ open, currentModel, onSave, onClose }: ChangeModelD
         </h2>
 
         {error && (
-          <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">
+          <p role="alert" className="mb-3 text-sm text-red-400 dark:text-red-400">
             {error}
           </p>
         )}
@@ -504,13 +504,13 @@ export function AgentDetail() {
             }
             onSend={sendMessage}
           />
+
+          {/* Config panel */}
+          <AgentConfigPanel agent={agent} />
         </div>
 
         {/* Sidebar (1/3 width on large screens) */}
         <div className="flex flex-col gap-5">
-          {/* Config panel */}
-          <AgentConfigPanel agent={agent} />
-
           {/* Usage panel — shown only when usage data is available */}
           {usage && (
             <AgentUsagePanel
