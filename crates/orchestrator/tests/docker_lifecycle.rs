@@ -97,9 +97,7 @@ async fn full_agent_lifecycle() {
 #[ignore]
 async fn reconciliation_stale_containers() {
     let backend = test_backend();
-    let configs: Vec<_> = (0..3)
-        .map(|i| test_config(&format!("reconcile-{}", i)))
-        .collect();
+    let configs: Vec<_> = (0..3).map(|i| test_config(&format!("reconcile-{}", i))).collect();
 
     for c in &configs {
         cleanup(&backend, &c.session_name).await;
@@ -126,11 +124,7 @@ async fn reconciliation_stale_containers() {
     // All should be gone.
     let sessions = backend.list_sessions().await.unwrap();
     for c in &configs {
-        assert!(
-            !sessions.contains(&c.session_name),
-            "{} should be cleaned up",
-            c.session_name
-        );
+        assert!(!sessions.contains(&c.session_name), "{} should be cleaned up", c.session_name);
     }
 }
 

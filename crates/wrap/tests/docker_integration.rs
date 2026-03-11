@@ -90,10 +90,8 @@ async fn docker_create_start_and_check_exists() {
     backend.create_session(&config).await.expect("create_session should succeed");
     backend.launch_agent(&config).await.expect("launch_agent should succeed");
 
-    let exists = backend
-        .session_exists(&config.session_name)
-        .await
-        .expect("session_exists should succeed");
+    let exists =
+        backend.session_exists(&config.session_name).await.expect("session_exists should succeed");
     assert!(exists, "Running container should exist");
 
     cleanup(&backend, &config.session_name).await;
@@ -156,8 +154,7 @@ async fn docker_create_is_idempotent() {
 #[ignore]
 async fn docker_no_orphaned_containers_after_kill() {
     let backend = test_backend();
-    let configs: Vec<_> =
-        (0..3).map(|i| test_config(&format!("orphan-{}", i))).collect();
+    let configs: Vec<_> = (0..3).map(|i| test_config(&format!("orphan-{}", i))).collect();
 
     // Clean up any leftovers.
     for c in &configs {
@@ -177,10 +174,8 @@ async fn docker_no_orphaned_containers_after_kill() {
 
     // No containers with our prefix should remain.
     let sessions = backend.list_sessions().await.unwrap();
-    let remaining: Vec<_> = sessions
-        .iter()
-        .filter(|s| configs.iter().any(|c| c.session_name == **s))
-        .collect();
+    let remaining: Vec<_> =
+        sessions.iter().filter(|s| configs.iter().any(|c| c.session_name == **s)).collect();
     assert!(remaining.is_empty(), "No orphaned containers should remain: {:?}", remaining);
 }
 
@@ -192,8 +187,7 @@ async fn docker_no_orphaned_containers_after_kill() {
 #[ignore]
 async fn docker_shutdown_all_sessions() {
     let backend = test_backend();
-    let configs: Vec<_> =
-        (0..2).map(|i| test_config(&format!("shutdown-{}", i))).collect();
+    let configs: Vec<_> = (0..2).map(|i| test_config(&format!("shutdown-{}", i))).collect();
 
     for c in &configs {
         cleanup(&backend, &c.session_name).await;
@@ -208,10 +202,8 @@ async fn docker_shutdown_all_sessions() {
     backend.shutdown_all_sessions().await.expect("shutdown_all should succeed");
 
     let sessions = backend.list_sessions().await.unwrap();
-    let remaining: Vec<_> = sessions
-        .iter()
-        .filter(|s| configs.iter().any(|c| c.session_name == **s))
-        .collect();
+    let remaining: Vec<_> =
+        sessions.iter().filter(|s| configs.iter().any(|c| c.session_name == **s)).collect();
     assert!(remaining.is_empty(), "All containers should be removed after shutdown_all");
 }
 
@@ -423,10 +415,7 @@ async fn docker_exit_info_running_returns_none() {
 #[ignore]
 async fn docker_exit_info_nonexistent_returns_none() {
     let backend = test_backend();
-    let exit_info = backend
-        .session_exit_info("agentd-docker-test-nonexistent")
-        .await
-        .unwrap();
+    let exit_info = backend.session_exit_info("agentd-docker-test-nonexistent").await.unwrap();
     assert!(exit_info.is_none(), "Nonexistent container should return None");
 }
 
