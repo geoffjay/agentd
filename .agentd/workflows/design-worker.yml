@@ -1,0 +1,45 @@
+# Design workflow — dispatches design issues to the designer agent.
+#
+# Issues with the "design-agent" label are picked up automatically.
+
+name: design-worker
+agent: designer
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - design-agent
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  You have been assigned a design task.
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  {{body}}
+
+  Instructions:
+  1. Read the issue carefully to understand what design work is needed
+  2. Check the current state of ui/design/ .pen files and ui/src/ components
+  3. If the task involves new UI, create or update .pen designs using the Pencil
+     MCP tools (get_editor_state, open_document, batch_design, get_screenshot)
+  4. If the task involves design tokens, update tokens in the .pen file and
+     document the corresponding CSS custom property changes needed in ui/src/index.css
+  5. If the task involves a design-to-code sync audit, compare .pen files against
+     implemented components and report discrepancies
+  6. Create a feature branch from main: git checkout -b design/issue-{{source_id}}
+  7. Commit your changes: git commit with a "design: ..." message referencing #{{source_id}}
+  8. Push and create a pull request:
+     gh pr create --repo geoffjay/agentd \
+       --title "design: <short description>" \
+       --body "Closes #{{source_id}}" \
+       --label design
+  9. Move the issue to In Progress on the project board:
+     gh issue edit {{source_id}} --repo geoffjay/agentd --add-project "https://github.com/users/geoffjay/projects/5"
