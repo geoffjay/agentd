@@ -658,9 +658,8 @@ impl ExecutionBackend for DockerBackend {
         let port = self.orchestrator_port;
 
         // Use per-session override if available, otherwise the backend default.
-        let effective_policy = config
-            .and_then(|c| c.network_policy.as_ref())
-            .unwrap_or(&self.network_policy);
+        let effective_policy =
+            config.and_then(|c| c.network_policy.as_ref()).unwrap_or(&self.network_policy);
 
         match effective_policy {
             NetworkPolicy::HostNetwork => {
@@ -1033,9 +1032,8 @@ mod tests {
         assert_eq!(backend.orchestrator_port(), DEFAULT_ORCHESTRATOR_PORT);
 
         // Verify the builder actually changes the port.
-        let custom = DockerBackend::new("test", "image:latest")
-            .unwrap()
-            .with_orchestrator_port(9090);
+        let custom =
+            DockerBackend::new("test", "image:latest").unwrap().with_orchestrator_port(9090);
         assert_eq!(custom.orchestrator_port(), 9090);
     }
 

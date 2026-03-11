@@ -832,10 +832,10 @@ async fn create_agent(
     let env = parse_env_vars(env_vars)?;
 
     // Parse network policy string into the enum.
-    let parsed_network_policy = network_policy
-        .map(|s| s.parse::<wrap::docker::NetworkPolicy>())
-        .transpose()
-        .context("Invalid --network-policy value. Valid options: internet, isolated, host_network")?;
+    let parsed_network_policy =
+        network_policy.map(|s| s.parse::<wrap::docker::NetworkPolicy>()).transpose().context(
+            "Invalid --network-policy value. Valid options: internet, isolated, host_network",
+        )?;
 
     let request = CreateAgentRequest {
         name: name.to_string(),

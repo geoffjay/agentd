@@ -84,9 +84,7 @@ impl AgentStorage {
             created_at: Set(agent.created_at.to_rfc3339()),
             updated_at: Set(agent.updated_at.to_rfc3339()),
             auto_clear_threshold: Set(agent.config.auto_clear_threshold.map(|v| v as i64)),
-            network_policy: Set(
-                agent.config.network_policy.as_ref().map(|p| p.to_string()),
-            ),
+            network_policy: Set(agent.config.network_policy.as_ref().map(|p| p.to_string())),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
