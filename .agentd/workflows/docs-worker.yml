@@ -1,0 +1,41 @@
+# Documentation workflow — dispatches documentation issues to the documenter agent.
+#
+# Issues with the "docs-agent" label are picked up automatically.
+
+name: docs-worker
+agent: documenter
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - docs-agent
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  You have been assigned a documentation task.
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  {{body}}
+
+  Instructions:
+  1. Read the issue carefully to understand what documentation is needed
+  2. Check the current state of docs/ and the relevant source code in crates/
+  3. Write or update the documentation to address the issue
+  4. Update mkdocs.yml nav if you added new pages
+  5. Create a feature branch from main: git checkout -b docs/issue-{{source_id}}
+  6. Commit your changes: git commit with a "docs: ..." message referencing #{{source_id}}
+  7. Push and create a pull request:
+     gh pr create --repo geoffjay/agentd \
+       --title "docs: <short description>" \
+       --body "Closes #{{source_id}}" \
+       --label documentation
+  8. Move the issue to In Progress on the project board:
+     gh issue edit {{source_id}} --repo geoffjay/agentd --add-project "https://github.com/users/geoffjay/projects/5"
