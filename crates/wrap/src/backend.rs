@@ -24,6 +24,7 @@
 //!     model_provider: "anthropic".into(),
 //!     model_name: "claude-sonnet-4.5".into(),
 //!     layout: None,
+//!     network_policy: None,
 //! };
 //!
 //! backend.create_session(&config).await?;
@@ -62,6 +63,12 @@ pub struct SessionConfig {
 
     /// Optional layout configuration (tmux-specific, ignored by other backends)
     pub layout: Option<TmuxLayout>,
+
+    /// Optional network policy override for Docker backends.
+    ///
+    /// When `None`, the backend's default policy is used. Tmux backends
+    /// ignore this field.
+    pub network_policy: Option<crate::docker::NetworkPolicy>,
 }
 
 /// Async trait for execution backends that manage agent sessions.
@@ -267,6 +274,7 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: None,
+            network_policy: None,
         };
         assert_eq!(build_agent_command(&config).unwrap(), "claude");
     }
@@ -280,6 +288,7 @@ mod tests {
             model_provider: "openai".into(),
             model_name: "gpt-4".into(),
             layout: None,
+            network_policy: None,
         };
         assert_eq!(
             build_agent_command(&config).unwrap(),
@@ -296,6 +305,7 @@ mod tests {
             model_provider: "google".into(),
             model_name: "gemini-pro".into(),
             layout: None,
+            network_policy: None,
         };
         assert_eq!(build_agent_command(&config).unwrap(), "gemini --model gemini-pro");
     }
@@ -309,6 +319,7 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: None,
+            network_policy: None,
         };
         assert_eq!(build_agent_command(&config).unwrap(), "crush");
     }
@@ -322,6 +333,7 @@ mod tests {
             model_provider: "none".into(),
             model_name: "none".into(),
             layout: None,
+            network_policy: None,
         };
         let err = build_agent_command(&config).unwrap_err();
         assert!(err.to_string().contains("Unsupported agent type"));
@@ -336,6 +348,7 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: None,
+            network_policy: None,
         };
         let debug = format!("{:?}", config);
         assert!(debug.contains("test"));
@@ -351,6 +364,7 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: Some(TmuxLayout { layout_type: "vertical".into(), panes: Some(2) }),
+            network_policy: None,
         };
         let cloned = config.clone();
         assert_eq!(cloned.session_name, "test");

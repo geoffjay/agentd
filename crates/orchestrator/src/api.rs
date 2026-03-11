@@ -112,6 +112,7 @@ async fn create_agent(
         model: req.model,
         env: req.env,
         auto_clear_threshold: req.auto_clear_threshold,
+        network_policy: req.network_policy,
     };
 
     let agent = state.manager.spawn_agent(req.name, config).await?;

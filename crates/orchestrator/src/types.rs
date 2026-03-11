@@ -130,6 +130,13 @@ pub struct AgentConfig {
     /// input-token count for the current session exceeds this threshold.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_clear_threshold: Option<u64>,
+    /// Network policy for Docker-backed agents.
+    ///
+    /// Controls whether the container has internet access, is fully
+    /// isolated, or shares the host network. Ignored for tmux backends.
+    /// Defaults to `Internet` (bridge network with outbound access).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network_policy: Option<wrap::docker::NetworkPolicy>,
 }
 
 fn default_shell() -> String {
@@ -212,6 +219,9 @@ pub struct CreateAgentRequest {
     /// input-token count for the current session exceeds this threshold.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_clear_threshold: Option<u64>,
+    /// Network policy for Docker-backed agents.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network_policy: Option<wrap::docker::NetworkPolicy>,
 }
 
 /// Response body for agent endpoints.
@@ -562,6 +572,7 @@ mod tests {
             model: Some("opus".to_string()),
             env: HashMap::new(),
             auto_clear_threshold: None,
+            network_policy: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -584,6 +595,7 @@ mod tests {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
+            network_policy: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -604,6 +616,7 @@ mod tests {
             model: Some("sonnet".to_string()),
             env: HashMap::new(),
             auto_clear_threshold: None,
+            network_policy: None,
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
@@ -630,6 +643,7 @@ mod tests {
             model: None,
             env: env.clone(),
             auto_clear_threshold: None,
+            network_policy: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -654,6 +668,7 @@ mod tests {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
+            network_policy: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -690,6 +705,7 @@ mod tests {
             model: None,
             env: env.clone(),
             auto_clear_threshold: None,
+            network_policy: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -717,6 +733,7 @@ mod tests {
             model: None,
             env,
             auto_clear_threshold: None,
+            network_policy: None,
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);

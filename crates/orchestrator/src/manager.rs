@@ -57,6 +57,7 @@ impl AgentManager {
             model_provider: "anthropic".into(),
             model_name: agent.config.model.clone().unwrap_or_default(),
             layout: None,
+            network_policy: None,
         };
 
         if let Err(e) = self.backend.create_session(&session_config).await {
@@ -346,6 +347,7 @@ impl AgentManager {
             model_provider: "anthropic".into(),
             model_name: agent.config.model.clone().unwrap_or_default(),
             layout: None,
+            network_policy: None,
         };
 
         if let Err(e) = self.backend.create_session(&session_config).await {
@@ -500,6 +502,7 @@ mod tests {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
+            network_policy: None,
         }
     }
 

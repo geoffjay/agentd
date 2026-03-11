@@ -467,6 +467,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
             model: model.model,
             env,
             auto_clear_threshold: model.auto_clear_threshold.and_then(|v| u64::try_from(v).ok()),
+            network_policy: None,
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
@@ -530,6 +531,7 @@ mod tests {
                 model: None,
                 env: HashMap::new(),
                 auto_clear_threshold: None,
+                network_policy: None,
             },
         )
     }
