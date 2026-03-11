@@ -40,10 +40,13 @@ RUN npm install -g @anthropic-ai/claude-code && \
     npm cache clean --force
 
 # ── Non-root user ────────────────────────────────────────────────────
-# Create a dedicated 'agent' user. The UID/GID 1000 matches the default
-# user on most Linux hosts and the user set by DockerBackend (1000:1000).
-RUN groupadd --gid 1000 agent && \
-    useradd --uid 1000 --gid agent --create-home --shell /bin/bash agent
+# The node:22-slim base image already has a `node` user at UID 1000.
+# Rename it to `agent` for clarity and to match DockerBackend's default
+# user (1000:1000). Using usermod/groupmod avoids the "UID already
+# exists" error from useradd.
+RUN groupmod --new-name agent node && \
+    usermod --login agent --home /home/agent --move-home --comment "agentd agent" node && \
+    mkdir -p /home/agent && chown agent:agent /home/agent
 
 # ── Git configuration ────────────────────────────────────────────────
 # Set safe.directory so git works in bind-mounted /workspace regardless
