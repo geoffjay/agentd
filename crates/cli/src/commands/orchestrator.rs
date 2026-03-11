@@ -965,10 +965,7 @@ async fn create_agent(
 
     // Build resource limits from individual flags.
     let resource_limits = if cpu_limit.is_some() || memory_limit.is_some() {
-        Some(orchestrator::types::ResourceLimits {
-            cpu_limit,
-            memory_limit_mb: memory_limit,
-        })
+        Some(orchestrator::types::ResourceLimits { cpu_limit, memory_limit_mb: memory_limit })
     } else {
         None
     };
@@ -2179,13 +2176,7 @@ fn display_agent(agent: &AgentResponse) {
         if let Some(ref mounts) = agent.config.extra_mounts {
             for mount in mounts {
                 let ro = if mount.read_only { ":ro" } else { "" };
-                println!(
-                    "{}: {}:{}{}",
-                    "Mount".bold(),
-                    mount.host_path,
-                    mount.container_path,
-                    ro
-                );
+                println!("{}: {}:{}{}", "Mount".bold(), mount.host_path, mount.container_path, ro);
             }
         }
         if let Some(ref policy) = agent.config.network_policy {
@@ -3077,11 +3068,7 @@ mod tests {
 
     #[test]
     fn test_parse_mount_flags_multiple() {
-        let mounts = vec![
-            "/a:/b".to_string(),
-            "/c:/d:ro".to_string(),
-            "/e:/f:rw".to_string(),
-        ];
+        let mounts = vec!["/a:/b".to_string(), "/c:/d:ro".to_string(), "/e:/f:rw".to_string()];
         let result = parse_mount_flags(&mounts).unwrap();
         assert_eq!(result.len(), 3);
         assert!(!result[0].read_only);

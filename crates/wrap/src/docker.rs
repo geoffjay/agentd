@@ -37,14 +37,14 @@
 //! # }
 //! ```
 
-use crate::backend::{ExecutionBackend, SessionConfig};
+use crate::backend::{ExecutionBackend, SessionConfig, SessionExitInfo, SessionHealth};
 use async_trait::async_trait;
 use bollard::container::{
     Config, CreateContainerOptions, ListContainersOptions, RemoveContainerOptions,
     StartContainerOptions, StopContainerOptions,
 };
 use bollard::exec::CreateExecOptions;
-use bollard::models::ContainerStateStatusEnum;
+use bollard::models::{ContainerStateStatusEnum, HealthStatusEnum};
 use bollard::Docker;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -304,6 +304,22 @@ impl DockerBackend {
     /// Returns the orchestrator port used for WebSocket URLs.
     pub fn orchestrator_port(&self) -> u16 {
         self.orchestrator_port
+    }
+
+    /// Returns the container state status string for logging/diagnostics.
+    ///
+    /// Useful for reconciliation to understand why a container is not running
+    /// (e.g., exited, paused, restarting, dead).
+    pub async fn container_state(&self, session_name: &str) -> anyhow::Result<Option<String>> {
+        match self.docker.inspect_container(session_name, None).await {
+            Ok(info) => {
+                let status =
+                    info.state.as_ref().and_then(|s| s.status.as_ref()).map(|s| s.to_string());
+                Ok(status)
+            }
+            Err(e) if is_not_found(&e) => Ok(None),
+            Err(e) => Err(anyhow::anyhow!("Failed to inspect container '{}': {}", session_name, e)),
+        }
     }
 
     /// Extract the agent ID from a session name.
@@ -671,6 +687,121 @@ impl ExecutionBackend for DockerBackend {
                 Some(format!("ws://{DOCKER_HOST_INTERNAL}:{port}/ws/{agent_id}"))
             }
         }
+    }
+
+    /// Returns the health status of a Docker container.
+    ///
+    /// Maps Docker's container health status to [`SessionHealth`]:
+    /// - `healthy` → [`SessionHealth::Healthy`]
+    /// - `unhealthy` → [`SessionHealth::Unhealthy`]
+    /// - `starting` → [`SessionHealth::Starting`]
+    /// - No health check configured but container running → [`SessionHealth::Healthy`]
+    /// - Container not running → [`SessionHealth::Unknown`]
+    async fn session_health(&self, session_name: &str) -> anyhow::Result<SessionHealth> {
+        match self.docker.inspect_container(session_name, None).await {
+            Ok(info) => {
+                let state = match info.state.as_ref() {
+                    Some(s) => s,
+                    None => return Ok(SessionHealth::Unknown),
+                };
+
+                // If the container is not running, health is unknown.
+                if !state.running.unwrap_or(false) {
+                    return Ok(SessionHealth::Unknown);
+                }
+
+                // Check the Docker HEALTHCHECK status if present.
+                // Match on bollard's `HealthStatusEnum` variants directly
+                // rather than using Debug formatting, which would be fragile
+                // across bollard version bumps.
+                match state.health.as_ref().and_then(|h| h.status.as_ref()) {
+                    Some(HealthStatusEnum::HEALTHY) => Ok(SessionHealth::Healthy),
+                    Some(HealthStatusEnum::UNHEALTHY) => Ok(SessionHealth::Unhealthy),
+                    Some(HealthStatusEnum::STARTING) => Ok(SessionHealth::Starting),
+                    Some(_) => Ok(SessionHealth::Unknown),
+                    // No HEALTHCHECK configured — if running, assume healthy.
+                    None => Ok(SessionHealth::Healthy),
+                }
+            }
+            Err(e) if is_not_found(&e) => Ok(SessionHealth::Unknown),
+            Err(e) => Err(anyhow::anyhow!(
+                "Failed to inspect container '{}' for health: {}",
+                session_name,
+                e
+            )),
+        }
+    }
+
+    /// Returns exit information for a terminated Docker container.
+    ///
+    /// Inspects the container state to retrieve the exit code and any error
+    /// message (e.g., OOMKilled). Returns `None` if the container is still
+    /// running or does not exist.
+    async fn session_exit_info(
+        &self,
+        session_name: &str,
+    ) -> anyhow::Result<Option<SessionExitInfo>> {
+        match self.docker.inspect_container(session_name, None).await {
+            Ok(info) => {
+                let state = match info.state.as_ref() {
+                    Some(s) => s,
+                    None => return Ok(None),
+                };
+
+                // Only return exit info for containers that have stopped.
+                if state.running.unwrap_or(false) {
+                    return Ok(None);
+                }
+
+                let exit_code = state.exit_code.unwrap_or(-1);
+                let mut error = state.error.clone().filter(|e| !e.is_empty());
+
+                // Check for OOM kill.
+                if state.oom_killed.unwrap_or(false) {
+                    error = Some(
+                        error
+                            .map(|e| format!("OOMKilled: {}", e))
+                            .unwrap_or_else(|| "OOMKilled".to_string()),
+                    );
+                }
+
+                Ok(Some(SessionExitInfo { exit_code, error }))
+            }
+            Err(e) if is_not_found(&e) => Ok(None),
+            Err(e) => Err(anyhow::anyhow!(
+                "Failed to inspect container '{}' for exit info: {}",
+                session_name,
+                e
+            )),
+        }
+    }
+
+    /// Stops all containers managed by this Docker backend.
+    ///
+    /// Lists all containers with the matching prefix label and stops + removes
+    /// each one. Logs events for observability.
+    async fn shutdown_all_sessions(&self) -> anyhow::Result<()> {
+        let sessions = self.list_sessions().await?;
+        let count = sessions.len();
+
+        if count == 0 {
+            debug!(prefix = %self.prefix, "No Docker containers to shut down");
+            return Ok(());
+        }
+
+        info!(count, prefix = %self.prefix, "Shutting down Docker containers");
+
+        for session in &sessions {
+            info!(session = %session, event = "stop", "Stopping Docker container");
+            if let Err(e) = self.kill_session(session).await {
+                warn!(session = %session, %e, "Failed to stop container during shutdown");
+            } else {
+                info!(session = %session, event = "removed", "Docker container removed");
+            }
+        }
+
+        info!(count, "Docker container shutdown complete");
+        Ok(())
     }
 }
 
@@ -1051,5 +1182,32 @@ mod tests {
         // Without override, falls back to backend default (Internet → host.docker.internal).
         let url_default = backend.agent_ws_url("test-prefix-abc123", None);
         assert_eq!(url_default, Some("ws://host.docker.internal:7006/ws/abc123".to_string()));
+    }
+
+    // -- SessionExitInfo construction --
+
+    #[test]
+    fn session_exit_info_zero_exit() {
+        let info = SessionExitInfo { exit_code: 0, error: None };
+        assert_eq!(info.exit_code, 0);
+        assert!(info.error.is_none());
+    }
+
+    #[test]
+    fn session_exit_info_oom_killed() {
+        let info = SessionExitInfo { exit_code: 137, error: Some("OOMKilled".to_string()) };
+        assert_eq!(info.exit_code, 137);
+        assert_eq!(info.error.as_deref(), Some("OOMKilled"));
+    }
+
+    // -- SessionHealth values from Docker --
+
+    #[test]
+    fn session_health_variants() {
+        // Verify that all SessionHealth variants are accessible from this module.
+        let _ = SessionHealth::Healthy;
+        let _ = SessionHealth::Unhealthy;
+        let _ = SessionHealth::Starting;
+        let _ = SessionHealth::Unknown;
     }
 }

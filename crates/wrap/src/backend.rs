@@ -39,6 +39,47 @@
 use crate::tmux::TmuxManager;
 use crate::types::TmuxLayout;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+/// Health status of a backend session (container or tmux session).
+///
+/// Used by the orchestrator to make reconciliation decisions based on
+/// the liveness of the underlying execution environment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionHealth {
+    /// Session is running and healthy (Docker: health check passing or no health check configured).
+    Healthy,
+    /// Session is running but health check is failing.
+    Unhealthy,
+    /// Session is starting up (Docker: health check hasn't passed yet).
+    Starting,
+    /// Health status cannot be determined.
+    Unknown,
+}
+
+impl std::fmt::Display for SessionHealth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionHealth::Healthy => write!(f, "healthy"),
+            SessionHealth::Unhealthy => write!(f, "unhealthy"),
+            SessionHealth::Starting => write!(f, "starting"),
+            SessionHealth::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+/// Exit information for a session that has terminated.
+///
+/// Provides the exit code and an optional error message for diagnosing
+/// agent failures.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionExitInfo {
+    /// Process exit code. 0 typically means success, non-zero means failure.
+    pub exit_code: i64,
+    /// Optional error message from the runtime (e.g., OOMKilled).
+    pub error: Option<String>,
+}
 
 /// Configuration for creating and launching an agent session.
 ///
@@ -125,6 +166,43 @@ pub trait ExecutionBackend: Send + Sync {
     /// Not all backends support WebSocket streaming. Returns `None` by default.
     fn agent_ws_url(&self, _session_name: &str, _config: Option<&SessionConfig>) -> Option<String> {
         None
+    }
+
+    /// Returns the health status of a session.
+    ///
+    /// For Docker backends this inspects the container's health check status.
+    /// For tmux backends (or backends without health checks), this returns
+    /// [`SessionHealth::Unknown`] by default.
+    async fn session_health(&self, _session_name: &str) -> anyhow::Result<SessionHealth> {
+        Ok(SessionHealth::Unknown)
+    }
+
+    /// Returns the exit information for a terminated session.
+    ///
+    /// This is used during reconciliation to distinguish between clean exits
+    /// (exit code 0 → `Stopped`) and failures (non-zero → `Failed`).
+    ///
+    /// Returns `None` if the session is still running, was never created, or
+    /// the backend does not support exit code retrieval.
+    async fn session_exit_info(
+        &self,
+        _session_name: &str,
+    ) -> anyhow::Result<Option<SessionExitInfo>> {
+        Ok(None)
+    }
+
+    /// Stops all sessions managed by this backend.
+    ///
+    /// Used during graceful shutdown to clean up all running sessions.
+    /// The default implementation lists all sessions and kills them individually.
+    async fn shutdown_all_sessions(&self) -> anyhow::Result<()> {
+        let sessions = self.list_sessions().await?;
+        for session in sessions {
+            if let Err(e) = self.kill_session(&session).await {
+                tracing::warn!(session = %session, %e, "Failed to kill session during shutdown");
+            }
+        }
+        Ok(())
     }
 }
 
@@ -389,5 +467,85 @@ mod tests {
     fn tmux_backend_is_send_sync() {
         fn _assert_send_sync<T: Send + Sync>() {}
         _assert_send_sync::<TmuxBackend>();
+    }
+
+    // -- SessionHealth tests --
+
+    #[test]
+    fn session_health_display() {
+        assert_eq!(SessionHealth::Healthy.to_string(), "healthy");
+        assert_eq!(SessionHealth::Unhealthy.to_string(), "unhealthy");
+        assert_eq!(SessionHealth::Starting.to_string(), "starting");
+        assert_eq!(SessionHealth::Unknown.to_string(), "unknown");
+    }
+
+    #[test]
+    fn session_health_serde_roundtrip() {
+        for health in [
+            SessionHealth::Healthy,
+            SessionHealth::Unhealthy,
+            SessionHealth::Starting,
+            SessionHealth::Unknown,
+        ] {
+            let json = serde_json::to_string(&health).unwrap();
+            let deserialized: SessionHealth = serde_json::from_str(&json).unwrap();
+            assert_eq!(deserialized, health);
+        }
+    }
+
+    #[test]
+    fn session_health_serde_values() {
+        assert_eq!(serde_json::to_string(&SessionHealth::Healthy).unwrap(), "\"healthy\"");
+        assert_eq!(serde_json::to_string(&SessionHealth::Unhealthy).unwrap(), "\"unhealthy\"");
+        assert_eq!(serde_json::to_string(&SessionHealth::Starting).unwrap(), "\"starting\"");
+        assert_eq!(serde_json::to_string(&SessionHealth::Unknown).unwrap(), "\"unknown\"");
+    }
+
+    // -- SessionExitInfo tests --
+
+    #[test]
+    fn session_exit_info_success() {
+        let info = SessionExitInfo { exit_code: 0, error: None };
+        assert_eq!(info.exit_code, 0);
+        assert!(info.error.is_none());
+    }
+
+    #[test]
+    fn session_exit_info_failure() {
+        let info = SessionExitInfo { exit_code: 137, error: Some("OOMKilled".to_string()) };
+        assert_eq!(info.exit_code, 137);
+        assert_eq!(info.error.as_deref(), Some("OOMKilled"));
+    }
+
+    #[test]
+    fn session_exit_info_serde_roundtrip() {
+        let info = SessionExitInfo { exit_code: 1, error: Some("segfault".to_string()) };
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: SessionExitInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, info);
+    }
+
+    #[test]
+    fn session_exit_info_clone() {
+        let info = SessionExitInfo { exit_code: 42, error: None };
+        let cloned = info.clone();
+        assert_eq!(cloned.exit_code, 42);
+        assert!(cloned.error.is_none());
+    }
+
+    // -- Default trait method tests --
+
+    #[tokio::test]
+    async fn tmux_backend_session_health_returns_unknown() {
+        let backend = TmuxBackend::new("test");
+        let health = backend.session_health("nonexistent").await.unwrap();
+        assert_eq!(health, SessionHealth::Unknown);
+    }
+
+    #[tokio::test]
+    async fn tmux_backend_session_exit_info_returns_none() {
+        let backend = TmuxBackend::new("test");
+        let exit_info = backend.session_exit_info("nonexistent").await.unwrap();
+        assert!(exit_info.is_none());
     }
 }
