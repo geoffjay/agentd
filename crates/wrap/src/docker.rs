@@ -468,6 +468,11 @@ impl ExecutionBackend for DockerBackend {
             labels: Some(labels),
             host_config: Some(host_config),
             user: Some("1000:1000".to_string()),
+            // Allocate a pseudo-TTY and keep stdin open so interactive
+            // shells (e.g., "general" agent type) stay alive. This is
+            // harmless for non-interactive agent CLIs like claude-code.
+            tty: Some(true),
+            open_stdin: Some(true),
             ..Default::default()
         };
 
