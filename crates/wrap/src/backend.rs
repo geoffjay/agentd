@@ -141,9 +141,7 @@ pub struct TmuxBackend {
 impl TmuxBackend {
     /// Creates a new `TmuxBackend` with the given session name prefix.
     pub fn new(prefix: impl Into<String>) -> Self {
-        Self {
-            tmux: TmuxManager::new(prefix),
-        }
+        Self { tmux: TmuxManager::new(prefix) }
     }
 
     /// Returns a reference to the inner [`TmuxManager`].
@@ -299,10 +297,7 @@ mod tests {
             model_name: "gemini-pro".into(),
             layout: None,
         };
-        assert_eq!(
-            build_agent_command(&config).unwrap(),
-            "gemini --model gemini-pro"
-        );
+        assert_eq!(build_agent_command(&config).unwrap(), "gemini --model gemini-pro");
     }
 
     #[test]
@@ -355,10 +350,7 @@ mod tests {
             agent_type: "claude-code".into(),
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
-            layout: Some(TmuxLayout {
-                layout_type: "vertical".into(),
-                panes: Some(2),
-            }),
+            layout: Some(TmuxLayout { layout_type: "vertical".into(), panes: Some(2) }),
         };
         let cloned = config.clone();
         assert_eq!(cloned.session_name, "test");

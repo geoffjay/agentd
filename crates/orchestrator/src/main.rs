@@ -59,7 +59,8 @@ async fn main() -> anyhow::Result<()> {
     let ws_base_url = format!("ws://127.0.0.1:{}", port);
 
     // Agent manager (Arc'd immediately so it can be shared with callbacks and API state).
-    let manager = Arc::new(AgentManager::new(storage.clone(), backend, registry.clone(), ws_base_url));
+    let manager =
+        Arc::new(AgentManager::new(storage.clone(), backend, registry.clone(), ws_base_url));
 
     // Scheduler for autonomous workflows (shares the same SeaORM connection).
     // Schema is already applied by AgentStorage::with_path() via Migrator::up().
@@ -208,9 +209,7 @@ async fn main() -> anyhow::Result<()> {
     info!("WebSocket endpoint at ws://{}/ws/{{agent_id}}", addr);
 
     let server = tokio::spawn(
-        axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal())
-            .into_future(),
+        axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()).into_future(),
     );
 
     // Now that the server is accepting connections, reconcile stale agents.

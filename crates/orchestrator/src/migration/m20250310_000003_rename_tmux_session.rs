@@ -31,9 +31,7 @@ impl MigrationTrait for Migration {
         // backend before this migration.
         // -----------------------------------------------------------------
         if let Err(e) = db
-            .execute_unprepared(
-                "ALTER TABLE agents ADD COLUMN backend_type TEXT DEFAULT 'tmux'",
-            )
+            .execute_unprepared("ALTER TABLE agents ADD COLUMN backend_type TEXT DEFAULT 'tmux'")
             .await
         {
             if !e.to_string().contains("duplicate column name") {

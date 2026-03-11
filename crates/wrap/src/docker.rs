@@ -89,10 +89,7 @@ pub struct ResourceLimits {
 
 impl Default for ResourceLimits {
     fn default() -> Self {
-        Self {
-            memory_bytes: DEFAULT_MEMORY_BYTES,
-            nano_cpus: DEFAULT_NANO_CPUS,
-        }
+        Self { memory_bytes: DEFAULT_MEMORY_BYTES, nano_cpus: DEFAULT_NANO_CPUS }
     }
 }
 
@@ -141,11 +138,8 @@ impl DockerBackend {
     pub fn new(prefix: impl Into<String>, image: impl Into<String>) -> anyhow::Result<Self> {
         let docker = Docker::connect_with_local_defaults()?;
 
-        let network_mode = if cfg!(target_os = "linux") {
-            "host".to_string()
-        } else {
-            "bridge".to_string()
-        };
+        let network_mode =
+            if cfg!(target_os = "linux") { "host".to_string() } else { "bridge".to_string() };
 
         Ok(Self {
             prefix: prefix.into(),
@@ -234,10 +228,7 @@ impl DockerBackend {
         let mut labels = HashMap::new();
         labels.insert(LABEL_PREFIX.to_string(), self.prefix.clone());
         labels.insert(LABEL_SESSION.to_string(), config.session_name.clone());
-        labels.insert(
-            LABEL_AGENT_ID.to_string(),
-            self.extract_agent_id(&config.session_name),
-        );
+        labels.insert(LABEL_AGENT_ID.to_string(), self.extract_agent_id(&config.session_name));
         labels
     }
 }
@@ -257,11 +248,9 @@ fn build_agent_cmd(config: &SessionConfig) -> anyhow::Result<Vec<String>> {
             "--model".to_string(),
             config.model_name.clone(),
         ]),
-        "gemini" => Ok(vec![
-            "gemini".to_string(),
-            "--model".to_string(),
-            config.model_name.clone(),
-        ]),
+        "gemini" => {
+            Ok(vec!["gemini".to_string(), "--model".to_string(), config.model_name.clone()])
+        }
         "general" => Ok(vec!["/bin/bash".to_string()]),
         other => Err(anyhow::anyhow!("Unsupported agent type: {}", other)),
     }
@@ -269,35 +258,17 @@ fn build_agent_cmd(config: &SessionConfig) -> anyhow::Result<Vec<String>> {
 
 /// Check if a bollard error is a 404 Not Found response.
 fn is_not_found(err: &bollard::errors::Error) -> bool {
-    matches!(
-        err,
-        bollard::errors::Error::DockerResponseServerError {
-            status_code: 404,
-            ..
-        }
-    )
+    matches!(err, bollard::errors::Error::DockerResponseServerError { status_code: 404, .. })
 }
 
 /// Check if a bollard error is a 304 Not Modified response (container already stopped).
 fn is_not_modified(err: &bollard::errors::Error) -> bool {
-    matches!(
-        err,
-        bollard::errors::Error::DockerResponseServerError {
-            status_code: 304,
-            ..
-        }
-    )
+    matches!(err, bollard::errors::Error::DockerResponseServerError { status_code: 304, .. })
 }
 
 /// Check if a bollard error is a 409 Conflict response (container already exists).
 fn is_conflict(err: &bollard::errors::Error) -> bool {
-    matches!(
-        err,
-        bollard::errors::Error::DockerResponseServerError {
-            status_code: 409,
-            ..
-        }
-    )
+    matches!(err, bollard::errors::Error::DockerResponseServerError { status_code: 409, .. })
 }
 
 #[async_trait]
@@ -325,10 +296,8 @@ impl ExecutionBackend for DockerBackend {
             ..Default::default()
         };
 
-        let create_opts = CreateContainerOptions {
-            name: config.session_name.clone(),
-            ..Default::default()
-        };
+        let create_opts =
+            CreateContainerOptions { name: config.session_name.clone(), ..Default::default() };
 
         let container_config = Config {
             image: Some(self.image.clone()),
@@ -341,11 +310,7 @@ impl ExecutionBackend for DockerBackend {
             ..Default::default()
         };
 
-        match self
-            .docker
-            .create_container(Some(create_opts), container_config)
-            .await
-        {
+        match self.docker.create_container(Some(create_opts), container_config).await {
             Ok(response) => {
                 info!(
                     session = %config.session_name,
@@ -369,11 +334,9 @@ impl ExecutionBackend for DockerBackend {
                 );
                 Ok(())
             }
-            Err(e) => Err(anyhow::anyhow!(
-                "Failed to create container '{}': {}",
-                config.session_name,
-                e
-            )),
+            Err(e) => {
+                Err(anyhow::anyhow!("Failed to create container '{}': {}", config.session_name, e))
+            }
         }
     }
 
@@ -383,17 +346,10 @@ impl ExecutionBackend for DockerBackend {
     /// agent CLI is launched.
     async fn launch_agent(&self, config: &SessionConfig) -> anyhow::Result<()> {
         self.docker
-            .start_container(
-                &config.session_name,
-                None::<StartContainerOptions<String>>,
-            )
+            .start_container(&config.session_name, None::<StartContainerOptions<String>>)
             .await
             .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to start container '{}': {}",
-                    config.session_name,
-                    e
-                )
+                anyhow::anyhow!("Failed to start container '{}': {}", config.session_name, e)
             })?;
 
         info!(
@@ -416,8 +372,7 @@ impl ExecutionBackend for DockerBackend {
                     .as_ref()
                     .map(|state| {
                         let running = state.running.unwrap_or(false);
-                        let is_created = state.status
-                            == Some(ContainerStateStatusEnum::CREATED);
+                        let is_created = state.status == Some(ContainerStateStatusEnum::CREATED);
                         running || is_created
                     })
                     .unwrap_or(false);
@@ -431,11 +386,7 @@ impl ExecutionBackend for DockerBackend {
                 Ok(exists)
             }
             Err(e) if is_not_found(&e) => Ok(false),
-            Err(e) => Err(anyhow::anyhow!(
-                "Failed to inspect container '{}': {}",
-                session_name,
-                e
-            )),
+            Err(e) => Err(anyhow::anyhow!("Failed to inspect container '{}': {}", session_name, e)),
         }
     }
 
@@ -446,14 +397,8 @@ impl ExecutionBackend for DockerBackend {
     /// graceful timeout, then force-removed.
     async fn kill_session(&self, session_name: &str) -> anyhow::Result<()> {
         // Stop the container with a graceful timeout.
-        let stop_opts = StopContainerOptions {
-            t: STOP_TIMEOUT_SECS,
-        };
-        match self
-            .docker
-            .stop_container(session_name, Some(stop_opts))
-            .await
-        {
+        let stop_opts = StopContainerOptions { t: STOP_TIMEOUT_SECS };
+        match self.docker.stop_container(session_name, Some(stop_opts)).await {
             Ok(_) => {
                 debug!(session = %session_name, "Container stopped");
             }
@@ -467,15 +412,8 @@ impl ExecutionBackend for DockerBackend {
         }
 
         // Force-remove the container (removes even if stop failed).
-        let rm_opts = RemoveContainerOptions {
-            force: true,
-            ..Default::default()
-        };
-        match self
-            .docker
-            .remove_container(session_name, Some(rm_opts))
-            .await
-        {
+        let rm_opts = RemoveContainerOptions { force: true, ..Default::default() };
+        match self.docker.remove_container(session_name, Some(rm_opts)).await {
             Ok(_) => {
                 info!(session = %session_name, "Container removed");
             }
@@ -508,28 +446,13 @@ impl ExecutionBackend for DockerBackend {
             ..Default::default()
         };
 
-        let exec = self
-            .docker
-            .create_exec(session_name, exec_opts)
-            .await
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to create exec in container '{}': {}",
-                    session_name,
-                    e
-                )
-            })?;
+        let exec = self.docker.create_exec(session_name, exec_opts).await.map_err(|e| {
+            anyhow::anyhow!("Failed to create exec in container '{}': {}", session_name, e)
+        })?;
 
-        self.docker
-            .start_exec(&exec.id, None)
-            .await
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to start exec in container '{}': {}",
-                    session_name,
-                    e
-                )
-            })?;
+        self.docker.start_exec(&exec.id, None).await.map_err(|e| {
+            anyhow::anyhow!("Failed to start exec in container '{}': {}", session_name, e)
+        })?;
 
         debug!(
             session = %session_name,
@@ -548,23 +471,18 @@ impl ExecutionBackend for DockerBackend {
         let mut filters = HashMap::new();
         filters.insert("label", vec![label_filter.as_str()]);
 
-        let opts = ListContainersOptions {
-            all: true,
-            filters,
-            ..Default::default()
-        };
+        let opts = ListContainersOptions { all: true, filters, ..Default::default() };
 
-        let containers = self.docker.list_containers(Some(opts)).await.map_err(|e| {
-            anyhow::anyhow!("Failed to list containers: {}", e)
-        })?;
+        let containers = self
+            .docker
+            .list_containers(Some(opts))
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list containers: {}", e))?;
 
         let names: Vec<String> = containers
             .iter()
             .filter_map(|c| {
-                c.names
-                    .as_ref()?
-                    .first()
-                    .map(|n| n.trim_start_matches('/').to_string())
+                c.names.as_ref()?.first().map(|n| n.trim_start_matches('/').to_string())
             })
             .collect();
 
@@ -590,10 +508,7 @@ impl ExecutionBackend for DockerBackend {
             Some(format!("ws://127.0.0.1:7006/ws/{}", agent_id))
         } else {
             // Bridge or custom networking — use Docker's host gateway.
-            Some(format!(
-                "ws://host.docker.internal:7006/ws/{}",
-                agent_id
-            ))
+            Some(format!("ws://host.docker.internal:7006/ws/{}", agent_id))
         }
     }
 }
@@ -686,10 +601,7 @@ mod tests {
 
     #[test]
     fn build_agent_cmd_crush() {
-        let config = SessionConfig {
-            agent_type: "crush".into(),
-            ..test_session_config()
-        };
+        let config = SessionConfig { agent_type: "crush".into(), ..test_session_config() };
         let cmd = build_agent_cmd(&config).unwrap();
         assert_eq!(cmd, vec!["crush"]);
     }
@@ -703,10 +615,7 @@ mod tests {
             ..test_session_config()
         };
         let cmd = build_agent_cmd(&config).unwrap();
-        assert_eq!(
-            cmd,
-            vec!["opencode", "--model-provider", "openai", "--model", "gpt-4"]
-        );
+        assert_eq!(cmd, vec!["opencode", "--model-provider", "openai", "--model", "gpt-4"]);
     }
 
     #[test]
@@ -723,20 +632,14 @@ mod tests {
 
     #[test]
     fn build_agent_cmd_general() {
-        let config = SessionConfig {
-            agent_type: "general".into(),
-            ..test_session_config()
-        };
+        let config = SessionConfig { agent_type: "general".into(), ..test_session_config() };
         let cmd = build_agent_cmd(&config).unwrap();
         assert_eq!(cmd, vec!["/bin/bash"]);
     }
 
     #[test]
     fn build_agent_cmd_unsupported() {
-        let config = SessionConfig {
-            agent_type: "unknown".into(),
-            ..test_session_config()
-        };
+        let config = SessionConfig { agent_type: "unknown".into(), ..test_session_config() };
         let err = build_agent_cmd(&config).unwrap_err();
         assert!(err.to_string().contains("Unsupported agent type"));
     }
@@ -747,10 +650,7 @@ mod tests {
     fn agent_ws_url_bridge_mode() {
         let backend = test_backend();
         let url = backend.agent_ws_url("test-prefix-abc123");
-        assert_eq!(
-            url,
-            Some("ws://host.docker.internal:7006/ws/abc123".to_string())
-        );
+        assert_eq!(url, Some("ws://host.docker.internal:7006/ws/abc123".to_string()));
     }
 
     #[test]
@@ -772,19 +672,13 @@ mod tests {
     #[test]
     fn extract_agent_id_with_prefix() {
         let backend = test_backend();
-        assert_eq!(
-            backend.extract_agent_id("test-prefix-abc123"),
-            "abc123"
-        );
+        assert_eq!(backend.extract_agent_id("test-prefix-abc123"), "abc123");
     }
 
     #[test]
     fn extract_agent_id_without_prefix() {
         let backend = test_backend();
-        assert_eq!(
-            backend.extract_agent_id("other-prefix-xyz"),
-            "other-prefix-xyz"
-        );
+        assert_eq!(backend.extract_agent_id("other-prefix-xyz"), "other-prefix-xyz");
     }
 
     #[test]
@@ -817,24 +711,16 @@ mod tests {
         let labels = backend.build_labels(&config);
 
         assert_eq!(labels.get(LABEL_PREFIX), Some(&"test-prefix".to_string()));
-        assert_eq!(
-            labels.get(LABEL_SESSION),
-            Some(&"test-prefix-abc123".to_string())
-        );
-        assert_eq!(
-            labels.get(LABEL_AGENT_ID),
-            Some(&"abc123".to_string())
-        );
+        assert_eq!(labels.get(LABEL_SESSION), Some(&"test-prefix-abc123".to_string()));
+        assert_eq!(labels.get(LABEL_AGENT_ID), Some(&"abc123".to_string()));
     }
 
     // -- ResourceLimits --
 
     #[test]
     fn resource_limits_custom() {
-        let limits = ResourceLimits {
-            memory_bytes: 4 * 1024 * 1024 * 1024,
-            nano_cpus: 4_000_000_000,
-        };
+        let limits =
+            ResourceLimits { memory_bytes: 4 * 1024 * 1024 * 1024, nano_cpus: 4_000_000_000 };
         assert_eq!(limits.memory_bytes, 4 * 1024 * 1024 * 1024);
         assert_eq!(limits.nano_cpus, 4_000_000_000);
     }
@@ -885,10 +771,7 @@ mod tests {
     #[test]
     fn session_config_layout_ignored_by_docker() {
         let config = SessionConfig {
-            layout: Some(TmuxLayout {
-                layout_type: "vertical".into(),
-                panes: Some(2),
-            }),
+            layout: Some(TmuxLayout { layout_type: "vertical".into(), panes: Some(2) }),
             ..test_session_config()
         };
         // Docker backend should still produce a valid command regardless of layout.
