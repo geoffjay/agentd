@@ -171,6 +171,16 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Return the set of currently running workflow IDs and their assigned agent IDs.
+    pub async fn running_workflows(&self) -> Vec<(Uuid, Uuid)> {
+        self.runners
+            .read()
+            .await
+            .iter()
+            .map(|(wf_id, rw)| (*wf_id, rw.agent_id))
+            .collect()
+    }
+
     /// Shutdown all running workflows gracefully.
     pub async fn shutdown_all(&self) {
         let mut runners = self.runners.write().await;

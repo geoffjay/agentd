@@ -77,10 +77,10 @@
   /* --color-secondary-900: #0f172a; */
   /* --color-secondary-950: #020617; */
 
-  --color-success-500: #22c55e;
-  --color-warning-500: #f59e0b;
-  --color-error-500: #ef4444;
-  --color-info-500: #06b6d4;
+  --color-success-500: #8ac926;
+  --color-warning-500: #ffca3a;
+  --color-error-500: #ff595e;
+  --color-info-500: #1982c4;
 
   /* Spacing tokens */
   --spacing-xs: 0.25rem;

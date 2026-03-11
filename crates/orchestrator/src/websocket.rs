@@ -149,6 +149,11 @@ impl ConnectionRegistry {
         self.connections.read().await.len()
     }
 
+    /// Return the set of currently connected agent IDs.
+    pub async fn connected_ids(&self) -> Vec<Uuid> {
+        self.connections.read().await.keys().copied().collect()
+    }
+
     /// Register a callback to be invoked when any agent produces a "result" message.
     pub async fn on_result(&self, callback: ResultCallback) {
         self.result_callbacks.write().await.push(callback);
@@ -309,6 +314,9 @@ fn broadcast_output(agent_id: &Uuid, text: &str, registry: &ConnectionRegistry) 
         }
         let event = serde_json::json!({
             "type": "agent:output",
+            // snake_case for the /stream/{agent_id} filter
+            "agent_id": agent_id.to_string(),
+            // camelCase for the frontend AgentEvent type
             "agentId": agent_id.to_string(),
             "line": line,
             "timestamp": Utc::now().to_rfc3339(),
@@ -377,6 +385,7 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 if let Some(ref usage_snap) = usage {
                     let event = serde_json::json!({
                         "type": "agent:usage_update",
+                        "agent_id": agent_id.to_string(),
                         "agentId": agent_id.to_string(),
                         "usage": {
                             "input_tokens": usage_snap.input_tokens,
