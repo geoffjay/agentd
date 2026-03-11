@@ -24,6 +24,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 use websocket::ConnectionRegistry;
 use wrap::backend::{ExecutionBackend, TmuxBackend};
+use wrap::docker::DockerBackend;
 
 fn init_metrics() -> PrometheusHandle {
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
@@ -48,15 +49,52 @@ async fn main() -> anyhow::Result<()> {
     info!("Agent storage initialized at: {:?}", AgentStorage::get_db_path()?);
     let storage = Arc::new(storage);
 
-    // Execution backend — defaults to tmux. Future: select based on config/env.
-    let backend: Arc<dyn ExecutionBackend> = Arc::new(TmuxBackend::new("agentd-orch"));
+    // Determine the port and WS base URL early — both the Docker backend
+    // and the AgentManager need it.
+    let port = env::var("PORT").unwrap_or_else(|_| "17006".to_string());
+    let port_num: u16 = port.parse().expect("PORT must be a valid u16");
+    let ws_base_url = format!("ws://127.0.0.1:{}", port);
+
+    // Execution backend — selected via AGENTD_BACKEND env var.
+    // Valid values: "tmux" (default), "docker".
+    let backend_mode = env::var("AGENTD_BACKEND").unwrap_or_else(|_| "tmux".to_string());
+    let backend: Arc<dyn ExecutionBackend> = match backend_mode.as_str() {
+        "tmux" => {
+            info!("Using tmux execution backend");
+            Arc::new(TmuxBackend::new("agentd-orch"))
+        }
+        "docker" => {
+            let image = env::var("AGENTD_DOCKER_IMAGE")
+                .unwrap_or_else(|_| wrap::docker::DEFAULT_IMAGE.to_string());
+            info!(image = %image, "Using Docker execution backend");
+
+            let docker_backend = DockerBackend::new("agentd-orch", &image)
+                .map_err(|e| anyhow::anyhow!("Failed to initialize Docker backend: {}", e))?
+                .with_orchestrator_port(port_num);
+
+            // Validate that the Docker daemon is reachable before proceeding.
+            // A simple `list_sessions` call exercises the Docker API.
+            docker_backend.list_sessions().await.map_err(|e| {
+                anyhow::anyhow!(
+                    "Docker daemon is unreachable (AGENTD_BACKEND=docker). \
+                     Ensure Docker is running and accessible: {}",
+                    e
+                )
+            })?;
+            info!("Docker daemon connectivity verified");
+
+            Arc::new(docker_backend)
+        }
+        other => {
+            anyhow::bail!(
+                "Unknown AGENTD_BACKEND value '{}'. Valid options: tmux, docker",
+                other
+            );
+        }
+    };
 
     // WebSocket connection registry.
     let registry = ConnectionRegistry::new();
-
-    // Determine the port and WS base URL.
-    let port = env::var("PORT").unwrap_or_else(|_| "17006".to_string());
-    let ws_base_url = format!("ws://127.0.0.1:{}", port);
 
     // Agent manager (Arc'd immediately so it can be shared with callbacks and API state).
     let manager =

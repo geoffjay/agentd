@@ -851,6 +851,9 @@ async fn create_agent(
         env,
         auto_clear_threshold,
         network_policy: parsed_network_policy,
+        docker_image: None,
+        extra_mounts: None,
+        resource_limits: None,
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -1961,6 +1964,9 @@ mod tests {
                 env: Default::default(),
                 auto_clear_threshold: None,
                 network_policy: None,
+                docker_image: None,
+                extra_mounts: None,
+                resource_limits: None,
             },
             session_id: Some("agentd-orch-abc123".to_string()),
             backend_type: Some("tmux".to_string()),

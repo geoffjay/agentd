@@ -544,6 +544,9 @@ async fn apply_agent(
         env: tmpl.env.clone(),
         auto_clear_threshold: tmpl.auto_clear_threshold,
         network_policy: parsed_network_policy,
+        docker_image: None,
+        extra_mounts: None,
+        resource_limits: None,
     };
 
     let agent = client.create_agent(&request).await?;

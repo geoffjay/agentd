@@ -38,6 +38,12 @@ pub struct Model {
     /// Optional network policy for Docker containers (e.g., "internet", "isolated", "host_network").
     /// Stored as nullable TEXT; maps to `Option<NetworkPolicy>` in the domain layer.
     pub network_policy: Option<String>,
+    /// Custom Docker image override for this agent. Nullable TEXT.
+    pub docker_image: Option<String>,
+    /// JSON-serialized `Vec<VolumeMount>` for additional Docker volume mounts.
+    pub extra_mounts: Option<String>,
+    /// JSON-serialized `ResourceLimits` (cpu_limit, memory_limit_mb).
+    pub resource_limits: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

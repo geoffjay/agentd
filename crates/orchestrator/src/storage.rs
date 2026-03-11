@@ -85,6 +85,13 @@ impl AgentStorage {
             updated_at: Set(agent.updated_at.to_rfc3339()),
             auto_clear_threshold: Set(agent.config.auto_clear_threshold.map(|v| v as i64)),
             network_policy: Set(agent.config.network_policy.as_ref().map(|p| p.to_string())),
+            docker_image: Set(agent.config.docker_image.clone()),
+            extra_mounts: Set(agent.config.extra_mounts.as_ref().map(|m| {
+                serde_json::to_string(m).unwrap_or_else(|_| "[]".to_string())
+            })),
+            resource_limits: Set(agent.config.resource_limits.as_ref().map(|r| {
+                serde_json::to_string(r).unwrap_or_else(|_| "{}".to_string())
+            })),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -120,6 +127,30 @@ impl AgentStorage {
             .col_expr(
                 agent_entity::Column::NetworkPolicy,
                 Expr::value(agent.config.network_policy.as_ref().map(|p| p.to_string())),
+            )
+            .col_expr(
+                agent_entity::Column::DockerImage,
+                Expr::value(agent.config.docker_image.clone()),
+            )
+            .col_expr(
+                agent_entity::Column::ExtraMounts,
+                Expr::value(
+                    agent
+                        .config
+                        .extra_mounts
+                        .as_ref()
+                        .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "[]".to_string())),
+                ),
+            )
+            .col_expr(
+                agent_entity::Column::ResourceLimits,
+                Expr::value(
+                    agent
+                        .config
+                        .resource_limits
+                        .as_ref()
+                        .map(|r| serde_json::to_string(r).unwrap_or_else(|_| "{}".to_string())),
+                ),
             )
             .col_expr(agent_entity::Column::UpdatedAt, Expr::value(agent.updated_at.to_rfc3339()))
             .filter(agent_entity::Column::Id.eq(agent.id.to_string()))
@@ -478,6 +509,15 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
                 .map(|s| s.parse())
                 .transpose()
                 .unwrap_or(None),
+            docker_image: model.docker_image,
+            extra_mounts: model
+                .extra_mounts
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
+            resource_limits: model
+                .resource_limits
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
@@ -542,6 +582,9 @@ mod tests {
                 env: HashMap::new(),
                 auto_clear_threshold: None,
                 network_policy: None,
+                docker_image: None,
+                extra_mounts: None,
+                resource_limits: None,
             },
         )
     }
@@ -890,5 +933,80 @@ mod tests {
         assert!(stats.current_session.is_none());
         assert_eq!(stats.cumulative.input_tokens, 0);
         assert_eq!(stats.cumulative.result_count, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Docker config persistence tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_add_with_docker_config() {
+        use crate::types::{ResourceLimits, VolumeMount};
+
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("docker-agent");
+        agent.config.docker_image = Some("custom:v2".to_string());
+        agent.config.extra_mounts = Some(vec![VolumeMount {
+            host_path: "/data/models".to_string(),
+            container_path: "/models".to_string(),
+            read_only: true,
+        }]);
+        agent.config.resource_limits =
+            Some(ResourceLimits { cpu_limit: Some(4.0), memory_limit_mb: Some(8192) });
+
+        storage.add(&agent).await.unwrap();
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+
+        assert_eq!(retrieved.config.docker_image, Some("custom:v2".to_string()));
+        let mounts = retrieved.config.extra_mounts.unwrap();
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].host_path, "/data/models");
+        assert!(mounts[0].read_only);
+        let limits = retrieved.config.resource_limits.unwrap();
+        assert_eq!(limits.cpu_limit, Some(4.0));
+        assert_eq!(limits.memory_limit_mb, Some(8192));
+    }
+
+    #[tokio::test]
+    async fn test_docker_config_defaults_to_none() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("no-docker-agent");
+
+        storage.add(&agent).await.unwrap();
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+
+        assert_eq!(retrieved.config.docker_image, None);
+        assert_eq!(retrieved.config.extra_mounts, None);
+        assert_eq!(retrieved.config.resource_limits, None);
+    }
+
+    #[tokio::test]
+    async fn test_update_persists_docker_config() {
+        use crate::types::ResourceLimits;
+
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("docker-update-agent");
+        storage.add(&agent).await.unwrap();
+
+        // Set docker fields and update.
+        agent.config.docker_image = Some("new-image:latest".to_string());
+        agent.config.resource_limits =
+            Some(ResourceLimits { cpu_limit: Some(2.0), memory_limit_mb: None });
+        agent.updated_at = chrono::Utc::now();
+        storage.update(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.docker_image, Some("new-image:latest".to_string()));
+        assert_eq!(retrieved.config.resource_limits.as_ref().unwrap().cpu_limit, Some(2.0));
+
+        // Clear docker fields and update.
+        agent.config.docker_image = None;
+        agent.config.resource_limits = None;
+        agent.updated_at = chrono::Utc::now();
+        storage.update(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.docker_image, None);
+        assert_eq!(retrieved.config.resource_limits, None);
     }
 }
