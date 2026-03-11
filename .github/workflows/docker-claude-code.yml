@@ -71,6 +71,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # NOTE: This only verifies the amd64 variant. The arm64 layer is built
+      # and pushed but not smoke-tested here because ubuntu-latest is amd64.
+      # A future improvement could add a QEMU-based arm64 verify step.
       - name: Verify image (amd64)
         if: github.event_name != 'pull_request'
         run: |

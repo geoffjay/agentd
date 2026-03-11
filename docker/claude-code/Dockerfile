@@ -16,7 +16,7 @@
 #   automatically. API keys are passed as environment variables at runtime —
 #   nothing secret is baked into the image.
 
-FROM node:22-slim AS base
+FROM node:22-slim
 
 # ── System dependencies ───────────────────────────────────────────────
 # Install common dev tools needed by Claude Code and agent workflows.
@@ -36,7 +36,10 @@ RUN apt-get update && \
 
 # ── Claude Code CLI ──────────────────────────────────────────────────
 # Install globally so it's available on PATH for all users.
-RUN npm install -g @anthropic-ai/claude-code && \
+# Pin the version for reproducible builds. Update deliberately or via
+# Renovate / Dependabot when a new release is needed.
+ARG CLAUDE_CODE_VERSION=0.2.70
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && \
     npm cache clean --force
 
 # ── Non-root user ────────────────────────────────────────────────────
@@ -45,8 +48,7 @@ RUN npm install -g @anthropic-ai/claude-code && \
 # user (1000:1000). Using usermod/groupmod avoids the "UID already
 # exists" error from useradd.
 RUN groupmod --new-name agent node && \
-    usermod --login agent --home /home/agent --move-home --comment "agentd agent" node && \
-    mkdir -p /home/agent && chown agent:agent /home/agent
+    usermod --login agent --home /home/agent --move-home --comment "agentd agent" node
 
 # ── Git configuration ────────────────────────────────────────────────
 # Set safe.directory so git works in bind-mounted /workspace regardless
@@ -65,4 +67,4 @@ USER agent
 # Verify the CLI is installed and accessible.
 RUN claude --version
 
-ENTRYPOINT ["claude"]
+CMD ["claude"]
