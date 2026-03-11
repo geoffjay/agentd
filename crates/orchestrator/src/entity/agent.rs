@@ -22,9 +22,11 @@ pub struct Model {
     /// Stored as INTEGER (0/1); mapped to `bool` in the domain layer.
     pub worktree: i32,
     pub system_prompt: Option<String>,
-    pub tmux_session: Option<String>,
+    pub session_id: Option<String>,
     /// JSON-serialized [`crate::types::ToolPolicy`].
     pub tool_policy: String,
+    /// Execution backend type (e.g., "tmux", "docker"). Defaults to "tmux".
+    pub backend_type: Option<String>,
     pub model: Option<String>,
     /// JSON-serialized `HashMap<String, String>`.
     pub env: String,

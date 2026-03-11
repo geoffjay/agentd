@@ -799,7 +799,8 @@ mod orchestrator_agent_tests {
                 "working_dir": "/tmp/test",
                 "shell": "zsh",
             },
-            "tmux_session": format!("agentd-orch-{}", id),
+            "session_id": format!("agentd-orch-{}", id),
+            "backend_type": "tmux",
             "created_at": "2025-01-01T00:00:00Z",
         })
     }

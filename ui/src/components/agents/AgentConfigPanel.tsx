@@ -168,9 +168,9 @@ export function AgentConfigPanel({ agent }: AgentConfigPanelProps) {
             </ConfigRow>
           )}
 
-          {agent.tmux_session && (
-            <ConfigRow label="Tmux Session">
-              <span className="font-mono text-xs">{agent.tmux_session}</span>
+          {agent.session_id && (
+            <ConfigRow label="Session">
+              <span className="font-mono text-xs">{agent.session_id}</span>
             </ConfigRow>
           )}
 

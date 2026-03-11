@@ -143,9 +143,18 @@ pub struct Agent {
     pub name: String,
     pub status: AgentStatus,
     pub config: AgentConfig,
-    /// Name of the tmux session hosting this agent.
+    /// Backend-agnostic session identifier.
+    ///
+    /// For tmux backends this is the tmux session name; for Docker backends
+    /// it would be the container ID.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tmux_session: Option<String>,
+    pub session_id: Option<String>,
+    /// Which execution backend owns this agent's session.
+    ///
+    /// Values: `"tmux"`, `"docker"`. Defaults to `"tmux"` for backward
+    /// compatibility.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend_type: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -158,7 +167,8 @@ impl Agent {
             name,
             status: AgentStatus::Pending,
             config,
-            tmux_session: None,
+            session_id: None,
+            backend_type: Some("tmux".to_string()),
             created_at: now,
             updated_at: now,
         }
@@ -212,7 +222,9 @@ pub struct AgentResponse {
     pub status: AgentStatus,
     pub config: AgentConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tmux_session: Option<String>,
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend_type: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -228,7 +240,8 @@ impl From<Agent> for AgentResponse {
             name: agent.name,
             status: agent.status,
             config,
-            tmux_session: agent.tmux_session,
+            session_id: agent.session_id,
+            backend_type: agent.backend_type,
             created_at: agent.created_at,
             updated_at: agent.updated_at,
         }
