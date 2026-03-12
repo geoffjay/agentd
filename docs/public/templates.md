@@ -72,6 +72,12 @@ shell: zsh                      # Shell to use (default: zsh)
 interactive: false              # Interactive mode (default: false)
 worktree: false                 # Use git worktree (default: false)
 
+# Optional — grant access to directories outside working_dir
+additional_dirs:
+  - ../shared-libraries         # relative: resolved relative to this YAML file
+  - /opt/company/configs        # absolute: used as-is
+  - ~/other-project             # tilde: expanded to home directory
+
 # Optional — no default
 prompt: "Analyze the codebase"  # Initial prompt sent after agent connects
 system_prompt: |                # System prompt for the agent session
@@ -93,6 +99,7 @@ tool_policy:
 |-------|------|---------|-------------|
 | `name` | string | **required** | Unique agent name |
 | `working_dir` | string | `"."` | Working directory. `"."` resolves to `$PWD` |
+| `additional_dirs` | list | `[]` | Extra directories the agent can access (see [Additional Directories](additional-dirs.md)) |
 | `shell` | string | `"zsh"` | Shell for the tmux session |
 | `interactive` | bool | `false` | Run in interactive mode (no WebSocket) |
 | `worktree` | bool | `false` | Start with `--worktree` for isolated git worktree |
@@ -105,6 +112,8 @@ tool_policy:
 - `"."` → resolves to the current working directory (`$PWD`) at apply time
 - Relative paths → resolved relative to the YAML file's directory
 - Absolute paths → used as-is
+
+The same resolution rules apply to each entry in `additional_dirs`. See [Additional Directories](additional-dirs.md) for full details.
 
 ---
 
