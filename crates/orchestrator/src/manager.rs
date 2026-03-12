@@ -339,11 +339,7 @@ impl AgentManager {
     }
 
     /// Update the `additional_dirs` list for an agent in storage.
-    pub async fn update_additional_dirs(
-        &self,
-        id: &Uuid,
-        dirs: &[String],
-    ) -> anyhow::Result<()> {
+    pub async fn update_additional_dirs(&self, id: &Uuid, dirs: &[String]) -> anyhow::Result<()> {
         self.storage.update_additional_dirs(id, dirs).await
     }
 
