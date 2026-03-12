@@ -184,6 +184,10 @@ pub struct AgentConfig {
     /// tmux backends.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource_limits: Option<ResourceLimits>,
+    /// Additional directories the agent has access to.
+    /// Maps to Claude Code's `--add-dir` flag.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_dirs: Vec<String>,
 }
 
 fn default_shell() -> String {
@@ -278,6 +282,10 @@ pub struct CreateAgentRequest {
     /// Resource limits (CPU, memory) for Docker-backed agents.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource_limits: Option<ResourceLimits>,
+    /// Additional directories the agent has access to.
+    /// Maps to Claude Code's `--add-dir` flag.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_dirs: Vec<String>,
 }
 
 /// Response body for agent endpoints.
@@ -632,6 +640,7 @@ mod tests {
             docker_image: None,
             extra_mounts: None,
             resource_limits: None,
+            additional_dirs: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -658,6 +667,7 @@ mod tests {
             docker_image: None,
             extra_mounts: None,
             resource_limits: None,
+            additional_dirs: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -682,6 +692,7 @@ mod tests {
             docker_image: None,
             extra_mounts: None,
             resource_limits: None,
+            additional_dirs: vec![],
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
@@ -712,6 +723,7 @@ mod tests {
             docker_image: None,
             extra_mounts: None,
             resource_limits: None,
+            additional_dirs: vec![],
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -740,6 +752,7 @@ mod tests {
             docker_image: None,
             extra_mounts: None,
             resource_limits: None,
+            additional_dirs: vec![],
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -780,6 +793,7 @@ mod tests {
             docker_image: None,
             extra_mounts: None,
             resource_limits: None,
+            additional_dirs: vec![],
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -811,6 +825,7 @@ mod tests {
             docker_image: None,
             extra_mounts: None,
             resource_limits: None,
+            additional_dirs: vec![],
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);
@@ -923,6 +938,7 @@ mod tests {
             docker_image: None,
             extra_mounts: None,
             resource_limits: None,
+            additional_dirs: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("docker_image"));
@@ -955,6 +971,7 @@ mod tests {
                 cpu_limit: Some(4.0),
                 memory_limit_mb: Some(8192),
             }),
+            additional_dirs: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("custom-image:v1"));
@@ -975,5 +992,72 @@ mod tests {
         assert_eq!(config.docker_image, None);
         assert_eq!(config.extra_mounts, None);
         assert_eq!(config.resource_limits, None);
+    }
+
+    // -- additional_dirs tests --
+
+    #[test]
+    fn test_agent_config_additional_dirs_serialization() {
+        let config = AgentConfig {
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: None,
+            env: HashMap::new(),
+            auto_clear_threshold: None,
+            network_policy: None,
+            docker_image: None,
+            extra_mounts: None,
+            resource_limits: None,
+            additional_dirs: vec!["/opt/configs".to_string(), "/shared/libs".to_string()],
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("additional_dirs"));
+        assert!(json.contains("/opt/configs"));
+        assert!(json.contains("/shared/libs"));
+
+        let deserialized: AgentConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.additional_dirs, vec!["/opt/configs", "/shared/libs"]);
+    }
+
+    #[test]
+    fn test_agent_config_additional_dirs_empty_omitted() {
+        let config = AgentConfig {
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: None,
+            env: HashMap::new(),
+            auto_clear_threshold: None,
+            network_policy: None,
+            docker_image: None,
+            extra_mounts: None,
+            resource_limits: None,
+            additional_dirs: vec![],
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        // Empty vec should be omitted from JSON output
+        assert!(!json.contains("additional_dirs"));
+
+        let deserialized: AgentConfig = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.additional_dirs.is_empty());
+    }
+
+    #[test]
+    fn test_agent_config_backward_compat_missing_additional_dirs() {
+        // Old JSON without additional_dirs should deserialize to empty vec
+        let json = r#"{"working_dir":"/tmp","shell":"zsh","tool_policy":{"mode":"allow_all"}}"#;
+        let config: AgentConfig = serde_json::from_str(json).unwrap();
+        assert!(config.additional_dirs.is_empty());
     }
 }

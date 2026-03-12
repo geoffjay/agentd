@@ -15,6 +15,7 @@ mod m20250305_000001_create_tables;
 mod m20250309_000002_add_usage_sessions;
 mod m20250310_000003_rename_tmux_session;
 mod m20250311_000004_add_network_policy;
+mod m20250311_000006_add_additional_dirs;
 mod m20250312_000005_add_docker_config;
 
 /// The migration runner — applies all known migrations in order.
@@ -29,6 +30,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250310_000003_rename_tmux_session::Migration),
             Box::new(m20250311_000004_add_network_policy::Migration),
             Box::new(m20250312_000005_add_docker_config::Migration),
+            Box::new(m20250311_000006_add_additional_dirs::Migration),
         ]
     }
 }

@@ -260,8 +260,8 @@ async fn main() -> Result<()> {
         }
         Commands::Ask { command } => {
             // Use AGENTD_ASK_SERVICE_URL env var, default to production port
-            let url =
-                env::var("AGENTD_ASK_SERVICE_URL").unwrap_or_else(|_| "http://localhost:7001".to_string());
+            let url = env::var("AGENTD_ASK_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7001".to_string());
             let client = AskClient::new(url);
             command.execute(&client, cli.json).await?;
         }
@@ -340,9 +340,21 @@ const SERVICES: &[ServiceDef] = &[
         env_var: "AGENTD_NOTIFY_SERVICE_URL",
         default_url: "http://localhost:7004",
     },
-    ServiceDef { name: "ask", env_var: "AGENTD_ASK_SERVICE_URL", default_url: "http://localhost:7001" },
-    ServiceDef { name: "wrap", env_var: "AGENTD_WRAP_SERVICE_URL", default_url: "http://localhost:7005" },
-    ServiceDef { name: "hook", env_var: "AGENTD_HOOK_SERVICE_URL", default_url: "http://localhost:7002" },
+    ServiceDef {
+        name: "ask",
+        env_var: "AGENTD_ASK_SERVICE_URL",
+        default_url: "http://localhost:7001",
+    },
+    ServiceDef {
+        name: "wrap",
+        env_var: "AGENTD_WRAP_SERVICE_URL",
+        default_url: "http://localhost:7005",
+    },
+    ServiceDef {
+        name: "hook",
+        env_var: "AGENTD_HOOK_SERVICE_URL",
+        default_url: "http://localhost:7002",
+    },
     ServiceDef {
         name: "monitor",
         env_var: "AGENTD_MONITOR_SERVICE_URL",

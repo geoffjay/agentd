@@ -116,6 +116,7 @@ async fn create_agent(
         docker_image: req.docker_image,
         extra_mounts: req.extra_mounts,
         resource_limits: req.resource_limits,
+        additional_dirs: req.additional_dirs,
     };
 
     let agent = state.manager.spawn_agent(req.name, config).await?;

@@ -59,6 +59,11 @@ pub struct AgentTemplate {
     pub extra_mounts: Vec<orchestrator::types::VolumeMount>,
     /// Resource limits for Docker containers.
     pub resource_limits: Option<orchestrator::types::ResourceLimits>,
+    /// Additional directories the agent has access to.
+    /// Maps to Claude Code's `--add-dir` flag.
+    /// Relative paths are resolved relative to the YAML file location.
+    #[serde(default)]
+    pub additional_dirs: Vec<String>,
 }
 
 fn default_working_dir() -> String {
@@ -537,6 +542,22 @@ async fn apply_agent(
         .transpose()
         .map_err(|e| anyhow::anyhow!("Invalid network_policy in agent '{}': {}", tmpl.name, e))?;
 
+    // Resolve additional_dirs: relative paths are resolved relative to the YAML file location.
+    let base = path.parent().unwrap_or(Path::new("."));
+    let additional_dirs: Vec<String> = tmpl
+        .additional_dirs
+        .iter()
+        .map(|d| {
+            let p = Path::new(d);
+            if p.is_absolute() {
+                d.clone()
+            } else {
+                let full = base.join(p);
+                full.canonicalize().unwrap_or(full).to_string_lossy().to_string()
+            }
+        })
+        .collect();
+
     let request = CreateAgentRequest {
         name: tmpl.name.clone(),
         working_dir,
@@ -558,6 +579,7 @@ async fn apply_agent(
             Some(tmpl.extra_mounts.clone())
         },
         resource_limits: tmpl.resource_limits.clone(),
+        additional_dirs,
     };
 
     let agent = client.create_agent(&request).await?;
@@ -848,6 +870,28 @@ env:
         let yaml = r#"name: minimal"#;
         let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
         assert!(tmpl.env.is_empty());
+    }
+
+    #[test]
+    fn test_parse_agent_with_additional_dirs() {
+        let yaml = r#"
+name: my-agent
+working_dir: .
+additional_dirs:
+  - ../shared-libs
+  - /opt/configs
+model: sonnet
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.name, "my-agent");
+        assert_eq!(tmpl.additional_dirs, vec!["../shared-libs", "/opt/configs"]);
+    }
+
+    #[test]
+    fn test_parse_agent_additional_dirs_defaults_empty() {
+        let yaml = r#"name: minimal"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert!(tmpl.additional_dirs.is_empty());
     }
 
     #[test]

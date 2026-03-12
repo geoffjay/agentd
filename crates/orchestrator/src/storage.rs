@@ -96,6 +96,8 @@ impl AgentStorage {
                 .resource_limits
                 .as_ref()
                 .map(|r| serde_json::to_string(r).unwrap_or_else(|_| "{}".to_string()))),
+            additional_dirs: Set(serde_json::to_string(&agent.config.additional_dirs)
+                .unwrap_or_else(|_| "[]".to_string())),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -519,6 +521,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
                 .resource_limits
                 .as_deref()
                 .and_then(|s| serde_json::from_str(s).ok()),
+            additional_dirs: serde_json::from_str(&model.additional_dirs).unwrap_or_default(),
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
@@ -586,6 +589,7 @@ mod tests {
                 docker_image: None,
                 extra_mounts: None,
                 resource_limits: None,
+                additional_dirs: vec![],
             },
         )
     }
@@ -966,6 +970,33 @@ mod tests {
         let limits = retrieved.config.resource_limits.unwrap();
         assert_eq!(limits.cpu_limit, Some(4.0));
         assert_eq!(limits.memory_limit_mb, Some(8192));
+    }
+
+    // -----------------------------------------------------------------------
+    // additional_dirs tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_add_with_additional_dirs() {
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("dirs-agent");
+        agent.config.additional_dirs = vec!["/opt/configs".to_string(), "/shared/libs".to_string()];
+
+        storage.add(&agent).await.unwrap();
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+
+        assert_eq!(retrieved.config.additional_dirs, vec!["/opt/configs", "/shared/libs"]);
+    }
+
+    #[tokio::test]
+    async fn test_additional_dirs_defaults_to_empty() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("no-dirs-agent");
+        assert!(agent.config.additional_dirs.is_empty());
+
+        storage.add(&agent).await.unwrap();
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert!(retrieved.config.additional_dirs.is_empty());
     }
 
     #[tokio::test]

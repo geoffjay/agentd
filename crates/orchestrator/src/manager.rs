@@ -577,6 +577,10 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
         args.push("--worktree".to_string());
     }
 
+    for dir in &config.additional_dirs {
+        args.push(format!("--add-dir {}", dir));
+    }
+
     if let Some(ref system_prompt) = config.system_prompt {
         args.push(format!("--system-prompt '{}'", system_prompt.replace('\'', "'\\''")));
     }
@@ -635,6 +639,7 @@ mod tests {
             docker_image: None,
             extra_mounts: None,
             resource_limits: None,
+            additional_dirs: vec![],
         }
     }
 
