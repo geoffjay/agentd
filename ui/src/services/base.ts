@@ -219,6 +219,10 @@ export class ApiClient {
     return this.request<T>('DELETE', path)
   }
 
+  protected deleteWithBody<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('DELETE', path, body)
+  }
+
   // -------------------------------------------------------------------------
   // WebSocket helper
   // -------------------------------------------------------------------------

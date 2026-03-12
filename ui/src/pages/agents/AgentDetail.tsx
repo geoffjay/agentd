@@ -27,6 +27,7 @@ import { useAgentDetail } from '@/hooks/useAgentDetail'
 import { useAgentStream } from '@/hooks/useAgentStream'
 import { useAgentUsage } from '@/hooks/useAgentUsage'
 import { useToast } from '@/hooks/useToast'
+import { orchestratorClient } from '@/services/orchestrator'
 import type { SessionUsage, SetModelRequest, ToolPolicy } from '@/types/orchestrator'
 
 // ---------------------------------------------------------------------------
@@ -320,6 +321,16 @@ export function AgentDetail() {
     setPolicyEditing(false)
   }
 
+  async function handleAddDir(path: string) {
+    await orchestratorClient.addDir(agentId, path)
+    await refetch()
+  }
+
+  async function handleRemoveDir(path: string) {
+    await orchestratorClient.removeDir(agentId, path)
+    await refetch()
+  }
+
   async function handleClearContext() {
     try {
       const response = await clearContext()
@@ -506,7 +517,11 @@ export function AgentDetail() {
           />
 
           {/* Config panel */}
-          <AgentConfigPanel agent={agent} />
+          <AgentConfigPanel
+            agent={agent}
+            onAddDir={handleAddDir}
+            onRemoveDir={handleRemoveDir}
+          />
         </div>
 
         {/* Sidebar (1/3 width on large screens) */}

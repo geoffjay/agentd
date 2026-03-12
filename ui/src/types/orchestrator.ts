@@ -37,6 +37,7 @@ export interface AgentConfig {
   model?: string
   env?: Record<string, string>
   auto_clear_threshold?: number
+  additional_dirs?: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +254,18 @@ export interface AgentUsageStats {
   current_session?: SessionUsage
   cumulative: SessionUsage
   session_count: number
+}
+
+/** Request body for POST/DELETE /agents/{id}/dirs */
+export interface AddDirRequest {
+  path: string
+}
+
+/** Response body for POST/DELETE /agents/{id}/dirs */
+export interface AddDirResponse {
+  agent_id: string
+  additional_dirs: string[]
+  requires_restart: boolean
 }
 
 /** Request body for POST /agents/{id}/clear-context */
