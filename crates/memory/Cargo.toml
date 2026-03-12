@@ -1,0 +1,45 @@
+[package]
+name = "memory"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "agentd-memory"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP API server
+axum = { workspace = true }
+tower-http = { workspace = true, features = ["cors"] }
+
+# Database
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+async-trait = "0.1"
+
+# Vector storage
+lancedb = "0.16"
+arrow = { version = "54", features = ["prettyprint"] }
+arrow-array = "54"
+arrow-schema = "54"
+
+# Additional utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+directories = "6.0.0"
+agentd-common = { path = "../common" }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"

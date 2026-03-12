@@ -80,7 +80,7 @@ use ask::client::AskClient;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::*;
-use commands::{AskCommand, NotifyCommand, OrchestratorCommand, WrapCommand};
+use commands::{AskCommand, MemoryCommand, NotifyCommand, OrchestratorCommand, WrapCommand};
 use notify::client::NotifyClient;
 use orchestrator::client::OrchestratorClient;
 use std::env;
@@ -228,6 +228,15 @@ enum Commands {
     /// The monitor daemon watches system metrics and creates notifications for
     /// alerts and anomalies.
     Monitor,
+    /// Interact with the memory service
+    ///
+    /// Store, retrieve, and semantically search agent memory records. The memory
+    /// service runs on port 7008 by default and uses LanceDB for vector storage
+    /// and SQLite for metadata.
+    Memory {
+        #[command(subcommand)]
+        command: MemoryCommand,
+    },
 }
 
 /// Main entry point for the agent CLI.
@@ -318,6 +327,12 @@ async fn main() -> Result<()> {
         Commands::Monitor => {
             monitor::run(monitor::config::MonitorConfig::from_env()).await?;
         }
+        Commands::Memory { command } => {
+            // Use AGENTD_MEMORY_SERVICE_URL env var, default to production port
+            let url = env::var("AGENTD_MEMORY_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7008".to_string());
+            command.execute(&url, cli.json).await?;
+        }
     }
 
     Ok(())
@@ -359,6 +374,11 @@ const SERVICES: &[ServiceDef] = &[
         name: "monitor",
         env_var: "AGENTD_MONITOR_SERVICE_URL",
         default_url: "http://localhost:7003",
+    },
+    ServiceDef {
+        name: "memory",
+        env_var: "AGENTD_MEMORY_SERVICE_URL",
+        default_url: "http://localhost:7008",
     },
 ];
 
