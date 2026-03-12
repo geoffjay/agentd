@@ -44,6 +44,9 @@ pub struct Model {
     pub extra_mounts: Option<String>,
     /// JSON-serialized `ResourceLimits` (cpu_limit, memory_limit_mb).
     pub resource_limits: Option<String>,
+    /// JSON-serialized `Vec<String>` of additional directory paths.
+    /// Maps to Claude Code's `--add-dir` flag.
+    pub additional_dirs: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -987,6 +987,7 @@ async fn create_agent(
         docker_image: docker_image.map(|s| s.to_string()),
         extra_mounts: if extra_mounts.is_empty() { None } else { Some(extra_mounts) },
         resource_limits,
+        additional_dirs: vec![],
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -2261,6 +2262,7 @@ mod tests {
                 docker_image: None,
                 extra_mounts: None,
                 resource_limits: None,
+                additional_dirs: vec![],
             },
             session_id: Some("agentd-orch-abc123".to_string()),
             backend_type: Some("tmux".to_string()),
@@ -3113,6 +3115,7 @@ mod tests {
                     cpu_limit: Some(2.0),
                     memory_limit_mb: Some(4096),
                 }),
+                additional_dirs: vec![],
             },
             session_id: Some("abc123container".to_string()),
             backend_type: Some("docker".to_string()),
