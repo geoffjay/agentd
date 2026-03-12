@@ -130,6 +130,7 @@ Content-Type: application/json
 | `tool_policy` | object | no | `{"mode":"allow_all"}` | Tool use restrictions (see [Tool Policy](#tool-policy)) |
 | `model` | string | no | | Model to use — accepts aliases (`sonnet`, `opus`, `haiku`) or full names (`claude-sonnet-4-6`). Maps to the `--model` flag. |
 | `env` | object | no | `{}` | Environment variables set when launching the agent. Commonly used for `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`. Values are write-only — the API returns `"***"` in responses. |
+| `additional_dirs` | array | no | `[]` | Extra directories the agent can read and write, in addition to `working_dir`. Each entry maps to a `--add-dir` flag. See [Additional Directories](../additional-dirs.md). |
 | `auto_clear_threshold` | integer | no | | Automatically clear context when cumulative input tokens for the session exceeds this value. |
 | `network_policy` | string | no | | Network policy for Docker-backed agents (`internet`, `isolated`, `host`). Ignored for tmux backends. |
 
@@ -255,6 +256,85 @@ Content-Type: application/json
 
 !!! tip "Auto-clear threshold"
     Set `auto_clear_threshold` when creating an agent to automatically clear context when input tokens exceed the threshold, without manual intervention.
+
+---
+
+### Manage Additional Directories
+
+Add or remove filesystem directories the agent can access. Each directory maps to Claude Code's `--add-dir` flag. Changes are persisted immediately but **take effect on the next agent restart**.
+
+See [Additional Directories](../additional-dirs.md) for full details including YAML template configuration and Docker behavior.
+
+#### Add a directory
+
+```
+POST /agents/{id}/dirs
+Content-Type: application/json
+```
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `path` | string | yes | Absolute path to the directory. Must exist and be a directory at call time. |
+
+**Response:** `200 OK`
+
+```json
+{
+  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "additional_dirs": ["/path/to/shared-libs"],
+  "requires_restart": true
+}
+```
+
+**Errors:**
+- `404` — agent not found
+- `422` — path does not exist or is not a directory
+
+Adding a path that is already present is a no-op (idempotent).
+
+**Example:**
+```bash
+curl -X POST http://127.0.0.1:17006/agents/<ID>/dirs \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/path/to/shared-libs"}'
+```
+
+#### Remove a directory
+
+```
+DELETE /agents/{id}/dirs
+Content-Type: application/json
+```
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `path` | string | yes | Path to remove. |
+
+**Response:** `200 OK`
+
+```json
+{
+  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "additional_dirs": [],
+  "requires_restart": true
+}
+```
+
+**Errors:**
+- `404` — agent not found
+
+Removing a path that is not in the list is a no-op (idempotent).
+
+**Example:**
+```bash
+curl -X DELETE http://127.0.0.1:17006/agents/<ID>/dirs \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/path/to/shared-libs"}'
+```
 
 ---
 
@@ -675,6 +755,22 @@ agent orchestrator health
 agent orchestrator health --json
 ```
 
+### Manage Additional Directories
+
+Add or remove directories from an agent's accessible paths:
+
+```bash
+# Add a directory (must exist; takes effect on next restart)
+agent orchestrator add-dir <AGENT_ID> /path/to/dir
+
+# Remove a directory (takes effect on next restart)
+agent orchestrator remove-dir <AGENT_ID> /path/to/dir
+```
+
+Both commands print the updated directory list and a restart reminder. See [Additional Directories](../additional-dirs.md) for full details.
+
+---
+
 ### Validate Template
 
 Check a workflow prompt template for errors:
@@ -782,7 +878,9 @@ agent teardown .agentd/
 # Create an agent using the CLI
 agent orchestrator create-agent \
   --name planner \
-  --prompt "Analyze the codebase and propose improvements"
+  --prompt "Analyze the codebase and propose improvements" \
+  --add-dir /path/to/shared-libs \
+  --add-dir /opt/configs
 
 # Monitor the output in real-time
 agent orchestrator stream --all

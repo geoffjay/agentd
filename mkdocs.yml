@@ -87,6 +87,7 @@ nav:
   - Installation: public/install.md
   - Tool Policies: public/tool-policies.md
   - Templates: public/templates.md
+  - Additional Directories: public/additional-dirs.md
   - Services:
       - Orchestrator: public/services/orchestrator.md
       - Notify: public/services/notify.md
