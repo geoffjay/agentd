@@ -32,9 +32,10 @@ use crate::scheduler::types::{
     CreateWorkflowRequest, DispatchResponse, UpdateWorkflowRequest, WorkflowResponse,
 };
 use crate::types::{
-    AgentResponse, AgentUsageStats, ApprovalActionRequest, ClearContextRequest,
-    ClearContextResponse, CreateAgentRequest, HealthResponse, PaginatedResponse, PendingApproval,
-    SendMessageRequest, SendMessageResponse, SetModelRequest, ToolPolicy,
+    AddDirRequest, AddDirResponse, AgentResponse, AgentUsageStats, ApprovalActionRequest,
+    ClearContextRequest, ClearContextResponse, CreateAgentRequest, HealthResponse,
+    PaginatedResponse, PendingApproval, SendMessageRequest, SendMessageResponse, SetModelRequest,
+    ToolPolicy,
 };
 
 /// Typed HTTP client for the orchestrator service.
@@ -134,6 +135,27 @@ impl OrchestratorClient {
     ) -> Result<AgentResponse> {
         let request = SetModelRequest { model, restart };
         self.put(&format!("/agents/{}/model", id), &request).await
+    }
+
+    // -- Additional directory operations --
+
+    /// Add a directory to an agent's accessible paths.
+    ///
+    /// The path must exist and be a directory. The change takes effect on the
+    /// next agent restart.
+    pub async fn add_dir(&self, id: &Uuid, path: &str) -> Result<AddDirResponse> {
+        self.post(&format!("/agents/{}/dirs", id), &AddDirRequest { path: path.to_string() }).await
+    }
+
+    /// Remove a directory from an agent's accessible paths.
+    ///
+    /// The change takes effect on the next agent restart.
+    pub async fn remove_dir(&self, id: &Uuid, path: &str) -> Result<AddDirResponse> {
+        self.delete_with_body(
+            &format!("/agents/{}/dirs", id),
+            &AddDirRequest { path: path.to_string() },
+        )
+        .await
     }
 
     // -- Usage & context operations --
@@ -273,6 +295,22 @@ impl OrchestratorClient {
             let error_text = response.text().await.unwrap_or_default();
             Err(anyhow::anyhow!("Request failed with status {status}: {error_text}"))
         }
+    }
+
+    async fn delete_with_body<T: Serialize, R: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &T,
+    ) -> Result<R> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .delete(&url)
+            .json(body)
+            .send()
+            .await
+            .context(format!("Failed to DELETE {url}"))?;
+        Self::handle_response(response).await
     }
 
     async fn delete_with_response<T: DeserializeOwned>(&self, path: &str) -> Result<T> {

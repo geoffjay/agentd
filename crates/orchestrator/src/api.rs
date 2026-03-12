@@ -246,7 +246,10 @@ async fn add_agent_dir(
         agent.config.additional_dirs.push(canonical);
     }
 
-    state.manager.update_additional_dirs(&id, &agent.config.additional_dirs).await
+    state
+        .manager
+        .update_additional_dirs(&id, &agent.config.additional_dirs)
+        .await
         .map_err(|e| ApiError::Internal(e))?;
 
     info!(agent_id = %id, path = %req.path, "Directory added to agent");
@@ -278,7 +281,10 @@ async fn remove_agent_dir(
     // Idempotent remove — also try the raw path in case it was stored non-canonical.
     agent.config.additional_dirs.retain(|d| d != &canonical && d != &req.path);
 
-    state.manager.update_additional_dirs(&id, &agent.config.additional_dirs).await
+    state
+        .manager
+        .update_additional_dirs(&id, &agent.config.additional_dirs)
+        .await
         .map_err(|e| ApiError::Internal(e))?;
 
     info!(agent_id = %id, path = %req.path, "Directory removed from agent");
