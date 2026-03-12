@@ -67,6 +67,17 @@ impl AgentManager {
             return Err(anyhow::anyhow!("Failed to create session: {}", e));
         }
 
+        // Warn about additional_dirs that don't exist at spawn time.
+        for dir in &agent.config.additional_dirs {
+            if !std::path::Path::new(dir).is_dir() {
+                warn!(
+                    agent_id = %agent.id,
+                    dir = %dir,
+                    "additional_dirs entry does not exist or is not a directory at spawn time"
+                );
+            }
+        }
+
         // Build the claude command (never uses -p; prompt sent via WebSocket).
         let ws_url = self
             .backend
@@ -327,6 +338,15 @@ impl AgentManager {
         self.storage.update(agent).await
     }
 
+    /// Update the `additional_dirs` list for an agent in storage.
+    pub async fn update_additional_dirs(
+        &self,
+        id: &Uuid,
+        dirs: &[String],
+    ) -> anyhow::Result<()> {
+        self.storage.update_additional_dirs(id, dirs).await
+    }
+
     /// Change the model for an agent.
     ///
     /// Updates the stored config. If `restart` is true and the agent is running,
@@ -578,7 +598,7 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
     }
 
     for dir in &config.additional_dirs {
-        args.push(format!("--add-dir {}", dir));
+        args.push(format!("--add-dir {}", shell_escape_value(dir)));
     }
 
     if let Some(ref system_prompt) = config.system_prompt {
@@ -804,6 +824,41 @@ mod tests {
         assert!(!is_valid_env_var_name("HAS=EQUALS"));
         assert!(!is_valid_env_var_name("BAD;SEMICOLON"));
         assert!(!is_valid_env_var_name("KEY\nNEWLINE"));
+    }
+
+    // -- additional_dirs / --add-dir tests --
+
+    #[test]
+    fn test_build_claude_command_no_add_dir_when_empty() {
+        let config = base_config(); // additional_dirs is empty
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        assert!(!cmd.contains("--add-dir"), "no --add-dir flag when additional_dirs is empty");
+    }
+
+    #[test]
+    fn test_build_claude_command_with_additional_dirs() {
+        let config = AgentConfig {
+            additional_dirs: vec!["/tmp/project".to_string(), "/home/user/data".to_string()],
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        assert!(cmd.contains("--add-dir '/tmp/project'"), "first dir must appear");
+        assert!(cmd.contains("--add-dir '/home/user/data'"), "second dir must appear");
+    }
+
+    #[test]
+    fn test_build_claude_command_add_dir_shell_escaped() {
+        // Path contains spaces and a single quote — must be properly shell-escaped.
+        let config = AgentConfig {
+            additional_dirs: vec!["/tmp/my project/it's here".to_string()],
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        // Single-quote escaping: ' → '\''
+        assert!(
+            cmd.contains("--add-dir '/tmp/my project/it'\\''s here'"),
+            "path with spaces and single quote must be shell-escaped: {cmd}"
+        );
     }
 
     // -- shell_escape_value tests --

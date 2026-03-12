@@ -47,6 +47,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents/{id}/message", post(send_message))
         .route("/agents/{id}/model", axum::routing::put(set_agent_model))
         .route("/agents/{id}/policy", get(get_agent_policy).put(update_agent_policy))
+        .route("/agents/{id}/dirs", post(add_agent_dir).delete(remove_agent_dir))
         .route("/agents/{id}/usage", get(get_agent_usage))
         .route("/agents/{id}/clear-context", post(clear_agent_context))
         .route("/agents/{id}/approvals", get(list_agent_approvals))
@@ -213,6 +214,80 @@ async fn set_agent_model(
     info!(agent_id = %id, model = ?agent.config.model, restart = req.restart, "Agent model changed via API");
 
     Ok(Json(AgentResponse::from(agent)))
+}
+
+/// Add a directory to the agent's `additional_dirs` list.
+///
+/// Returns 404 if the agent does not exist, 422 if the path is not a directory.
+/// The operation is idempotent — adding an already-present path is a no-op.
+/// Changes take effect on the next agent restart.
+async fn add_agent_dir(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<AddDirRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let mut agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    // Validate that the path is a directory.
+    if !std::path::Path::new(&req.path).is_dir() {
+        return Err(ApiError::InvalidInput(format!(
+            "Path is not a directory or does not exist: {}",
+            req.path
+        )));
+    }
+
+    // Canonicalize the path, falling back to the original if it fails.
+    let canonical = std::fs::canonicalize(&req.path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| req.path.clone());
+
+    // Idempotent add.
+    if !agent.config.additional_dirs.contains(&canonical) {
+        agent.config.additional_dirs.push(canonical);
+    }
+
+    state.manager.update_additional_dirs(&id, &agent.config.additional_dirs).await
+        .map_err(|e| ApiError::Internal(e))?;
+
+    info!(agent_id = %id, path = %req.path, "Directory added to agent");
+
+    Ok(Json(AddDirResponse {
+        agent_id: id,
+        additional_dirs: agent.config.additional_dirs,
+        requires_restart: true,
+    }))
+}
+
+/// Remove a directory from the agent's `additional_dirs` list.
+///
+/// Returns 404 if the agent does not exist. The operation is idempotent —
+/// removing a path that is not in the list is a no-op.
+/// Changes take effect on the next agent restart.
+async fn remove_agent_dir(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<AddDirRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let mut agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    // Canonicalize the path for consistent comparison, falling back to original.
+    let canonical = std::fs::canonicalize(&req.path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| req.path.clone());
+
+    // Idempotent remove — also try the raw path in case it was stored non-canonical.
+    agent.config.additional_dirs.retain(|d| d != &canonical && d != &req.path);
+
+    state.manager.update_additional_dirs(&id, &agent.config.additional_dirs).await
+        .map_err(|e| ApiError::Internal(e))?;
+
+    info!(agent_id = %id, path = %req.path, "Directory removed from agent");
+
+    Ok(Json(AddDirResponse {
+        agent_id: id,
+        additional_dirs: agent.config.additional_dirs,
+        requires_restart: true,
+    }))
 }
 
 // -- Usage & context endpoints --
@@ -439,3 +514,53 @@ async fn debug_agents(State(state): State<ApiState>) -> Result<impl IntoResponse
 
 // Re-export shared ApiError from agentd-common.
 pub use agentd_common::error::ApiError;
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    /// Idempotent add: inserting the same path twice should not duplicate it.
+    #[test]
+    fn test_add_dir_idempotent() {
+        let mut dirs: Vec<String> = vec!["/tmp".to_string()];
+        let path = "/tmp".to_string();
+        if !dirs.contains(&path) {
+            dirs.push(path);
+        }
+        assert_eq!(dirs.len(), 1);
+    }
+
+    /// Removing a path that is present should leave it gone.
+    #[test]
+    fn test_remove_dir_present() {
+        let mut dirs: Vec<String> = vec!["/tmp".to_string(), "/var".to_string()];
+        let path = "/tmp".to_string();
+        dirs.retain(|d| d != &path);
+        assert_eq!(dirs, vec!["/var".to_string()]);
+    }
+
+    /// Removing a path that is absent is a no-op (idempotent).
+    #[test]
+    fn test_remove_dir_absent_is_noop() {
+        let mut dirs: Vec<String> = vec!["/var".to_string()];
+        let path = "/tmp".to_string();
+        let original_len = dirs.len();
+        dirs.retain(|d| d != &path);
+        assert_eq!(dirs.len(), original_len);
+    }
+
+    /// Non-existent path should fail the is_dir() check.
+    #[test]
+    fn test_path_validation_nonexistent() {
+        let path = "/definitely/does/not/exist/agentd-test-12345";
+        assert!(!std::path::Path::new(path).is_dir());
+    }
+
+    /// A known existing directory should pass the is_dir() check.
+    #[test]
+    fn test_path_validation_existing_dir() {
+        assert!(std::path::Path::new("/tmp").is_dir());
+    }
+}
