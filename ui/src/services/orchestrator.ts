@@ -9,6 +9,8 @@ import { ApiClient } from './base'
 import { serviceConfig } from './config'
 import type { HealthResponse, PaginatedResponse } from '@/types/common'
 import type {
+  AddDirRequest,
+  AddDirResponse,
   Agent,
   AgentUsageStats,
   ApprovalActionRequest,
@@ -68,6 +70,20 @@ export class OrchestratorClient extends ApiClient {
 
   updateModel(agentId: string, request: SetModelRequest): Promise<Agent> {
     return this.put<Agent>(`/agents/${agentId}/model`, request)
+  }
+
+  // -------------------------------------------------------------------------
+  // Additional directory management
+  // -------------------------------------------------------------------------
+
+  addDir(agentId: string, path: string): Promise<AddDirResponse> {
+    const body: AddDirRequest = { path }
+    return this.post<AddDirResponse>(`/agents/${agentId}/dirs`, body)
+  }
+
+  removeDir(agentId: string, path: string): Promise<AddDirResponse> {
+    const body: AddDirRequest = { path }
+    return this.deleteWithBody<AddDirResponse>(`/agents/${agentId}/dirs`, body)
   }
 
   // -------------------------------------------------------------------------
