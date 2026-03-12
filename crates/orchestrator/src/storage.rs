@@ -456,6 +456,27 @@ impl AgentStorage {
         Ok(AgentUsageStats { agent_id: *agent_id, current_session, cumulative, session_count })
     }
 
+    /// Updates the `additional_dirs` list for an agent.
+    pub async fn update_additional_dirs(&self, agent_id: &Uuid, dirs: &[String]) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+
+        let result = agent_entity::Entity::update_many()
+            .col_expr(
+                agent_entity::Column::AdditionalDirs,
+                Expr::value(serde_json::to_string(dirs).unwrap_or_else(|_| "[]".to_string())),
+            )
+            .col_expr(agent_entity::Column::UpdatedAt, Expr::value(Utc::now().to_rfc3339()))
+            .filter(agent_entity::Column::Id.eq(agent_id.to_string()))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
+            anyhow::bail!("Agent not found");
+        }
+
+        Ok(())
+    }
+
     /// Lists agents with pagination; returns `(items, total_count)`.
     pub async fn list_paginated(
         &self,
@@ -765,6 +786,46 @@ mod tests {
 
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
         assert_eq!(retrieved.config.auto_clear_threshold, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // additional_dirs tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_update_additional_dirs_adds_dirs() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("dirs-agent");
+        storage.add(&agent).await.unwrap();
+
+        let dirs = vec!["/tmp".to_string(), "/var".to_string()];
+        storage.update_additional_dirs(&agent.id, &dirs).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.additional_dirs, dirs);
+    }
+
+    #[tokio::test]
+    async fn test_update_additional_dirs_clears_dirs() {
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("dirs-clear-agent");
+        agent.config.additional_dirs = vec!["/tmp".to_string()];
+        storage.add(&agent).await.unwrap();
+
+        // Clear all dirs.
+        storage.update_additional_dirs(&agent.id, &[]).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert!(retrieved.config.additional_dirs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_update_additional_dirs_not_found() {
+        let (storage, _tmp) = create_test_storage().await;
+        let missing_id = Uuid::new_v4();
+        let result = storage.update_additional_dirs(&missing_id, &["/tmp".to_string()]).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Agent not found"));
     }
 
     // -----------------------------------------------------------------------

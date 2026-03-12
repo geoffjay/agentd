@@ -327,6 +327,15 @@ impl AgentManager {
         self.storage.update(agent).await
     }
 
+    /// Update the `additional_dirs` list for an agent in storage.
+    pub async fn update_additional_dirs(
+        &self,
+        id: &Uuid,
+        dirs: &[String],
+    ) -> anyhow::Result<()> {
+        self.storage.update_additional_dirs(id, dirs).await
+    }
+
     /// Change the model for an agent.
     ///
     /// Updates the stored config. If `restart` is true and the agent is running,

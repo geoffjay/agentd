@@ -349,6 +349,21 @@ pub struct SendMessageRequest {
     pub content: String,
 }
 
+/// Request body for POST /agents/{id}/dirs and DELETE /agents/{id}/dirs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddDirRequest {
+    pub path: String,
+}
+
+/// Response body for POST and DELETE /agents/{id}/dirs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddDirResponse {
+    pub agent_id: Uuid,
+    pub additional_dirs: Vec<String>,
+    /// Always `true` — directory changes take effect on next agent restart.
+    pub requires_restart: bool,
+}
+
 /// Response body for POST /agents/{id}/message.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
