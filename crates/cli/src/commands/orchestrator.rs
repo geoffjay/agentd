@@ -59,8 +59,9 @@ use orchestrator::scheduler::types::{
     WorkflowResponse,
 };
 use orchestrator::types::{
-    AgentResponse, AgentStatus, AgentUsageStats, ApprovalStatus, ClearContextResponse,
-    CreateAgentRequest, PendingApproval, SendMessageRequest, SessionUsage, ToolPolicy,
+    AddDirResponse, AgentResponse, AgentStatus, AgentUsageStats, ApprovalStatus,
+    ClearContextResponse, CreateAgentRequest, PendingApproval, SendMessageRequest, SessionUsage,
+    ToolPolicy,
 };
 
 /// Orchestrator service management subcommands.
@@ -221,6 +222,15 @@ pub enum OrchestratorCommand {
         /// Ignored for tmux-backed agents.
         #[arg(long = "mount", value_name = "HOST:CONTAINER[:ro]")]
         mounts: Vec<String>,
+
+        /// Additional directories the agent can access via Claude Code's --add-dir flag.
+        ///
+        /// Can be specified multiple times for multiple directories.
+        ///
+        /// Example:
+        ///   --add-dir /path/to/shared/libs --add-dir /opt/configs
+        #[arg(long = "add-dir", value_name = "PATH")]
+        add_dirs: Vec<String>,
     },
 
     /// Get details of a specific agent.
@@ -664,6 +674,35 @@ pub enum OrchestratorCommand {
         /// Workflow ID (UUID)
         id: String,
     },
+
+    /// Add an additional directory to an agent's accessible paths.
+    ///
+    /// The directory must exist on the local filesystem. The change takes
+    /// effect on the next agent restart.
+    ///
+    /// # Examples
+    ///
+    ///   agent orchestrator add-dir <AGENT_ID> /path/to/shared/libs
+    AddDir {
+        /// Agent ID (UUID)
+        id: String,
+        /// Directory path to add
+        path: String,
+    },
+
+    /// Remove an additional directory from an agent's accessible paths.
+    ///
+    /// The change takes effect on the next agent restart.
+    ///
+    /// # Examples
+    ///
+    ///   agent orchestrator remove-dir <AGENT_ID> /path/to/shared/libs
+    RemoveDir {
+        /// Agent ID (UUID)
+        id: String,
+        /// Directory path to remove
+        path: String,
+    },
 }
 
 impl OrchestratorCommand {
@@ -699,6 +738,7 @@ impl OrchestratorCommand {
                 cpu_limit,
                 memory_limit,
                 mounts,
+                add_dirs,
             } => {
                 create_agent(
                     client,
@@ -722,6 +762,7 @@ impl OrchestratorCommand {
                     *cpu_limit,
                     *memory_limit,
                     mounts,
+                    add_dirs,
                     json,
                 )
                 .await
@@ -821,6 +862,10 @@ impl OrchestratorCommand {
             }
             OrchestratorCommand::DeleteWorkflow { id } => delete_workflow(client, id, json).await,
             OrchestratorCommand::WorkflowHistory { id } => workflow_history(client, id, json).await,
+            OrchestratorCommand::AddDir { id, path } => add_dir_cmd(client, id, path, json).await,
+            OrchestratorCommand::RemoveDir { id, path } => {
+                remove_dir_cmd(client, id, path, json).await
+            }
         }
     }
 }
@@ -935,6 +980,7 @@ async fn create_agent(
     cpu_limit: Option<f64>,
     memory_limit: Option<u64>,
     mounts: &[String],
+    add_dirs: &[String],
     json: bool,
 ) -> Result<()> {
     // Resolve working directory: use provided value or default to $PWD
@@ -987,7 +1033,7 @@ async fn create_agent(
         docker_image: docker_image.map(|s| s.to_string()),
         extra_mounts: if extra_mounts.is_empty() { None } else { Some(extra_mounts) },
         resource_limits,
-        additional_dirs: vec![],
+        additional_dirs: add_dirs.to_vec(),
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -1064,6 +1110,52 @@ async fn delete_agent(client: &OrchestratorClient, id: &str, json: bool) -> Resu
     }
 
     Ok(())
+}
+
+// -- Additional directory management --
+
+async fn add_dir_cmd(client: &OrchestratorClient, id: &str, path: &str, json: bool) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+    let response = client.add_dir(&uuid, path).await.context("Failed to add directory")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        display_add_dir_response(&response);
+    }
+
+    Ok(())
+}
+
+async fn remove_dir_cmd(
+    client: &OrchestratorClient,
+    id: &str,
+    path: &str,
+    json: bool,
+) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+    let response = client.remove_dir(&uuid, path).await.context("Failed to remove directory")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        display_add_dir_response(&response);
+    }
+
+    Ok(())
+}
+
+fn display_add_dir_response(response: &AddDirResponse) {
+    let dirs = if response.additional_dirs.is_empty() {
+        "(none)".dimmed().to_string()
+    } else {
+        response.additional_dirs.join(", ")
+    };
+    println!("{}: {}", "Agent ID".bold(), response.agent_id);
+    println!("{}: {}", "Additional Dirs".bold(), dirs);
+    if response.requires_restart {
+        println!("{}", "Note: restart the agent for directory changes to take effect.".yellow());
+    }
 }
 
 // -- Attach --
@@ -2184,6 +2276,14 @@ fn display_agent(agent: &AgentResponse) {
             println!("{}: {}", "Network Policy".bold(), policy);
         }
     }
+
+    // Additional dirs (always shown)
+    let dirs_display = if agent.config.additional_dirs.is_empty() {
+        "(none)".dimmed().to_string()
+    } else {
+        agent.config.additional_dirs.join(", ")
+    };
+    println!("{}: {}", "Additional Dirs".bold(), dirs_display);
 
     println!("{}: {}", "Created".bold(), agent.created_at);
 }
