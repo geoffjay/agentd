@@ -9,6 +9,8 @@ working_dir: "."
 shell: /bin/zsh
 worktree: false
 model: claude-sonnet-4-6
+additional_dirs:
+  - ../berry-rs
 
 system_prompt: |
   You are a worker agent for the agentd project. You will receive GitHub issues
