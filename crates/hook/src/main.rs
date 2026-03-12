@@ -12,10 +12,10 @@
 //! agentd-hook
 //!
 //! # Override port and thresholds via environment variables
-//! PORT=7002 HOOK_LONG_RUNNING_THRESHOLD_MS=60000 agentd-hook
+//! AGENTD_PORT=7002 AGENTD_LONG_RUNNING_THRESHOLD_MS=60000 agentd-hook
 //!
 //! # JSON structured logging
-//! LOG_FORMAT=json agentd-hook
+//! AGENTD_LOG_FORMAT=json agentd-hook
 //! ```
 
 use anyhow::Result;

@@ -19,7 +19,7 @@
 //!
 //! - **Default port:** 17006 (dev) / 7006 (production)
 //! - **Database:** `~/Library/Application Support/agentd-orchestrator/orchestrator.db`
-//! - **Environment:** `PORT`, `RUST_LOG`, `LOG_FORMAT`
+//! - **Environment:** `AGENTD_PORT`, `RUST_LOG`, `AGENTD_LOG_FORMAT`
 
 pub mod api;
 pub mod approvals;

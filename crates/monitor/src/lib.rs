@@ -57,12 +57,12 @@
 //!
 //! # Environment Variables
 //!
-//! - `PORT` - Port to listen on (default: 17003 dev, 7003 production)
-//! - `COLLECTION_INTERVAL_SECS` - Seconds between auto-collections (default: 30)
-//! - `CPU_ALERT_THRESHOLD` - CPU usage % to trigger alert (default: 90.0)
-//! - `MEMORY_ALERT_THRESHOLD` - Memory usage % to trigger alert (default: 90.0)
-//! - `DISK_ALERT_THRESHOLD` - Disk usage % to trigger alert (default: 90.0)
-//! - `HISTORY_SIZE` - Number of metric snapshots to retain (default: 120)
+//! - `AGENTD_PORT` - Port to listen on (default: 17003 dev, 7003 production)
+//! - `AGENTD_COLLECTION_INTERVAL_SECS` - Seconds between auto-collections (default: 30)
+//! - `AGENTD_CPU_ALERT_THRESHOLD` - CPU usage % to trigger alert (default: 90.0)
+//! - `AGENTD_MEMORY_ALERT_THRESHOLD` - Memory usage % to trigger alert (default: 90.0)
+//! - `AGENTD_DISK_ALERT_THRESHOLD` - Disk usage % to trigger alert (default: 90.0)
+//! - `AGENTD_HISTORY_SIZE` - Number of metric snapshots to retain (default: 120)
 //! - `RUST_LOG` - Logging level (default: info)
 
 pub mod api;

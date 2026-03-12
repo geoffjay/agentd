@@ -19,7 +19,7 @@ pub struct ServiceInfo {
     pub binary: &'static str,
     /// Production port number.
     pub port: u16,
-    /// Additional environment variables beyond RUST_LOG and PORT.
+    /// Additional environment variables beyond RUST_LOG and AGENTD_PORT.
     pub extra_env: &'static [(&'static str, &'static str)],
 }
 
@@ -29,7 +29,7 @@ pub const SERVICES: &[ServiceInfo] = &[
         name: "ask",
         binary: "agentd-ask",
         port: 7001,
-        extra_env: &[("NOTIFY_SERVICE_URL", "http://localhost:7004")],
+        extra_env: &[("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004")],
     },
     ServiceInfo { name: "hook", binary: "agentd-hook", port: 7002, extra_env: &[] },
     ServiceInfo { name: "monitor", binary: "agentd-monitor", port: 7003, extra_env: &[] },
@@ -137,7 +137,7 @@ mod tests {
     fn test_ask_service_has_extra_env() {
         let info = get_service_info("ask").unwrap();
         assert_eq!(info.extra_env.len(), 1);
-        assert_eq!(info.extra_env[0].0, "NOTIFY_SERVICE_URL");
+        assert_eq!(info.extra_env[0].0, "AGENTD_NOTIFY_SERVICE_URL");
     }
 
     #[test]

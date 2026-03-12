@@ -56,8 +56,8 @@
 //!
 //! # Environment Variables
 //!
-//! - `PORT` - Port to listen on (default: 17001 dev, 7001 production)
-//! - `NOTIFY_SERVICE_URL` - URL of notification service (default: http://localhost:17004)
+//! - `AGENTD_PORT` - Port to listen on (default: 17001 dev, 7001 production)
+//! - `AGENTD_NOTIFY_SERVICE_URL` - URL of notification service (default: http://localhost:17004)
 //! - `RUST_LOG` - Logging level (default: info)
 //!
 //! # Examples

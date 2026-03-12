@@ -209,7 +209,7 @@ impl Platform for MacOSPlatform {
 #[allow(dead_code)]
 pub fn generate_plist(service: &ServiceInfo, bin_path: &Path, log_dir: &Path) -> String {
     let mut env_entries = format!(
-        "        <key>RUST_LOG</key>\n        <string>info</string>\n        <key>PORT</key>\n        <string>{}</string>",
+        "        <key>RUST_LOG</key>\n        <string>info</string>\n        <key>AGENTD_PORT</key>\n        <string>{}</string>",
         service.port
     );
 
@@ -483,7 +483,7 @@ mod tests {
             name: "ask",
             binary: "agentd-ask",
             port: 7001,
-            extra_env: &[("NOTIFY_SERVICE_URL", "http://localhost:7004")],
+            extra_env: &[("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004")],
         };
         let bin_path = Path::new("/Applications/Agent.app/Contents/MacOS/agentd-ask");
         let log_dir = Path::new("/usr/local/var/log");
@@ -491,7 +491,7 @@ mod tests {
 
         assert!(plist.contains("com.geoffjay.agentd-ask"));
         assert!(plist.contains("<string>7001</string>"));
-        assert!(plist.contains("NOTIFY_SERVICE_URL"));
+        assert!(plist.contains("AGENTD_NOTIFY_SERVICE_URL"));
         assert!(plist.contains("http://localhost:7004"));
     }
 }

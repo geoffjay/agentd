@@ -29,9 +29,9 @@
     <dict>
         <key>RUST_LOG</key>
         <string>info</string>
-        <key>PORT</key>
+        <key>AGENTD_PORT</key>
         <string>7001</string>
-        <key>NOTIFY_SERVICE_URL</key>
+        <key>AGENTD_NOTIFY_SERVICE_URL</key>
         <string>http://localhost:7004</string>
     </dict>
 

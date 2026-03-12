@@ -39,7 +39,7 @@ cargo xtask install-user
 
 **Service Configuration:**
 
-Each service is configured with a production port (set via `PORT` env var in the plist):
+Each service is configured with a production port (set via `AGENTD_PORT` env var in the plist):
 - **ask** - Port 7001
 - **hook** - Port 7002
 - **monitor** - Port 7003

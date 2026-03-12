@@ -7,8 +7,8 @@
 //!
 //! The following environment variables configure the service:
 //!
-//! - `PORT` - The port to bind to (default: 17001 dev, 7001 production)
-//! - `NOTIFY_SERVICE_URL` - Base URL of the notification service (default: http://localhost:17004)
+//! - `AGENTD_PORT` - The port to bind to (default: 17001 dev, 7001 production)
+//! - `AGENTD_NOTIFY_SERVICE_URL` - Base URL of the notification service (default: http://localhost:17004)
 //! - `RUST_LOG` - Logging configuration (default: info)
 //!
 //! # Service Lifecycle
@@ -32,7 +32,7 @@
 //! ## Running with custom configuration
 //!
 //! ```bash
-//! PORT=8080 NOTIFY_SERVICE_URL=http://notify:7004 cargo run
+//! AGENTD_PORT=8080 AGENTD_NOTIFY_SERVICE_URL=http://notify:7004 cargo run
 //! ```
 //!
 //! ## With debug logging
@@ -92,11 +92,13 @@ async fn main() -> Result<()> {
     info!("Starting agentd-ask service...");
 
     // Get configuration from environment
-    let port =
-        env::var("PORT").unwrap_or_else(|_| "17001".to_string()).parse::<u16>().unwrap_or(17001);
+    let port = env::var("AGENTD_PORT")
+        .unwrap_or_else(|_| "17001".to_string())
+        .parse::<u16>()
+        .unwrap_or(17001);
 
-    let notify_service_url =
-        env::var("NOTIFY_SERVICE_URL").unwrap_or_else(|_| "http://localhost:7004".to_string());
+    let notify_service_url = env::var("AGENTD_NOTIFY_SERVICE_URL")
+        .unwrap_or_else(|_| "http://localhost:7004".to_string());
 
     info!("Configuration:");
     info!("  Port: {}", port);

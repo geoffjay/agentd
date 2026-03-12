@@ -11,10 +11,10 @@ Operational skill for managing the agentd service fleet.
 
 | Service | Dev Port | Prod Port | Binary | Env Var |
 |---------|----------|-----------|--------|---------|
-| Ask | 17001 | 7001 | `agentd-ask` | `ASK_SERVICE_URL` |
-| Notify | 17004 | 7004 | `agentd-notify` | `NOTIFY_SERVICE_URL` |
-| Wrap | 17005 | 7005 | `agentd-wrap` | `WRAP_SERVICE_URL` |
-| Orchestrator | 17006 | 7006 | `agentd-orchestrator` | `ORCHESTRATOR_SERVICE_URL` |
+| Ask | 17001 | 7001 | `agentd-ask` | `AGENTD_ASK_SERVICE_URL` |
+| Notify | 17004 | 7004 | `agentd-notify` | `AGENTD_NOTIFY_SERVICE_URL` |
+| Wrap | 17005 | 7005 | `agentd-wrap` | `AGENTD_WRAP_SERVICE_URL` |
+| Orchestrator | 17006 | 7006 | `agentd-orchestrator` | `AGENTD_ORCHESTRATOR_SERVICE_URL` |
 
 ## Quick Health Check
 
@@ -41,8 +41,8 @@ RUST_LOG=debug cargo run -p agentd-notify
 RUST_LOG=debug cargo run -p agentd-wrap
 RUST_LOG=debug cargo run -p agentd-ask
 
-# Start with dev ports (prefix PORT=)
-PORT=17006 cargo run -p agentd-orchestrator
+# Start with dev ports (prefix AGENTD_PORT=)
+AGENTD_PORT=17006 cargo run -p agentd-orchestrator
 ```
 
 ## Stopping Services
@@ -88,7 +88,7 @@ curl -s http://localhost:7004/metrics
 ### Viewing service logs
 ```bash
 # Structured JSON logging
-LOG_FORMAT=json RUST_LOG=debug cargo run -p agentd-orchestrator
+AGENTD_LOG_FORMAT=json RUST_LOG=debug cargo run -p agentd-orchestrator
 
 # Filter by module
 RUST_LOG=agentd_orchestrator::scheduler=debug cargo run -p agentd-orchestrator

@@ -325,9 +325,9 @@ For the complete configuration reference including all environment variables, da
 ### Environment Variables
 
 - `RUST_LOG` — Log level filter (default: `info`)
-- `LOG_FORMAT` — Set to `json` for structured JSON output
-- `PORT` — Override the default port for any service
-- `ORCHESTRATOR_SERVICE_URL` — Override orchestrator URL for CLI (default: `http://localhost:7006`)
+- `AGENTD_LOG_FORMAT` — Set to `json` for structured JSON output
+- `AGENTD_PORT` — Override the default port for any service
+- `AGENTD_ORCHESTRATOR_SERVICE_URL` — Override orchestrator URL for CLI (default: `http://localhost:7006`)
 
 ## Project Status
 
@@ -357,7 +357,7 @@ For the complete configuration reference including all environment variables, da
 - ✅ Prometheus `/metrics` endpoints on all services
 - ✅ Standardized HealthResponse across services
 - ✅ Shell completions (bash, zsh, fish, PowerShell)
-- ✅ Structured JSON logging (`LOG_FORMAT=json`)
+- ✅ Structured JSON logging (`AGENTD_LOG_FORMAT=json`)
 - ✅ GitHub Actions CI/CD pipeline
 
 **In Progress:**

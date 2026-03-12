@@ -6,16 +6,16 @@ This document covers all environment variables, port assignments, data storage l
 
 ### Service Ports
 
-Every service with an HTTP server reads the `PORT` environment variable to determine which port to bind to. If not set, each service uses its built-in development default.
+Every service with an HTTP server reads the `AGENTD_PORT` environment variable to determine which port to bind to. If not set, each service uses its built-in development default.
 
 | Variable | Service(s) | Dev Default | Prod Default | Description |
 |----------|-----------|-------------|--------------|-------------|
-| `PORT` | agentd-ask | `17001` | `7001` | HTTP listen port |
-| `PORT` | agentd-hook | `17002` | `7002` | HTTP listen port |
-| `PORT` | agentd-monitor | `17003` | `7003` | HTTP listen port |
-| `PORT` | agentd-notify | `17004` | `7004` | HTTP listen port |
-| `PORT` | agentd-wrap | `17005` | `7005` | HTTP listen port |
-| `PORT` | agentd-orchestrator | `17006` | `7006` | HTTP/WebSocket listen port |
+| `AGENTD_PORT` | agentd-ask | `17001` | `7001` | HTTP listen port |
+| `AGENTD_PORT` | agentd-hook | `17002` | `7002` | HTTP listen port |
+| `AGENTD_PORT` | agentd-monitor | `17003` | `7003` | HTTP listen port |
+| `AGENTD_PORT` | agentd-notify | `17004` | `7004` | HTTP listen port |
+| `AGENTD_PORT` | agentd-wrap | `17005` | `7005` | HTTP listen port |
+| `AGENTD_PORT` | agentd-orchestrator | `17006` | `7006` | HTTP/WebSocket listen port |
 
 ### Service URLs
 
@@ -23,10 +23,10 @@ These variables tell services and the CLI how to reach other services.
 
 | Variable | Used by | Default | Description |
 |----------|---------|---------|-------------|
-| `NOTIFY_SERVICE_URL` | agentd-ask, agent (CLI) | `http://localhost:7004` | Base URL for the notification service |
-| `ASK_SERVICE_URL` | agent (CLI) | `http://localhost:7001` | Base URL for the ask service |
-| `WRAP_SERVICE_URL` | agent (CLI) | `http://localhost:7005` | Base URL for the wrap service |
-| `ORCHESTRATOR_SERVICE_URL` | agent (CLI) | `http://localhost:7006` | Base URL for the orchestrator service |
+| `AGENTD_NOTIFY_SERVICE_URL` | agentd-ask, agent (CLI) | `http://localhost:7004` | Base URL for the notification service |
+| `AGENTD_ASK_SERVICE_URL` | agent (CLI) | `http://localhost:7001` | Base URL for the ask service |
+| `AGENTD_WRAP_SERVICE_URL` | agent (CLI) | `http://localhost:7005` | Base URL for the wrap service |
+| `AGENTD_ORCHESTRATOR_SERVICE_URL` | agent (CLI) | `http://localhost:7006` | Base URL for the orchestrator service |
 
 !!! note "CLI defaults to production ports"
     The `agent` CLI defaults to **production ports** (7xxx) because it's typically used after installation with `cargo xtask install-user`. When developing, source the `.env` file to use dev ports:
@@ -88,7 +88,7 @@ cargo run -p agentd-orchestrator  # → :17006
 
 ### Production Ports (7xxx)
 
-Used when services are installed as LaunchAgents (macOS) or systemd units (Linux). The production port is set via the `PORT` environment variable in the service configuration files:
+Used when services are installed as LaunchAgents (macOS) or systemd units (Linux). The production port is set via the `AGENTD_PORT` environment variable in the service configuration files:
 
 | Service | Port |
 |---------|------|
@@ -105,10 +105,10 @@ You can override any service's port:
 
 ```bash
 # Run notify on a custom port
-PORT=9004 cargo run -p agentd-notify
+AGENTD_PORT=9004 cargo run -p agentd-notify
 
 # Run orchestrator on port 8080
-PORT=8080 cargo run -p agentd-orchestrator
+AGENTD_PORT=8080 cargo run -p agentd-orchestrator
 ```
 
 ## Data Storage
@@ -184,7 +184,7 @@ Each plist configures:
 - **RunAtLoad**: `true` — service starts automatically at login
 - **KeepAlive/SuccessfulExit**: `false` — automatically restarts on crash
 - **StandardOutPath/StandardErrorPath**: Log file locations
-- **EnvironmentVariables**: `PORT`, `RUST_LOG`, and any service-specific vars
+- **EnvironmentVariables**: `AGENTD_PORT`, `RUST_LOG`, and any service-specific vars
 - **WorkingDirectory**: `/usr/local`
 
 ### Customizing Plists
@@ -204,7 +204,7 @@ Common customizations:
 
 ```xml
 <!-- Change the port -->
-<key>PORT</key>
+<key>AGENTD_PORT</key>
 <string>9004</string>
 
 <!-- Enable debug logging -->
@@ -227,7 +227,7 @@ Each unit file configures:
 - **Type**: `simple` — the process is the main service
 - **ExecStart**: Path to the installed binary
 - **Restart**: `on-failure` with 5-second delay
-- **Environment**: `PORT`, `RUST_LOG`, and service-specific vars
+- **Environment**: `AGENTD_PORT`, `RUST_LOG`, and service-specific vars
 - **WantedBy**: `default.target` — starts when the user session begins
 
 ### Managing Services
@@ -263,7 +263,7 @@ systemctl --user restart agentd-notify.service
 
 | Aspect | Development (`cargo run`) | Production (installed) |
 |--------|--------------------------|----------------------|
-| **Ports** | 17001–17006 (hardcoded defaults) | 7001–7006 (set via `PORT` env var) |
+| **Ports** | 17001–17006 (hardcoded defaults) | 7001–7006 (set via `AGENTD_PORT` env var) |
 | **Binary location** | `target/debug/` or `target/release/` | `/Applications/Agent.app/Contents/MacOS/` (macOS) or `~/.local/bin/` (Linux) |
 | **Service manager** | Manual (run in terminal) | launchd (macOS) or systemd (Linux) |
 | **Logs** | Terminal stderr | File-based (macOS) or journald (Linux) |
@@ -274,7 +274,7 @@ systemctl --user restart agentd-notify.service
 
 ### Using the .env File for Development
 
-The project includes a `.env` file that sets `*_SERVICE_URL` variables to dev ports:
+The project includes a `.env` file that sets `AGENTD_*_SERVICE_URL` variables to dev ports:
 
 ```bash
 # Source the dev environment
@@ -288,11 +288,11 @@ agent orchestrator list-agents       # → http://localhost:17006
 Contents of `.env`:
 
 ```bash
-export ASK_SERVICE_URL=http://localhost:17001
-export HOOK_SERVICE_URL=http://localhost:17002
-export MONITOR_SERVICE_URL=http://localhost:17003
-export NOTIFY_SERVICE_URL=http://localhost:17004
-export WRAP_SERVICE_URL=http://localhost:17005
-export ORCHESTRATOR_SERVICE_URL=http://localhost:17006
+export AGENTD_ASK_SERVICE_URL=http://localhost:17001
+export AGENTD_HOOK_SERVICE_URL=http://localhost:17002
+export AGENTD_MONITOR_SERVICE_URL=http://localhost:17003
+export AGENTD_NOTIFY_SERVICE_URL=http://localhost:17004
+export AGENTD_WRAP_SERVICE_URL=http://localhost:17005
+export AGENTD_ORCHESTRATOR_SERVICE_URL=http://localhost:17006
 export RUST_LOG=info
 ```

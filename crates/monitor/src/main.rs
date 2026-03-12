@@ -12,10 +12,10 @@
 //! agentd-monitor
 //!
 //! # Override port and interval via environment variables
-//! PORT=7003 COLLECTION_INTERVAL_SECS=60 agentd-monitor
+//! AGENTD_PORT=7003 AGENTD_COLLECTION_INTERVAL_SECS=60 agentd-monitor
 //!
 //! # JSON structured logging
-//! LOG_FORMAT=json agentd-monitor
+//! AGENTD_LOG_FORMAT=json agentd-monitor
 //! ```
 
 use anyhow::Result;

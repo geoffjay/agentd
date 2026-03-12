@@ -1309,7 +1309,7 @@ async fn stream_agents(id: Option<&str>, all: bool, verbose: bool, json: bool) -
         bail!("Either an agent ID or --all must be provided.");
     }
 
-    let base_url = std::env::var("ORCHESTRATOR_SERVICE_URL")
+    let base_url = std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
         .unwrap_or_else(|_| "http://localhost:7006".to_string());
     let ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://");
 

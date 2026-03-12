@@ -40,11 +40,11 @@
 //!
 //! # Environment Variables
 //!
-//! - `PORT` - Port to listen on (default: 17002 dev, 7002 production)
-//! - `HOOK_HISTORY_SIZE` - Number of events to retain (default: 500)
-//! - `HOOK_NOTIFY_ON_FAILURE` - Notify on command failure (default: true)
-//! - `HOOK_NOTIFY_ON_LONG_RUNNING` - Notify on long-running commands (default: true)
-//! - `HOOK_LONG_RUNNING_THRESHOLD_MS` - Threshold in ms (default: 30000)
+//! - `AGENTD_PORT` - Port to listen on (default: 17002 dev, 7002 production)
+//! - `AGENTD_HISTORY_SIZE` - Number of events to retain (default: 500)
+//! - `AGENTD_NOTIFY_ON_FAILURE` - Notify on command failure (default: true)
+//! - `AGENTD_NOTIFY_ON_LONG_RUNNING` - Notify on long-running commands (default: true)
+//! - `AGENTD_LONG_RUNNING_THRESHOLD_MS` - Threshold in ms (default: 30000)
 //! - `RUST_LOG` - Logging level (default: info)
 
 pub mod api;

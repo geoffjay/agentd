@@ -157,8 +157,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
-    // Bind to address (use PORT env var, default 17004 for dev, 7004 for production)
-    let port = env::var("PORT").unwrap_or_else(|_| "17004".to_string());
+    // Bind to address (use AGENTD_PORT env var, default 17004 for dev, 7004 for production)
+    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17004".to_string());
     let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Notification API server listening on http://{}", addr);

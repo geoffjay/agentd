@@ -8,7 +8,7 @@ The ask service monitors the user's environment and creates interactive notifica
 http://127.0.0.1:17001
 ```
 
-Port defaults to `17001` (dev) or `7001` (production), configurable via the `PORT` environment variable.
+Port defaults to `17001` (dev) or `7001` (production), configurable via the `AGENTD_PORT` environment variable.
 
 ## How It Works
 
@@ -24,8 +24,8 @@ Questions have a cooldown period — the same check won't create duplicate notif
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `17001` | HTTP listen port |
-| `NOTIFY_SERVICE_URL` | `http://localhost:7004` | Base URL of the notification service |
+| `AGENTD_PORT` | `17001` | HTTP listen port |
+| `AGENTD_NOTIFY_SERVICE_URL` | `http://localhost:7004` | Base URL of the notification service |
 | `RUST_LOG` | `info` | Log level filter |
 
 ## Endpoints
@@ -224,7 +224,7 @@ After creating a notification, the ask service enforces a cooldown period before
 cargo run -p agentd-ask
 
 # With custom notify service URL
-NOTIFY_SERVICE_URL=http://localhost:17004 cargo run -p agentd-ask
+AGENTD_NOTIFY_SERVICE_URL=http://localhost:17004 cargo run -p agentd-ask
 
 # With debug logging
 RUST_LOG=debug cargo run -p agentd-ask

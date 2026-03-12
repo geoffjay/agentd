@@ -88,7 +88,7 @@ When adding a new error type to a service:
 | Variable | Values | Default | Description |
 |----------|--------|---------|-------------|
 | `RUST_LOG` | `trace`, `debug`, `info`, `warn`, `error` | `info` | Log level filter |
-| `LOG_FORMAT` | `json`, (unset) | (unset = human-readable) | Output format |
+| `AGENTD_LOG_FORMAT` | `json`, (unset) | (unset = human-readable) | Output format |
 
 ### Standard Initialization
 
@@ -98,7 +98,7 @@ All services initialize logging the same way in `main()`:
 let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
     .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
 
-if std::env::var("LOG_FORMAT").as_deref() == Ok("json") {
+if std::env::var("AGENTD_LOG_FORMAT").as_deref() == Ok("json") {
     tracing_subscriber::fmt().json().with_env_filter(env_filter).init();
 } else {
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
@@ -110,7 +110,7 @@ if std::env::var("LOG_FORMAT").as_deref() == Ok("json") {
 For production environments or log aggregation pipelines, enable structured JSON output:
 
 ```bash
-LOG_FORMAT=json cargo run -p agentd-notify
+AGENTD_LOG_FORMAT=json cargo run -p agentd-notify
 ```
 
 Output format:

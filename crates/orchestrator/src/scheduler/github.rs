@@ -14,7 +14,7 @@ use tracing::{debug, warn};
 /// from an app bundle.
 static GH_PATH: LazyLock<String> = LazyLock::new(|| {
     // Prefer an explicit override.
-    if let Ok(p) = std::env::var("GH_PATH") {
+    if let Ok(p) = std::env::var("AGENTD_GH_PATH") {
         return p;
     }
 

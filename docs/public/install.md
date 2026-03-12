@@ -223,7 +223,7 @@ and a production port (7xxx) when running as a LaunchAgent:
 | agentd-wrap | 17005 | 7005 |
 | agentd-orchestrator | 17006 | 7006 |
 
-All ports are configurable via the `PORT` environment variable.
+All ports are configurable via the `AGENTD_PORT` environment variable.
 
 ### Custom Installation Location
 

@@ -7,9 +7,9 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
-  const askServiceUrl = env.VITE_ASK_SERVICE_URL || 'http://localhost:17001'
-  const notifyServiceUrl = env.VITE_NOTIFY_SERVICE_URL || 'http://localhost:17004'
-  const orchestratorServiceUrl = env.VITE_ORCHESTRATOR_SERVICE_URL || 'http://localhost:17006'
+  const askServiceUrl = env.VITE_AGENTD_ASK_SERVICE_URL || 'http://localhost:17001'
+  const notifyServiceUrl = env.VITE_AGENTD_NOTIFY_SERVICE_URL || 'http://localhost:17004'
+  const orchestratorServiceUrl = env.VITE_AGENTD_ORCHESTRATOR_SERVICE_URL || 'http://localhost:17006'
 
   return {
     plugins: [react(), tailwindcss()],

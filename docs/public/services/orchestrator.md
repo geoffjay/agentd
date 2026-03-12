@@ -8,7 +8,7 @@ The orchestrator service is a daemon that manages AI agent processes. It spawns 
 http://127.0.0.1:17006
 ```
 
-Port defaults to `17006` (dev) or `7006` (production), configurable via the `PORT` environment variable.
+Port defaults to `17006` (dev) or `7006` (production), configurable via the `AGENTD_PORT` environment variable.
 
 ## Architecture
 
@@ -882,5 +882,5 @@ PORT=8080 cargo run -p agentd-orchestrator
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `17006` | HTTP/WebSocket listen port |
+| `AGENTD_PORT` | `17006` | HTTP/WebSocket listen port |
 | `RUST_LOG` | `info` | Log level (`debug`, `info`, `warn`, `error`) |

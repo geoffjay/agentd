@@ -549,7 +549,7 @@ lsof -i :17004
 lsof -i :17006
 ```
 
-If another process holds the port, either stop it or override with `PORT=18004 cargo run -p agentd-notify`.
+If another process holds the port, either stop it or override with `AGENTD_PORT=18004 cargo run -p agentd-notify`.
 
 ### "tmux not found" when creating agents
 
@@ -578,7 +578,7 @@ If not found, install it from [claude.ai/download](https://claude.ai/download).
 If the ask service can't reach the notify service, set the URL explicitly:
 
 ```bash
-NOTIFY_SERVICE_URL=http://localhost:17004 cargo run -p agentd-ask
+AGENTD_NOTIFY_SERVICE_URL=http://localhost:17004 cargo run -p agentd-ask
 ```
 
 ### Database errors on first run

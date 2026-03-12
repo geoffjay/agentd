@@ -5,7 +5,7 @@
 //!
 //! # Features
 //!
-//! - REST API on `http://127.0.0.1:17005` (dev) or port from PORT env var
+//! - REST API on `http://127.0.0.1:17005` (dev) or port from AGENTD_PORT env var
 //! - Tmux session management for agent workflows
 //! - Support for multiple agent types (claude-code, opencode, gemini)
 //! - Structured logging with tracing
@@ -21,14 +21,14 @@
 //! RUST_LOG=debug cargo run -p agentd-wrap
 //!
 //! # Run on a different port
-//! PORT=8080 cargo run -p agentd-wrap
+//! AGENTD_PORT=8080 cargo run -p agentd-wrap
 //! ```
 //!
 //! # Environment Variables
 //!
 //! - `RUST_LOG` - Controls logging level (e.g., `debug`, `info`, `warn`, `error`)
 //!   Defaults to `info` if not set.
-//! - `PORT` - Port to listen on. Defaults to `17005` for development.
+//! - `AGENTD_PORT` - Port to listen on. Defaults to `17005` for development.
 //!
 //! # API Endpoints
 //!
@@ -121,8 +121,8 @@ async fn main() -> anyhow::Result<()> {
 
     let app = create_router().merge(metrics_router).layer(agentd_common::server::trace_layer());
 
-    // Bind to address (use PORT env var, default 17005 for dev)
-    let port = env::var("PORT").unwrap_or_else(|_| "17005".to_string());
+    // Bind to address (use AGENTD_PORT env var, default 17005 for dev)
+    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17005".to_string());
     let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Wrap API server listening on http://{}", addr);

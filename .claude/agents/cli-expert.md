@@ -26,10 +26,10 @@ The CLI is built with clap derive macros. Top-level commands:
 ### Client Layer (`client.rs`)
 - Each service has a typed client struct using `ServiceClient` from agentd-common
 - Clients resolve URLs from environment variables with fallback defaults:
-  - `NOTIFY_SERVICE_URL` (default: `http://localhost:7004`)
-  - `ASK_SERVICE_URL` (default: `http://localhost:7001`)
-  - `WRAP_SERVICE_URL` (default: `http://localhost:7005`)
-  - `ORCHESTRATOR_SERVICE_URL` (default: `http://localhost:7006`)
+  - `AGENTD_NOTIFY_SERVICE_URL` (default: `http://localhost:7004`)
+  - `AGENTD_ASK_SERVICE_URL` (default: `http://localhost:7001`)
+  - `AGENTD_WRAP_SERVICE_URL` (default: `http://localhost:7005`)
+  - `AGENTD_ORCHESTRATOR_SERVICE_URL` (default: `http://localhost:7006`)
 - All HTTP methods return typed responses deserialized from JSON
 
 ### Output Formatting

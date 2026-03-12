@@ -17,7 +17,7 @@
 
 /// Initialize the tracing subscriber with environment-based configuration.
 ///
-/// Reads `RUST_LOG` for the log filter (defaults to `info`) and `LOG_FORMAT`
+/// Reads `RUST_LOG` for the log filter (defaults to `info`) and `AGENTD_LOG_FORMAT`
 /// for the output format (`json` for structured JSON, anything else for
 /// human-readable text).
 ///
@@ -26,12 +26,12 @@
 /// # Environment Variables
 ///
 /// - `RUST_LOG` — Controls log level/filter (e.g., `debug`, `info`, `warn`)
-/// - `LOG_FORMAT` — Set to `json` for structured JSON log output
+/// - `AGENTD_LOG_FORMAT` — Set to `json` for structured JSON log output
 pub fn init_tracing() {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
 
-    if std::env::var("LOG_FORMAT").as_deref() == Ok("json") {
+    if std::env::var("AGENTD_LOG_FORMAT").as_deref() == Ok("json") {
         tracing_subscriber::fmt().json().with_env_filter(env_filter).init();
     } else {
         tracing_subscriber::fmt().with_env_filter(env_filter).init();
@@ -52,7 +52,7 @@ pub fn trace_layer() -> tower_http::trace::TraceLayer<
 
 /// Create a CORS layer configured from the environment.
 ///
-/// Reads the `CORS_ORIGINS` environment variable to determine allowed origins.
+/// Reads the `AGENTD_CORS_ORIGINS` environment variable to determine allowed origins.
 /// Defaults to `*` (any origin) when the variable is not set, which is appropriate
 /// for local development. Set to a comma-separated list of origins for production.
 ///
@@ -60,11 +60,11 @@ pub fn trace_layer() -> tower_http::trace::TraceLayer<
 ///
 /// - **Methods**: GET, POST, PUT, DELETE, OPTIONS
 /// - **Headers**: Content-Type, Authorization, and WebSocket upgrade headers
-/// - **Origins**: Configurable via `CORS_ORIGINS` env var (default: `*`)
+/// - **Origins**: Configurable via `AGENTD_CORS_ORIGINS` env var (default: `*`)
 ///
 /// # Environment Variables
 ///
-/// - `CORS_ORIGINS` — Comma-separated list of allowed origins, or `*` for any.
+/// - `AGENTD_CORS_ORIGINS` — Comma-separated list of allowed origins, or `*` for any.
 ///   Example: `https://app.example.com,https://admin.example.com`
 ///
 /// # Examples
@@ -80,7 +80,7 @@ pub fn cors_layer() -> tower_http::cors::CorsLayer {
     use axum::http::{header, HeaderName, HeaderValue, Method};
     use tower_http::cors::{AllowOrigin, CorsLayer};
 
-    let origins = std::env::var("CORS_ORIGINS").unwrap_or_else(|_| "*".to_string());
+    let origins = std::env::var("AGENTD_CORS_ORIGINS").unwrap_or_else(|_| "*".to_string());
 
     let allow_origin = if origins.trim() == "*" {
         AllowOrigin::any()

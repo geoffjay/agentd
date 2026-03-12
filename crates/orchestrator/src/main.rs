@@ -51,8 +51,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Determine the port and WS base URL early — both the Docker backend
     // and the AgentManager need it.
-    let port = env::var("PORT").unwrap_or_else(|_| "17006".to_string());
-    let port_num: u16 = port.parse().expect("PORT must be a valid u16");
+    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17006".to_string());
+    let port_num: u16 = port.parse().expect("AGENTD_PORT must be a valid u16");
     let ws_base_url = format!("ws://127.0.0.1:{}", port);
 
     // Execution backend — selected via AGENTD_BACKEND env var.

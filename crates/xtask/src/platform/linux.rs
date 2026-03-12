@@ -216,7 +216,7 @@ impl Platform for LinuxPlatform {
 
 /// Generate a systemd user unit file for a service.
 pub fn generate_unit_file(service: &ServiceInfo, bin_path: &Path) -> String {
-    let mut env_lines = format!("Environment=RUST_LOG=info\nEnvironment=PORT={}", service.port);
+    let mut env_lines = format!("Environment=RUST_LOG=info\nEnvironment=AGENTD_PORT={}", service.port);
 
     for (key, value) in service.extra_env {
         env_lines.push_str(&format!("\nEnvironment={}={}", key, value));
@@ -367,7 +367,7 @@ mod tests {
 
         assert!(unit.contains("Description=agentd-notify service"));
         assert!(unit.contains("ExecStart=/home/user/.local/bin/agentd-notify"));
-        assert!(unit.contains("Environment=PORT=7004"));
+        assert!(unit.contains("Environment=AGENTD_PORT=7004"));
         assert!(unit.contains("Environment=RUST_LOG=info"));
         assert!(unit.contains("Restart=on-failure"));
         assert!(unit.contains("WantedBy=default.target"));
@@ -382,14 +382,14 @@ mod tests {
             name: "ask",
             binary: "agentd-ask",
             port: 7001,
-            extra_env: &[("NOTIFY_SERVICE_URL", "http://localhost:7004")],
+            extra_env: &[("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004")],
         };
         let bin_path = Path::new("/usr/local/bin/agentd-ask");
         let unit = generate_unit_file(&info, bin_path);
 
         assert!(unit.contains("Description=agentd-ask service"));
-        assert!(unit.contains("Environment=PORT=7001"));
-        assert!(unit.contains("Environment=NOTIFY_SERVICE_URL=http://localhost:7004"));
+        assert!(unit.contains("Environment=AGENTD_PORT=7001"));
+        assert!(unit.contains("Environment=AGENTD_NOTIFY_SERVICE_URL=http://localhost:7004"));
     }
 
     #[test]
@@ -400,7 +400,7 @@ mod tests {
 
             assert!(unit.contains(&format!("Description=agentd-{} service", service.name)));
             assert!(unit.contains(&format!("ExecStart=/usr/local/bin/{}", service.binary)));
-            assert!(unit.contains(&format!("Environment=PORT={}", service.port)));
+            assert!(unit.contains(&format!("Environment=AGENTD_PORT={}", service.port)));
         }
     }
 }

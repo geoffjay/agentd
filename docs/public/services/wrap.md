@@ -8,13 +8,13 @@ The wrap service manages tmux sessions for launching AI agent CLIs. It provides 
 http://127.0.0.1:17005
 ```
 
-Port defaults to `17005` (dev) or `7005` (production), configurable via the `PORT` environment variable.
+Port defaults to `17005` (dev) or `7005` (production), configurable via the `AGENTD_PORT` environment variable.
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `17005` | HTTP listen port |
+| `AGENTD_PORT` | `17005` | HTTP listen port |
 | `RUST_LOG` | `info` | Log level filter |
 
 ## Endpoints

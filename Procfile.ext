@@ -1,0 +1,4 @@
+baml: baml serve --from ./baml_src
+docs: zensical serve
+ollama: ollama serve
+rustdoc: watchexec -r -e rs cargo doc --no-deps

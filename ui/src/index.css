@@ -1,3 +1,4 @@
+@import '@animxyz/core';
 @import 'tailwindcss';
 
 /* Configure class-based dark mode — adds `dark:` variant support via .dark class */

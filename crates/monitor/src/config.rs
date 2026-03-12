@@ -37,24 +37,24 @@ impl MonitorConfig {
     /// Construct configuration from environment variables with defaults.
     pub fn from_env() -> Self {
         Self {
-            port: env::var("PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(17003),
-            collection_interval_secs: env::var("COLLECTION_INTERVAL_SECS")
+            port: env::var("AGENTD_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(17003),
+            collection_interval_secs: env::var("AGENTD_COLLECTION_INTERVAL_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30),
-            cpu_alert_threshold: env::var("CPU_ALERT_THRESHOLD")
+            cpu_alert_threshold: env::var("AGENTD_CPU_ALERT_THRESHOLD")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(90.0),
-            memory_alert_threshold: env::var("MEMORY_ALERT_THRESHOLD")
+            memory_alert_threshold: env::var("AGENTD_MEMORY_ALERT_THRESHOLD")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(90.0),
-            disk_alert_threshold: env::var("DISK_ALERT_THRESHOLD")
+            disk_alert_threshold: env::var("AGENTD_DISK_ALERT_THRESHOLD")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(90.0),
-            history_size: env::var("HISTORY_SIZE").ok().and_then(|v| v.parse().ok()).unwrap_or(120),
+            history_size: env::var("AGENTD_HISTORY_SIZE").ok().and_then(|v| v.parse().ok()).unwrap_or(120),
         }
     }
 }

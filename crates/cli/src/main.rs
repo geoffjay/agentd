@@ -61,10 +61,10 @@
 //! # Service URLs
 //!
 //! The CLI connects to services running on localhost (default dev ports):
-//! - Notification service: `http://localhost:7004` (override with `NOTIFY_SERVICE_URL`)
-//! - Ask service: `http://localhost:7001` (override with `ASK_SERVICE_URL`)
-//! - Wrap service: `http://localhost:7005` (override with `WRAP_SERVICE_URL`)
-//! - Orchestrator service: `http://localhost:7006` (override with `ORCHESTRATOR_SERVICE_URL`)
+//! - Notification service: `http://localhost:7004` (override with `AGENTD_NOTIFY_SERVICE_URL`)
+//! - Ask service: `http://localhost:7001` (override with `AGENTD_ASK_SERVICE_URL`)
+//! - Wrap service: `http://localhost:7005` (override with `AGENTD_WRAP_SERVICE_URL`)
+//! - Orchestrator service: `http://localhost:7006` (override with `AGENTD_ORCHESTRATOR_SERVICE_URL`)
 //!
 //! # Architecture
 //!
@@ -252,35 +252,35 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Notify { command } => {
-            // Use NOTIFY_SERVICE_URL env var, default to production port
-            let url = env::var("NOTIFY_SERVICE_URL")
+            // Use AGENTD_NOTIFY_SERVICE_URL env var, default to production port
+            let url = env::var("AGENTD_NOTIFY_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7004".to_string());
             let client = NotifyClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Ask { command } => {
-            // Use ASK_SERVICE_URL env var, default to production port
+            // Use AGENTD_ASK_SERVICE_URL env var, default to production port
             let url =
-                env::var("ASK_SERVICE_URL").unwrap_or_else(|_| "http://localhost:7001".to_string());
+                env::var("AGENTD_ASK_SERVICE_URL").unwrap_or_else(|_| "http://localhost:7001".to_string());
             let client = AskClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Wrap { command } => {
-            // Use WRAP_SERVICE_URL env var, default to production port
-            let url = env::var("WRAP_SERVICE_URL")
+            // Use AGENTD_WRAP_SERVICE_URL env var, default to production port
+            let url = env::var("AGENTD_WRAP_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7005".to_string());
             let client = WrapClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Orchestrator { command } => {
-            // Use ORCHESTRATOR_SERVICE_URL env var, default to production port
-            let url = env::var("ORCHESTRATOR_SERVICE_URL")
+            // Use AGENTD_ORCHESTRATOR_SERVICE_URL env var, default to production port
+            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7006".to_string());
             let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Apply { path, dry_run, wait_timeout } => {
-            let url = env::var("ORCHESTRATOR_SERVICE_URL")
+            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7006".to_string());
             let client = OrchestratorClient::new(url);
             if path.is_dir() {
@@ -300,7 +300,7 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Teardown { path, dry_run } => {
-            let url = env::var("ORCHESTRATOR_SERVICE_URL")
+            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7006".to_string());
             let client = OrchestratorClient::new(url);
             commands::apply::teardown_directory(&client, &path, dry_run, cli.json).await?;
@@ -332,20 +332,20 @@ struct ServiceDef {
 const SERVICES: &[ServiceDef] = &[
     ServiceDef {
         name: "orchestrator",
-        env_var: "ORCHESTRATOR_SERVICE_URL",
+        env_var: "AGENTD_ORCHESTRATOR_SERVICE_URL",
         default_url: "http://localhost:7006",
     },
     ServiceDef {
         name: "notify",
-        env_var: "NOTIFY_SERVICE_URL",
+        env_var: "AGENTD_NOTIFY_SERVICE_URL",
         default_url: "http://localhost:7004",
     },
-    ServiceDef { name: "ask", env_var: "ASK_SERVICE_URL", default_url: "http://localhost:7001" },
-    ServiceDef { name: "wrap", env_var: "WRAP_SERVICE_URL", default_url: "http://localhost:7005" },
-    ServiceDef { name: "hook", env_var: "HOOK_SERVICE_URL", default_url: "http://localhost:7002" },
+    ServiceDef { name: "ask", env_var: "AGENTD_ASK_SERVICE_URL", default_url: "http://localhost:7001" },
+    ServiceDef { name: "wrap", env_var: "AGENTD_WRAP_SERVICE_URL", default_url: "http://localhost:7005" },
+    ServiceDef { name: "hook", env_var: "AGENTD_HOOK_SERVICE_URL", default_url: "http://localhost:7002" },
     ServiceDef {
         name: "monitor",
-        env_var: "MONITOR_SERVICE_URL",
+        env_var: "AGENTD_MONITOR_SERVICE_URL",
         default_url: "http://localhost:7003",
     },
 ];
