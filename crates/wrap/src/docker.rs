@@ -383,7 +383,7 @@ fn build_agent_cmd(config: &SessionConfig) -> anyhow::Result<Vec<String>> {
         "gemini" => {
             Ok(vec!["gemini".to_string(), "--model".to_string(), config.model_name.clone()])
         }
-        "general" => Ok(vec!["/bin/bash".to_string()]),
+        "general" => Ok(vec!["/bin/sh".to_string()]),
         other => Err(anyhow::anyhow!("Unsupported agent type: {}", other)),
     }
 }
@@ -468,6 +468,11 @@ impl ExecutionBackend for DockerBackend {
             labels: Some(labels),
             host_config: Some(host_config),
             user: Some("1000:1000".to_string()),
+            // Allocate a pseudo-TTY and keep stdin open so interactive
+            // shells (e.g., "general" agent type) stay alive. This is
+            // harmless for non-interactive agent CLIs like claude-code.
+            tty: Some(true),
+            open_stdin: Some(true),
             ..Default::default()
         };
 
@@ -928,7 +933,7 @@ mod tests {
     fn build_agent_cmd_general() {
         let config = SessionConfig { agent_type: "general".into(), ..test_session_config() };
         let cmd = build_agent_cmd(&config).unwrap();
-        assert_eq!(cmd, vec!["/bin/bash"]);
+        assert_eq!(cmd, vec!["/bin/sh"]);
     }
 
     #[test]
@@ -1209,5 +1214,20 @@ mod tests {
         let _ = SessionHealth::Unhealthy;
         let _ = SessionHealth::Starting;
         let _ = SessionHealth::Unknown;
+    }
+
+    // -- WebSocket URL generation (no Docker daemon needed) --
+
+    #[test]
+    fn ws_url_contains_host_and_agent_id() {
+        let backend = test_backend();
+        let url = backend.agent_ws_url("test-prefix-myid", None);
+        assert!(url.is_some());
+        let url = url.unwrap();
+        assert!(
+            url.contains("host.docker.internal"),
+            "Bridge mode should use host.docker.internal"
+        );
+        assert!(url.contains("/ws/myid"), "URL should contain agent ID");
     }
 }

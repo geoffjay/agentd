@@ -106,6 +106,36 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+  docker-integration:
+    name: Docker Integration Tests
+    runs-on: ubuntu-latest
+    # Only run on main branch or PRs that touch Docker-related files.
+    # ubuntu-latest has Docker pre-installed with /var/run/docker.sock — no DinD needed.
+    if: >
+      github.ref == 'refs/heads/main' ||
+      contains(github.event.pull_request.labels.*.name, 'docker')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: docker-integration
+
+      - name: Build agent image
+        run: docker build -t agentd-claude:latest docker/claude-code/
+
+      - name: Pull test image
+        run: docker pull alpine:3.19
+
+      - name: Run Docker integration tests (wrap)
+        run: cargo test -p wrap -- --ignored --test-threads=1
+
+      - name: Run Docker integration tests (orchestrator)
+        run: cargo test -p orchestrator -- --ignored --test-threads=1
+
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
