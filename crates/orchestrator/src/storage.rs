@@ -980,8 +980,7 @@ mod tests {
     async fn test_add_with_additional_dirs() {
         let (storage, _tmp) = create_test_storage().await;
         let mut agent = test_agent("dirs-agent");
-        agent.config.additional_dirs =
-            vec!["/opt/configs".to_string(), "/shared/libs".to_string()];
+        agent.config.additional_dirs = vec!["/opt/configs".to_string(), "/shared/libs".to_string()];
 
         storage.add(&agent).await.unwrap();
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();

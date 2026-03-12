@@ -216,7 +216,8 @@ impl Platform for LinuxPlatform {
 
 /// Generate a systemd user unit file for a service.
 pub fn generate_unit_file(service: &ServiceInfo, bin_path: &Path) -> String {
-    let mut env_lines = format!("Environment=RUST_LOG=info\nEnvironment=AGENTD_PORT={}", service.port);
+    let mut env_lines =
+        format!("Environment=RUST_LOG=info\nEnvironment=AGENTD_PORT={}", service.port);
 
     for (key, value) in service.extra_env {
         env_lines.push_str(&format!("\nEnvironment={}={}", key, value));

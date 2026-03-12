@@ -54,7 +54,10 @@ impl MonitorConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(90.0),
-            history_size: env::var("AGENTD_HISTORY_SIZE").ok().and_then(|v| v.parse().ok()).unwrap_or(120),
+            history_size: env::var("AGENTD_HISTORY_SIZE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(120),
         }
     }
 }
