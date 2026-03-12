@@ -146,7 +146,7 @@ function AddDirDialog({ open, saving, error, onConfirm, onCancel }: AddDirDialog
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-dir-title"
-        className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+        className="relative rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
       >
         <h2
           id="add-dir-title"
