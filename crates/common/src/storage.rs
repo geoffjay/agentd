@@ -39,11 +39,17 @@ use std::path::{Path, PathBuf};
 /// // Linux: ~/.local/share/agentd-notify/notify.db
 /// ```
 pub fn get_db_path(project_name: &str, db_filename: &str) -> Result<PathBuf> {
-    let proj_dirs = ProjectDirs::from("", "", project_name)
-        .ok_or_else(|| anyhow::anyhow!("Failed to determine project directories"))?;
+    let data_dir = match std::env::var("AGENTD_ENV").as_deref() {
+        Ok("development" | "dev") => PathBuf::from("tmp"),
+        Ok("test") => PathBuf::from("tmp/test"),
+        _ => {
+            let proj_dirs = ProjectDirs::from("", "", project_name)
+                .ok_or_else(|| anyhow::anyhow!("Failed to determine project directories"))?;
+            proj_dirs.data_dir().to_path_buf()
+        }
+    };
 
-    let data_dir = proj_dirs.data_dir();
-    std::fs::create_dir_all(data_dir)?;
+    std::fs::create_dir_all(&data_dir)?;
 
     Ok(data_dir.join(db_filename))
 }
@@ -119,10 +125,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_get_db_path_returns_path() {
+    fn test_get_db_path_respects_agentd_env() {
+        // Run all AGENTD_ENV variants in a single test to avoid env var races
+        // across parallel test threads.
+
+        // Default (production) — uses XDG project directories
+        std::env::remove_var("AGENTD_ENV");
         let path = get_db_path("agentd-test-common", "test.db").unwrap();
         assert!(path.to_string_lossy().contains("agentd-test-common"));
         assert!(path.to_string_lossy().ends_with("test.db"));
+
+        // development
+        std::env::set_var("AGENTD_ENV", "development");
+        let path = get_db_path("agentd-test-common", "test.db").unwrap();
+        assert_eq!(path, PathBuf::from("tmp/test.db"));
+
+        // dev shorthand
+        std::env::set_var("AGENTD_ENV", "dev");
+        let path = get_db_path("agentd-test-common", "test.db").unwrap();
+        assert_eq!(path, PathBuf::from("tmp/test.db"));
+
+        // test
+        std::env::set_var("AGENTD_ENV", "test");
+        let path = get_db_path("agentd-test-common", "test.db").unwrap();
+        assert_eq!(path, PathBuf::from("tmp/test/test.db"));
+
+        std::env::remove_var("AGENTD_ENV");
     }
 
     #[tokio::test]

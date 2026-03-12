@@ -50,8 +50,10 @@ prompt_template: |
   Some additional guidance:
 
   - Never assign the "agent", "work-agent", "plan-agent", or "review-agent" labels
-  - Ideally plans will be focused effort and can be constrained to 5-10 issues, but this is not a
-    hard requirement
+  - Ideally plans will be focused effort and can be constrained to 5-10 issues, but this IS NOT a
+    hard requirement and larger plans will require more issues
+  - If a planning task has already been broken down into phases these phases should have an
+    associated epic issue created for them, with each epic broken down into multiple issues
   - Create relationships between issues as needed using blocked by, blocks, and aprent issues
   - Use gh issue-ext to add relationships and dependencies
 
