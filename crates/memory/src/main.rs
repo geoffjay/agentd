@@ -1,8 +1,7 @@
 //! agentd-memory service entry point.
 //!
-//! Initialises the HTTP server with `/health` and `/metrics` endpoints.
-//! Storage backends (SQLite via SeaORM for metadata and LanceDB for vector
-//! embeddings) will be wired up in subsequent issues.
+//! Initialises the HTTP server with `/health` and `/metrics` endpoints and
+//! connects to the SQLite metadata storage backend.
 //!
 //! # Running the Service
 //!
@@ -22,7 +21,10 @@
 //! - `GET /metrics` — Prometheus metrics
 
 mod api;
+mod entity;
 pub mod error;
+mod migration;
+mod storage;
 pub mod store;
 pub mod types;
 
@@ -30,6 +32,7 @@ use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
 use metrics_exporter_prometheus::PrometheusHandle;
 use std::env;
+use storage::MemoryStorage;
 use tracing::info;
 
 fn init_metrics() -> PrometheusHandle {
@@ -50,9 +53,12 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting agentd-memory service...");
 
+    let storage = MemoryStorage::new().await?;
+    info!("SQLite storage initialised");
+
     let metrics_handle = init_metrics();
 
-    let api_state = ApiState {};
+    let api_state = ApiState { storage };
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 

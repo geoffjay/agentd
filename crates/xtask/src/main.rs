@@ -129,6 +129,12 @@ fn print_help() {
 /// Services that have SeaORM-managed SQLite databases.
 const DB_SERVICES: &[DbService] = &[
     DbService {
+        name: "memory",
+        project: "agentd-memory",
+        db_file: "memory.db",
+        entity_dir: "crates/memory/src/entity",
+    },
+    DbService {
         name: "notify",
         project: "agentd-notify",
         db_file: "notify.db",
@@ -268,6 +274,7 @@ async fn migrate(service: Option<&str>) -> Result<()> {
         print!("  {} {} … ", "→".cyan(), svc.name.green());
 
         let result = match svc.name {
+            "memory" => memory::apply_migrations_for_path(&db_path).await,
             "notify" => notify::apply_migrations_for_path(&db_path).await,
             "orchestrator" => orchestrator::apply_migrations_for_path(&db_path).await,
             _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
@@ -311,6 +318,7 @@ async fn migrate_status(service: Option<&str>) -> Result<()> {
         }
 
         let result = match svc.name {
+            "memory" => memory::migration_status_for_path(&db_path).await,
             "notify" => notify::migration_status_for_path(&db_path).await,
             "orchestrator" => orchestrator::migration_status_for_path(&db_path).await,
             _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),

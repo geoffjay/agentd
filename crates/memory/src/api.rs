@@ -1,9 +1,8 @@
 //! REST API handlers for the memory service.
 //!
 //! This module provides HTTP endpoints for the agentd-memory service. Currently
-//! only the `/health` endpoint is implemented as part of the initial scaffold.
-//! Storage, semantic search, and full CRUD endpoints will be added in
-//! subsequent issues.
+//! only the `/health` endpoint is implemented; full CRUD and search endpoints
+//! will be added in subsequent issues.
 //!
 //! # API Endpoints
 //!
@@ -11,12 +10,14 @@
 
 use axum::{response::IntoResponse, Json, Router};
 
+use crate::storage::MemoryStorage;
+
 /// Shared state passed to all API handlers.
-///
-/// Will be extended with [`crate::store::VectorStore`] and
-/// [`crate::store::EmbeddingService`] backends in subsequent issues.
 #[derive(Clone)]
-pub struct ApiState {}
+pub struct ApiState {
+    /// SQLite-backed metadata storage.
+    pub storage: MemoryStorage,
+}
 
 /// Create and configure the Axum router.
 pub fn create_router(state: ApiState) -> Router {
