@@ -1,7 +1,8 @@
 //! REST API handlers for the agentd-memory service.
 //!
 //! This module provides HTTP endpoints for managing memories through a RESTful
-//! API backed by a [`VectorStore`] for semantic search and CRUD operations.
+//! API backed by a [`VectorStore`] for semantic search and CRUD operations,
+//! with SQLite metadata storage via [`MemoryStorage`].
 //!
 //! # API Endpoints
 //!
@@ -75,26 +76,31 @@ pub use agentd_common::types::{clamp_limit, PaginatedResponse};
 // State
 // ---------------------------------------------------------------------------
 
+use memory::storage::MemoryStorage;
+
 /// Shared state passed to all API handlers.
 ///
 /// Contains the vector store backend wrapped in an [`Arc`] for efficient
-/// cloning across async handlers.
+/// cloning across async handlers, and a SQLite-backed metadata storage.
 ///
 /// # Examples
 ///
 /// ```rust,no_run
 /// use memory::api::ApiState;
+/// use memory::storage::MemoryStorage;
 /// use memory::store::VectorStore;
 /// use std::sync::Arc;
 ///
-/// # async fn example(store: Arc<dyn VectorStore>) {
-/// let state = ApiState { store };
+/// # async fn example(store: Arc<dyn VectorStore>, storage: MemoryStorage) {
+/// let state = ApiState { store, storage };
 /// # }
 /// ```
 #[derive(Clone)]
 pub struct ApiState {
     /// Shared vector store backend for memory persistence and search.
     pub store: Arc<dyn VectorStore>,
+    /// SQLite-backed metadata storage.
+    pub storage: MemoryStorage,
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +158,7 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
     let mut resp =
         agentd_common::types::HealthResponse::ok("agentd-memory", env!("CARGO_PKG_VERSION"));
 
-    let healthy = match state.store.health_check().await {
+    let vector_healthy = match state.store.health_check().await {
         Ok(h) => {
             resp = resp.with_detail("vector_store", serde_json::json!(h));
             h
@@ -164,6 +170,21 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
             false
         }
     };
+
+    let sqlite_healthy = match state.storage.health_check().await {
+        Ok(h) => {
+            resp = resp.with_detail("sqlite_storage", serde_json::json!(h));
+            h
+        }
+        Err(e) => {
+            warn!("SQLite storage health check failed: {}", e);
+            resp = resp.with_detail("sqlite_storage", serde_json::json!(false));
+            resp = resp.with_detail("sqlite_storage_error", serde_json::json!(e.to_string()));
+            false
+        }
+    };
+
+    let healthy = vector_healthy && sqlite_healthy;
 
     if healthy {
         (StatusCode::OK, Json(resp))
@@ -602,8 +623,13 @@ mod tests {
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
-    fn test_app(store: Arc<dyn VectorStore>) -> Router {
-        create_router(ApiState { store })
+    async fn test_app(store: Arc<dyn VectorStore>) -> Router {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let storage = MemoryStorage::with_path(&db_path).await.unwrap();
+        // Leak the TempDir so it lives for the duration of the test
+        std::mem::forget(temp_dir);
+        create_router(ApiState { store, storage })
     }
 
     fn sample_memory(id: &str, content: &str) -> Memory {
@@ -627,7 +653,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check_returns_ok() {
-        let app = test_app(Arc::new(MockVectorStore::new()));
+        let app = test_app(Arc::new(MockVectorStore::new())).await;
         let resp = app
             .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
             .await
@@ -645,7 +671,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_memory_returns_201() {
-        let app = test_app(Arc::new(MockVectorStore::new()));
+        let app = test_app(Arc::new(MockVectorStore::new())).await;
         let body = serde_json::json!({
             "content": "Paris is the capital of France.",
             "created_by": "agent-1"
@@ -673,7 +699,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_memory_empty_content_returns_400() {
-        let app = test_app(Arc::new(MockVectorStore::new()));
+        let app = test_app(Arc::new(MockVectorStore::new())).await;
         let body = serde_json::json!({
             "content": "",
             "created_by": "agent-1"
@@ -696,7 +722,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_memory_empty_created_by_returns_400() {
-        let app = test_app(Arc::new(MockVectorStore::new()));
+        let app = test_app(Arc::new(MockVectorStore::new())).await;
         let body = serde_json::json!({
             "content": "some content",
             "created_by": "  "
@@ -722,7 +748,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_memory_returns_200() {
         let mem = sample_memory("mem_1_abcdef01", "test content");
-        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem])));
+        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem]))).await;
 
         let resp = app
             .oneshot(
@@ -740,7 +766,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_memory_not_found_returns_404() {
-        let app = test_app(Arc::new(MockVectorStore::new()));
+        let app = test_app(Arc::new(MockVectorStore::new())).await;
 
         let resp = app
             .oneshot(Request::builder().uri("/memories/nonexistent").body(Body::empty()).unwrap())
@@ -759,7 +785,7 @@ mod tests {
             sample_memory("mem_2_bbb", "second"),
             sample_memory("mem_3_ccc", "third"),
         ];
-        let app = test_app(Arc::new(MockVectorStore::with_memories(memories)));
+        let app = test_app(Arc::new(MockVectorStore::with_memories(memories))).await;
 
         let resp = app
             .oneshot(
@@ -783,7 +809,7 @@ mod tests {
         let mut mem = sample_memory("mem_1_aaa", "a question");
         mem.memory_type = MemoryType::Question;
         let memories = vec![mem, sample_memory("mem_2_bbb", "some info")];
-        let app = test_app(Arc::new(MockVectorStore::with_memories(memories)));
+        let app = test_app(Arc::new(MockVectorStore::with_memories(memories))).await;
 
         let resp = app
             .oneshot(Request::builder().uri("/memories?type=question").body(Body::empty()).unwrap())
@@ -800,7 +826,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_memories_empty() {
-        let app = test_app(Arc::new(MockVectorStore::new()));
+        let app = test_app(Arc::new(MockVectorStore::new())).await;
 
         let resp = app
             .oneshot(Request::builder().uri("/memories").body(Body::empty()).unwrap())
@@ -820,7 +846,7 @@ mod tests {
     #[tokio::test]
     async fn test_delete_memory_returns_deleted_true() {
         let mem = sample_memory("mem_1_aaa", "to delete");
-        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem])));
+        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem]))).await;
 
         let resp = app
             .oneshot(
@@ -842,7 +868,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_memory_not_found_returns_deleted_false() {
-        let app = test_app(Arc::new(MockVectorStore::new()));
+        let app = test_app(Arc::new(MockVectorStore::new())).await;
 
         let resp = app
             .oneshot(
@@ -870,7 +896,7 @@ mod tests {
             sample_memory("mem_1_aaa", "Paris is the capital of France"),
             sample_memory("mem_2_bbb", "Berlin is the capital of Germany"),
         ];
-        let app = test_app(Arc::new(MockVectorStore::with_memories(memories)));
+        let app = test_app(Arc::new(MockVectorStore::with_memories(memories))).await;
 
         let body = serde_json::json!({"query": "Paris", "limit": 5});
         let resp = app
@@ -895,7 +921,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_search_empty_query_returns_400() {
-        let app = test_app(Arc::new(MockVectorStore::new()));
+        let app = test_app(Arc::new(MockVectorStore::new())).await;
 
         let body = serde_json::json!({"query": ""});
         let resp = app
@@ -918,7 +944,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_visibility_returns_updated_memory() {
         let mem = sample_memory("mem_1_aaa", "some content");
-        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem])));
+        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem]))).await;
 
         let body = serde_json::json!({
             "visibility": "shared",
@@ -946,7 +972,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_visibility_not_found_returns_404() {
-        let app = test_app(Arc::new(MockVectorStore::new()));
+        let app = test_app(Arc::new(MockVectorStore::new())).await;
 
         let body = serde_json::json!({"visibility": "private"});
         let resp = app
@@ -969,7 +995,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_visibility_ownership_check_allows_creator() {
         let mem = sample_memory("mem_1_aaa", "some content");
-        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem])));
+        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem]))).await;
 
         let body = serde_json::json!({
             "visibility": "private",
@@ -993,7 +1019,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_visibility_ownership_check_rejects_non_owner() {
         let mem = sample_memory("mem_1_aaa", "some content");
-        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem])));
+        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem]))).await;
 
         let body = serde_json::json!({
             "visibility": "private",
@@ -1017,7 +1043,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_visibility_without_actor_is_allowed() {
         let mem = sample_memory("mem_1_aaa", "some content");
-        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem])));
+        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem]))).await;
 
         // No as_actor field — backward-compatible, should succeed
         let body = serde_json::json!({
