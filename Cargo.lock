@@ -1334,6 +1334,7 @@ dependencies = [
  "colored",
  "futures-util",
  "hook",
+ "memory",
  "mockito",
  "monitor",
  "notify",

@@ -62,8 +62,8 @@ use serde::Deserialize;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-use crate::store::VectorStore;
-use crate::types::{
+use memory::store::VectorStore;
+use memory::types::{
     CreateMemoryRequest, DeleteResponse, Memory, MemoryType, SearchRequest, SearchResponse,
     UpdateVisibilityRequest, VisibilityLevel,
 };
@@ -516,8 +516,8 @@ async fn update_visibility(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::{StoreError, StoreResult};
-    use crate::types::CreateMemoryRequest;
+    use memory::error::{StoreError, StoreResult};
+    use memory::types::CreateMemoryRequest;
     use async_trait::async_trait;
     use axum::body::Body;
     use axum::http::{self, Request};

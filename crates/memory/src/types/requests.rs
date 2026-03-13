@@ -26,7 +26,7 @@ use super::{Memory, MemoryType, VisibilityLevel};
 ///   "shared_with": ["agent-support"]
 /// }
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CreateMemoryRequest {
     /// The natural-language content to store.
     pub content: String,

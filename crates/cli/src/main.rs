@@ -81,6 +81,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::*;
 use commands::{AskCommand, MemoryCommand, NotifyCommand, OrchestratorCommand, WrapCommand};
+use memory::client::MemoryClient;
 use notify::client::NotifyClient;
 use orchestrator::client::OrchestratorClient;
 use std::env;
@@ -331,7 +332,8 @@ async fn main() -> Result<()> {
             // Use AGENTD_MEMORY_SERVICE_URL env var, default to production port
             let url = env::var("AGENTD_MEMORY_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7008".to_string());
-            command.execute(&url, cli.json).await?;
+            let client = MemoryClient::new(url);
+            command.execute(&client, cli.json).await?;
         }
     }
 

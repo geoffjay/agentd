@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+name = "memory"
+path = "src/lib.rs"
+
 [[bin]]
 name = "agentd-memory"
 path = "src/main.rs"

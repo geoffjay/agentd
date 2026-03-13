@@ -35,14 +35,10 @@
 //! - `POST /memories/search`         — semantic similarity search
 
 mod api;
-pub mod config;
-pub mod error;
-pub mod store;
-pub mod types;
 
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
-use config::{EmbeddingConfig, LanceConfig};
+use memory::config::{EmbeddingConfig, LanceConfig};
 use metrics_exporter_prometheus::PrometheusHandle;
 use std::env;
 use tracing::info;
@@ -80,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
         "Initialising vector store"
     );
 
-    let store = store::create_store(&lance_config, &embedding_config).await?;
+    let store = memory::store::create_store(&lance_config, &embedding_config).await?;
     store.initialize().await?;
 
     info!("Vector store initialised");
