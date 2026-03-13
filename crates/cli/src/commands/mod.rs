@@ -30,11 +30,13 @@
 
 pub mod apply;
 pub mod ask;
+pub mod memory;
 pub mod notify;
 pub mod orchestrator;
 pub mod wrap;
 
 pub use ask::AskCommand;
+pub use memory::MemoryCommand;
 pub use notify::NotifyCommand;
 pub use orchestrator::OrchestratorCommand;
 pub use wrap::WrapCommand;
