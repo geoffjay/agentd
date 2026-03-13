@@ -232,7 +232,7 @@ enum Commands {
     ///
     /// Store, retrieve, and semantically search agent memory records. The memory
     /// service runs on port 7008 by default and uses LanceDB for vector storage
-    /// and SQLite for metadata.
+    /// with SQLite for metadata.
     Memory {
         #[command(subcommand)]
         command: MemoryCommand,
