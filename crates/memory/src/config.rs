@@ -24,6 +24,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::path::PathBuf;
 
 /// Configuration for the embedding service.
 ///
@@ -101,6 +102,79 @@ impl EmbeddingConfig {
                 .unwrap_or_else(|_| "text-embedding-3-small".to_string()),
             api_key: env::var("AGENTD_MEMORY_EMBEDDING_API_KEY").ok(),
             base_url: env::var("AGENTD_MEMORY_EMBEDDING_ENDPOINT").ok(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LanceDB configuration
+// ---------------------------------------------------------------------------
+
+/// Configuration for the LanceDB vector store backend.
+///
+/// # Environment Variables
+///
+/// | Variable                          | Default                              |
+/// |-----------------------------------|--------------------------------------|
+/// | `AGENTD_MEMORY_LANCE_PATH`        | XDG data dir / `agentd-memory/lancedb` |
+/// | `AGENTD_MEMORY_LANCE_TABLE`       | `"memories"`                         |
+///
+/// # Example
+///
+/// ```rust
+/// use memory::config::LanceConfig;
+///
+/// let config = LanceConfig::default();
+/// assert_eq!(config.table, "memories");
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LanceConfig {
+    /// Filesystem path to the LanceDB directory.
+    ///
+    /// LanceDB stores each table as a sub-directory here.
+    /// Defaults to the XDG-compliant data directory for `agentd-memory`.
+    pub path: String,
+
+    /// Table name for memory records.
+    pub table: String,
+}
+
+impl Default for LanceConfig {
+    fn default() -> Self {
+        let path = Self::default_path()
+            .to_string_lossy()
+            .to_string();
+        Self {
+            path,
+            table: "memories".to_string(),
+        }
+    }
+}
+
+impl LanceConfig {
+    /// Returns the platform-specific default LanceDB directory path.
+    ///
+    /// - **Linux**: `~/.local/share/agentd-memory/lancedb`
+    /// - **macOS**: `~/Library/Application Support/agentd-memory/lancedb`
+    pub fn default_path() -> PathBuf {
+        directories::ProjectDirs::from("", "", "agentd-memory")
+            .map(|dirs| dirs.data_dir().join("lancedb"))
+            .unwrap_or_else(|| PathBuf::from("lancedb"))
+    }
+
+    /// Load configuration from environment variables.
+    ///
+    /// | Variable                   | Default                         |
+    /// |----------------------------|---------------------------------|
+    /// | `AGENTD_MEMORY_LANCE_PATH` | XDG data dir / `lancedb`        |
+    /// | `AGENTD_MEMORY_LANCE_TABLE`| `"memories"`                    |
+    pub fn from_env() -> Self {
+        Self {
+            path: env::var("AGENTD_MEMORY_LANCE_PATH")
+                .unwrap_or_else(|_| Self::default_path().to_string_lossy().to_string()),
+            table: env::var("AGENTD_MEMORY_LANCE_TABLE")
+                .unwrap_or_else(|_| "memories".to_string()),
         }
     }
 }
@@ -195,5 +269,55 @@ mod tests {
         assert_eq!(cloned.model, config.model);
         assert_eq!(cloned.api_key, config.api_key);
         assert_eq!(cloned.base_url, config.base_url);
+    }
+
+    // ── LanceConfig ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_lance_default_table() {
+        let config = LanceConfig::default();
+        assert_eq!(config.table, "memories");
+    }
+
+    #[test]
+    fn test_lance_default_path_not_empty() {
+        let config = LanceConfig::default();
+        assert!(!config.path.is_empty());
+    }
+
+    #[test]
+    fn test_lance_default_path_contains_agentd_memory() {
+        let config = LanceConfig::default();
+        assert!(config.path.contains("agentd-memory") || config.path.contains("lancedb"));
+    }
+
+    #[test]
+    fn test_lance_from_env_defaults_when_vars_absent() {
+        let config = LanceConfig::from_env();
+        assert_eq!(config.table, "memories");
+        assert!(!config.path.is_empty());
+    }
+
+    #[test]
+    fn test_lance_serialization_roundtrip() {
+        let config = LanceConfig {
+            path: "/tmp/test-lance".to_string(),
+            table: "test_table".to_string(),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: LanceConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.path, "/tmp/test-lance");
+        assert_eq!(parsed.table, "test_table");
+    }
+
+    #[test]
+    fn test_lance_clone() {
+        let config = LanceConfig {
+            path: "/tmp/lance".to_string(),
+            table: "memories".to_string(),
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.path, config.path);
+        assert_eq!(cloned.table, config.table);
     }
 }

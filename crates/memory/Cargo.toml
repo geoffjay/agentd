@@ -28,13 +28,17 @@ sea-orm-migration = { workspace = true }
 async-trait = "0.1"
 
 # Vector storage
+# arrow-array and arrow-schema must match the version used by lancedb 0.16 (53.x)
+# to avoid diamond-dependency type mismatches.
 lancedb = "0.16"
-arrow = { version = "54", features = ["prettyprint"] }
-arrow-array = "54"
-arrow-schema = "54"
+arrow-array = "53"
+arrow-schema = "53"
 
 # HTTP client for embedding API calls
 reqwest = { workspace = true, features = ["json"] }
+
+# Async stream utilities (TryStreamExt for LanceDB result streams)
+futures = "0.3"
 
 # Additional utilities
 uuid = { version = "1.11", features = ["v4", "serde"] }
