@@ -4217,6 +4217,7 @@ dependencies = [
  "lancedb",
  "metrics",
  "metrics-exporter-prometheus",
+ "reqwest",
  "sea-orm",
  "sea-orm-migration",
  "serde",

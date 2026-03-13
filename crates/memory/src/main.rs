@@ -22,6 +22,7 @@
 //! - `GET /metrics` — Prometheus metrics
 
 mod api;
+pub mod config;
 pub mod error;
 pub mod store;
 pub mod types;
