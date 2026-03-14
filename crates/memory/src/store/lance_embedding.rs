@@ -26,12 +26,14 @@ use crate::store::EmbeddingService;
 /// # Panics
 ///
 /// Panics if called outside a Tokio runtime context.
+#[allow(dead_code)]
 pub struct AgentdEmbeddingBridge {
     service: Arc<dyn EmbeddingService>,
 }
 
 impl AgentdEmbeddingBridge {
     /// Create a new bridge wrapping `service`.
+    #[allow(dead_code)]
     pub fn new(service: Arc<dyn EmbeddingService>) -> Self {
         Self { service }
     }

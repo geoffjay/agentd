@@ -196,11 +196,9 @@ fn build_api_router(store: Arc<dyn VectorStore>) -> axum::Router {
 
         let filtered: Vec<Memory> = all
             .into_iter()
-            .filter(|m| {
-                params.memory_type.as_ref().map_or(true, |t| m.memory_type.to_string() == *t)
-            })
-            .filter(|m| params.visibility.as_ref().map_or(true, |v| m.visibility.to_string() == *v))
-            .filter(|m| params.created_by.as_ref().map_or(true, |c| m.created_by == *c))
+            .filter(|m| params.memory_type.as_ref().is_none_or(|t| m.memory_type.to_string() == *t))
+            .filter(|m| params.visibility.as_ref().is_none_or(|v| m.visibility.to_string() == *v))
+            .filter(|m| params.created_by.as_ref().is_none_or(|c| m.created_by == *c))
             .collect();
 
         let total = filtered.len();
@@ -719,7 +717,7 @@ async fn test_api_create_then_get_then_delete() {
     // Get
     let app = build_api_router(store.clone());
     let resp = app
-        .oneshot(Request::builder().uri(&format!("/memories/{id}")).body(Body::empty()).unwrap())
+        .oneshot(Request::builder().uri(format!("/memories/{id}")).body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -732,7 +730,7 @@ async fn test_api_create_then_get_then_delete() {
         .oneshot(
             Request::builder()
                 .method(http::Method::DELETE)
-                .uri(&format!("/memories/{id}"))
+                .uri(format!("/memories/{id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -744,7 +742,7 @@ async fn test_api_create_then_get_then_delete() {
     // Confirm gone
     let app = build_api_router(store.clone());
     let resp = app
-        .oneshot(Request::builder().uri(&format!("/memories/{id}")).body(Body::empty()).unwrap())
+        .oneshot(Request::builder().uri(format!("/memories/{id}")).body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
