@@ -60,7 +60,7 @@
 //! use memory::types::*;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! let client = MemoryClient::new("http://localhost:17008");
+//! let client = MemoryClient::new("http://localhost:7008");
 //!
 //! // Create a memory
 //! let request = CreateMemoryRequest {
@@ -82,6 +82,7 @@
 //! client.update_visibility(&memory.id, &UpdateVisibilityRequest {
 //!     visibility: VisibilityLevel::Shared,
 //!     shared_with: Some(vec!["agent-2".to_string()]),
+//!     as_actor: None,
 //! }).await?;
 //! # Ok(())
 //! # }

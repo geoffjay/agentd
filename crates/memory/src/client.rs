@@ -98,33 +98,38 @@ impl MemoryClient {
         limit: Option<usize>,
         offset: Option<usize>,
     ) -> Result<PaginatedResponse<Memory>> {
-        let mut params = Vec::new();
+        let url = format!("{}/memories", self.base_url);
+        let mut request = self.client.get(&url);
+
         if let Some(t) = memory_type {
-            params.push(format!("type={t}"));
+            request = request.query(&[("type", t)]);
         }
         if let Some(t) = tag {
-            params.push(format!("tag={t}"));
+            request = request.query(&[("tag", t)]);
         }
         if let Some(c) = created_by {
-            params.push(format!("created_by={c}"));
+            request = request.query(&[("created_by", c)]);
         }
         if let Some(v) = visibility {
-            params.push(format!("visibility={v}"));
+            request = request.query(&[("visibility", v)]);
         }
         if let Some(l) = limit {
-            params.push(format!("limit={l}"));
+            request = request.query(&[("limit", &l.to_string())]);
         }
         if let Some(o) = offset {
-            params.push(format!("offset={o}"));
+            request = request.query(&[("offset", &o.to_string())]);
         }
 
-        let path = if params.is_empty() {
-            "/memories".to_string()
-        } else {
-            format!("/memories?{}", params.join("&"))
-        };
+        let response =
+            request.send().await.context(format!("Failed to GET {url}"))?;
 
-        self.get(&path).await
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Request failed with status {status}: {body}");
+        }
+
+        response.json().await.context("Failed to parse response JSON")
     }
 
     /// `DELETE /memories/:id` — delete a memory.

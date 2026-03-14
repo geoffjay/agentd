@@ -129,6 +129,12 @@ pub struct UpdateVisibilityRequest {
     /// ignored otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shared_with: Option<Vec<String>>,
+
+    /// Optional actor identity for ownership verification.
+    /// When present, the server checks that this actor is the creator or owner
+    /// of the memory before allowing the update.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub as_actor: Option<String>,
 }
 
 /// Response envelope for search results from `POST /memories/search`.
@@ -236,6 +242,7 @@ mod tests {
         let req = UpdateVisibilityRequest {
             visibility: VisibilityLevel::Shared,
             shared_with: Some(vec!["user-a".to_string(), "user-b".to_string()]),
+            as_actor: None,
         };
         let json = serde_json::to_string(&req).unwrap();
         let parsed: UpdateVisibilityRequest = serde_json::from_str(&json).unwrap();
@@ -245,8 +252,11 @@ mod tests {
 
     #[test]
     fn test_update_visibility_shared_with_omitted_when_none() {
-        let req =
-            UpdateVisibilityRequest { visibility: VisibilityLevel::Public, shared_with: None };
+        let req = UpdateVisibilityRequest {
+            visibility: VisibilityLevel::Public,
+            shared_with: None,
+            as_actor: None,
+        };
         let json = serde_json::to_string(&req).unwrap();
         assert!(!json.contains("\"shared_with\""));
     }

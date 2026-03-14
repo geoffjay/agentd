@@ -54,6 +54,31 @@ use crate::error::{StoreError, StoreResult};
 use crate::store::{EmbeddingService, VectorStore};
 use crate::types::{CreateMemoryRequest, Memory, MemoryType, SearchRequest, VisibilityLevel};
 
+/// Hard cap on records returned by `list_all` to prevent OOM on large tables.
+const LIST_ALL_HARD_CAP: usize = 10_000;
+
+/// Validate that a memory ID contains only safe characters (alphanumeric, `_`, `-`).
+///
+/// This prevents SQL/filter injection in LanceDB `only_if()` and `delete()` calls
+/// that interpolate the ID into filter expressions.
+fn validate_memory_id(id: &str) -> StoreResult<()> {
+    if id.is_empty() {
+        return Err(StoreError::InvalidData("memory ID must not be empty".to_string()));
+    }
+    if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return Err(StoreError::InvalidData(format!(
+            "memory ID contains invalid characters: '{}'",
+            id
+        )));
+    }
+    Ok(())
+}
+
+/// Escape single quotes in a string for use in SQL-like filter expressions.
+fn escape_sql_string(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
 /// LanceDB vector store implementing [`VectorStore`].
 pub struct LanceStore {
     db: lancedb::Connection,
@@ -337,11 +362,13 @@ impl VectorStore for LanceStore {
 
     /// Retrieve a single memory by exact ID match.
     async fn get(&self, id: &str) -> StoreResult<Option<Memory>> {
+        validate_memory_id(id)?;
         let table = self.open_table().await?;
+        let safe_id = escape_sql_string(id);
 
         let stream = table
             .query()
-            .only_if(format!("id = '{}'", id))
+            .only_if(format!("id = '{}'", safe_id))
             .execute()
             .await
             .map_err(|e| StoreError::QueryFailed(format!("LanceDB get query failed: {}", e)))?;
@@ -352,13 +379,15 @@ impl VectorStore for LanceStore {
 
     /// Delete a memory by ID.  Returns `false` when the ID was not found.
     async fn delete(&self, id: &str) -> StoreResult<bool> {
+        validate_memory_id(id)?;
         if self.get(id).await?.is_none() {
             return Ok(false);
         }
 
         let table = self.open_table().await?;
+        let safe_id = escape_sql_string(id);
         table
-            .delete(&format!("id = '{}'", id))
+            .delete(&format!("id = '{}'", safe_id))
             .await
             .map_err(|e| StoreError::QueryFailed(format!("LanceDB delete failed: {}", e)))?;
 
@@ -386,9 +415,11 @@ impl VectorStore for LanceStore {
             .map_err(|e| StoreError::QueryFailed(format!("Vector search init failed: {}", e)))?
             .limit(overfetch);
 
-        // Optional server-side type filter
+        // Optional server-side type filter — use the trusted enum Display impl
+        // to avoid injection via untrusted strings.
         if let Some(ref memory_type) = request.memory_type {
-            builder = builder.only_if(format!("memory_type = '{}'", memory_type));
+            let safe_type = memory_type.to_string();
+            builder = builder.only_if(format!("memory_type = '{}'", safe_type));
         }
 
         let stream = builder
@@ -429,6 +460,7 @@ impl VectorStore for LanceStore {
         visibility: VisibilityLevel,
         shared_with: Option<Vec<String>>,
     ) -> StoreResult<Memory> {
+        validate_memory_id(id)?;
         let mut memory = self.get(id).await?.ok_or_else(|| StoreError::NotFound(id.to_string()))?;
 
         memory.visibility = visibility;
@@ -438,13 +470,22 @@ impl VectorStore for LanceStore {
         memory.updated_at = Utc::now();
 
         let table = self.open_table().await?;
+        let safe_id = escape_sql_string(id);
+
+        // Escape shared_with values to prevent injection via actor IDs.
+        let safe_shared: String = memory
+            .shared_with
+            .iter()
+            .map(|s| escape_sql_string(s))
+            .collect::<Vec<_>>()
+            .join(",");
 
         // LanceDB update expressions must be SQL literals — strings need quotes.
         table
             .update()
-            .only_if(format!("id = '{}'", id))
+            .only_if(format!("id = '{}'", safe_id))
             .column("visibility", format!("'{}'", memory.visibility))
-            .column("shared_with", format!("'{}'", memory.shared_with.join(",")))
+            .column("shared_with", format!("'{}'", safe_shared))
             .column("updated_at", format!("'{}'", memory.updated_at.to_rfc3339()))
             .execute()
             .await
@@ -459,16 +500,26 @@ impl VectorStore for LanceStore {
     }
 
     /// Return every memory in the table (used for migration / backup).
+    ///
+    /// Enforces a hard cap of [`LIST_ALL_HARD_CAP`] records to prevent OOM
+    /// from unbounded full-table scans.
     async fn list_all(&self) -> StoreResult<Vec<Memory>> {
         let table = self.open_table().await?;
 
         let stream = table
             .query()
+            .limit(LIST_ALL_HARD_CAP)
             .execute()
             .await
             .map_err(|e| StoreError::QueryFailed(format!("list_all query failed: {}", e)))?;
 
         let memories = self.collect_memories(stream).await?;
+        if memories.len() >= LIST_ALL_HARD_CAP {
+            warn!(
+                "list_all hit hard cap of {} records — results are truncated",
+                LIST_ALL_HARD_CAP
+            );
+        }
         info!("list_all returned {} memories", memories.len());
         Ok(memories)
     }
@@ -670,5 +721,35 @@ mod tests {
     fn test_noop_embedding_has_zero_dimension() {
         let svc = Arc::new(NoOpEmbedding::new());
         assert_eq!(svc.dimension(""), 0);
+    }
+
+    // ── Filter injection prevention tests ─────────────────────────────────
+
+    #[test]
+    fn test_validate_memory_id_accepts_valid_ids() {
+        assert!(validate_memory_id("mem_1234567890_abcdef01").is_ok());
+        assert!(validate_memory_id("abc-123").is_ok());
+        assert!(validate_memory_id("simple").is_ok());
+    }
+
+    #[test]
+    fn test_validate_memory_id_rejects_empty() {
+        assert!(validate_memory_id("").is_err());
+    }
+
+    #[test]
+    fn test_validate_memory_id_rejects_injection_attempts() {
+        assert!(validate_memory_id("' OR '1'='1").is_err());
+        assert!(validate_memory_id("id'; DROP TABLE memories;--").is_err());
+        assert!(validate_memory_id("mem 1").is_err()); // spaces
+        assert!(validate_memory_id("mem/1").is_err()); // slashes
+    }
+
+    #[test]
+    fn test_escape_sql_string_handles_single_quotes() {
+        assert_eq!(escape_sql_string("hello"), "hello");
+        assert_eq!(escape_sql_string("it's"), "it''s");
+        assert_eq!(escape_sql_string("a''b"), "a''''b");
+        assert_eq!(escape_sql_string(""), "");
     }
 }

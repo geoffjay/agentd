@@ -544,7 +544,7 @@ async fn update_visibility(
     let shared_vec: Option<Vec<String>> = share_with
         .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect());
 
-    let request = UpdateVisibilityRequest { visibility, shared_with: shared_vec };
+    let request = UpdateVisibilityRequest { visibility, shared_with: shared_vec, as_actor: None };
 
     let memory = client
         .update_visibility(id, &request)

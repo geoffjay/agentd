@@ -34,20 +34,20 @@
 //!
 //! ```bash
 //! # Health check
-//! curl http://localhost:17008/health
+//! curl http://localhost:7008/health
 //!
 //! # Create a memory
-//! curl -X POST http://localhost:17008/memories \
+//! curl -X POST http://localhost:7008/memories \
 //!   -H "Content-Type: application/json" \
 //!   -d '{"content": "Paris is the capital of France.", "created_by": "agent-1"}'
 //!
 //! # Semantic search
-//! curl -X POST http://localhost:17008/memories/search \
+//! curl -X POST http://localhost:7008/memories/search \
 //!   -H "Content-Type: application/json" \
 //!   -d '{"query": "capital of France", "limit": 5}'
 //!
 //! # Update visibility
-//! curl -X PUT http://localhost:17008/memories/mem_123_abc/visibility \
+//! curl -X PUT http://localhost:7008/memories/mem_123_abc/visibility \
 //!   -H "Content-Type: application/json" \
 //!   -d '{"visibility": "shared", "shared_with": ["agent-2"]}'
 //! ```
@@ -152,18 +152,25 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
     let mut resp =
         agentd_common::types::HealthResponse::ok("agentd-memory", env!("CARGO_PKG_VERSION"));
 
-    match state.store.health_check().await {
-        Ok(healthy) => {
-            resp = resp.with_detail("vector_store", serde_json::json!(healthy));
+    let healthy = match state.store.health_check().await {
+        Ok(h) => {
+            resp = resp.with_detail("vector_store", serde_json::json!(h));
+            h
         }
         Err(e) => {
             warn!("Vector store health check failed: {}", e);
             resp = resp.with_detail("vector_store", serde_json::json!(false));
             resp = resp.with_detail("vector_store_error", serde_json::json!(e.to_string()));
+            false
         }
-    }
+    };
 
-    Json(resp)
+    if healthy {
+        (StatusCode::OK, Json(resp))
+    } else {
+        resp.status = "degraded".to_string();
+        (StatusCode::SERVICE_UNAVAILABLE, Json(resp))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -459,6 +466,21 @@ async fn update_visibility(
     Json(req): Json<UpdateVisibilityRequest>,
 ) -> Result<Json<Memory>, ApiError> {
     debug!(id = %id, visibility = %req.visibility, "Updating memory visibility");
+
+    // Optional ownership check — when as_actor is provided, verify the caller
+    // is the creator or owner of the memory.
+    if let Some(ref actor) = req.as_actor {
+        let existing =
+            state.store.get(&id).await.map_err(ApiError::from)?.ok_or(ApiError::NotFound)?;
+        let is_owner =
+            existing.created_by == *actor || existing.owner.as_deref() == Some(actor.as_str());
+        if !is_owner {
+            return Err(ApiError::InvalidInput(format!(
+                "actor '{}' is not the creator or owner of memory '{}'",
+                actor, id
+            )));
+        }
+    }
 
     let memory = state
         .store
@@ -940,5 +962,80 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── Ownership check tests ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_update_visibility_ownership_check_allows_creator() {
+        let mem = sample_memory("mem_1_aaa", "some content");
+        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem])));
+
+        let body = serde_json::json!({
+            "visibility": "private",
+            "as_actor": "agent-1"
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method(http::Method::PUT)
+                    .uri("/memories/mem_1_aaa/visibility")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_update_visibility_ownership_check_rejects_non_owner() {
+        let mem = sample_memory("mem_1_aaa", "some content");
+        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem])));
+
+        let body = serde_json::json!({
+            "visibility": "private",
+            "as_actor": "evil-agent"
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method(http::Method::PUT)
+                    .uri("/memories/mem_1_aaa/visibility")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_update_visibility_without_actor_is_allowed() {
+        let mem = sample_memory("mem_1_aaa", "some content");
+        let app = test_app(Arc::new(MockVectorStore::with_memories(vec![mem])));
+
+        // No as_actor field — backward-compatible, should succeed
+        let body = serde_json::json!({
+            "visibility": "shared",
+            "shared_with": ["agent-2"]
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method(http::Method::PUT)
+                    .uri("/memories/mem_1_aaa/visibility")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }
