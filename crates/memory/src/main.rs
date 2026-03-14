@@ -15,7 +15,7 @@
 //! | Variable                             | Default                        | Description                     |
 //! |--------------------------------------|--------------------------------|---------------------------------|
 //! | `RUST_LOG`                           | `info`                         | Log level                       |
-//! | `AGENTD_PORT`                        | `7008`                        | Listen port                     |
+//! | `AGENTD_PORT`                        | `17008`                        | Listen port                     |
 //! | `AGENTD_MEMORY_EMBEDDING_PROVIDER`   | `none`                         | `openai` or `none`              |
 //! | `AGENTD_MEMORY_EMBEDDING_MODEL`      | `text-embedding-3-small`       | Model name                      |
 //! | `AGENTD_MEMORY_EMBEDDING_API_KEY`    | —                              | API key for remote providers    |
@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
-    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "7008".to_string());
+    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17008".to_string());
     let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Memory API server listening on http://{}", addr);
