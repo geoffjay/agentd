@@ -254,15 +254,7 @@ impl MemoryCommand {
                 .await
             }
             MemoryCommand::Recall { id } => recall(client, id, json).await,
-            MemoryCommand::Search {
-                query,
-                as_actor,
-                r#type,
-                tags,
-                limit,
-                since,
-                until,
-            } => {
+            MemoryCommand::Search { query, as_actor, r#type, tags, limit, since, until } => {
                 search(
                     client,
                     query,
@@ -277,14 +269,7 @@ impl MemoryCommand {
                 .await
             }
             MemoryCommand::Forget { id } => forget(client, id, json).await,
-            MemoryCommand::List {
-                r#type,
-                tag,
-                created_by,
-                visibility,
-                limit,
-                offset,
-            } => {
+            MemoryCommand::List { r#type, tag, created_by, visibility, limit, offset } => {
                 list(
                     client,
                     r#type.as_deref(),
@@ -297,11 +282,9 @@ impl MemoryCommand {
                 )
                 .await
             }
-            MemoryCommand::Visibility {
-                id,
-                level,
-                share_with,
-            } => update_visibility(client, id, level, share_with.as_deref(), json).await,
+            MemoryCommand::Visibility { id, level, share_with } => {
+                update_visibility(client, id, level, share_with.as_deref(), json).await
+            }
         }
     }
 }
@@ -318,16 +301,9 @@ async fn memory_health(client: &MemoryClient, json: bool) -> Result<()> {
     } else {
         let status = body["status"].as_str().unwrap_or("unknown");
         let version = body["version"].as_str().unwrap_or("unknown");
-        let vector_ok = body["details"]["vector_store"]
-            .as_bool()
-            .unwrap_or(false);
+        let vector_ok = body["details"]["vector_store"].as_bool().unwrap_or(false);
 
-        println!(
-            "{} agentd-memory {} (v{})",
-            "✅".green(),
-            status.green(),
-            version
-        );
+        println!("{} agentd-memory {} (v{})", "✅".green(), status.green(), version);
         if vector_ok {
             println!("   Vector store: {}", "healthy".green());
         } else {
@@ -377,10 +353,7 @@ async fn remember(
         shared_with: shared_vec,
     };
 
-    let memory = client
-        .create_memory(&request)
-        .await
-        .context("Failed to create memory")?;
+    let memory = client.create_memory(&request).await.context("Failed to create memory")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&memory)?);
@@ -392,10 +365,8 @@ async fn remember(
 }
 
 async fn recall(client: &MemoryClient, id: &str, json: bool) -> Result<()> {
-    let memory = client
-        .get_memory(id)
-        .await
-        .context(format!("Failed to retrieve memory '{id}'"))?;
+    let memory =
+        client.get_memory(id).await.context(format!("Failed to retrieve memory '{id}'"))?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&memory)?);
@@ -417,10 +388,7 @@ async fn search(
     json: bool,
 ) -> Result<()> {
     let memory_type = memory_type
-        .map(|t| {
-            t.parse::<MemoryType>()
-                .map_err(|e| anyhow::anyhow!("Invalid memory type: {e}"))
-        })
+        .map(|t| t.parse::<MemoryType>().map_err(|e| anyhow::anyhow!("Invalid memory type: {e}")))
         .transpose()?;
 
     let tags_vec: Vec<String> = tags
@@ -453,10 +421,7 @@ async fn search(
         limit,
     };
 
-    let response = client
-        .search_memories(&request)
-        .await
-        .context("Search failed")?;
+    let response = client.search_memories(&request).await.context("Search failed")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);
@@ -481,10 +446,8 @@ async fn search(
 }
 
 async fn forget(client: &MemoryClient, id: &str, json: bool) -> Result<()> {
-    let response = client
-        .delete_memory(id)
-        .await
-        .context(format!("Failed to delete memory '{id}'"))?;
+    let response =
+        client.delete_memory(id).await.context(format!("Failed to delete memory '{id}'"))?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&response)?);
@@ -508,8 +471,7 @@ async fn list(
 ) -> Result<()> {
     // Validate filter values before sending
     if let Some(t) = memory_type {
-        t.parse::<MemoryType>()
-            .map_err(|e| anyhow::anyhow!("Invalid memory type: {e}"))?;
+        t.parse::<MemoryType>().map_err(|e| anyhow::anyhow!("Invalid memory type: {e}"))?;
     }
     if let Some(v) = visibility {
         v.parse::<VisibilityLevel>()
@@ -517,14 +479,7 @@ async fn list(
     }
 
     let response = client
-        .list_memories(
-            memory_type,
-            tag,
-            created_by,
-            visibility,
-            Some(limit),
-            Some(offset),
-        )
+        .list_memories(memory_type, tag, created_by, visibility, Some(limit), Some(offset))
         .await
         .context("Failed to list memories")?;
 
@@ -586,17 +541,10 @@ async fn update_visibility(
         .parse::<VisibilityLevel>()
         .map_err(|e| anyhow::anyhow!("Invalid visibility level: {e}"))?;
 
-    let shared_vec: Option<Vec<String>> = share_with.map(|s| {
-        s.split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    });
+    let shared_vec: Option<Vec<String>> = share_with
+        .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect());
 
-    let request = UpdateVisibilityRequest {
-        visibility,
-        shared_with: shared_vec,
-    };
+    let request = UpdateVisibilityRequest { visibility, shared_with: shared_vec };
 
     let memory = client
         .update_visibility(id, &request)
@@ -606,11 +554,7 @@ async fn update_visibility(
     if json {
         println!("{}", serde_json::to_string_pretty(&memory)?);
     } else {
-        println!(
-            "{} Visibility updated for {}",
-            "✅".green(),
-            id.cyan()
-        );
+        println!("{} Visibility updated for {}", "✅".green(), id.cyan());
         display_memory(&memory);
     }
     Ok(())
@@ -626,22 +570,10 @@ fn display_memory(memory: &Memory) {
     println!("  {} {}", "Type:".bold(), memory.memory_type);
     println!("  {} {}", "Content:".bold(), memory.content);
     println!("  {} {}", "Created by:".bold(), memory.created_by);
-    println!(
-        "  {} {}",
-        "Created at:".bold(),
-        memory.created_at.format("%Y-%m-%d %H:%M:%S UTC")
-    );
-    println!(
-        "  {} {}",
-        "Visibility:".bold(),
-        format_visibility(&memory.visibility)
-    );
+    println!("  {} {}", "Created at:".bold(), memory.created_at.format("%Y-%m-%d %H:%M:%S UTC"));
+    println!("  {} {}", "Visibility:".bold(), format_visibility(&memory.visibility));
     if !memory.shared_with.is_empty() {
-        println!(
-            "  {} {}",
-            "Shared with:".bold(),
-            memory.shared_with.join(", ")
-        );
+        println!("  {} {}", "Shared with:".bold(), memory.shared_with.join(", "));
     }
     if !memory.tags.is_empty() {
         println!("  {} {}", "Tags:".bold(), memory.tags.join(", "));
@@ -650,29 +582,16 @@ fn display_memory(memory: &Memory) {
         println!("  {} {}", "Owner:".bold(), owner);
     }
     if !memory.references.is_empty() {
-        println!(
-            "  {} {}",
-            "References:".bold(),
-            memory.references.join(", ")
-        );
+        println!("  {} {}", "References:".bold(), memory.references.join(", "));
     }
 }
 
 /// Display a brief one-line-ish memory summary for search results.
 fn display_memory_brief(memory: &Memory) {
     println!("  {} {}", "ID:".bold(), memory.id.cyan());
-    println!(
-        "  {} [{}] {}",
-        "▸".dimmed(),
-        memory.memory_type.to_string().yellow(),
-        memory.content
-    );
+    println!("  {} [{}] {}", "▸".dimmed(), memory.memory_type.to_string().yellow(), memory.content);
     if !memory.tags.is_empty() {
-        println!(
-            "  {} {}",
-            "Tags:".dimmed(),
-            memory.tags.join(", ").dimmed()
-        );
+        println!("  {} {}", "Tags:".dimmed(), memory.tags.join(", ").dimmed());
     }
 }
 

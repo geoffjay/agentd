@@ -53,7 +53,9 @@ impl FromStr for MemoryType {
             "question" => Ok(MemoryType::Question),
             "request" => Ok(MemoryType::Request),
             "information" => Ok(MemoryType::Information),
-            _ => Err(format!("invalid memory type: '{s}'. expected question, request, or information")),
+            _ => Err(format!(
+                "invalid memory type: '{s}'. expected question, request, or information"
+            )),
         }
     }
 }

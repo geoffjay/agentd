@@ -77,12 +77,11 @@ fn compute_embeddings(
     service: &Arc<dyn EmbeddingService>,
     input: ArrayRef,
 ) -> lancedb::Result<ArrayRef> {
-    let string_array = input
-        .as_any()
-        .downcast_ref::<StringArray>()
-        .ok_or_else(|| lancedb::Error::InvalidInput {
+    let string_array = input.as_any().downcast_ref::<StringArray>().ok_or_else(|| {
+        lancedb::Error::InvalidInput {
             message: "Expected StringArray for embedding input".to_string(),
-        })?;
+        }
+    })?;
 
     let texts: Vec<String> =
         (0..string_array.len()).map(|i| string_array.value(i).to_string()).collect();
@@ -90,17 +89,14 @@ fn compute_embeddings(
     // Bridge async embed() to sync EmbeddingFunction via current Tokio handle.
     let handle = tokio::runtime::Handle::current();
     let svc = service.clone();
-    let embeddings =
-        handle.block_on(async move { svc.embed(&texts).await }).map_err(|e| {
-            lancedb::Error::Runtime { message: format!("Embedding failed: {}", e) }
-        })?;
+    let embeddings = handle
+        .block_on(async move { svc.embed(&texts).await })
+        .map_err(|e| lancedb::Error::Runtime { message: format!("Embedding failed: {}", e) })?;
 
     let dim = service.dimension("") as i32;
 
-    let values: Vec<Option<Vec<Option<f32>>>> = embeddings
-        .into_iter()
-        .map(|emb| Some(emb.into_iter().map(Some).collect()))
-        .collect();
+    let values: Vec<Option<Vec<Option<f32>>>> =
+        embeddings.into_iter().map(|emb| Some(emb.into_iter().map(Some).collect())).collect();
 
     let array = FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(values, dim);
     Ok(Arc::new(array) as ArrayRef)

@@ -245,7 +245,8 @@ mod tests {
 
     #[test]
     fn test_update_visibility_shared_with_omitted_when_none() {
-        let req = UpdateVisibilityRequest { visibility: VisibilityLevel::Public, shared_with: None };
+        let req =
+            UpdateVisibilityRequest { visibility: VisibilityLevel::Public, shared_with: None };
         let json = serde_json::to_string(&req).unwrap();
         assert!(!json.contains("\"shared_with\""));
     }

@@ -119,10 +119,7 @@ pub fn create_router(state: ApiState) -> Router {
     let memories_router = Router::new()
         .route("/", axum::routing::get(list_memories).post(create_memory))
         .route("/search", axum::routing::post(search_memories))
-        .route(
-            "/{id}",
-            axum::routing::get(get_memory).delete(delete_memory),
-        )
+        .route("/{id}", axum::routing::get(get_memory).delete(delete_memory))
         .route("/{id}/visibility", axum::routing::put(update_visibility));
 
     Router::new()
@@ -152,10 +149,8 @@ pub fn create_router(state: ApiState) -> Router {
 /// }
 /// ```
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
-    let mut resp = agentd_common::types::HealthResponse::ok(
-        "agentd-memory",
-        env!("CARGO_PKG_VERSION"),
-    );
+    let mut resp =
+        agentd_common::types::HealthResponse::ok("agentd-memory", env!("CARGO_PKG_VERSION"));
 
     match state.store.health_check().await {
         Ok(healthy) => {
@@ -209,14 +204,10 @@ async fn create_memory(
 ) -> Result<(StatusCode, Json<Memory>), ApiError> {
     // Validate required fields
     if req.content.trim().is_empty() {
-        return Err(ApiError::InvalidInput(
-            "content must not be empty".to_string(),
-        ));
+        return Err(ApiError::InvalidInput("content must not be empty".to_string()));
     }
     if req.created_by.trim().is_empty() {
-        return Err(ApiError::InvalidInput(
-            "created_by must not be empty".to_string(),
-        ));
+        return Err(ApiError::InvalidInput("created_by must not be empty".to_string()));
     }
 
     debug!(
@@ -260,12 +251,7 @@ async fn get_memory(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> Result<Json<Memory>, ApiError> {
-    let memory = state
-        .store
-        .get(&id)
-        .await
-        .map_err(ApiError::from)?
-        .ok_or(ApiError::NotFound)?;
+    let memory = state.store.get(&id).await.map_err(ApiError::from)?.ok_or(ApiError::NotFound)?;
 
     Ok(Json(memory))
 }
@@ -326,10 +312,7 @@ async fn list_memories(
 
     let visibility_filter = params
         .visibility
-        .map(|s| {
-            s.parse::<VisibilityLevel>()
-                .map_err(|e| ApiError::InvalidInput(e))
-        })
+        .map(|s| s.parse::<VisibilityLevel>().map_err(|e| ApiError::InvalidInput(e)))
         .transpose()?;
 
     let tag_filter: Vec<String> = params
@@ -343,36 +326,16 @@ async fn list_memories(
 
     let filtered: Vec<Memory> = all
         .into_iter()
-        .filter(|m| {
-            memory_type_filter
-                .as_ref()
-                .map_or(true, |t| m.memory_type == *t)
-        })
-        .filter(|m| {
-            visibility_filter
-                .as_ref()
-                .map_or(true, |v| m.visibility == *v)
-        })
-        .filter(|m| {
-            tag_filter.is_empty() || tag_filter.iter().any(|t| m.tags.contains(t))
-        })
-        .filter(|m| {
-            params
-                .created_by
-                .as_ref()
-                .map_or(true, |c| m.created_by == *c)
-        })
+        .filter(|m| memory_type_filter.as_ref().map_or(true, |t| m.memory_type == *t))
+        .filter(|m| visibility_filter.as_ref().map_or(true, |v| m.visibility == *v))
+        .filter(|m| tag_filter.is_empty() || tag_filter.iter().any(|t| m.tags.contains(t)))
+        .filter(|m| params.created_by.as_ref().map_or(true, |c| m.created_by == *c))
         .collect();
 
     let total = filtered.len();
     let items: Vec<Memory> = filtered.into_iter().skip(offset).take(limit).collect();
 
-    Ok(Json(PaginatedResponse {
-        items,
-        total,
-        limit,
-        offset,
-    }))
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
 
 // ---------------------------------------------------------------------------
@@ -444,9 +407,7 @@ async fn search_memories(
     Json(req): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, ApiError> {
     if req.query.trim().is_empty() {
-        return Err(ApiError::InvalidInput(
-            "query must not be empty".to_string(),
-        ));
+        return Err(ApiError::InvalidInput("query must not be empty".to_string()));
     }
 
     debug!(
@@ -516,12 +477,12 @@ async fn update_visibility(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use memory::error::{StoreError, StoreResult};
-    use memory::types::CreateMemoryRequest;
     use async_trait::async_trait;
     use axum::body::Body;
     use axum::http::{self, Request};
     use chrono::Utc;
+    use memory::error::{StoreError, StoreResult};
+    use memory::types::CreateMemoryRequest;
     use tower::ServiceExt;
 
     // ── Mock vector store ─────────────────────────────────────────────────
@@ -533,15 +494,11 @@ mod tests {
 
     impl MockVectorStore {
         fn new() -> Self {
-            Self {
-                memories: tokio::sync::RwLock::new(Vec::new()),
-            }
+            Self { memories: tokio::sync::RwLock::new(Vec::new()) }
         }
 
         fn with_memories(memories: Vec<Memory>) -> Self {
-            Self {
-                memories: tokio::sync::RwLock::new(memories),
-            }
+            Self { memories: tokio::sync::RwLock::new(memories) }
         }
     }
 
@@ -747,10 +704,7 @@ mod tests {
 
         let resp = app
             .oneshot(
-                Request::builder()
-                    .uri("/memories/mem_1_abcdef01")
-                    .body(Body::empty())
-                    .unwrap(),
+                Request::builder().uri("/memories/mem_1_abcdef01").body(Body::empty()).unwrap(),
             )
             .await
             .unwrap();
@@ -767,12 +721,7 @@ mod tests {
         let app = test_app(Arc::new(MockVectorStore::new()));
 
         let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/memories/nonexistent")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/memories/nonexistent").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
@@ -792,10 +741,7 @@ mod tests {
 
         let resp = app
             .oneshot(
-                Request::builder()
-                    .uri("/memories?limit=2&offset=0")
-                    .body(Body::empty())
-                    .unwrap(),
+                Request::builder().uri("/memories?limit=2&offset=0").body(Body::empty()).unwrap(),
             )
             .await
             .unwrap();
@@ -814,19 +760,11 @@ mod tests {
     async fn test_list_memories_with_type_filter() {
         let mut mem = sample_memory("mem_1_aaa", "a question");
         mem.memory_type = MemoryType::Question;
-        let memories = vec![
-            mem,
-            sample_memory("mem_2_bbb", "some info"),
-        ];
+        let memories = vec![mem, sample_memory("mem_2_bbb", "some info")];
         let app = test_app(Arc::new(MockVectorStore::with_memories(memories)));
 
         let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/memories?type=question")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/memories?type=question").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
@@ -843,12 +781,7 @@ mod tests {
         let app = test_app(Arc::new(MockVectorStore::new()));
 
         let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/memories")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/memories").body(Body::empty()).unwrap())
             .await
             .unwrap();
 

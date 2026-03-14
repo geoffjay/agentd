@@ -61,9 +61,9 @@ impl FromStr for VisibilityLevel {
             "private" => Ok(VisibilityLevel::Private),
             "shared" => Ok(VisibilityLevel::Shared),
             "public" => Ok(VisibilityLevel::Public),
-            _ => Err(format!(
-                "invalid visibility level: '{s}'. expected private, shared, or public"
-            )),
+            _ => {
+                Err(format!("invalid visibility level: '{s}'. expected private, shared, or public"))
+            }
         }
     }
 }

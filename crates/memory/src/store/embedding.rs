@@ -103,13 +103,10 @@ impl OpenAIEmbedding {
     /// Returns [`StoreError::InitializationFailed`] when the API key is absent
     /// and the base URL is not a localhost address.
     pub fn new(config: &EmbeddingConfig) -> StoreResult<Self> {
-        let base_url = config
-            .base_url
-            .clone()
-            .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+        let base_url =
+            config.base_url.clone().unwrap_or_else(|| "https://api.openai.com/v1".to_string());
 
-        let is_local =
-            base_url.contains("localhost") || base_url.contains("127.0.0.1");
+        let is_local = base_url.contains("localhost") || base_url.contains("127.0.0.1");
 
         let api_key = match config.api_key.clone() {
             Some(key) => key,
@@ -123,12 +120,7 @@ impl OpenAIEmbedding {
             }
         };
 
-        Ok(Self {
-            client: Client::new(),
-            api_key,
-            model: config.model.clone(),
-            base_url,
-        })
+        Ok(Self { client: Client::new(), api_key, model: config.model.clone(), base_url })
     }
 }
 
@@ -169,10 +161,7 @@ impl EmbeddingService for OpenAIEmbedding {
             self.base_url
         );
 
-        let body = EmbeddingRequest {
-            model: self.model.clone(),
-            input: texts.to_vec(),
-        };
+        let body = EmbeddingRequest { model: self.model.clone(), input: texts.to_vec() };
 
         let mut req = self.client.post(&url).header("Content-Type", "application/json");
 
@@ -180,9 +169,11 @@ impl EmbeddingService for OpenAIEmbedding {
             req = req.header("Authorization", format!("Bearer {}", self.api_key));
         }
 
-        let resp = req.json(&body).send().await.map_err(|e| {
-            StoreError::QueryFailed(format!("Embedding request failed: {}", e))
-        })?;
+        let resp = req
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| StoreError::QueryFailed(format!("Embedding request failed: {}", e)))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -197,8 +188,7 @@ impl EmbeddingService for OpenAIEmbedding {
             StoreError::InvalidData(format!("Failed to parse embedding response: {}", e))
         })?;
 
-        let embeddings: Vec<Vec<f32>> =
-            parsed.data.into_iter().map(|d| d.embedding).collect();
+        let embeddings: Vec<Vec<f32>> = parsed.data.into_iter().map(|d| d.embedding).collect();
 
         debug!(
             "Generated {} embeddings with dimension {}",

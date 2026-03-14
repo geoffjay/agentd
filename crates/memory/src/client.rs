@@ -66,10 +66,7 @@ impl MemoryClient {
     ///
     /// * `base_url` - The base URL for the memory service (e.g., `"http://localhost:7008"`)
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            base_url: base_url.into(),
-        }
+        Self { client: reqwest::Client::new(), base_url: base_url.into() }
     }
 
     /// `POST /memories` — create a new memory record.
@@ -146,8 +143,7 @@ impl MemoryClient {
         id: &str,
         request: &UpdateVisibilityRequest,
     ) -> Result<Memory> {
-        self.put(&format!("/memories/{id}/visibility"), request)
-            .await
+        self.put(&format!("/memories/{id}/visibility"), request).await
     }
 
     /// `GET /health` — service health check.

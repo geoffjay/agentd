@@ -63,13 +63,8 @@ fn test_private_memory_only_visible_to_creator() {
 
 #[test]
 fn test_private_memory_visible_to_owner() {
-    let m = make_memory(
-        "m1",
-        "alice",
-        VisibilityLevel::Private,
-        vec![],
-        Some("owner-1".to_string()),
-    );
+    let m =
+        make_memory("m1", "alice", VisibilityLevel::Private, vec![], Some("owner-1".to_string()));
 
     assert!(m.is_visible_to(Some("alice")), "creator can see");
     assert!(m.is_visible_to(Some("owner-1")), "owner can see");
@@ -80,13 +75,7 @@ fn test_private_memory_visible_to_owner() {
 #[test]
 fn test_private_shared_with_list_is_ignored() {
     // Even if shared_with has entries, Private visibility ignores them
-    let m = make_memory(
-        "m1",
-        "alice",
-        VisibilityLevel::Private,
-        vec!["bob".to_string()],
-        None,
-    );
+    let m = make_memory("m1", "alice", VisibilityLevel::Private, vec!["bob".to_string()], None);
 
     assert!(!m.is_visible_to(Some("bob")), "shared_with ignored for private");
 }
@@ -97,13 +86,7 @@ fn test_private_shared_with_list_is_ignored() {
 
 #[test]
 fn test_shared_memory_visible_to_creator() {
-    let m = make_memory(
-        "m1",
-        "alice",
-        VisibilityLevel::Shared,
-        vec!["bob".to_string()],
-        None,
-    );
+    let m = make_memory("m1", "alice", VisibilityLevel::Shared, vec!["bob".to_string()], None);
 
     assert!(m.is_visible_to(Some("alice")), "creator can see shared");
 }
@@ -124,13 +107,7 @@ fn test_shared_memory_visible_to_shared_actors() {
 
 #[test]
 fn test_shared_memory_invisible_to_unlisted_actors() {
-    let m = make_memory(
-        "m1",
-        "alice",
-        VisibilityLevel::Shared,
-        vec!["bob".to_string()],
-        None,
-    );
+    let m = make_memory("m1", "alice", VisibilityLevel::Shared, vec!["bob".to_string()], None);
 
     assert!(!m.is_visible_to(Some("dave")), "dave is not in shared_with");
     assert!(!m.is_visible_to(None), "anonymous cannot see shared");
@@ -170,45 +147,24 @@ fn test_multi_memory_visibility_filtering() {
     let memories = vec![
         make_memory("pub1", "alice", VisibilityLevel::Public, vec![], None),
         make_memory("prv1", "alice", VisibilityLevel::Private, vec![], None),
-        make_memory(
-            "shr1",
-            "alice",
-            VisibilityLevel::Shared,
-            vec!["bob".to_string()],
-            None,
-        ),
-        make_memory(
-            "shr2",
-            "charlie",
-            VisibilityLevel::Shared,
-            vec!["dave".to_string()],
-            None,
-        ),
+        make_memory("shr1", "alice", VisibilityLevel::Shared, vec!["bob".to_string()], None),
+        make_memory("shr2", "charlie", VisibilityLevel::Shared, vec!["dave".to_string()], None),
         make_memory("prv2", "charlie", VisibilityLevel::Private, vec![], None),
     ];
 
     // Anonymous: only public
-    let visible: Vec<&str> = memories
-        .iter()
-        .filter(|m| m.is_visible_to(None))
-        .map(|m| m.id.as_str())
-        .collect();
+    let visible: Vec<&str> =
+        memories.iter().filter(|m| m.is_visible_to(None)).map(|m| m.id.as_str()).collect();
     assert_eq!(visible, vec!["pub1"]);
 
     // Alice: pub1, prv1 (her private), shr1 (her shared)
-    let visible: Vec<&str> = memories
-        .iter()
-        .filter(|m| m.is_visible_to(Some("alice")))
-        .map(|m| m.id.as_str())
-        .collect();
+    let visible: Vec<&str> =
+        memories.iter().filter(|m| m.is_visible_to(Some("alice"))).map(|m| m.id.as_str()).collect();
     assert_eq!(visible, vec!["pub1", "prv1", "shr1"]);
 
     // Bob: pub1, shr1 (shared with him)
-    let visible: Vec<&str> = memories
-        .iter()
-        .filter(|m| m.is_visible_to(Some("bob")))
-        .map(|m| m.id.as_str())
-        .collect();
+    let visible: Vec<&str> =
+        memories.iter().filter(|m| m.is_visible_to(Some("bob"))).map(|m| m.id.as_str()).collect();
     assert_eq!(visible, vec!["pub1", "shr1"]);
 
     // Charlie: pub1, shr2 (his shared), prv2 (his private)
@@ -220,11 +176,8 @@ fn test_multi_memory_visibility_filtering() {
     assert_eq!(visible, vec!["pub1", "shr2", "prv2"]);
 
     // Dave: pub1, shr2 (shared with him)
-    let visible: Vec<&str> = memories
-        .iter()
-        .filter(|m| m.is_visible_to(Some("dave")))
-        .map(|m| m.id.as_str())
-        .collect();
+    let visible: Vec<&str> =
+        memories.iter().filter(|m| m.is_visible_to(Some("dave"))).map(|m| m.id.as_str()).collect();
     assert_eq!(visible, vec!["pub1", "shr2"]);
 
     // Random stranger: only public
@@ -267,13 +220,7 @@ fn test_visibility_transition_private_to_shared() {
 
 #[test]
 fn test_visibility_transition_shared_to_public() {
-    let mut m = make_memory(
-        "m1",
-        "alice",
-        VisibilityLevel::Shared,
-        vec!["bob".to_string()],
-        None,
-    );
+    let mut m = make_memory("m1", "alice", VisibilityLevel::Shared, vec!["bob".to_string()], None);
 
     assert!(!m.is_visible_to(Some("charlie")));
 
@@ -289,11 +236,7 @@ fn test_visibility_transition_shared_to_public() {
 
 #[test]
 fn test_creator_always_sees_own_memories_regardless_of_visibility() {
-    for vis in [
-        VisibilityLevel::Public,
-        VisibilityLevel::Private,
-        VisibilityLevel::Shared,
-    ] {
+    for vis in [VisibilityLevel::Public, VisibilityLevel::Private, VisibilityLevel::Shared] {
         let m = make_memory("m1", "alice", vis, vec![], None);
         assert!(
             m.is_visible_to(Some("alice")),
@@ -305,11 +248,7 @@ fn test_creator_always_sees_own_memories_regardless_of_visibility() {
 
 #[test]
 fn test_owner_always_sees_memory_regardless_of_visibility() {
-    for vis in [
-        VisibilityLevel::Public,
-        VisibilityLevel::Private,
-        VisibilityLevel::Shared,
-    ] {
+    for vis in [VisibilityLevel::Public, VisibilityLevel::Private, VisibilityLevel::Shared] {
         let m = make_memory("m1", "alice", vis, vec![], Some("owner-1".to_string()));
         assert!(
             m.is_visible_to(Some("owner-1")),
@@ -321,11 +260,7 @@ fn test_owner_always_sees_memory_regardless_of_visibility() {
 
 #[test]
 fn test_memory_type_serialization_roundtrip() {
-    for mt in [
-        MemoryType::Information,
-        MemoryType::Question,
-        MemoryType::Request,
-    ] {
+    for mt in [MemoryType::Information, MemoryType::Question, MemoryType::Request] {
         let s = mt.to_string();
         let parsed: MemoryType = s.parse().unwrap();
         assert_eq!(parsed, mt);
@@ -334,11 +269,7 @@ fn test_memory_type_serialization_roundtrip() {
 
 #[test]
 fn test_visibility_level_serialization_roundtrip() {
-    for vl in [
-        VisibilityLevel::Public,
-        VisibilityLevel::Private,
-        VisibilityLevel::Shared,
-    ] {
+    for vl in [VisibilityLevel::Public, VisibilityLevel::Private, VisibilityLevel::Shared] {
         let s = vl.to_string();
         let parsed: VisibilityLevel = s.parse().unwrap();
         assert_eq!(parsed, vl);

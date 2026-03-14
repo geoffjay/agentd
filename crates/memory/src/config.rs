@@ -142,13 +142,8 @@ pub struct LanceConfig {
 
 impl Default for LanceConfig {
     fn default() -> Self {
-        let path = Self::default_path()
-            .to_string_lossy()
-            .to_string();
-        Self {
-            path,
-            table: "memories".to_string(),
-        }
+        let path = Self::default_path().to_string_lossy().to_string();
+        Self { path, table: "memories".to_string() }
     }
 }
 
@@ -173,8 +168,7 @@ impl LanceConfig {
         Self {
             path: env::var("AGENTD_MEMORY_LANCE_PATH")
                 .unwrap_or_else(|_| Self::default_path().to_string_lossy().to_string()),
-            table: env::var("AGENTD_MEMORY_LANCE_TABLE")
-                .unwrap_or_else(|_| "memories".to_string()),
+            table: env::var("AGENTD_MEMORY_LANCE_TABLE").unwrap_or_else(|_| "memories".to_string()),
         }
     }
 }
@@ -300,10 +294,8 @@ mod tests {
 
     #[test]
     fn test_lance_serialization_roundtrip() {
-        let config = LanceConfig {
-            path: "/tmp/test-lance".to_string(),
-            table: "test_table".to_string(),
-        };
+        let config =
+            LanceConfig { path: "/tmp/test-lance".to_string(), table: "test_table".to_string() };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: LanceConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.path, "/tmp/test-lance");
@@ -312,10 +304,7 @@ mod tests {
 
     #[test]
     fn test_lance_clone() {
-        let config = LanceConfig {
-            path: "/tmp/lance".to_string(),
-            table: "memories".to_string(),
-        };
+        let config = LanceConfig { path: "/tmp/lance".to_string(), table: "memories".to_string() };
         let cloned = config.clone();
         assert_eq!(cloned.path, config.path);
         assert_eq!(cloned.table, config.table);

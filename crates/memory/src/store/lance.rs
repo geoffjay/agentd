@@ -41,7 +41,7 @@
 
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch, RecordBatchIterator, StringArray, types::Float32Type};
+use arrow_array::{types::Float32Type, ArrayRef, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use async_trait::async_trait;
 use chrono::Utc;
@@ -70,9 +70,10 @@ impl LanceStore {
         config: &LanceConfig,
         embedding_service: Arc<dyn EmbeddingService>,
     ) -> StoreResult<Self> {
-        let db = lancedb::connect(&config.path).execute().await.map_err(|e| {
-            StoreError::ConnectionFailed(format!("LanceDB connect failed: {}", e))
-        })?;
+        let db = lancedb::connect(&config.path)
+            .execute()
+            .await
+            .map_err(|e| StoreError::ConnectionFailed(format!("LanceDB connect failed: {}", e)))?;
 
         Ok(Self { db, table_name: config.table.clone(), embedding_service })
     }
@@ -87,10 +88,7 @@ impl LanceStore {
             Field::new("content", DataType::LargeUtf8, false),
             Field::new(
                 "vector",
-                DataType::FixedSizeList(
-                    Arc::new(Field::new("item", DataType::Float32, true)),
-                    dim,
-                ),
+                DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
                 true,
             ),
             Field::new("memory_type", DataType::Utf8, false),
@@ -184,15 +182,11 @@ impl LanceStore {
         let id = get_str("id")?;
         let content = get_str("content")?;
 
-        let memory_type = get_str("memory_type")?
-            .parse::<MemoryType>()
-            .map_err(StoreError::InvalidData)?;
+        let memory_type =
+            get_str("memory_type")?.parse::<MemoryType>().map_err(StoreError::InvalidData)?;
 
-        let tags: Vec<String> = get_str("tags")?
-            .split(',')
-            .filter(|s| !s.is_empty())
-            .map(String::from)
-            .collect();
+        let tags: Vec<String> =
+            get_str("tags")?.split(',').filter(|s| !s.is_empty()).map(String::from).collect();
 
         let created_by = get_str("created_by")?;
 
@@ -206,9 +200,8 @@ impl LanceStore {
 
         let owner = get_str_opt("owner");
 
-        let visibility = get_str("visibility")?
-            .parse::<VisibilityLevel>()
-            .map_err(StoreError::InvalidData)?;
+        let visibility =
+            get_str("visibility")?.parse::<VisibilityLevel>().map_err(StoreError::InvalidData)?;
 
         let shared_with: Vec<String> = get_str("shared_with")?
             .split(',')
@@ -293,16 +286,12 @@ impl VectorStore for LanceStore {
         }
 
         let schema = self.memory_schema();
-        self.db
-            .create_empty_table(&self.table_name, schema)
-            .execute()
-            .await
-            .map_err(|e| {
-                StoreError::InitializationFailed(format!(
-                    "Failed to create LanceDB table '{}': {}",
-                    self.table_name, e
-                ))
-            })?;
+        self.db.create_empty_table(&self.table_name, schema).execute().await.map_err(|e| {
+            StoreError::InitializationFailed(format!(
+                "Failed to create LanceDB table '{}': {}",
+                self.table_name, e
+            ))
+        })?;
 
         info!("Created LanceDB table '{}'", self.table_name);
         Ok(())
@@ -385,8 +374,7 @@ impl VectorStore for LanceStore {
         let table = self.open_table().await?;
 
         // Embed the query
-        let embeddings =
-            self.embedding_service.embed(std::slice::from_ref(&request.query)).await?;
+        let embeddings = self.embedding_service.embed(std::slice::from_ref(&request.query)).await?;
         let query_vec = embeddings.into_iter().next().ok_or_else(|| {
             StoreError::QueryFailed("Embedding service returned no vector for query".to_string())
         })?;
@@ -414,9 +402,7 @@ impl VectorStore for LanceStore {
         let filtered: Vec<Memory> = all
             .into_iter()
             .filter(|m| m.is_visible_to(request.as_actor.as_deref()))
-            .filter(|m| {
-                request.tags.is_empty() || request.tags.iter().any(|t| m.tags.contains(t))
-            })
+            .filter(|m| request.tags.is_empty() || request.tags.iter().any(|t| m.tags.contains(t)))
             .filter(|m| {
                 if let Some(ref from) = request.from {
                     if m.created_at < *from {
@@ -443,8 +429,7 @@ impl VectorStore for LanceStore {
         visibility: VisibilityLevel,
         shared_with: Option<Vec<String>>,
     ) -> StoreResult<Memory> {
-        let mut memory =
-            self.get(id).await?.ok_or_else(|| StoreError::NotFound(id.to_string()))?;
+        let mut memory = self.get(id).await?.ok_or_else(|| StoreError::NotFound(id.to_string()))?;
 
         memory.visibility = visibility;
         if let Some(shared) = shared_with {
@@ -463,9 +448,7 @@ impl VectorStore for LanceStore {
             .column("updated_at", format!("'{}'", memory.updated_at.to_rfc3339()))
             .execute()
             .await
-            .map_err(|e| {
-                StoreError::QueryFailed(format!("Failed to update visibility: {}", e))
-            })?;
+            .map_err(|e| StoreError::QueryFailed(format!("Failed to update visibility: {}", e)))?;
 
         Ok(memory)
     }
@@ -509,10 +492,7 @@ mod tests {
             Field::new("content", DataType::LargeUtf8, false),
             Field::new(
                 "vector",
-                DataType::FixedSizeList(
-                    Arc::new(Field::new("item", DataType::Float32, true)),
-                    dim,
-                ),
+                DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
                 true,
             ),
             Field::new("memory_type", DataType::Utf8, false),
@@ -585,12 +565,11 @@ mod tests {
         // Build a minimal record batch with one row
         let id_arr = Arc::new(StringArray::from(vec!["mem_1_abcdef01"]));
         let content_arr = Arc::new(LargeStringArray::from(vec!["Test content"]));
-        let vector_arr = Arc::new(
-            arrow_array::FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
-                vec![Some(vec![Some(0.1), Some(0.2), Some(0.3)])],
-                dim,
-            ),
-        );
+        let vector_arr = Arc::new(arrow_array::FixedSizeListArray::from_iter_primitive::<
+            Float32Type,
+            _,
+            _,
+        >(vec![Some(vec![Some(0.1), Some(0.2), Some(0.3)])], dim));
         let memory_type_arr = Arc::new(StringArray::from(vec!["information"]));
         let tags_arr = Arc::new(StringArray::from(vec!["tag1,tag2"]));
         let created_by_arr = Arc::new(StringArray::from(vec!["agent-1"]));
@@ -643,12 +622,11 @@ mod tests {
 
         let id_arr = Arc::new(StringArray::from(vec!["mem_2_11111111"]));
         let content_arr = Arc::new(LargeStringArray::from(vec!["Ref content"]));
-        let vector_arr = Arc::new(
-            arrow_array::FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
-                vec![Some(vec![Some(0.1), Some(0.2), Some(0.3)])],
-                dim,
-            ),
-        );
+        let vector_arr = Arc::new(arrow_array::FixedSizeListArray::from_iter_primitive::<
+            Float32Type,
+            _,
+            _,
+        >(vec![Some(vec![Some(0.1), Some(0.2), Some(0.3)])], dim));
         let memory_type_arr = Arc::new(StringArray::from(vec!["information"]));
         let tags_arr = Arc::new(StringArray::from(vec![""]));
         let created_by_arr = Arc::new(StringArray::from(vec!["agent-2"]));
@@ -657,8 +635,7 @@ mod tests {
         let owner_arr = Arc::new(StringArray::from(vec![Some("owner-1")]));
         let visibility_arr = Arc::new(StringArray::from(vec!["shared"]));
         let shared_with_arr = Arc::new(StringArray::from(vec!["agent-3,agent-4"]));
-        let refs_arr =
-            Arc::new(StringArray::from(vec!["mem_1_aaaaaaaa,mem_1_bbbbbbbb"]));
+        let refs_arr = Arc::new(StringArray::from(vec!["mem_1_aaaaaaaa,mem_1_bbbbbbbb"]));
 
         let batch = RecordBatch::try_new(
             schema,
@@ -682,10 +659,7 @@ mod tests {
         let memory = LanceStore::batch_row_to_memory(&batch, 0).unwrap();
         assert_eq!(memory.owner, Some("owner-1".to_string()));
         assert_eq!(memory.visibility, VisibilityLevel::Shared);
-        assert_eq!(
-            memory.shared_with,
-            vec!["agent-3".to_string(), "agent-4".to_string()]
-        );
+        assert_eq!(memory.shared_with, vec!["agent-3".to_string(), "agent-4".to_string()]);
         assert_eq!(
             memory.references,
             vec!["mem_1_aaaaaaaa".to_string(), "mem_1_bbbbbbbb".to_string()]

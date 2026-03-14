@@ -22,10 +22,10 @@
 //! # }
 //! ```
 
-mod traits;
 pub mod embedding;
 pub mod lance;
 pub(crate) mod lance_embedding;
+mod traits;
 
 pub use embedding::{create_embedding_service, model_dimension, NoOpEmbedding, OpenAIEmbedding};
 pub use lance::LanceStore;

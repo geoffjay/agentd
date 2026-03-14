@@ -222,18 +222,9 @@ async fn test_search_returns_results() {
     let dir = TempDir::new().unwrap();
     let store = create_test_store(&dir).await;
 
-    store
-        .create(make_request("Paris is the capital of France.", "agent-1"))
-        .await
-        .unwrap();
-    store
-        .create(make_request("Berlin is the capital of Germany.", "agent-1"))
-        .await
-        .unwrap();
-    store
-        .create(make_request("Rust is a programming language.", "agent-1"))
-        .await
-        .unwrap();
+    store.create(make_request("Paris is the capital of France.", "agent-1")).await.unwrap();
+    store.create(make_request("Berlin is the capital of Germany.", "agent-1")).await.unwrap();
+    store.create(make_request("Rust is a programming language.", "agent-1")).await.unwrap();
 
     let results = store
         .search(SearchRequest {
@@ -272,11 +263,7 @@ async fn test_search_respects_limit() {
     }
 
     let results = store
-        .search(SearchRequest {
-            query: "testing".to_string(),
-            limit: 2,
-            ..Default::default()
-        })
+        .search(SearchRequest { query: "testing".to_string(), limit: 2, ..Default::default() })
         .await
         .unwrap();
 
@@ -320,10 +307,8 @@ async fn test_update_visibility_to_private() {
 
     let memory = store.create(make_request("secret stuff", "agent-1")).await.unwrap();
 
-    let updated = store
-        .update_visibility(&memory.id, VisibilityLevel::Private, None)
-        .await
-        .unwrap();
+    let updated =
+        store.update_visibility(&memory.id, VisibilityLevel::Private, None).await.unwrap();
 
     assert_eq!(updated.visibility, VisibilityLevel::Private);
 }
@@ -333,9 +318,7 @@ async fn test_update_visibility_not_found() {
     let dir = TempDir::new().unwrap();
     let store = create_test_store(&dir).await;
 
-    let result = store
-        .update_visibility("mem_0_nonexist", VisibilityLevel::Private, None)
-        .await;
+    let result = store.update_visibility("mem_0_nonexist", VisibilityLevel::Private, None).await;
 
     assert!(result.is_err());
     assert!(matches!(result.unwrap_err(), StoreError::NotFound(_)));

@@ -26,15 +26,11 @@ struct MockVectorStore {
 
 impl MockVectorStore {
     fn new() -> Self {
-        Self {
-            memories: tokio::sync::RwLock::new(Vec::new()),
-        }
+        Self { memories: tokio::sync::RwLock::new(Vec::new()) }
     }
 
     fn with_memories(memories: Vec<Memory>) -> Self {
-        Self {
-            memories: tokio::sync::RwLock::new(memories),
-        }
+        Self { memories: tokio::sync::RwLock::new(memories) }
     }
 }
 
@@ -201,23 +197,10 @@ fn build_api_router(store: Arc<dyn VectorStore>) -> axum::Router {
         let filtered: Vec<Memory> = all
             .into_iter()
             .filter(|m| {
-                params
-                    .memory_type
-                    .as_ref()
-                    .map_or(true, |t| m.memory_type.to_string() == *t)
+                params.memory_type.as_ref().map_or(true, |t| m.memory_type.to_string() == *t)
             })
-            .filter(|m| {
-                params
-                    .visibility
-                    .as_ref()
-                    .map_or(true, |v| m.visibility.to_string() == *v)
-            })
-            .filter(|m| {
-                params
-                    .created_by
-                    .as_ref()
-                    .map_or(true, |c| m.created_by == *c)
-            })
+            .filter(|m| params.visibility.as_ref().map_or(true, |v| m.visibility.to_string() == *v))
+            .filter(|m| params.created_by.as_ref().map_or(true, |c| m.created_by == *c))
             .collect();
 
         let total = filtered.len();
@@ -266,11 +249,7 @@ fn build_api_router(store: Arc<dyn VectorStore>) -> axum::Router {
         Json(req): Json<UpdateVisibilityRequest>,
     ) -> axum::response::Response {
         use axum::response::IntoResponse;
-        match s
-            .store
-            .update_visibility(&id, req.visibility, req.shared_with)
-            .await
-        {
+        match s.store.update_visibility(&id, req.visibility, req.shared_with).await {
             Ok(mem) => Json(mem).into_response(),
             Err(StoreError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
             Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -329,10 +308,8 @@ fn json_request(method: http::Method, uri: &str, body: Value) -> Request<Body> {
 #[tokio::test]
 async fn test_health_returns_ok() {
     let app = build_api_router(Arc::new(MockVectorStore::new()));
-    let resp = app
-        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
+    let resp =
+        app.oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap()).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = parse_body(resp.into_body()).await;
@@ -353,10 +330,7 @@ async fn test_create_returns_201() {
         "created_by": "agent-1"
     });
 
-    let resp = app
-        .oneshot(json_request(http::Method::POST, "/memories", body))
-        .await
-        .unwrap();
+    let resp = app.oneshot(json_request(http::Method::POST, "/memories", body)).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::CREATED);
     let body = parse_body(resp.into_body()).await;
@@ -377,10 +351,7 @@ async fn test_create_with_all_fields() {
         "shared_with": ["agent-support"]
     });
 
-    let resp = app
-        .oneshot(json_request(http::Method::POST, "/memories", body))
-        .await
-        .unwrap();
+    let resp = app.oneshot(json_request(http::Method::POST, "/memories", body)).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::CREATED);
     let body = parse_body(resp.into_body()).await;
@@ -394,10 +365,7 @@ async fn test_create_empty_content_returns_400() {
     let app = build_api_router(Arc::new(MockVectorStore::new()));
     let body = serde_json::json!({"content": "", "created_by": "agent-1"});
 
-    let resp = app
-        .oneshot(json_request(http::Method::POST, "/memories", body))
-        .await
-        .unwrap();
+    let resp = app.oneshot(json_request(http::Method::POST, "/memories", body)).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
@@ -407,10 +375,7 @@ async fn test_create_whitespace_content_returns_400() {
     let app = build_api_router(Arc::new(MockVectorStore::new()));
     let body = serde_json::json!({"content": "   ", "created_by": "agent-1"});
 
-    let resp = app
-        .oneshot(json_request(http::Method::POST, "/memories", body))
-        .await
-        .unwrap();
+    let resp = app.oneshot(json_request(http::Method::POST, "/memories", body)).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
@@ -420,10 +385,7 @@ async fn test_create_empty_created_by_returns_400() {
     let app = build_api_router(Arc::new(MockVectorStore::new()));
     let body = serde_json::json!({"content": "valid", "created_by": ""});
 
-    let resp = app
-        .oneshot(json_request(http::Method::POST, "/memories", body))
-        .await
-        .unwrap();
+    let resp = app.oneshot(json_request(http::Method::POST, "/memories", body)).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
@@ -438,12 +400,7 @@ async fn test_get_existing_returns_200() {
     let app = build_api_router(Arc::new(MockVectorStore::with_memories(vec![mem])));
 
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/memories/mem_1_aaa")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/memories/mem_1_aaa").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
@@ -458,12 +415,7 @@ async fn test_get_nonexistent_returns_404() {
     let app = build_api_router(Arc::new(MockVectorStore::new()));
 
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/memories/nonexistent")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/memories/nonexistent").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
@@ -484,12 +436,7 @@ async fn test_list_returns_paginated_response() {
     let app = build_api_router(Arc::new(MockVectorStore::with_memories(memories)));
 
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/memories?limit=2&offset=0")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/memories?limit=2&offset=0").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
@@ -510,12 +457,7 @@ async fn test_list_with_offset() {
     let app = build_api_router(Arc::new(MockVectorStore::with_memories(memories)));
 
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/memories?limit=10&offset=2")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/memories?limit=10&offset=2").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
@@ -529,12 +471,7 @@ async fn test_list_empty() {
     let app = build_api_router(Arc::new(MockVectorStore::new()));
 
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/memories")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/memories").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
@@ -551,12 +488,7 @@ async fn test_list_filter_by_type() {
     let app = build_api_router(Arc::new(MockVectorStore::with_memories(memories)));
 
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/memories?type=question")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri("/memories?type=question").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
@@ -574,10 +506,7 @@ async fn test_list_filter_by_visibility() {
 
     let resp = app
         .oneshot(
-            Request::builder()
-                .uri("/memories?visibility=private")
-                .body(Body::empty())
-                .unwrap(),
+            Request::builder().uri("/memories?visibility=private").body(Body::empty()).unwrap(),
         )
         .await
         .unwrap();
@@ -596,10 +525,7 @@ async fn test_list_filter_by_created_by() {
 
     let resp = app
         .oneshot(
-            Request::builder()
-                .uri("/memories?created_by=agent-2")
-                .body(Body::empty())
-                .unwrap(),
+            Request::builder().uri("/memories?created_by=agent-2").body(Body::empty()).unwrap(),
         )
         .await
         .unwrap();
@@ -667,10 +593,8 @@ async fn test_search_returns_matching_results() {
     let app = build_api_router(Arc::new(MockVectorStore::with_memories(memories)));
 
     let body = serde_json::json!({"query": "Paris", "limit": 5});
-    let resp = app
-        .oneshot(json_request(http::Method::POST, "/memories/search", body))
-        .await
-        .unwrap();
+    let resp =
+        app.oneshot(json_request(http::Method::POST, "/memories/search", body)).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = parse_body(resp.into_body()).await;
@@ -683,10 +607,8 @@ async fn test_search_empty_query_returns_400() {
     let app = build_api_router(Arc::new(MockVectorStore::new()));
 
     let body = serde_json::json!({"query": ""});
-    let resp = app
-        .oneshot(json_request(http::Method::POST, "/memories/search", body))
-        .await
-        .unwrap();
+    let resp =
+        app.oneshot(json_request(http::Method::POST, "/memories/search", body)).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
@@ -696,10 +618,8 @@ async fn test_search_whitespace_query_returns_400() {
     let app = build_api_router(Arc::new(MockVectorStore::new()));
 
     let body = serde_json::json!({"query": "   "});
-    let resp = app
-        .oneshot(json_request(http::Method::POST, "/memories/search", body))
-        .await
-        .unwrap();
+    let resp =
+        app.oneshot(json_request(http::Method::POST, "/memories/search", body)).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
@@ -710,18 +630,13 @@ async fn test_search_with_actor_filters_visibility() {
     private_mem.visibility = VisibilityLevel::Private;
     private_mem.created_by = "agent-1".to_string();
 
-    let memories = vec![
-        private_mem,
-        sample_memory("mem_2_bbb", "public Paris info"),
-    ];
+    let memories = vec![private_mem, sample_memory("mem_2_bbb", "public Paris info")];
     let app = build_api_router(Arc::new(MockVectorStore::with_memories(memories)));
 
     // Search as anonymous — should only find public
     let body = serde_json::json!({"query": "Paris", "limit": 10});
-    let resp = app
-        .oneshot(json_request(http::Method::POST, "/memories/search", body))
-        .await
-        .unwrap();
+    let resp =
+        app.oneshot(json_request(http::Method::POST, "/memories/search", body)).await.unwrap();
 
     let body = parse_body(resp.into_body()).await;
     assert_eq!(body["total"], 1);
@@ -742,11 +657,7 @@ async fn test_update_visibility_returns_updated() {
         "shared_with": ["agent-2", "agent-3"]
     });
     let resp = app
-        .oneshot(json_request(
-            http::Method::PUT,
-            "/memories/mem_1_aaa/visibility",
-            body,
-        ))
+        .oneshot(json_request(http::Method::PUT, "/memories/mem_1_aaa/visibility", body))
         .await
         .unwrap();
 
@@ -762,11 +673,7 @@ async fn test_update_visibility_not_found_returns_404() {
 
     let body = serde_json::json!({"visibility": "private"});
     let resp = app
-        .oneshot(json_request(
-            http::Method::PUT,
-            "/memories/nonexistent/visibility",
-            body,
-        ))
+        .oneshot(json_request(http::Method::PUT, "/memories/nonexistent/visibility", body))
         .await
         .unwrap();
 
@@ -780,11 +687,7 @@ async fn test_update_visibility_to_private() {
 
     let body = serde_json::json!({"visibility": "private"});
     let resp = app
-        .oneshot(json_request(
-            http::Method::PUT,
-            "/memories/mem_1_aaa/visibility",
-            body,
-        ))
+        .oneshot(json_request(http::Method::PUT, "/memories/mem_1_aaa/visibility", body))
         .await
         .unwrap();
 
@@ -807,14 +710,8 @@ async fn test_api_create_then_get_then_delete() {
         "content": "E2E test memory.",
         "created_by": "agent-e2e"
     });
-    let resp = app
-        .oneshot(json_request(
-            http::Method::POST,
-            "/memories",
-            create_body,
-        ))
-        .await
-        .unwrap();
+    let resp =
+        app.oneshot(json_request(http::Method::POST, "/memories", create_body)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
     let created = parse_body(resp.into_body()).await;
     let id = created["id"].as_str().unwrap();
@@ -822,12 +719,7 @@ async fn test_api_create_then_get_then_delete() {
     // Get
     let app = build_api_router(store.clone());
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri(&format!("/memories/{id}"))
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri(&format!("/memories/{id}")).body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -852,12 +744,7 @@ async fn test_api_create_then_get_then_delete() {
     // Confirm gone
     let app = build_api_router(store.clone());
     let resp = app
-        .oneshot(
-            Request::builder()
-                .uri(&format!("/memories/{id}"))
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri(&format!("/memories/{id}")).body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);

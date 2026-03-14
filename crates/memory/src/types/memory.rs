@@ -309,7 +309,10 @@ mod tests {
     fn test_serialization_type_field_renamed() {
         let m = make_memory(VisibilityLevel::Public);
         let json = serde_json::to_string(&m).unwrap();
-        assert!(json.contains("\"type\":\"information\""), "memory_type should serialize as 'type'");
+        assert!(
+            json.contains("\"type\":\"information\""),
+            "memory_type should serialize as 'type'"
+        );
     }
 
     #[test]
