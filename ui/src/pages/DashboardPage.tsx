@@ -97,9 +97,9 @@ export function DashboardPage() {
         >
           Service Health
         </h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {healthInit
-            ? Array.from({ length: 3 }).map((_, i) => <ServiceHealthCardSkeleton key={i} />)
+            ? Array.from({ length: 4 }).map((_, i) => <ServiceHealthCardSkeleton key={i} />)
             : services.map((svc) => <ServiceHealthCard key={svc.key} service={svc} />)}
         </div>
       </section>

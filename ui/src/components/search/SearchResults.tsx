@@ -158,7 +158,7 @@ export function SearchResults({ query, results, loading, activeId, onSelect }: S
   }
 
   const hasResults =
-    results.actions.length > 0 || results.agents.length > 0 || results.notifications.length > 0
+    results.actions.length > 0 || results.agents.length > 0 || results.notifications.length > 0 || results.memories.length > 0
 
   if (!hasResults) {
     return <NoResults query={query} />
@@ -197,6 +197,18 @@ export function SearchResults({ query, results, loading, activeId, onSelect }: S
             : undefined
         }
         viewAllLabel={`View all notification results for "${query}" →`}
+      />
+      <ResultSection
+        heading={`Memories${results.memories.length === 5 ? ' (showing top 5)' : ''}`}
+        items={results.memories}
+        activeId={activeId}
+        onSelect={onSelect}
+        viewAllHref={
+          results.memories.length === 5
+            ? `/memories?search=${encodeURIComponent(query)}`
+            : undefined
+        }
+        viewAllLabel={`View all memory results for "${query}" →`}
       />
     </div>
   )

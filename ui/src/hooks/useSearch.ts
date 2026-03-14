@@ -14,12 +14,13 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { orchestratorClient } from '@/services/orchestrator'
 import { notifyClient } from '@/services/notify'
+import { memoryClient } from '@/services/memory'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type SearchCategory = 'agent' | 'notification' | 'action'
+export type SearchCategory = 'agent' | 'notification' | 'action' | 'memory'
 
 export interface SearchResult {
   id: string
@@ -33,6 +34,7 @@ export interface GroupedSearchResults {
   actions: SearchResult[]
   agents: SearchResult[]
   notifications: SearchResult[]
+  memories: SearchResult[]
   /** Total across all groups */
   total: number
 }
@@ -111,6 +113,13 @@ const QUICK_ACTIONS: SearchResult[] = [
     href: '/workflows',
   },
   {
+    id: 'action-memories',
+    category: 'action',
+    title: 'Go to Memories',
+    subtitle: 'Navigate to the memories page',
+    href: '/memories',
+  },
+  {
     id: 'action-monitoring',
     category: 'action',
     title: 'Go to Monitoring',
@@ -173,6 +182,7 @@ const EMPTY_RESULTS: GroupedSearchResults = {
   actions: [],
   agents: [],
   notifications: [],
+  memories: [],
   total: 0,
 }
 
@@ -218,9 +228,10 @@ export function useSearch(): UseSearchResult {
 
     async function doSearch() {
       try {
-        const [agentsResult, notifResult] = await Promise.allSettled([
+        const [agentsResult, notifResult, memoriesResult] = await Promise.allSettled([
           orchestratorClient.listAgents({ limit: 200 }),
           notifyClient.listNotifications({ limit: 200 }),
+          memoryClient.listMemories({ limit: 200 }),
         ])
 
         // --- Agents ---
@@ -262,19 +273,47 @@ export function useSearch(): UseSearchResult {
           notifResults.sort((a, b) => b._score - a._score)
         }
 
+        // --- Memories ---
+        const memoryResults: ScoredResult[] = []
+        if (memoriesResult.status === 'fulfilled') {
+          for (const memory of memoriesResult.value.items) {
+            const contentPreview = memory.content.length > 80
+              ? memory.content.slice(0, 80) + '…'
+              : memory.content
+            const score = Math.max(
+              scoreMatch(memory.content, q),
+              ...memory.tags.map((tag) => scoreMatch(tag, q)),
+              scoreMatch(memory.type, q),
+            )
+            if (score > 0) {
+              memoryResults.push({
+                id: `memory-${memory.id}`,
+                category: 'memory',
+                title: contentPreview,
+                subtitle: `${memory.type} — ${memory.tags.join(', ') || 'no tags'}`,
+                href: `/memories?highlight=${memory.id}`,
+                _score: score,
+              })
+            }
+          }
+          memoryResults.sort((a, b) => b._score - a._score)
+        }
+
         const agents = agentResults.slice(0, MAX_PER_CATEGORY)
         const notifications = notifResults.slice(0, MAX_PER_CATEGORY)
+        const memories = memoryResults.slice(0, MAX_PER_CATEGORY)
 
         setResults({
           actions: filteredActions,
           agents,
           notifications,
-          total: filteredActions.length + agents.length + notifications.length,
+          memories,
+          total: filteredActions.length + agents.length + notifications.length + memories.length,
         })
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return
         // On network error still show quick actions
-        setResults({ ...EMPTY_RESULTS, actions: filteredActions, total: filteredActions.length })
+        setResults({ ...EMPTY_RESULTS, actions: filteredActions, memories: [], total: filteredActions.length })
       } finally {
         setLoading(false)
       }
