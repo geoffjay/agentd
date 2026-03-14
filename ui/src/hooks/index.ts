@@ -60,3 +60,15 @@ export type {
   AggregateUsage,
   UseUsageMetricsResult,
 } from './useUsageMetrics'
+
+export { useMemories, parseMemorySearchParams, buildMemorySearchParams } from './useMemories'
+export type {
+  MemorySortField,
+  MemorySortDir,
+  MemoryFilters,
+  UseMemoriesOptions,
+  UseMemoriesResult,
+} from './useMemories'
+
+export { useMemorySearch } from './useMemorySearch'
+export type { UseMemorySearchResult } from './useMemorySearch'
