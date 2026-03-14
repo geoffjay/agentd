@@ -29,3 +29,15 @@ export {
   makeAnswerResponse,
   resetQuestionSeq,
 } from './question'
+
+export {
+  makeMemory,
+  makeMemoryList,
+  makeQuestionMemory,
+  makeRequestMemory,
+  makePrivateMemory,
+  makeSharedMemory,
+  makeSearchResponse,
+  makeDeleteResponse,
+  resetMemorySeq,
+} from './memory'
