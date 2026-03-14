@@ -2,7 +2,7 @@
  * Integration test for useServiceHealth hook.
  *
  * Uses MSW to intercept real fetch calls and verifies that the hook
- * correctly parses health responses from all three services.
+ * correctly parses health responses from all four services.
  *
  * Note: the ApiClient retries on 5xx errors. We use 4xx errors in tests
  * to avoid slow retries; the catch block in fetchHealth() treats any error
@@ -16,17 +16,17 @@ import { server } from '@/test/mocks/server'
 import { useServiceHealth } from '@/hooks/useServiceHealth'
 
 describe('useServiceHealth (MSW integration)', () => {
-  it('fetches health from all three services and marks them healthy', async () => {
+  it('fetches health from all four services and marks them healthy', async () => {
     const { result } = renderHook(() => useServiceHealth())
 
     await waitFor(() => expect(result.current.initializing).toBe(false))
 
-    expect(result.current.services).toHaveLength(3)
+    expect(result.current.services).toHaveLength(4)
     const statuses = result.current.services.map((s) => s.status)
     expect(statuses.every((s) => s === 'healthy')).toBe(true)
   })
 
-  it('includes service names Orchestrator, Notify, Ask', async () => {
+  it('includes service names Orchestrator, Notify, Ask, Memory', async () => {
     const { result } = renderHook(() => useServiceHealth())
     await waitFor(() => expect(result.current.initializing).toBe(false))
 
@@ -34,6 +34,7 @@ describe('useServiceHealth (MSW integration)', () => {
     expect(names).toContain('Orchestrator')
     expect(names).toContain('Notify')
     expect(names).toContain('Ask')
+    expect(names).toContain('Memory')
   })
 
   it('marks orchestrator as down on 4xx response (no retry)', async () => {

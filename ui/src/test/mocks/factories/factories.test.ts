@@ -20,12 +20,22 @@ import {
   makeTriggerResponse,
   makeAnswerResponse,
   resetQuestionSeq,
+  makeMemory,
+  makeMemoryList,
+  makeQuestionMemory,
+  makeRequestMemory,
+  makePrivateMemory,
+  makeSharedMemory,
+  makeSearchResponse,
+  makeDeleteResponse,
+  resetMemorySeq,
 } from './index'
 
 beforeEach(() => {
   resetAgentSeq()
   resetNotificationSeq()
   resetQuestionSeq()
+  resetMemorySeq()
 })
 
 // ---------------------------------------------------------------------------
@@ -185,5 +195,108 @@ describe('makeTriggerResponse', () => {
 describe('makeAnswerResponse', () => {
   it('defaults success to true', () => {
     expect(makeAnswerResponse().success).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Memory factory
+// ---------------------------------------------------------------------------
+
+describe('makeMemory', () => {
+  it('returns a valid memory with a unique id', () => {
+    const m1 = makeMemory()
+    const m2 = makeMemory()
+    expect(m1.id).not.toBe(m2.id)
+  })
+
+  it('has a mem_ prefixed id', () => {
+    const mem = makeMemory()
+    expect(mem.id).toMatch(/^mem_/)
+  })
+
+  it('defaults to information type and public visibility', () => {
+    const mem = makeMemory()
+    expect(mem.type).toBe('information')
+    expect(mem.visibility).toBe('public')
+  })
+
+  it('applies overrides', () => {
+    const mem = makeMemory({ type: 'question', visibility: 'private', content: 'Custom' })
+    expect(mem.type).toBe('question')
+    expect(mem.visibility).toBe('private')
+    expect(mem.content).toBe('Custom')
+  })
+
+  it('has an ISO 8601 created_at timestamp', () => {
+    const mem = makeMemory()
+    expect(new Date(mem.created_at).toISOString()).toBe(mem.created_at)
+  })
+})
+
+describe('makeMemoryList', () => {
+  it('creates the requested number of memories', () => {
+    expect(makeMemoryList(5)).toHaveLength(5)
+  })
+
+  it('each memory has a unique id', () => {
+    const ids = makeMemoryList(4).map((m) => m.id)
+    const unique = new Set(ids)
+    expect(unique.size).toBe(4)
+  })
+
+  it('applies shared overrides to every memory', () => {
+    const mems = makeMemoryList(3, { type: 'request' })
+    expect(mems.every((m) => m.type === 'request')).toBe(true)
+  })
+})
+
+describe('makeQuestionMemory', () => {
+  it('sets type to question', () => {
+    expect(makeQuestionMemory().type).toBe('question')
+  })
+})
+
+describe('makeRequestMemory', () => {
+  it('sets type to request', () => {
+    expect(makeRequestMemory().type).toBe('request')
+  })
+})
+
+describe('makePrivateMemory', () => {
+  it('sets visibility to private', () => {
+    expect(makePrivateMemory().visibility).toBe('private')
+  })
+})
+
+describe('makeSharedMemory', () => {
+  it('sets visibility to shared with shared_with list', () => {
+    const mem = makeSharedMemory()
+    expect(mem.visibility).toBe('shared')
+    expect(mem.shared_with.length).toBeGreaterThan(0)
+  })
+})
+
+describe('makeSearchResponse', () => {
+  it('returns a search response with memories and total', () => {
+    const resp = makeSearchResponse()
+    expect(resp.memories.length).toBeGreaterThan(0)
+    expect(resp.total).toBe(resp.memories.length)
+  })
+
+  it('uses provided memories', () => {
+    const mem = makeMemory({ content: 'Custom' })
+    const resp = makeSearchResponse([mem], 1)
+    expect(resp.memories).toHaveLength(1)
+    expect(resp.memories[0].content).toBe('Custom')
+  })
+})
+
+describe('makeDeleteResponse', () => {
+  it('defaults deleted to true', () => {
+    expect(makeDeleteResponse().deleted).toBe(true)
+  })
+
+  it('can set deleted to false', () => {
+    expect(makeDeleteResponse(false).deleted).toBe(false)
   })
 })
