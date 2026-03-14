@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_noop_default_dimension_is_zero() {
-        let svc = NoOpEmbedding::default();
+        let svc = NoOpEmbedding;
         assert_eq!(svc.dimension(""), 0);
     }
 

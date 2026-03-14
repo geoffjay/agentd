@@ -144,7 +144,7 @@ fn test_shared_empty_shared_with_only_creator_sees() {
 
 #[test]
 fn test_multi_memory_visibility_filtering() {
-    let memories = vec![
+    let memories = [
         make_memory("pub1", "alice", VisibilityLevel::Public, vec![], None),
         make_memory("prv1", "alice", VisibilityLevel::Private, vec![], None),
         make_memory("shr1", "alice", VisibilityLevel::Shared, vec!["bob".to_string()], None),

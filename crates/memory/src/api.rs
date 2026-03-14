@@ -307,12 +307,12 @@ async fn list_memories(
     // Parse optional filters
     let memory_type_filter = params
         .memory_type
-        .map(|s| s.parse::<MemoryType>().map_err(|e| ApiError::InvalidInput(e)))
+        .map(|s| s.parse::<MemoryType>().map_err(ApiError::InvalidInput))
         .transpose()?;
 
     let visibility_filter = params
         .visibility
-        .map(|s| s.parse::<VisibilityLevel>().map_err(|e| ApiError::InvalidInput(e)))
+        .map(|s| s.parse::<VisibilityLevel>().map_err(ApiError::InvalidInput))
         .transpose()?;
 
     let tag_filter: Vec<String> = params
@@ -326,10 +326,10 @@ async fn list_memories(
 
     let filtered: Vec<Memory> = all
         .into_iter()
-        .filter(|m| memory_type_filter.as_ref().map_or(true, |t| m.memory_type == *t))
-        .filter(|m| visibility_filter.as_ref().map_or(true, |v| m.visibility == *v))
+        .filter(|m| memory_type_filter.as_ref().is_none_or(|t| m.memory_type == *t))
+        .filter(|m| visibility_filter.as_ref().is_none_or(|v| m.visibility == *v))
         .filter(|m| tag_filter.is_empty() || tag_filter.iter().any(|t| m.tags.contains(t)))
-        .filter(|m| params.created_by.as_ref().map_or(true, |c| m.created_by == *c))
+        .filter(|m| params.created_by.as_ref().is_none_or(|c| m.created_by == *c))
         .collect();
 
     let total = filtered.len();
