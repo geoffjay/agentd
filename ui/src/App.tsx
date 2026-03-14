@@ -5,6 +5,7 @@ import {
   ApprovalQueuePage,
   DashboardPage,
   HooksPage,
+  MemoriesPage,
   MonitoringPage,
   NotFoundPage,
   NotificationsPage,
@@ -34,6 +35,7 @@ function App() {
             <Route path="/hooks" element={<HooksPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/approvals" element={<ApprovalQueuePage />} />
+            <Route path="/memories" element={<MemoriesPage />} />
           </Route>
 
           {/* 404 catch-all */}
