@@ -154,7 +154,7 @@ export function CreateMemoryDialog({ open, onSave, onClose }: CreateMemoryDialog
           role="dialog"
           aria-modal="true"
           aria-labelledby="create-memory-title"
-          className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 shadow-xl"
+          className="relative z-10 w-full sm:min-w-60 lg:min-w-150 max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 shadow-xl"
         >
           {/* Header */}
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
