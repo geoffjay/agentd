@@ -473,12 +473,8 @@ impl VectorStore for LanceStore {
         let safe_id = escape_sql_string(id);
 
         // Escape shared_with values to prevent injection via actor IDs.
-        let safe_shared: String = memory
-            .shared_with
-            .iter()
-            .map(|s| escape_sql_string(s))
-            .collect::<Vec<_>>()
-            .join(",");
+        let safe_shared: String =
+            memory.shared_with.iter().map(|s| escape_sql_string(s)).collect::<Vec<_>>().join(",");
 
         // LanceDB update expressions must be SQL literals — strings need quotes.
         table
@@ -515,10 +511,7 @@ impl VectorStore for LanceStore {
 
         let memories = self.collect_memories(stream).await?;
         if memories.len() >= LIST_ALL_HARD_CAP {
-            warn!(
-                "list_all hit hard cap of {} records — results are truncated",
-                LIST_ALL_HARD_CAP
-            );
+            warn!("list_all hit hard cap of {} records — results are truncated", LIST_ALL_HARD_CAP);
         }
         info!("list_all returned {} memories", memories.len());
         Ok(memories)

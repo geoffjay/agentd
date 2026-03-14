@@ -120,8 +120,7 @@ impl MemoryClient {
             request = request.query(&[("offset", &o.to_string())]);
         }
 
-        let response =
-            request.send().await.context(format!("Failed to GET {url}"))?;
+        let response = request.send().await.context(format!("Failed to GET {url}"))?;
 
         if !response.status().is_success() {
             let status = response.status();
