@@ -31,6 +31,20 @@
         <string>info</string>
         <key>AGENTD_PORT</key>
         <string>7008</string>
+        <key>AGENTD_MEMORY_EMBEDDING_PROVIDER</key>
+        <string>openai</string>
+        <key>AGENTD_MEMORY_EMBEDDING_MODEL</key>
+        <string>all-minilm</string>
+        <key>AGENTD_MEMORY_EMBEDDING_API_KEY</key>
+        <string></string>
+        <key>AGENTD_MEMORY_EMBEDDING_ENDPOINT</key>
+        <string>http://localhost:11434/v1</string>
+        <!--
+        <key>AGENTD_MEMORY_LANCE_PATH</key>
+        <string></string>
+        <key>AGENTD_MEMORY_LANCE_TABLE</key>
+        <string></string>
+        -->
     </dict>
 
     <key>WorkingDirectory</key>
