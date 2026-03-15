@@ -1,7 +1,7 @@
 //! agentd-memory service entry point.
 //!
-//! Initialises the LanceDB vector store and HTTP server with full CRUD,
-//! semantic search, health, and metrics endpoints.
+//! Initialises the LanceDB vector store, SQLite metadata storage, and HTTP
+//! server with full CRUD, semantic search, health, and metrics endpoints.
 //!
 //! # Running the Service
 //!
@@ -39,6 +39,7 @@ mod api;
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
 use memory::config::{EmbeddingConfig, LanceConfig};
+use memory::storage::MemoryStorage;
 use metrics_exporter_prometheus::PrometheusHandle;
 use std::env;
 use tracing::info;
@@ -64,6 +65,10 @@ async fn main() -> anyhow::Result<()> {
     // ── Metrics ──────────────────────────────────────────────────────────
     let metrics_handle = init_metrics();
 
+    // ── SQLite metadata storage ──────────────────────────────────────────
+    let storage = MemoryStorage::new().await?;
+    info!("SQLite storage initialised");
+
     // ── Vector store ─────────────────────────────────────────────────────
     let lance_config = LanceConfig::from_env();
     let embedding_config = EmbeddingConfig::from_env();
@@ -82,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Vector store initialised");
 
     // ── Router ───────────────────────────────────────────────────────────
-    let api_state = ApiState { store };
+    let api_state = ApiState { store, storage };
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 

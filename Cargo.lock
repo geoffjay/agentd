@@ -7884,6 +7884,7 @@ dependencies = [
  "agentd-common",
  "anyhow",
  "colored",
+ "memory",
  "notify",
  "orchestrator",
  "tokio",

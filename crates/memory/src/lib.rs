@@ -1,7 +1,7 @@
 //! # agentd-memory
 //!
 //! A memory service that stores, retrieves, and semantically searches agent
-//! memory records using LanceDB for vector embeddings.
+//! memory records using LanceDB for vector embeddings and SQLite for metadata.
 //!
 //! ## Architecture
 //!
@@ -21,6 +21,8 @@
 //! | [`store`]        | `VectorStore` and `EmbeddingService` traits + LanceDB backend |
 //! | [`config`]       | Embedding provider and LanceDB configuration              |
 //! | [`error`]        | Domain error types with API error conversion              |
+//! | [`storage`]      | SQLite-backed `MemoryStorage` for metadata persistence via SeaORM |
+//! | [`entity`]       | SeaORM entity definitions for the `memory_entries` table  |
 //!
 //! ## Access Control
 //!
@@ -35,12 +37,17 @@
 //! Access control is enforced by [`Memory::is_visible_to`](types::Memory::is_visible_to),
 //! which is called during search operations to post-filter results.
 //!
-//! ## Storage Backend
+//! ## Storage Backends
 //!
 //! The [`store::VectorStore`] trait abstracts vector-database operations,
 //! with [`store::LanceStore`] as the concrete LanceDB implementation.
 //! LanceDB is an embedded database (no external server) that stores data
 //! in a local directory using Apache Arrow format.
+//!
+//! The [`storage::MemoryStorage`] provides SQLite-backed metadata persistence
+//! via SeaORM, storing memory entries in:
+//! - **Linux**: `~/.local/share/agentd-memory/memory.db`
+//! - **macOS**: `~/Library/Application Support/agentd-memory/memory.db`
 //!
 //! ## Embedding Providers
 //!
@@ -112,6 +119,26 @@
 
 pub mod client;
 pub mod config;
+pub mod entity;
 pub mod error;
+pub(crate) mod migration;
+pub mod storage;
 pub mod store;
 pub mod types;
+
+/// Apply all pending SeaORM migrations to the SQLite database at `db_path`.
+///
+/// Creates the file if it does not exist. Designed for use by `cargo xtask migrate`.
+pub async fn apply_migrations_for_path(db_path: &std::path::Path) -> anyhow::Result<()> {
+    agentd_common::storage::apply_migrations::<migration::Migrator>(db_path).await
+}
+
+/// Return the status of all known migrations for the database at `db_path`.
+///
+/// Each entry is `(migration_name, is_applied)`. Designed for use by
+/// `cargo xtask migrate-status`.
+pub async fn migration_status_for_path(
+    db_path: &std::path::Path,
+) -> anyhow::Result<Vec<(String, bool)>> {
+    agentd_common::storage::migration_status::<migration::Migrator>(db_path).await
+}
