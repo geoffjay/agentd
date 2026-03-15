@@ -7,12 +7,33 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { CheckSquare, RefreshCw, Square } from 'lucide-react'
+import { Check, RefreshCw, X } from 'lucide-react'
 import { useApprovals } from '@/hooks/useApprovals'
 import { ApprovalBadge } from '@/components/approvals/ApprovalBadge'
-import { ApprovalCard } from '@/components/approvals/ApprovalCard'
+import { ApprovalDetail } from '@/components/approvals/ApprovalDetail'
+import { DataTable, DrawerProvider, useDrawer } from '@/components/common'
+import type { ColumnDef, BulkAction } from '@/components/common'
+import type { PendingApproval } from '@/types/orchestrator'
 
-export function ApprovalQueuePage() {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function minutesWaiting(createdAt: string): number {
+  return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000)
+}
+
+function urgencyColor(minutes: number): string {
+  if (minutes >= 10) return 'text-red-400'
+  if (minutes >= 5) return 'text-yellow-400'
+  return 'text-green-400'
+}
+
+// ---------------------------------------------------------------------------
+// Inner page (needs drawer context)
+// ---------------------------------------------------------------------------
+
+function ApprovalQueueInner() {
   const {
     approvals,
     totalPendingCount,
@@ -27,44 +48,21 @@ export function ApprovalQueuePage() {
     bulkDeny,
   } = useApprovals({ browserNotifications: true })
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const { openDrawer, closeDrawer } = useDrawer()
+
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [filterAgentId, setFilterAgentId] = useState<string>('')
 
   // Keep selectedIds clean when approvals list changes
   useEffect(() => {
     const ids = new Set(approvals.map((a) => a.id))
-    setSelectedIds((prev) => {
-      const next = new Set<string>()
-      for (const id of prev) {
-        if (ids.has(id)) next.add(id)
-      }
-      return next
-    })
+    setSelectedIds((prev) => prev.filter((id) => ids.has(id)))
   }, [approvals])
 
   // Filtered approvals
   const visible = filterAgentId ? approvals.filter((a) => a.agent_id === filterAgentId) : approvals
 
-  // Selection helpers
-  const allSelected = visible.length > 0 && visible.every((a) => selectedIds.has(a.id))
-  const someSelected = selectedIds.size > 0
-
-  const toggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
-
-  const toggleAll = () => {
-    if (allSelected) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(visible.map((a) => a.id)))
-    }
-  }
+  const someSelected = selectedIds.length > 0
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -75,164 +73,214 @@ export function ApprovalQueuePage() {
 
       if (e.key === 'a' || e.key === 'A') {
         e.preventDefault()
-        if (someSelected) bulkApprove([...selectedIds])
+        if (someSelected) bulkApprove(selectedIds)
       }
       if (e.key === 'd' || e.key === 'D') {
         e.preventDefault()
-        if (someSelected) bulkDeny([...selectedIds])
+        if (someSelected) bulkDeny(selectedIds)
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [someSelected, selectedIds, bulkApprove, bulkDeny])
 
-  // Bulk handlers
-  const handleApproveAll = async () => {
-    const ids = visible.map((a) => a.id)
-    if (!window.confirm(`Approve all ${ids.length} pending approvals?`)) return
-    await bulkApprove(ids)
-  }
-
-  const handleDenyAll = async () => {
-    const ids = visible.map((a) => a.id)
-    if (!window.confirm(`Deny all ${ids.length} pending approvals?`)) return
-    await bulkDeny(ids)
-  }
-
-  const handleApproveSelected = () => bulkApprove([...selectedIds])
-  const handleDenySelected = () => bulkDeny([...selectedIds])
+  // Row click → open drawer
+  const handleRowClick = useCallback(
+    (approval: PendingApproval) => {
+      openDrawer(
+        approval.tool_name,
+        <ApprovalDetail
+          approval={approval}
+          agentName={agentMap.get(approval.agent_id)?.name}
+          busy={busyIds.has(approval.id)}
+          onApprove={(id) => {
+            approve(id)
+            closeDrawer()
+          }}
+          onDeny={(id) => {
+            deny(id)
+            closeDrawer()
+          }}
+        />,
+      )
+    },
+    [agentMap, busyIds, approve, deny, openDrawer, closeDrawer],
+  )
 
   // Unique agents for filter dropdown
   const agentOptions = [
     ...new Map(approvals.map((a) => [a.agent_id, agentMap.get(a.agent_id)])).entries(),
   ]
 
-  return (
-    <main className="mx-auto max-w-4xl px-4 py-6">
-      {/* Page header */}
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Approval Queue</h1>
-        <ApprovalBadge count={totalPendingCount} showZero />
-        <div className="flex-1" />
+  // Bulk actions
+  const bulkActions: BulkAction[] = [
+    {
+      label: 'Approve selected (A)',
+      icon: <Check size={12} />,
+      onClick: () => bulkApprove(selectedIds),
+      variant: 'success',
+    },
+    {
+      label: 'Deny selected (D)',
+      icon: <X size={12} />,
+      onClick: () => bulkDeny(selectedIds),
+      variant: 'danger',
+    },
+  ]
 
-        {/* Refresh */}
-        <button
-          type="button"
-          onClick={refetch}
-          aria-label="Refresh approvals"
-          className="rounded-md p-2 text-gray-400 hover:bg-gray-700 hover:text-white"
-        >
-          <RefreshCw size={16} />
-        </button>
-
-        {/* Filter by agent */}
-        {agentOptions.length > 1 && (
-          <select
-            aria-label="Filter by agent"
-            value={filterAgentId}
-            onChange={(e) => setFilterAgentId(e.target.value)}
-            className="rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="">All agents</option>
-            {agentOptions.map(([id, agent]) => (
-              <option key={id} value={id}>
-                {agent?.name ?? id}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {/* Bulk action toolbar */}
-      {visible.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2">
-          {/* Select all */}
+  // Column definitions
+  const columns: ColumnDef<PendingApproval>[] = [
+    {
+      key: 'tool_name',
+      header: 'Tool',
+      render: (a) => (
+        <span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+          {a.tool_name}
+        </span>
+      ),
+    },
+    {
+      key: 'agent',
+      header: 'Agent',
+      render: (a) => {
+        const agent = agentMap.get(a.agent_id)
+        return (
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            {agent?.name ?? a.agent_id}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'urgency',
+      header: 'Wait Time',
+      render: (a) => {
+        const mins = minutesWaiting(a.created_at)
+        return (
+          <span className={['text-sm font-medium', urgencyColor(mins)].join(' ')}>
+            {mins < 1 ? 'Just now' : `${mins}m ago`}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (a) => (
+        <span className="text-sm capitalize text-gray-500 dark:text-gray-400">{a.status}</span>
+      ),
+    },
+    {
+      key: 'created_at',
+      header: 'Created',
+      render: (a) => (
+        <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+          {new Date(a.created_at).toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (a) => (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
-            onClick={toggleAll}
-            aria-label={allSelected ? 'Deselect all' : 'Select all'}
-            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white"
+            disabled={busyIds.has(a.id)}
+            onClick={() => approve(a.id)}
+            className="rounded-md px-2.5 py-1 text-xs font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
           >
-            {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-            {allSelected ? 'Deselect all' : 'Select all'}
-          </button>
-
-          <span className="text-gray-600">|</span>
-
-          {someSelected && (
-            <>
-              <span className="text-xs text-gray-400">{selectedIds.size} selected</span>
-              <button
-                type="button"
-                onClick={handleApproveSelected}
-                className="rounded-md bg-green-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-600"
-              >
-                Approve selected (A)
-              </button>
-              <button
-                type="button"
-                onClick={handleDenySelected}
-                className="rounded-md bg-red-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-600"
-              >
-                Deny selected (D)
-              </button>
-            </>
-          )}
-
-          <div className="flex-1" />
-
-          {/* Approve All / Deny All */}
-          <button
-            type="button"
-            onClick={handleApproveAll}
-            className="rounded-md bg-green-900 px-3 py-1 text-xs font-medium text-green-300 hover:bg-green-800"
-          >
-            Approve all ({visible.length})
+            Approve
           </button>
           <button
             type="button"
-            onClick={handleDenyAll}
-            className="rounded-md bg-red-900 px-3 py-1 text-xs font-medium text-red-300 hover:bg-red-800"
+            disabled={busyIds.has(a.id)}
+            onClick={() => deny(a.id)}
+            className="rounded-md px-2.5 py-1 text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
           >
-            Deny all ({visible.length})
+            Deny
           </button>
         </div>
-      )}
+      ),
+    },
+  ]
 
-      {/* States */}
-      {loading && <p className="py-12 text-center text-sm text-gray-400">Loading approvals…</p>}
+  return (
+    <div className="space-y-5">
+      {/* Page header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Approval Queue</h1>
+          <ApprovalBadge count={totalPendingCount} showZero />
+        </div>
 
-      {!loading && error && (
-        <div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+        <div className="flex items-center gap-2">
+          {/* Filter by agent */}
+          {agentOptions.length > 1 && (
+            <select
+              aria-label="Filter by agent"
+              value={filterAgentId}
+              onChange={(e) => setFilterAgentId(e.target.value)}
+              className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="">All agents</option>
+              {agentOptions.map(([id, agent]) => (
+                <option key={id} value={id}>
+                  {agent?.name ?? id}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* Refresh */}
+          <button
+            type="button"
+            onClick={refetch}
+            aria-label="Refresh approvals"
+            className="rounded-md border border-gray-300 bg-white p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors"
+          >
+            <RefreshCw size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div
+          role="alert"
+          className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400"
+        >
           {error}
         </div>
       )}
 
-      {!loading && !error && visible.length === 0 && (
-        <div className="py-16 text-center">
-          <p className="text-gray-400">No pending approvals 🎉</p>
-        </div>
-      )}
+      {/* Table */}
+      <DataTable
+        columns={columns}
+        data={visible}
+        rowKey={(a) => a.id}
+        loading={loading}
+        onRowClick={handleRowClick}
+        emptyTitle="No pending approvals"
+        emptyDescription="All caught up!"
+        selectable
+        selectedIds={selectedIds}
+        onSelectChange={setSelectedIds}
+        bulkActions={bulkActions}
+      />
+    </div>
+  )
+}
 
-      {/* Approval list */}
-      {!loading && visible.length > 0 && (
-        <ul className="space-y-3" aria-label="Pending approvals">
-          {visible.map((approval) => (
-            <li key={approval.id}>
-              <ApprovalCard
-                approval={approval}
-                agentName={agentMap.get(approval.agent_id)?.name}
-                busy={busyIds.has(approval.id)}
-                selected={selectedIds.has(approval.id)}
-                onApprove={approve}
-                onDeny={deny}
-                onToggleSelect={toggleSelect}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
+// ---------------------------------------------------------------------------
+// Exported page (wraps with DrawerProvider)
+// ---------------------------------------------------------------------------
+
+export function ApprovalQueuePage() {
+  return (
+    <DrawerProvider>
+      <ApprovalQueueInner />
+    </DrawerProvider>
   )
 }
 

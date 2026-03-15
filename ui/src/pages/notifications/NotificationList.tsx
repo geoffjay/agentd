@@ -7,22 +7,26 @@
  * - Sort by newest, oldest, priority
  * - Bulk select, dismiss, delete, mark-all-viewed
  * - Response dialog for actionable notifications
+ * - Drawer for notification details on row click
  * - URL query param sync for filters/tab/sort
  */
 
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Bell, CheckSquare, RefreshCw, Square, Trash2 } from 'lucide-react'
+import { RefreshCw, Trash2 } from 'lucide-react'
 import {
   useNotifications,
   type NotificationFilters,
   type NotificationTab,
   type SortOrder,
 } from '@/hooks/useNotifications'
-import { NotificationCard } from '@/components/notifications/NotificationCard'
 import { NotificationFilters as FiltersControl } from '@/components/notifications/NotificationFilters'
 import { NotificationResponseDialog } from '@/components/notifications/NotificationResponseDialog'
 import { NotificationBadge } from '@/components/notifications/NotificationBadge'
+import { NotificationDetail } from '@/components/notifications/NotificationDetail'
+import { StatusBadge } from '@/components/common/StatusBadge'
+import { DataTable, DrawerProvider, useDrawer } from '@/components/common'
+import type { ColumnDef, BulkAction } from '@/components/common'
 import type { Notification } from '@/types/notify'
 
 // ---------------------------------------------------------------------------
@@ -34,6 +38,29 @@ const TABS: Array<{ value: NotificationTab; label: string }> = [
   { value: 'actionable', label: 'Actionable' },
   { value: 'history', label: 'History' },
 ]
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const SOURCE_LABELS: Record<string, string> = {
+  system: 'System',
+  ask_service: 'Ask',
+  agent_hook: 'Agent Hook',
+  monitor_service: 'Monitor',
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const diffMs = Date.now() - new Date(dateStr).getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  if (diffSec < 60) return 'just now'
+  const diffMin = Math.floor(diffSec / 60)
+  if (diffMin < 60) return `${diffMin} min ago`
+  const diffHour = Math.floor(diffMin / 60)
+  if (diffHour < 24) return `${diffHour}h ago`
+  const diffDay = Math.floor(diffHour / 24)
+  return `${diffDay}d ago`
+}
 
 // ---------------------------------------------------------------------------
 // URL sync helpers
@@ -50,11 +77,12 @@ function sortFromParam(p: string | null): SortOrder {
 }
 
 // ---------------------------------------------------------------------------
-// Component
+// Inner page (needs drawer context)
 // ---------------------------------------------------------------------------
 
-export function NotificationList() {
+function NotificationListInner() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { openDrawer, closeDrawer } = useDrawer()
 
   const [tab, setTabState] = useState<NotificationTab>(() =>
     tabFromParam(searchParams.get('tab')),
@@ -81,7 +109,7 @@ export function NotificationList() {
 
   const setTab = (t: NotificationTab) => {
     setTabState(t)
-    setSelectedIds(new Set())
+    setSelectedIds([])
   }
 
   const setSort = (s: SortOrder) => setSortState(s)
@@ -103,62 +131,63 @@ export function NotificationList() {
   } = useNotifications({ tab, filters, sort })
 
   // Selection state
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
 
-  // Keep selectedIds in sync when list changes (prune removed IDs)
+  // Keep selectedIds in sync when list changes
   useEffect(() => {
+    const ids = new Set(notifications.map((n) => n.id))
     setSelectedIds((prev) => {
-      if (prev.size === 0) return prev // nothing selected — bail out without new Set
-      const ids = new Set(notifications.map((n) => n.id))
-      const next = new Set<string>()
-      for (const id of prev) {
-        if (ids.has(id)) next.add(id)
-      }
-      // Return prev when nothing was pruned so React bails out (Object.is equality)
-      return next.size === prev.size ? prev : next
+      const next = prev.filter((id) => ids.has(id))
+      return next.length === prev.length ? prev : next
     })
   }, [notifications])
-
-  const allSelected =
-    notifications.length > 0 && notifications.every((n) => selectedIds.has(n.id))
-  const someSelected = selectedIds.size > 0
-
-  const toggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
-
-  const toggleAll = () => {
-    if (allSelected) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(notifications.map((n) => n.id)))
-    }
-  }
 
   // Response dialog state
   const [respondingTo, setRespondingTo] = useState<Notification | null>(null)
   const respondingBusy = respondingTo ? busyIds.has(respondingTo.id) : false
 
+  // Row click → open drawer
+  const handleRowClick = useCallback(
+    (n: Notification) => {
+      openDrawer(
+        n.title,
+        <NotificationDetail
+          notification={n}
+          busy={busyIds.has(n.id)}
+          onView={(id) => {
+            markViewed(id)
+          }}
+          onRespond={(notif) => {
+            closeDrawer()
+            setRespondingTo(notif)
+          }}
+          onDismiss={(id) => {
+            dismiss(id)
+            closeDrawer()
+          }}
+          onDelete={(id) => {
+            remove(id)
+            closeDrawer()
+          }}
+        />,
+      )
+    },
+    [busyIds, markViewed, dismiss, remove, openDrawer, closeDrawer],
+  )
+
   // Bulk handlers
   const handleBulkDismiss = async () => {
-    const ids = [...selectedIds]
-    if (!window.confirm(`Dismiss ${ids.length} notification${ids.length !== 1 ? 's' : ''}?`))
+    if (!window.confirm(`Dismiss ${selectedIds.length} notification${selectedIds.length !== 1 ? 's' : ''}?`))
       return
-    await bulkDismiss(ids)
-    setSelectedIds(new Set())
+    await bulkDismiss(selectedIds)
+    setSelectedIds([])
   }
 
   const handleBulkDelete = async () => {
-    const ids = [...selectedIds]
-    if (!window.confirm(`Delete ${ids.length} notification${ids.length !== 1 ? 's' : ''}?`))
+    if (!window.confirm(`Delete ${selectedIds.length} notification${selectedIds.length !== 1 ? 's' : ''}?`))
       return
-    await bulkDelete(ids)
-    setSelectedIds(new Set())
+    await bulkDelete(selectedIds)
+    setSelectedIds([])
   }
 
   const handleMarkAllViewed = async () => {
@@ -170,39 +199,100 @@ export function NotificationList() {
   }
 
   const pendingCount = notifications.filter((n) => n.status === 'pending').length
+  const someSelected = selectedIds.length > 0
+
+  // Bulk actions
+  const bulkActions: BulkAction[] = [
+    {
+      label: 'Dismiss selected',
+      onClick: handleBulkDismiss,
+    },
+    {
+      label: 'Delete selected',
+      icon: <Trash2 size={12} />,
+      onClick: handleBulkDelete,
+      variant: 'danger',
+    },
+  ]
+
+  // Column definitions
+  const columns: ColumnDef<Notification>[] = [
+    {
+      key: 'title',
+      header: 'Title',
+      render: (n) => (
+        <span className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</span>
+      ),
+    },
+    {
+      key: 'source',
+      header: 'Source',
+      render: (n) => (
+        <span className="text-sm text-gray-500 dark:text-gray-400">
+          {SOURCE_LABELS[n.source.type] ?? n.source.type}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (n) => <StatusBadge status={n.status} />,
+    },
+    {
+      key: 'priority',
+      header: 'Priority',
+      render: (n) => (
+        <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium capitalize text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+          {n.priority}
+        </span>
+      ),
+    },
+    {
+      key: 'created_at',
+      header: 'Created',
+      render: (n) => (
+        <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+          {formatRelativeTime(n.created_at)}
+        </span>
+      ),
+    },
+  ]
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-6">
+    <div className="space-y-5">
       {/* Page header */}
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Notifications</h1>
-        <NotificationBadge count={pendingCount} showZero />
-        <div className="flex-1" />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Notifications</h1>
+          <NotificationBadge count={pendingCount} showZero />
+        </div>
 
-        {/* Mark all viewed */}
-        {pendingCount > 0 && (
+        <div className="flex items-center gap-2">
+          {/* Mark all viewed */}
+          {pendingCount > 0 && (
+            <button
+              type="button"
+              onClick={handleMarkAllViewed}
+              className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              Mark all viewed
+            </button>
+          )}
+
+          {/* Refresh */}
           <button
             type="button"
-            onClick={handleMarkAllViewed}
-            className="rounded-md px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 transition-colors"
+            onClick={refetch}
+            aria-label="Refresh notifications"
+            className="rounded-md border border-gray-300 bg-white p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors"
           >
-            Mark all viewed
+            <RefreshCw size={16} />
           </button>
-        )}
-
-        {/* Refresh */}
-        <button
-          type="button"
-          onClick={refetch}
-          aria-label="Refresh notifications"
-          className="rounded-md p-2 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
-        >
-          <RefreshCw size={16} />
-        </button>
+        </div>
       </div>
 
       {/* Tab navigation */}
-      <div className="mb-4 border-b border-gray-700">
+      <div className="border-b border-gray-200 dark:border-gray-700">
         <nav className="-mb-px flex gap-1" aria-label="Notification tabs">
           {TABS.map((t) => (
             <button
@@ -214,8 +304,8 @@ export function NotificationList() {
               className={[
                 'rounded-t-md px-4 py-2 text-sm font-medium transition-colors border-b-2',
                 tab === t.value
-                  ? 'border-primary-500 text-primary-400'
-                  : 'border-transparent text-gray-400 hover:text-white hover:border-gray-500',
+                  ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-500',
               ].join(' ')}
             >
               {t.label}
@@ -225,102 +315,49 @@ export function NotificationList() {
       </div>
 
       {/* Filters row */}
-      <div className="mb-4">
-        <FiltersControl
-          filters={filters}
-          sort={sort}
-          onFiltersChange={setFilters}
-          onSortChange={setSort}
-        />
-      </div>
+      <FiltersControl
+        filters={filters}
+        sort={sort}
+        onFiltersChange={setFilters}
+        onSortChange={setSort}
+      />
 
-      {/* Bulk action toolbar */}
-      {notifications.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2">
-          <button
-            type="button"
-            onClick={toggleAll}
-            aria-label={allSelected ? 'Deselect all' : 'Select all'}
-            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white"
-          >
-            {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-            {allSelected ? 'Deselect all' : 'Select all'}
-          </button>
-
-          {someSelected && (
-            <>
-              <span className="text-gray-600">|</span>
-              <span className="text-xs text-gray-400">{selectedIds.size} selected</span>
-              <button
-                type="button"
-                onClick={handleBulkDismiss}
-                className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-              >
-                Dismiss selected
-              </button>
-              <button
-                type="button"
-                onClick={handleBulkDelete}
-                className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium bg-red-900/40 text-red-400 hover:bg-red-900/70 transition-colors"
-              >
-                <Trash2 size={12} aria-hidden="true" />
-                Delete selected
-              </button>
-            </>
-          )}
-
-          <div className="flex-1" />
-
-          <span className="text-xs text-gray-500">
-            {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-      )}
-
-      {/* States */}
-      {loading && (
-        <p className="py-12 text-center text-sm text-gray-400">Loading notifications…</p>
-      )}
-
-      {!loading && error && (
-        <div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+      {/* Error banner */}
+      {error && (
+        <div
+          role="alert"
+          className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400"
+        >
           {error}
         </div>
       )}
 
-      {!loading && !error && notifications.length === 0 && (
-        <div className="py-16 text-center">
-          <Bell size={40} className="mx-auto mb-3 text-gray-600" aria-hidden="true" />
-          <p className="text-gray-400">No notifications</p>
-          <p className="mt-1 text-xs text-gray-600">
-            {tab === 'actionable'
-              ? 'No actionable notifications requiring your response.'
-              : tab === 'history'
-                ? 'No notification history yet.'
-                : 'All caught up!'}
-          </p>
-        </div>
-      )}
-
-      {/* Notification list */}
-      {!loading && notifications.length > 0 && (
-        <ul className="space-y-3" aria-label="Notifications">
-          {notifications.map((n) => (
-            <li key={n.id}>
-              <NotificationCard
-                notification={n}
-                busy={busyIds.has(n.id)}
-                selected={selectedIds.has(n.id)}
-                onView={markViewed}
-                onRespond={setRespondingTo}
-                onDismiss={dismiss}
-                onDelete={remove}
-                onToggleSelect={toggleSelect}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* Table */}
+      <DataTable
+        columns={columns}
+        data={notifications}
+        rowKey={(n) => n.id}
+        loading={loading}
+        onRowClick={handleRowClick}
+        emptyTitle={
+          tab === 'actionable'
+            ? 'No actionable notifications'
+            : tab === 'history'
+              ? 'No notification history'
+              : 'No notifications'
+        }
+        emptyDescription={
+          tab === 'actionable'
+            ? 'No actionable notifications requiring your response.'
+            : tab === 'history'
+              ? 'No notification history yet.'
+              : 'All caught up!'
+        }
+        selectable
+        selectedIds={selectedIds}
+        onSelectChange={setSelectedIds}
+        bulkActions={bulkActions}
+      />
 
       {/* Response dialog */}
       <NotificationResponseDialog
@@ -329,7 +366,19 @@ export function NotificationList() {
         onSubmit={respond}
         onClose={() => setRespondingTo(null)}
       />
-    </main>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Exported page (wraps with DrawerProvider)
+// ---------------------------------------------------------------------------
+
+export function NotificationList() {
+  return (
+    <DrawerProvider>
+      <NotificationListInner />
+    </DrawerProvider>
   )
 }
 
