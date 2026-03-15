@@ -24,7 +24,7 @@ import type { SearchResult } from '@/hooks/useSearch'
 
 /** Flatten all result groups into an ordered list for keyboard navigation */
 function flattenResults(results: ReturnType<typeof useSearch>['results']): SearchResult[] {
-  return [...results.actions, ...results.agents, ...results.notifications]
+  return [...results.actions, ...results.agents, ...results.notifications, ...results.memories]
 }
 
 // ---------------------------------------------------------------------------

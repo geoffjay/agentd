@@ -8,7 +8,7 @@ vi.mock('@/hooks/useSearch', () => ({
   useSearch: () => ({
     query: '',
     setQuery: vi.fn(),
-    results: { actions: [], agents: [], notifications: [], total: 0 },
+    results: { actions: [], agents: [], notifications: [], memories: [], total: 0 },
     loading: false,
     recentSearches: [],
     addRecentSearch: vi.fn(),

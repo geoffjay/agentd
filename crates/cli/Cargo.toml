@@ -31,6 +31,7 @@ wrap = { path = "../wrap" }
 orchestrator = { path = "../orchestrator" }
 monitor = { path = "../monitor" }
 hook = { path = "../hook" }
+memory = { path = "../memory" }
 
 [dev-dependencies]
 mockito = "1.2"

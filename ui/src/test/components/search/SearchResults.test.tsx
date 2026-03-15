@@ -7,6 +7,7 @@ const emptyResults: GroupedSearchResults = {
   actions: [],
   agents: [],
   notifications: [],
+  memories: [],
   total: 0,
 }
 
@@ -45,6 +46,7 @@ const richResults: GroupedSearchResults = {
       href: '/notifications/1',
     },
   ],
+  memories: [],
   total: 4,
 }
 

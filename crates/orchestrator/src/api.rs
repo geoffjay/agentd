@@ -250,7 +250,7 @@ async fn add_agent_dir(
         .manager
         .update_additional_dirs(&id, &agent.config.additional_dirs)
         .await
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
 
     info!(agent_id = %id, path = %req.path, "Directory added to agent");
 
@@ -285,7 +285,7 @@ async fn remove_agent_dir(
         .manager
         .update_additional_dirs(&id, &agent.config.additional_dirs)
         .await
-        .map_err(|e| ApiError::Internal(e))?;
+        .map_err(ApiError::Internal)?;
 
     info!(agent_id = %id, path = %req.path, "Directory removed from agent");
 

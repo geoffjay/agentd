@@ -9,12 +9,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { orchestratorClient } from '@/services/orchestrator'
 import { notifyClient } from '@/services/notify'
 import { askClient } from '@/services/ask'
+import { memoryClient } from '@/services/memory'
 import type { HealthResponse } from '@/types/common'
 import type { ServiceStatus } from '@/components/common/StatusBadge'
 
 export interface ServiceHealth {
   name: string
-  key: 'orchestrator' | 'notify' | 'ask'
+  key: 'orchestrator' | 'notify' | 'ask' | 'memory'
   port: number
   status: ServiceStatus
   version?: string
@@ -72,6 +73,7 @@ export function useServiceHealth(): UseServiceHealthResult {
       fetchHealth('orchestrator', () => orchestratorClient.getHealth(), 17006),
       fetchHealth('notify', () => notifyClient.getHealth(), 17004),
       fetchHealth('ask', () => askClient.getHealth(), 17001),
+      fetchHealth('memory', () => memoryClient.getHealth(), 17008),
     ])
     setServices(results)
     setLoading(false)
