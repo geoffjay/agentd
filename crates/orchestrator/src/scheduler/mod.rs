@@ -8,7 +8,7 @@ pub mod template;
 pub mod types;
 
 use crate::websocket::ConnectionRegistry;
-use runner::{create_strategy, notify_complete, WorkflowRunner};
+use runner::{create_strategy, notify_complete, RunOutcome, WorkflowRunner};
 use std::collections::HashMap;
 use std::sync::Arc;
 use storage::SchedulerStorage;
@@ -61,9 +61,21 @@ impl Scheduler {
         let shutdown_tx = runner.shutdown_handle();
         let busy = runner.busy_handle();
 
-        // Spawn the runner.
+        // Spawn the runner. If it returns AutoDisable, update the workflow
+        // in storage and remove the runner from the active set.
+        let storage = self.storage.clone();
         tokio::spawn(async move {
-            runner.run().await;
+            let outcome = runner.run().await;
+            if outcome == RunOutcome::AutoDisable {
+                info!(%workflow_id, "Auto-disabling one-shot workflow");
+                if let Ok(Some(mut wf)) = storage.get_workflow(&workflow_id).await {
+                    wf.enabled = false;
+                    wf.updated_at = chrono::Utc::now();
+                    if let Err(e) = storage.update_workflow(&wf).await {
+                        error!(%workflow_id, %e, "Failed to auto-disable workflow");
+                    }
+                }
+            }
         });
 
         // Track the runner.

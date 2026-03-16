@@ -124,7 +124,14 @@ impl TriggerConfig {
             TriggerConfig::GithubIssues { .. }
                 | TriggerConfig::GithubPullRequests { .. }
                 | TriggerConfig::Cron { .. }
+                | TriggerConfig::Delay { .. }
         )
+    }
+
+    /// Returns `true` for one-shot trigger types that should auto-disable
+    /// the workflow after firing.
+    pub fn is_one_shot(&self) -> bool {
+        matches!(self, TriggerConfig::Delay { .. })
     }
 }
 

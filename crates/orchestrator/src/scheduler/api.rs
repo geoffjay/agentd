@@ -85,6 +85,15 @@ async fn create_workflow(
                     "Delay trigger requires a non-empty 'run_at' datetime".to_string(),
                 ));
             }
+            // Validate the datetime is parseable as ISO 8601 / RFC 3339.
+            if chrono::DateTime::parse_from_rfc3339(run_at).is_err()
+                && run_at.parse::<chrono::DateTime<Utc>>().is_err()
+            {
+                return Err(ApiError::InvalidInput(format!(
+                    "Invalid run_at datetime '{}': expected ISO 8601 format (e.g., 2025-01-01T09:00:00Z)",
+                    run_at
+                )));
+            }
         }
         TriggerConfig::Webhook { .. } | TriggerConfig::Manual {} => {}
     }
@@ -92,7 +101,7 @@ async fn create_workflow(
     // Reject trigger types that are not yet implemented.
     if !req.trigger_config.is_implemented() {
         return Err(ApiError::InvalidInput(format!(
-            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests, cron",
+            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests, cron, delay",
             req.trigger_config.trigger_type()
         )));
     }
