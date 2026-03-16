@@ -252,6 +252,114 @@ impl TriggerStrategy for CronStrategy {
 }
 
 // ---------------------------------------------------------------------------
+// DelayStrategy
+// ---------------------------------------------------------------------------
+
+/// A [`TriggerStrategy`] that fires once at a specific datetime, then stops.
+///
+/// On the first call to `next_tasks()`, the strategy sleeps until `run_at`
+/// and produces a single synthetic [`Task`]. If `run_at` is in the past, it
+/// fires immediately. On subsequent calls, it returns an empty vec to signal
+/// that the one-shot execution is complete.
+///
+/// # Auto-disable
+///
+/// After the delay fires, the runner should auto-disable the workflow by
+/// updating `enabled = false` in storage and stopping the runner. This is
+/// signalled by the `fired` flag — the runner checks [`DelayStrategy::has_fired()`]
+/// after dispatch.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use orchestrator::scheduler::strategy::DelayStrategy;
+/// use chrono::{Utc, Duration};
+///
+/// let run_at = Utc::now() + Duration::seconds(30);
+/// let strategy = DelayStrategy::new(run_at, workflow_id);
+/// ```
+#[derive(Debug)]
+pub struct DelayStrategy {
+    run_at: chrono::DateTime<Utc>,
+    workflow_id: uuid::Uuid,
+    fired: bool,
+}
+
+impl DelayStrategy {
+    /// Create a new delay strategy.
+    ///
+    /// * `run_at` — the datetime at which to fire.
+    /// * `workflow_id` — used to generate a unique `source_id`.
+    pub fn new(run_at: chrono::DateTime<Utc>, workflow_id: uuid::Uuid) -> Self {
+        Self { run_at, workflow_id, fired: false }
+    }
+
+    /// Returns `true` after the delay has fired.
+    pub fn has_fired(&self) -> bool {
+        self.fired
+    }
+
+    /// Build the synthetic task for the delay firing.
+    fn build_task(&self) -> Task {
+        let mut metadata = HashMap::new();
+        metadata.insert("run_at".to_string(), self.run_at.to_rfc3339());
+        metadata.insert("workflow_id".to_string(), self.workflow_id.to_string());
+
+        Task {
+            source_id: format!("delay:{}", self.workflow_id),
+            title: format!("Delay trigger: {}", self.run_at.to_rfc3339()),
+            body: String::new(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }
+    }
+}
+
+#[async_trait]
+impl TriggerStrategy for DelayStrategy {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
+        // Already fired — signal done by returning empty.
+        if self.fired {
+            // Sleep briefly to avoid busy-spinning before the runner stops us.
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            return Ok(vec![]);
+        }
+
+        let now = Utc::now();
+        let wait_duration = if self.run_at > now {
+            (self.run_at - now).to_std().unwrap_or(Duration::ZERO)
+        } else {
+            Duration::ZERO
+        };
+
+        info!(
+            run_at = %self.run_at,
+            wait_secs = wait_duration.as_secs(),
+            workflow_id = %self.workflow_id,
+            "Delay strategy waiting for fire time"
+        );
+
+        // Sleep until the fire time, respecting shutdown.
+        let mut shutdown = shutdown.clone();
+        tokio::select! {
+            _ = tokio::time::sleep(wait_duration) => {
+                self.fired = true;
+                let task = self.build_task();
+                Ok(vec![task])
+            }
+            _ = shutdown.changed() => {
+                if *shutdown.borrow() {
+                    return Ok(vec![]);
+                }
+                Ok(vec![])
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -550,5 +658,118 @@ mod tests {
         for expr in expressions {
             assert!(CronStrategy::new(expr).is_ok(), "Failed to parse: {}", expr);
         }
+    }
+
+    // ── DelayStrategy tests ─────────────────────────────────────────
+
+    #[test]
+    fn delay_strategy_build_task_has_correct_fields() {
+        let wf_id = uuid::Uuid::new_v4();
+        let run_at = Utc::now() + chrono::Duration::hours(1);
+        let strategy = DelayStrategy::new(run_at, wf_id);
+        let task = strategy.build_task();
+
+        assert_eq!(task.source_id, format!("delay:{}", wf_id));
+        assert!(task.title.contains("Delay trigger:"));
+        assert_eq!(task.metadata.get("run_at"), Some(&run_at.to_rfc3339()));
+        assert_eq!(task.metadata.get("workflow_id"), Some(&wf_id.to_string()));
+    }
+
+    #[test]
+    fn delay_strategy_not_fired_initially() {
+        let wf_id = uuid::Uuid::new_v4();
+        let strategy = DelayStrategy::new(Utc::now(), wf_id);
+        assert!(!strategy.has_fired());
+    }
+
+    #[tokio::test]
+    async fn delay_strategy_fires_immediately_for_past_time() {
+        let wf_id = uuid::Uuid::new_v4();
+        let past = Utc::now() - chrono::Duration::hours(1);
+        let mut strategy = DelayStrategy::new(past, wf_id);
+        let (_tx, rx) = watch::channel(false);
+
+        let start = tokio::time::Instant::now();
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source_id, format!("delay:{}", wf_id));
+        assert!(elapsed < Duration::from_secs(1));
+        assert!(strategy.has_fired());
+    }
+
+    #[tokio::test]
+    async fn delay_strategy_fires_at_future_time() {
+        let wf_id = uuid::Uuid::new_v4();
+        // Fire 100ms in the future
+        let run_at = Utc::now() + chrono::Duration::milliseconds(100);
+        let mut strategy = DelayStrategy::new(run_at, wf_id);
+        let (_tx, rx) = watch::channel(false);
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(strategy.has_fired());
+    }
+
+    #[tokio::test]
+    async fn delay_strategy_returns_empty_after_firing() {
+        let wf_id = uuid::Uuid::new_v4();
+        let past = Utc::now() - chrono::Duration::hours(1);
+        let mut strategy = DelayStrategy::new(past, wf_id);
+        let (_tx, rx) = watch::channel(false);
+
+        // First call fires.
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+
+        // Second call returns empty.
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn delay_strategy_respects_shutdown() {
+        let wf_id = uuid::Uuid::new_v4();
+        // Use a far-future time so it would block forever.
+        let run_at = Utc::now() + chrono::Duration::hours(24);
+        let mut strategy = DelayStrategy::new(run_at, wf_id);
+        let (tx, rx) = watch::channel(false);
+
+        // Fire shutdown after a short delay.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(true);
+        });
+
+        let start = tokio::time::Instant::now();
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(elapsed < Duration::from_secs(2));
+        assert!(result.is_empty());
+        assert!(!strategy.has_fired());
+    }
+
+    #[tokio::test]
+    async fn delay_strategy_is_object_safe() {
+        let wf_id = uuid::Uuid::new_v4();
+        let past = Utc::now() - chrono::Duration::seconds(1);
+        let strategy: Box<dyn TriggerStrategy> = Box::new(DelayStrategy::new(past, wf_id));
+        let (_tx, rx) = watch::channel(false);
+
+        let mut strategy = strategy;
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn delay_strategy_source_id_uses_workflow_id() {
+        let wf_id = uuid::Uuid::new_v4();
+        let strategy = DelayStrategy::new(Utc::now(), wf_id);
+        let task = strategy.build_task();
+
+        // source_id should be deterministic based on workflow_id for dedup.
+        assert_eq!(task.source_id, format!("delay:{}", wf_id));
     }
 }

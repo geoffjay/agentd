@@ -1,7 +1,7 @@
 use crate::scheduler::github::{GithubIssueSource, GithubPullRequestSource};
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
-use crate::scheduler::strategy::{CronStrategy, PollingStrategy, TriggerStrategy};
+use crate::scheduler::strategy::{CronStrategy, DelayStrategy, PollingStrategy, TriggerStrategy};
 use crate::scheduler::template::render_template;
 use crate::scheduler::types::{
     DispatchRecord, DispatchStatus, Task, TriggerConfig, WorkflowConfig,
@@ -25,6 +25,17 @@ pub struct BusyState {
 /// The runner delegates trigger timing to a [`TriggerStrategy`] and focuses
 /// on dispatch logic: dedup checking, template rendering, and sending prompts
 /// to the connected agent.
+/// Returned by the runner to indicate whether the workflow should be
+/// auto-disabled after the run loop exits (used by one-shot strategies).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunOutcome {
+    /// Normal shutdown (e.g., explicit stop or service shutdown).
+    Shutdown,
+    /// The strategy completed its one-shot execution and the workflow
+    /// should be auto-disabled.
+    AutoDisable,
+}
+
 pub struct WorkflowRunner {
     config: WorkflowConfig,
     storage: SchedulerStorage,
@@ -71,11 +82,17 @@ impl WorkflowRunner {
     /// The loop calls [`TriggerStrategy::next_tasks()`] to wait for tasks,
     /// then dispatches the first undispatched task to the connected agent.
     /// The strategy handles interval timing, backoff, and shutdown detection.
-    pub async fn run(mut self) {
+    ///
+    /// Returns [`RunOutcome::AutoDisable`] if the strategy is a one-shot
+    /// type (e.g., delay) that has completed its execution.
+    pub async fn run(mut self) -> RunOutcome {
         let workflow_id = self.config.id;
         let agent_id = self.config.agent_id;
+        let is_one_shot = self.config.trigger_config.is_one_shot();
 
         info!(%workflow_id, %agent_id, "Workflow runner started");
+
+        let mut dispatched_one_shot = false;
 
         loop {
             // Wait for the strategy to produce tasks (includes interval/backoff).
@@ -91,10 +108,15 @@ impl WorkflowRunner {
             // Check for shutdown signal — strategy returns Ok(vec![]) on shutdown.
             if *self.shutdown_rx.borrow() {
                 info!(%workflow_id, "Shutdown signal received, stopping runner");
-                break;
+                return RunOutcome::Shutdown;
             }
 
             if tasks.is_empty() {
+                // For one-shot strategies, empty after dispatch means we're done.
+                if is_one_shot && dispatched_one_shot {
+                    info!(%workflow_id, "One-shot strategy completed, auto-disabling");
+                    return RunOutcome::AutoDisable;
+                }
                 debug!(%workflow_id, "No new tasks from strategy");
                 continue;
             }
@@ -118,6 +140,9 @@ impl WorkflowRunner {
                 Ok(dispatched) => {
                     if dispatched {
                         info!(%workflow_id, "Task dispatched to agent");
+                        if is_one_shot {
+                            dispatched_one_shot = true;
+                        }
                     } else {
                         debug!(%workflow_id, "All tasks already dispatched");
                     }
@@ -127,8 +152,6 @@ impl WorkflowRunner {
                 }
             }
         }
-
-        info!(%workflow_id, "Workflow runner stopped");
     }
 
     /// Find the first undispatched task and send it to the agent.
@@ -246,12 +269,22 @@ fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> 
 /// Create the appropriate [`TriggerStrategy`] for a workflow configuration.
 ///
 /// Poll-based workflows (GitHub triggers) use [`PollingStrategy`].
-/// Cron workflows use [`CronStrategy`]. Returns an error for trigger types
-/// that are not yet implemented.
+/// Cron workflows use [`CronStrategy`]. Delay workflows use [`DelayStrategy`].
+/// Returns an error for trigger types that are not yet implemented.
 pub fn create_strategy(config: &WorkflowConfig) -> anyhow::Result<Box<dyn TriggerStrategy>> {
     match &config.trigger_config {
         TriggerConfig::Cron { expression } => {
             let strategy = CronStrategy::new(expression)?;
+            Ok(Box::new(strategy))
+        }
+        TriggerConfig::Delay { run_at } => {
+            let dt = chrono::DateTime::parse_from_rfc3339(run_at)
+                .map(|dt| dt.with_timezone(&Utc))
+                .or_else(|_| run_at.parse::<chrono::DateTime<Utc>>())
+                .map_err(|e| {
+                    anyhow::anyhow!("Invalid run_at datetime '{}': {}", run_at, e)
+                })?;
+            let strategy = DelayStrategy::new(dt, config.id);
             Ok(Box::new(strategy))
         }
         _ => {
