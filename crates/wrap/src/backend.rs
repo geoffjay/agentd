@@ -218,7 +218,7 @@ pub trait ExecutionBackend: Send + Sync {
 /// # Examples
 ///
 /// ```
-/// use wrap::backend::TmuxBackend;
+/// use wrap::backend::{ExecutionBackend, TmuxBackend};
 ///
 /// let backend = TmuxBackend::new("agentd");
 /// assert_eq!(backend.prefix(), "agentd");
