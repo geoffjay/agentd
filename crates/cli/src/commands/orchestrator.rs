@@ -63,6 +63,17 @@ use orchestrator::types::{
     ToolPolicy,
 };
 
+/// Trigger type for workflow creation.
+#[derive(Clone, Debug, clap::ValueEnum)]
+pub enum TriggerType {
+    GithubIssues,
+    GithubPullRequests,
+    Cron,
+    Delay,
+    Webhook,
+    Manual,
+}
+
 /// Orchestrator service management subcommands.
 ///
 /// Each variant corresponds to a specific operation on the orchestrator service.
@@ -568,13 +579,12 @@ pub enum OrchestratorCommand {
 
     /// Create a new workflow.
     ///
-    /// Creates an autonomous workflow that polls a task source and dispatches
-    /// work to an agent. The workflow is enabled by default unless --disabled
-    /// is specified.
+    /// Creates an autonomous workflow that triggers task dispatch to an agent.
+    /// The workflow is enabled by default unless --disabled is specified.
     ///
     /// # Examples
     ///
-    /// Create a workflow using an agent name:
+    /// Create a GitHub Issues workflow (default trigger type):
     ///
     ///   agent orchestrator create-workflow \
     ///     --name issue-worker \
@@ -583,6 +593,15 @@ pub enum OrchestratorCommand {
     ///     --labels "bug,help wanted" \
     ///     --prompt-template-file ./prompt.txt \
     ///     --poll-interval 120
+    ///
+    /// Create a GitHub Pull Requests workflow:
+    ///
+    ///   agent orchestrator create-workflow \
+    ///     --name pr-reviewer \
+    ///     --agent-name reviewer \
+    ///     --trigger-type github-pull-requests \
+    ///     --owner acme --repo widgets \
+    ///     --prompt-template "Review: {{title}}"
     ///
     /// Create a disabled workflow for testing:
     ///
@@ -605,17 +624,37 @@ pub enum OrchestratorCommand {
         #[arg(long, conflicts_with = "agent_id")]
         agent_name: Option<String>,
 
-        /// GitHub repository owner
-        #[arg(long)]
-        owner: String,
+        /// Trigger type (default: github-issues)
+        #[arg(long, value_enum, default_value = "github-issues")]
+        trigger_type: TriggerType,
 
-        /// GitHub repository name
+        /// GitHub repository owner (required for github-issues and github-pull-requests)
         #[arg(long)]
-        repo: String,
+        owner: Option<String>,
 
-        /// Comma-separated labels to filter issues
+        /// GitHub repository name (required for github-issues and github-pull-requests)
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Comma-separated labels to filter issues (GitHub triggers only)
         #[arg(long)]
         labels: Option<String>,
+
+        /// Issue/PR state filter (GitHub triggers only, default: open)
+        #[arg(long)]
+        state: Option<String>,
+
+        /// Cron expression (required for cron trigger type)
+        #[arg(long)]
+        cron_expression: Option<String>,
+
+        /// ISO 8601 datetime to run at (required for delay trigger type)
+        #[arg(long)]
+        run_at: Option<String>,
+
+        /// Webhook secret (optional, for webhook trigger type)
+        #[arg(long)]
+        webhook_secret: Option<String>,
 
         /// Prompt template with {{placeholders}} (e.g. "Fix: {{title}}\n{{body}}")
         #[arg(long, conflicts_with = "prompt_template_file")]
@@ -625,7 +664,7 @@ pub enum OrchestratorCommand {
         #[arg(long, conflicts_with = "prompt_template")]
         prompt_template_file: Option<PathBuf>,
 
-        /// Poll interval in seconds (default: 60)
+        /// Poll interval in seconds (default: 60, only for poll-based triggers)
         #[arg(long, default_value = "60")]
         poll_interval: u64,
 
@@ -816,9 +855,14 @@ impl OrchestratorCommand {
                 name,
                 agent_id,
                 agent_name,
+                trigger_type,
                 owner,
                 repo,
                 labels,
+                state,
+                cron_expression,
+                run_at,
+                webhook_secret,
                 prompt_template,
                 prompt_template_file,
                 poll_interval,
@@ -829,9 +873,14 @@ impl OrchestratorCommand {
                     name,
                     agent_id.as_deref(),
                     agent_name.as_deref(),
-                    owner,
-                    repo,
+                    trigger_type,
+                    owner.as_deref(),
+                    repo.as_deref(),
                     labels.as_deref(),
+                    state.as_deref(),
+                    cron_expression.as_deref(),
+                    run_at.as_deref(),
+                    webhook_secret.as_deref(),
                     prompt_template.as_deref(),
                     prompt_template_file.as_deref(),
                     *poll_interval,
@@ -2010,9 +2059,14 @@ async fn create_workflow(
     name: &str,
     agent_id: Option<&str>,
     agent_name: Option<&str>,
-    owner: &str,
-    repo: &str,
+    trigger_type: &TriggerType,
+    owner: Option<&str>,
+    repo: Option<&str>,
     labels: Option<&str>,
+    state: Option<&str>,
+    cron_expression: Option<&str>,
+    run_at: Option<&str>,
+    webhook_secret: Option<&str>,
     prompt_template: Option<&str>,
     prompt_template_file: Option<&std::path::Path>,
     poll_interval: u64,
@@ -2025,18 +2079,56 @@ async fn create_workflow(
     // Resolve prompt template from --prompt-template or --prompt-template-file
     let resolved_template = resolve_prompt_template(prompt_template, prompt_template_file)?;
 
-    let labels_vec: Vec<String> =
-        labels.map(|l| l.split(',').map(|s| s.trim().to_string()).collect()).unwrap_or_default();
+    // Build trigger config based on trigger type with validation.
+    let trigger_config = match trigger_type {
+        TriggerType::GithubIssues => {
+            let owner = owner.ok_or_else(|| anyhow::anyhow!("--owner is required for github-issues trigger"))?;
+            let repo = repo.ok_or_else(|| anyhow::anyhow!("--repo is required for github-issues trigger"))?;
+            let labels_vec: Vec<String> = labels
+                .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default();
+            TriggerConfig::GithubIssues {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                labels: labels_vec,
+                state: state.unwrap_or("open").to_string(),
+            }
+        }
+        TriggerType::GithubPullRequests => {
+            let owner = owner.ok_or_else(|| anyhow::anyhow!("--owner is required for github-pull-requests trigger"))?;
+            let repo = repo.ok_or_else(|| anyhow::anyhow!("--repo is required for github-pull-requests trigger"))?;
+            let labels_vec: Vec<String> = labels
+                .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default();
+            TriggerConfig::GithubPullRequests {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                labels: labels_vec,
+                state: state.unwrap_or("open").to_string(),
+            }
+        }
+        TriggerType::Cron => {
+            let expression = cron_expression
+                .ok_or_else(|| anyhow::anyhow!("--cron-expression is required for cron trigger"))?;
+            TriggerConfig::Cron { expression: expression.to_string() }
+        }
+        TriggerType::Delay => {
+            let run_at_val = run_at
+                .ok_or_else(|| anyhow::anyhow!("--run-at is required for delay trigger"))?;
+            TriggerConfig::Delay { run_at: run_at_val.to_string() }
+        }
+        TriggerType::Webhook => {
+            TriggerConfig::Webhook { secret: webhook_secret.map(|s| s.to_string()) }
+        }
+        TriggerType::Manual => {
+            TriggerConfig::Manual {}
+        }
+    };
 
     let request = CreateWorkflowRequest {
         name: name.to_string(),
         agent_id: resolved_agent_id,
-        trigger_config: TriggerConfig::GithubIssues {
-            owner: owner.to_string(),
-            repo: repo.to_string(),
-            labels: labels_vec,
-            state: "open".to_string(),
-        },
+        trigger_config,
         prompt_template: resolved_template,
         poll_interval_secs: poll_interval,
         enabled,
@@ -2294,15 +2386,33 @@ fn display_workflow(workflow: &WorkflowResponse) {
     let status = if workflow.enabled { "enabled".green() } else { "disabled".red() };
     println!("{}: {}", "Status".bold(), status);
     println!("{}: {}s", "Poll Interval".bold(), workflow.poll_interval_secs);
+    println!("{}: {}", "Trigger Type".bold(), workflow.trigger_config.trigger_type());
     match &workflow.trigger_config {
-        TriggerConfig::GithubIssues { owner, repo, .. } => {
-            println!("{}: github_issues", "Source Type".bold());
+        TriggerConfig::GithubIssues { owner, repo, labels, state } => {
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
+            if !labels.is_empty() {
+                println!("{}: {}", "Labels".bold(), labels.join(", "));
+            }
+            println!("{}: {}", "State".bold(), state);
         }
-        TriggerConfig::GithubPullRequests { owner, repo, .. } => {
-            println!("{}: github_pull_requests", "Source Type".bold());
+        TriggerConfig::GithubPullRequests { owner, repo, labels, state } => {
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
+            if !labels.is_empty() {
+                println!("{}: {}", "Labels".bold(), labels.join(", "));
+            }
+            println!("{}: {}", "State".bold(), state);
         }
+        TriggerConfig::Cron { expression } => {
+            println!("{}: {}", "Expression".bold(), expression);
+        }
+        TriggerConfig::Delay { run_at } => {
+            println!("{}: {}", "Run At".bold(), run_at);
+        }
+        TriggerConfig::Webhook { secret } => {
+            let secret_display = if secret.is_some() { "configured" } else { "none" };
+            println!("{}: {}", "Secret".bold(), secret_display);
+        }
+        TriggerConfig::Manual {} => {}
     }
     let template = &workflow.prompt_template;
     let display =
@@ -3223,5 +3333,226 @@ mod tests {
         };
         // Should not panic and should display Docker-specific details
         display_agent(&agent);
+    }
+
+    #[test]
+    fn test_display_workflow_all_trigger_types() {
+        use chrono::Utc;
+        let base = || WorkflowResponse {
+            id: Uuid::new_v4(),
+            name: "test".to_string(),
+            agent_id: Uuid::new_v4(),
+            trigger_config: TriggerConfig::Manual {},
+            prompt_template: "Do: {{title}}".to_string(),
+            poll_interval_secs: 60,
+            enabled: true,
+            tool_policy: Default::default(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // All variants should display without panic.
+        let mut w = base();
+        w.trigger_config = TriggerConfig::GithubPullRequests {
+            owner: "org".into(),
+            repo: "repo".into(),
+            labels: vec!["review".into()],
+            state: "open".into(),
+        };
+        display_workflow(&w);
+
+        w.trigger_config = TriggerConfig::Cron { expression: "0 */6 * * *".into() };
+        display_workflow(&w);
+
+        w.trigger_config = TriggerConfig::Delay { run_at: "2026-12-01T00:00:00Z".into() };
+        display_workflow(&w);
+
+        w.trigger_config = TriggerConfig::Webhook { secret: Some("s3cret".into()) };
+        display_workflow(&w);
+
+        w.trigger_config = TriggerConfig::Webhook { secret: None };
+        display_workflow(&w);
+
+        w.trigger_config = TriggerConfig::Manual {};
+        display_workflow(&w);
+    }
+
+    #[test]
+    fn test_create_workflow_trigger_type_github_pr() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name",
+            "pr-review",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--trigger-type",
+            "github-pull-requests",
+            "--owner",
+            "acme",
+            "--repo",
+            "widgets",
+            "--prompt-template",
+            "Review: {{title}}",
+        ])
+        .expect("Should parse with --trigger-type github-pull-requests");
+
+        if let OrchestratorCommand::CreateWorkflow { trigger_type, owner, repo, .. } = cli.command {
+            assert!(matches!(trigger_type, TriggerType::GithubPullRequests));
+            assert_eq!(owner, Some("acme".to_string()));
+            assert_eq!(repo, Some("widgets".to_string()));
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
+    }
+
+    #[test]
+    fn test_create_workflow_trigger_type_manual() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name",
+            "manual-wf",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--trigger-type",
+            "manual",
+            "--prompt-template",
+            "Do: {{title}}",
+        ])
+        .expect("Should parse with --trigger-type manual (no --owner/--repo required)");
+
+        if let OrchestratorCommand::CreateWorkflow { trigger_type, owner, repo, .. } = cli.command {
+            assert!(matches!(trigger_type, TriggerType::Manual));
+            assert_eq!(owner, None);
+            assert_eq!(repo, None);
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
+    }
+
+    #[test]
+    fn test_create_workflow_trigger_type_cron() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name",
+            "cron-wf",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--trigger-type",
+            "cron",
+            "--cron-expression",
+            "0 */6 * * *",
+            "--prompt-template",
+            "Run scheduled task",
+        ])
+        .expect("Should parse with --trigger-type cron");
+
+        if let OrchestratorCommand::CreateWorkflow { trigger_type, cron_expression, .. } =
+            cli.command
+        {
+            assert!(matches!(trigger_type, TriggerType::Cron));
+            assert_eq!(cron_expression, Some("0 */6 * * *".to_string()));
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_serde_roundtrip() {
+        // New trigger types serialize/deserialize correctly.
+        let configs = vec![
+            TriggerConfig::Cron { expression: "0 */6 * * *".into() },
+            TriggerConfig::Delay { run_at: "2026-12-01T00:00:00Z".into() },
+            TriggerConfig::Webhook { secret: Some("s3cret".into()) },
+            TriggerConfig::Webhook { secret: None },
+            TriggerConfig::Manual {},
+        ];
+        for config in configs {
+            let json = serde_json::to_string(&config).unwrap();
+            let roundtripped: TriggerConfig = serde_json::from_str(&json).unwrap();
+            assert_eq!(config.trigger_type(), roundtripped.trigger_type());
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_backward_compat_source_config() {
+        // Existing JSON payloads with "source_config" key still deserialize.
+        let json = r#"{
+            "name": "test",
+            "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+            "source_config": {
+                "type": "github_issues",
+                "owner": "acme",
+                "repo": "widgets"
+            },
+            "prompt_template": "Fix: {{title}}"
+        }"#;
+        let req: CreateWorkflowRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.trigger_config.trigger_type(), "github_issues");
+    }
+
+    #[test]
+    fn test_trigger_config_new_key_accepted() {
+        // New JSON payloads with "trigger_config" key also deserialize.
+        let json = r#"{
+            "name": "test",
+            "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+            "trigger_config": {
+                "type": "github_issues",
+                "owner": "acme",
+                "repo": "widgets"
+            },
+            "prompt_template": "Fix: {{title}}"
+        }"#;
+        let req: CreateWorkflowRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.trigger_config.trigger_type(), "github_issues");
+    }
+
+    #[test]
+    fn test_trigger_config_is_poll_based() {
+        assert!(TriggerConfig::GithubIssues {
+            owner: "a".into(),
+            repo: "b".into(),
+            labels: vec![],
+            state: "open".into(),
+        }
+        .is_poll_based());
+        assert!(TriggerConfig::GithubPullRequests {
+            owner: "a".into(),
+            repo: "b".into(),
+            labels: vec![],
+            state: "open".into(),
+        }
+        .is_poll_based());
+        assert!(!TriggerConfig::Cron { expression: "* * * * *".into() }.is_poll_based());
+        assert!(!TriggerConfig::Delay { run_at: "2026-01-01T00:00:00Z".into() }.is_poll_based());
+        assert!(!TriggerConfig::Webhook { secret: None }.is_poll_based());
+        assert!(!TriggerConfig::Manual {}.is_poll_based());
     }
 }

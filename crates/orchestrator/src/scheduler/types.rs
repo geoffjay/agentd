@@ -27,7 +27,7 @@ pub struct WorkflowConfig {
     /// The agent that will execute tasks from this workflow.
     pub agent_id: Uuid,
     /// Configuration for the trigger (task source).
-    #[serde(rename = "source_config")]
+    #[serde(alias = "source_config")]
     pub trigger_config: TriggerConfig,
     /// Template string with {{placeholders}} for rendering prompts.
     pub prompt_template: String,
@@ -73,6 +73,22 @@ pub enum TriggerConfig {
         #[serde(default = "default_pr_state")]
         state: String,
     },
+    /// Cron-based trigger (Phase 2).
+    Cron {
+        expression: String,
+    },
+    /// One-shot delayed trigger (Phase 2).
+    Delay {
+        /// ISO 8601 datetime string.
+        run_at: String,
+    },
+    /// Webhook-driven trigger (Phase 4).
+    Webhook {
+        #[serde(default)]
+        secret: Option<String>,
+    },
+    /// Manual trigger — dispatched explicitly via the API.
+    Manual {},
 }
 
 fn default_issue_state() -> String {
@@ -88,7 +104,16 @@ impl TriggerConfig {
         match self {
             TriggerConfig::GithubIssues { .. } => "github_issues",
             TriggerConfig::GithubPullRequests { .. } => "github_pull_requests",
+            TriggerConfig::Cron { .. } => "cron",
+            TriggerConfig::Delay { .. } => "delay",
+            TriggerConfig::Webhook { .. } => "webhook",
+            TriggerConfig::Manual { .. } => "manual",
         }
+    }
+
+    /// Returns `true` for trigger types that use poll-based task fetching.
+    pub fn is_poll_based(&self) -> bool {
+        matches!(self, TriggerConfig::GithubIssues { .. } | TriggerConfig::GithubPullRequests { .. })
     }
 }
 
@@ -147,7 +172,7 @@ impl std::str::FromStr for DispatchStatus {
 pub struct CreateWorkflowRequest {
     pub name: String,
     pub agent_id: Uuid,
-    #[serde(rename = "source_config")]
+    #[serde(alias = "source_config")]
     pub trigger_config: TriggerConfig,
     pub prompt_template: String,
     #[serde(default = "default_poll_interval")]
@@ -176,7 +201,7 @@ pub struct WorkflowResponse {
     pub id: Uuid,
     pub name: String,
     pub agent_id: Uuid,
-    #[serde(rename = "source_config")]
+    #[serde(alias = "source_config")]
     pub trigger_config: TriggerConfig,
     pub prompt_template: String,
     pub poll_interval_secs: u64,
