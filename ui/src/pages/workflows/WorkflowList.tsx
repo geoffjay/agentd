@@ -63,7 +63,7 @@ export function WorkflowList() {
   const pageCount = Math.ceil(total / 20)
 
   return (
-    <div id="main-content" className="space-y-6">
+    <div id="main-content" className="space-y-5">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>

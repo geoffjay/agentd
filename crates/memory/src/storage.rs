@@ -171,10 +171,8 @@ impl MemoryStorage {
             query = query.filter(mem_entity::Column::CreatedBy.eq(actor));
         }
 
-        let models: Vec<mem_entity::Model> = query
-            .all(&self.db)
-            .await
-            .map_err(|e| StoreError::QueryFailed(e.to_string()))?;
+        let models: Vec<mem_entity::Model> =
+            query.all(&self.db).await.map_err(|e| StoreError::QueryFailed(e.to_string()))?;
 
         models.into_iter().map(model_to_memory).collect()
     }
@@ -228,24 +226,20 @@ impl MemoryStorage {
 
 /// Convert a raw entity [`mem_entity::Model`] into the domain [`Memory`] type.
 fn model_to_memory(model: mem_entity::Model) -> StoreResult<Memory> {
-    let memory_type: MemoryType = model
-        .memory_type
-        .parse()
-        .map_err(|e: String| StoreError::InvalidData(e))?;
+    let memory_type: MemoryType =
+        model.memory_type.parse().map_err(|e: String| StoreError::InvalidData(e))?;
 
-    let visibility: VisibilityLevel = model
-        .visibility
-        .parse()
-        .map_err(|e: String| StoreError::InvalidData(e))?;
+    let visibility: VisibilityLevel =
+        model.visibility.parse().map_err(|e: String| StoreError::InvalidData(e))?;
 
-    let tags: Vec<String> = serde_json::from_str(&model.tags)
-        .map_err(|e| StoreError::InvalidData(e.to_string()))?;
+    let tags: Vec<String> =
+        serde_json::from_str(&model.tags).map_err(|e| StoreError::InvalidData(e.to_string()))?;
 
     let shared_with: Vec<String> = serde_json::from_str(&model.shared_with)
         .map_err(|e| StoreError::InvalidData(e.to_string()))?;
 
-    let references: Vec<String> = serde_json::from_str(&model.refs)
-        .map_err(|e| StoreError::InvalidData(e.to_string()))?;
+    let references: Vec<String> =
+        serde_json::from_str(&model.refs).map_err(|e| StoreError::InvalidData(e.to_string()))?;
 
     let created_at = chrono::DateTime::parse_from_rfc3339(&model.created_at)
         .map_err(|e| StoreError::InvalidData(e.to_string()))?
@@ -400,9 +394,8 @@ mod tests {
     #[tokio::test]
     async fn test_update_visibility_not_found() {
         let (storage, _temp) = create_test_storage().await;
-        let result = storage
-            .update_visibility("mem_nonexistent", VisibilityLevel::Public, None)
-            .await;
+        let result =
+            storage.update_visibility("mem_nonexistent", VisibilityLevel::Public, None).await;
         assert!(result.is_err());
     }
 
