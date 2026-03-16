@@ -390,7 +390,7 @@ curl -s -X POST http://localhost:17006/workflows \
   -d '{
     "name": "auto-issues",
     "agent_id": "'$AGENT_ID'",
-    "source_config": {
+    "trigger_config": {
       "type": "github_issues",
       "owner": "YOUR_ORG",
       "repo": "YOUR_REPO",

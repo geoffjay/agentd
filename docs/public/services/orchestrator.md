@@ -435,7 +435,7 @@ websocat ws://127.0.0.1:17006/stream/{agent_id}
 
 ### Workflow Endpoints
 
-Workflows pair a long-running agent with a GitHub issue source. The scheduler polls for new issues and dispatches them to the agent one at a time.
+Workflows pair a long-running agent with a trigger source. The scheduler runs the trigger strategy and dispatches tasks to the agent one at a time. See [Trigger Strategies](../trigger-strategies.md) for architecture details.
 
 #### Create Workflow
 
@@ -450,12 +450,16 @@ Content-Type: application/json
 |-------|------|----------|---------|-------------|
 | `name` | string | yes | | Unique workflow name |
 | `agent_id` | UUID | yes | | Agent to dispatch tasks to (must be Running) |
-| `source_config` | object | yes | | Task source configuration (see below) |
+| `trigger_config` | object | yes | | Trigger configuration (see below) |
 | `prompt_template` | string | yes | | Template with `{{placeholders}}` for task data |
-| `poll_interval_secs` | integer | no | `60` | Seconds between poll cycles |
+| `poll_interval_secs` | integer | no | `60` | Seconds between poll cycles (poll-based triggers only) |
 | `enabled` | bool | no | `true` | Whether the workflow is active |
+| `tool_policy` | object | no | `{"mode":"auto"}` | Tool policy applied when dispatching tasks |
 
-**Source config (GitHub Issues):**
+!!! note "Backwards compatibility"
+    The field name `source_config` is accepted as an alias for `trigger_config`. New integrations should use `trigger_config`.
+
+**`trigger_config` — GitHub Issues:**
 ```json
 {
   "type": "github_issues",
@@ -466,9 +470,41 @@ Content-Type: application/json
 }
 ```
 
+**`trigger_config` — GitHub Pull Requests:**
+```json
+{
+  "type": "github_pull_requests",
+  "owner": "org-or-user",
+  "repo": "repo-name",
+  "labels": [],
+  "state": "open"
+}
+```
+
 **Template placeholders:** `{{title}}`, `{{body}}`, `{{url}}`, `{{labels}}`, `{{assignee}}`, `{{source_id}}`, `{{metadata}}`
 
 **Response:** `201 Created` with workflow object.
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440001",
+  "name": "issue-worker",
+  "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+  "trigger_config": {
+    "type": "github_issues",
+    "owner": "myorg",
+    "repo": "myrepo",
+    "labels": ["agent"],
+    "state": "open"
+  },
+  "prompt_template": "Work on issue #{{source_id}}: {{title}}\n\n{{body}}",
+  "poll_interval_secs": 60,
+  "enabled": true,
+  "tool_policy": { "mode": "auto" },
+  "created_at": "2026-03-14T10:00:00Z",
+  "updated_at": "2026-03-14T10:00:00Z"
+}
+```
 
 #### List Workflows
 

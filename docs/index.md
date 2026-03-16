@@ -73,7 +73,7 @@ curl -s -X POST http://127.0.0.1:17006/workflows \
   -d '{
     "name": "issue-worker",
     "agent_id": "<agent-id-from-step-1>",
-    "source_config": {
+    "trigger_config": {
       "type": "github_issues",
       "owner": "your-org",
       "repo": "your-repo",
