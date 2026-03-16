@@ -56,7 +56,8 @@ impl Scheduler {
         }
 
         let strategy = create_strategy(&config);
-        let runner = WorkflowRunner::new(config, self.storage.clone(), self.registry.clone(), strategy);
+        let runner =
+            WorkflowRunner::new(config, self.storage.clone(), self.registry.clone(), strategy);
         let shutdown_tx = runner.shutdown_handle();
         let busy = runner.busy_handle();
 

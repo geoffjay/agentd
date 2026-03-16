@@ -51,10 +51,7 @@ pub trait TriggerStrategy: Send + Sync {
     ///
     /// Returning an empty `Vec<Task>` is valid and indicates that no work
     /// is available at this time — the runner may call `next_tasks` again.
-    async fn next_tasks(
-        &mut self,
-        shutdown: &watch::Receiver<bool>,
-    ) -> anyhow::Result<Vec<Task>>;
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,29 +97,19 @@ impl PollingStrategy {
     /// * `source` — the task source to poll.
     /// * `poll_interval_secs` — base seconds between poll cycles.
     pub fn new(source: Box<dyn TaskSource>, poll_interval_secs: u64) -> Self {
-        Self {
-            source,
-            interval: Duration::from_secs(poll_interval_secs),
-            consecutive_errors: 0,
-        }
+        Self { source, interval: Duration::from_secs(poll_interval_secs), consecutive_errors: 0 }
     }
 
     /// Compute the total sleep duration including any error backoff.
     fn sleep_duration(&self) -> Duration {
-        let backoff_secs = std::cmp::min(
-            u64::from(self.consecutive_errors) * 2,
-            MAX_BACKOFF_SECS,
-        );
+        let backoff_secs = std::cmp::min(u64::from(self.consecutive_errors) * 2, MAX_BACKOFF_SECS);
         self.interval + Duration::from_secs(backoff_secs)
     }
 }
 
 #[async_trait]
 impl TriggerStrategy for PollingStrategy {
-    async fn next_tasks(
-        &mut self,
-        shutdown: &watch::Receiver<bool>,
-    ) -> anyhow::Result<Vec<Task>> {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
         let sleep_dur = self.sleep_duration();
 
         // Sleep for the interval, but bail early on shutdown.
@@ -144,10 +131,8 @@ impl TriggerStrategy for PollingStrategy {
             }
             Err(e) => {
                 self.consecutive_errors += 1;
-                let backoff = std::cmp::min(
-                    u64::from(self.consecutive_errors) * 2,
-                    MAX_BACKOFF_SECS,
-                );
+                let backoff =
+                    std::cmp::min(u64::from(self.consecutive_errors) * 2, MAX_BACKOFF_SECS);
                 warn!(
                     consecutive_errors = self.consecutive_errors,
                     backoff_secs = backoff,
