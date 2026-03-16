@@ -1101,10 +1101,7 @@ env: {}
         let mut env = HashMap::new();
         env.insert("API_KEY".to_string(), "${AGENTD_TEST_MAP_VAL}".to_string());
         env.insert("STATIC".to_string(), "no-change".to_string());
-        env.insert(
-            "WITH_DEFAULT".to_string(),
-            "${AGENTD_TEST_NONEXIST:-default_val}".to_string(),
-        );
+        env.insert("WITH_DEFAULT".to_string(), "${AGENTD_TEST_NONEXIST:-default_val}".to_string());
 
         expand_env_vars(&mut env).unwrap();
 
