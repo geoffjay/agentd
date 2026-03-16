@@ -1,8 +1,11 @@
 use crate::scheduler::github::{GithubIssueSource, GithubPullRequestSource};
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
+use crate::scheduler::strategy::{PollingStrategy, TriggerStrategy};
 use crate::scheduler::template::render_template;
-use crate::scheduler::types::{DispatchRecord, DispatchStatus, TaskSourceConfig, WorkflowConfig};
+use crate::scheduler::types::{
+    DispatchRecord, DispatchStatus, Task, TaskSourceConfig, WorkflowConfig,
+};
 use crate::websocket::ConnectionRegistry;
 use chrono::Utc;
 use std::sync::Arc;
@@ -17,31 +20,36 @@ pub struct BusyState {
     pub(crate) active_dispatch_id: Option<Uuid>,
 }
 
-/// Runs the poll-dispatch loop for a single workflow.
+/// Runs the trigger-dispatch loop for a single workflow.
+///
+/// The runner delegates trigger timing to a [`TriggerStrategy`] and focuses
+/// on dispatch logic: dedup checking, template rendering, and sending prompts
+/// to the connected agent.
 pub struct WorkflowRunner {
     config: WorkflowConfig,
     storage: SchedulerStorage,
     registry: ConnectionRegistry,
-    source: Box<dyn TaskSource>,
+    strategy: Box<dyn TriggerStrategy>,
     busy: Arc<Mutex<BusyState>>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
 }
 
 impl WorkflowRunner {
+    /// Create a new runner with an explicit trigger strategy.
     pub fn new(
         config: WorkflowConfig,
         storage: SchedulerStorage,
         registry: ConnectionRegistry,
+        strategy: Box<dyn TriggerStrategy>,
     ) -> Self {
-        let source = create_source(&config.source_config);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
         Self {
             config,
             storage,
             registry,
-            source,
+            strategy,
             busy: Arc::new(Mutex::new(BusyState { active_dispatch_id: None })),
             shutdown_tx,
             shutdown_rx,
@@ -58,64 +66,64 @@ impl WorkflowRunner {
         self.busy.clone()
     }
 
-    /// Run the polling loop. This should be spawned as a tokio task.
+    /// Run the trigger-dispatch loop. This should be spawned as a tokio task.
+    ///
+    /// The loop calls [`TriggerStrategy::next_tasks()`] to wait for tasks,
+    /// then dispatches the first undispatched task to the connected agent.
+    /// The strategy handles interval timing, backoff, and shutdown detection.
     pub async fn run(mut self) {
         let workflow_id = self.config.id;
         let agent_id = self.config.agent_id;
-        let interval_secs = self.config.poll_interval_secs;
-        let mut consecutive_errors: u32 = 0;
 
-        info!(%workflow_id, %agent_id, interval_secs, "Workflow runner started");
-
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
-        // Don't tick immediately on start — wait one interval first.
-        interval.tick().await;
+        info!(%workflow_id, %agent_id, "Workflow runner started");
 
         loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    // Check if agent is busy.
-                    {
-                        let busy = self.busy.lock().await;
-                        if busy.active_dispatch_id.is_some() {
-                            debug!(%workflow_id, "Agent busy, skipping poll cycle");
-                            continue;
-                        }
-                    }
+            // Wait for the strategy to produce tasks (includes interval/backoff).
+            let tasks = match self.strategy.next_tasks(&self.shutdown_rx).await {
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    // Strategy already logged the error and applied backoff.
+                    warn!(%workflow_id, %e, "Strategy returned error, retrying");
+                    continue;
+                }
+            };
 
-                    // Check agent is connected.
-                    if !self.registry.is_connected(&agent_id).await {
-                        debug!(%workflow_id, %agent_id, "Agent not connected, skipping poll");
-                        continue;
-                    }
+            // Check for shutdown signal — strategy returns Ok(vec![]) on shutdown.
+            if *self.shutdown_rx.borrow() {
+                info!(%workflow_id, "Shutdown signal received, stopping runner");
+                break;
+            }
 
-                    match self.poll_and_dispatch().await {
-                        Ok(dispatched) => {
-                            consecutive_errors = 0;
-                            if dispatched {
-                                info!(%workflow_id, "Task dispatched to agent");
-                            } else {
-                                debug!(%workflow_id, "No new tasks to dispatch");
-                            }
-                        }
-                        Err(e) => {
-                            consecutive_errors += 1;
-                            let backoff = std::cmp::min(consecutive_errors * 2, 30);
-                            warn!(
-                                %workflow_id,
-                                %e,
-                                consecutive_errors,
-                                backoff_multiplier = backoff,
-                                "Poll cycle failed"
-                            );
-                        }
+            if tasks.is_empty() {
+                debug!(%workflow_id, "No new tasks from strategy");
+                continue;
+            }
+
+            // Check if agent is busy.
+            {
+                let busy = self.busy.lock().await;
+                if busy.active_dispatch_id.is_some() {
+                    debug!(%workflow_id, "Agent busy, skipping dispatch");
+                    continue;
+                }
+            }
+
+            // Check agent is connected.
+            if !self.registry.is_connected(&agent_id).await {
+                debug!(%workflow_id, %agent_id, "Agent not connected, skipping dispatch");
+                continue;
+            }
+
+            match self.dispatch_tasks(tasks).await {
+                Ok(dispatched) => {
+                    if dispatched {
+                        info!(%workflow_id, "Task dispatched to agent");
+                    } else {
+                        debug!(%workflow_id, "All tasks already dispatched");
                     }
                 }
-                _ = self.shutdown_rx.changed() => {
-                    if *self.shutdown_rx.borrow() {
-                        info!(%workflow_id, "Shutdown signal received, stopping runner");
-                        break;
-                    }
+                Err(e) => {
+                    warn!(%workflow_id, %e, "Dispatch failed");
                 }
             }
         }
@@ -123,10 +131,12 @@ impl WorkflowRunner {
         info!(%workflow_id, "Workflow runner stopped");
     }
 
-    /// Poll the source, find the first undispatched task, and send it to the agent.
-    async fn poll_and_dispatch(&self) -> anyhow::Result<bool> {
-        let tasks = self.source.fetch_tasks().await?;
-
+    /// Find the first undispatched task and send it to the agent.
+    ///
+    /// This preserves the original dispatch logic: dedup check, template
+    /// rendering, dispatch record creation, tool policy application, and
+    /// prompt delivery — dispatching at most one task per cycle.
+    async fn dispatch_tasks(&self, tasks: Vec<Task>) -> anyhow::Result<bool> {
         for task in tasks {
             // Skip already-dispatched tasks.
             if self.storage.is_dispatched(&self.config.id, &task.source_id).await? {
@@ -209,6 +219,7 @@ pub async fn notify_complete(
     }
 }
 
+/// Create a [`TaskSource`] from a [`TaskSourceConfig`].
 fn create_source(config: &TaskSourceConfig) -> Box<dyn TaskSource> {
     match config {
         TaskSourceConfig::GithubIssues { owner, repo, labels, state } => Box::new(
@@ -223,4 +234,13 @@ fn create_source(config: &TaskSourceConfig) -> Box<dyn TaskSource> {
             ))
         }
     }
+}
+
+/// Create the appropriate [`TriggerStrategy`] for a workflow configuration.
+///
+/// Currently all workflows use polling, so this builds a [`PollingStrategy`]
+/// wrapping the task source derived from the workflow's `source_config`.
+pub fn create_strategy(config: &WorkflowConfig) -> Box<dyn TriggerStrategy> {
+    let source = create_source(&config.source_config);
+    Box::new(PollingStrategy::new(source, config.poll_interval_secs))
 }
