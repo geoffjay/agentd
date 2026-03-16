@@ -281,9 +281,7 @@ pub fn create_strategy(config: &WorkflowConfig) -> anyhow::Result<Box<dyn Trigge
             let dt = chrono::DateTime::parse_from_rfc3339(run_at)
                 .map(|dt| dt.with_timezone(&Utc))
                 .or_else(|_| run_at.parse::<chrono::DateTime<Utc>>())
-                .map_err(|e| {
-                    anyhow::anyhow!("Invalid run_at datetime '{}': {}", run_at, e)
-                })?;
+                .map_err(|e| anyhow::anyhow!("Invalid run_at datetime '{}': {}", run_at, e))?;
             let strategy = DelayStrategy::new(dt, config.id);
             Ok(Box::new(strategy))
         }

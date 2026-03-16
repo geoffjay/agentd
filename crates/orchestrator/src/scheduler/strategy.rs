@@ -578,10 +578,7 @@ mod tests {
         assert_eq!(task.title, "Cron trigger: 0 9 * * MON-FRI");
         // metadata has fire_time and cron_expression
         assert_eq!(task.metadata.get("fire_time"), Some(&fire_time.to_rfc3339()));
-        assert_eq!(
-            task.metadata.get("cron_expression"),
-            Some(&"0 9 * * MON-FRI".to_string())
-        );
+        assert_eq!(task.metadata.get("cron_expression"), Some(&"0 9 * * MON-FRI".to_string()));
     }
 
     #[test]
@@ -649,11 +646,11 @@ mod tests {
     fn cron_strategy_common_expressions() {
         // Various standard cron expressions should all parse.
         let expressions = vec![
-            "0 9 * * MON-FRI",   // 9 AM weekdays
-            "*/5 * * * *",       // every 5 minutes
-            "0 0 * * *",         // midnight daily
-            "0 12 1 * *",        // noon on 1st of month
-            "30 4 * * SUN",      // 4:30 AM on Sundays
+            "0 9 * * MON-FRI", // 9 AM weekdays
+            "*/5 * * * *",     // every 5 minutes
+            "0 0 * * *",       // midnight daily
+            "0 12 1 * *",      // noon on 1st of month
+            "30 4 * * SUN",    // 4:30 AM on Sundays
         ];
         for expr in expressions {
             assert!(CronStrategy::new(expr).is_ok(), "Failed to parse: {}", expr);
