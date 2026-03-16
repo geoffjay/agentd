@@ -17,6 +17,7 @@ mod m20250310_000003_rename_tmux_session;
 mod m20250311_000004_add_network_policy;
 mod m20250311_000006_add_additional_dirs;
 mod m20250312_000005_add_docker_config;
+mod m20260316_000007_rename_trigger_columns;
 
 /// The migration runner — applies all known migrations in order.
 pub struct Migrator;
@@ -31,6 +32,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250311_000004_add_network_policy::Migration),
             Box::new(m20250312_000005_add_docker_config::Migration),
             Box::new(m20250311_000006_add_additional_dirs::Migration),
+            Box::new(m20260316_000007_rename_trigger_columns::Migration),
         ]
     }
 }

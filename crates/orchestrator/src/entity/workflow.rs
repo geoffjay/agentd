@@ -4,7 +4,7 @@ use sea_orm::entity::prelude::*;
 
 /// SeaORM model for the `workflows` table.
 ///
-/// JSON columns (`source_config`, `tool_policy`) are stored as TEXT and
+/// JSON columns (`trigger_config`, `tool_policy`) are stored as TEXT and
 /// deserialized manually in the storage layer.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "workflows")]
@@ -14,9 +14,9 @@ pub struct Model {
     #[sea_orm(unique)]
     pub name: String,
     pub agent_id: String,
-    pub source_type: String,
-    /// JSON-serialized [`crate::scheduler::types::TaskSourceConfig`].
-    pub source_config: String,
+    pub trigger_type: String,
+    /// JSON-serialized [`crate::scheduler::types::TriggerConfig`].
+    pub trigger_config: String,
     pub prompt_template: String,
     pub poll_interval_secs: i64,
     /// Stored as INTEGER (0/1); mapped to `bool` in the domain layer.
