@@ -277,8 +277,7 @@ mod tests {
     fn test_render_delay_metadata_variables() {
         let mut task = sample_task();
         task.metadata.insert("run_at".to_string(), "2025-07-01T12:00:00Z".to_string());
-        task.metadata
-            .insert("workflow_id".to_string(), "abc-123".to_string());
+        task.metadata.insert("workflow_id".to_string(), "abc-123".to_string());
         let result = render_template("Delay: {{run_at}}, Workflow: {{workflow_id}}", &task);
         assert_eq!(result, "Delay: 2025-07-01T12:00:00Z, Workflow: abc-123");
     }
@@ -301,7 +300,8 @@ mod tests {
 
     #[test]
     fn test_validate_metadata_variables_accepted() {
-        let template = "{{fire_time}} {{cron_expression}} {{trigger_type}} {{run_at}} {{workflow_id}}";
+        let template =
+            "{{fire_time}} {{cron_expression}} {{trigger_type}} {{run_at}} {{workflow_id}}";
         let warnings = validate_template(template);
         assert!(warnings.is_empty(), "Expected no warnings, got: {:?}", warnings);
     }

@@ -168,15 +168,29 @@ One of `prompt_template` or `prompt_template_file` is required.
 
 Available `{{placeholders}}` in prompt templates:
 
+**Task fields** — present for all trigger types:
+
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `{{title}}` | Issue/task title | `"Fix login bug"` |
-| `{{body}}` | Issue/task body | Full markdown content |
+| `{{title}}` | Task title | `"Fix login bug"` |
+| `{{body}}` | Task body | Full markdown content |
 | `{{url}}` | Source URL | `"https://github.com/org/repo/issues/42"` |
 | `{{labels}}` | Comma-separated labels | `"bug, auth"` |
 | `{{assignee}}` | Assigned user (or empty) | `"alice"` |
 | `{{source_id}}` | Source identifier | `"42"` |
-| `{{metadata}}` | Key-value metadata | `"priority: high"` |
+| `{{metadata}}` | All metadata as `key: value` lines | `"fire_time: 2026-04-01T09:00:00Z"` |
+
+**Schedule trigger variables** — populated by `cron` and `delay` triggers:
+
+| Variable | Trigger | Description | Example |
+|----------|---------|-------------|---------|
+| `{{fire_time}}` | `cron` | RFC 3339 timestamp when the cron fired | `2026-04-01T09:00:00Z` |
+| `{{cron_expression}}` | `cron` | The cron expression that fired | `0 9 * * MON-FRI` |
+| `{{run_at}}` | `delay` | Scheduled datetime from the trigger config | `2026-04-01T09:00:00Z` |
+| `{{workflow_id}}` | `delay` | UUID of the workflow | `550e8400-...` |
+
+!!! note
+    Schedule trigger variables are stored in the task's `metadata` map and resolved during template rendering. If a variable is referenced but not present for the trigger type (e.g. `{{fire_time}}` in a delay workflow), the placeholder is left as-is in the rendered prompt.
 
 Validate templates before creating workflows:
 
@@ -187,7 +201,7 @@ agent orchestrator validate-template --file ./my-template.txt
 
 ### Source Configuration
 
-Currently supported sources:
+Supported sources:
 
 **GitHub Issues:**
 ```yaml
@@ -198,6 +212,22 @@ source:
   labels: [bug, agent]   # Filter by labels (optional)
   state: open            # Issue state filter (default: open)
 ```
+
+**Cron (recurring schedule):**
+```yaml
+source:
+  type: cron
+  expression: "0 9 * * MON-FRI"   # 9 AM UTC on weekdays
+```
+
+**Delay (one-shot):**
+```yaml
+source:
+  type: delay
+  run_at: "2026-04-01T09:00:00Z"  # RFC 3339 datetime
+```
+
+See [Schedule Triggers](schedule-triggers.md) for full syntax reference, common expression examples, and operational notes.
 
 ---
 

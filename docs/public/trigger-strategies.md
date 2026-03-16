@@ -13,9 +13,13 @@ graph LR
     subgraph "Trigger Layer"
         Strategy["TriggerStrategy"]
         Polling["PollingStrategy"]
+        CronS["CronStrategy"]
+        DelayS["DelayStrategy"]
         TaskSrc["TaskSource (e.g. GithubIssueSource)"]
         Polling -->|delegates to| TaskSrc
         Strategy -.->|implemented by| Polling
+        Strategy -.->|implemented by| CronS
+        Strategy -.->|implemented by| DelayS
     end
 ```
 
@@ -139,7 +143,9 @@ pub enum TriggerConfig {
 ```
 
 !!! info "Implementation status"
-    Only `github_issues` and `github_pull_requests` are currently runnable. Attempting to create a workflow with `cron`, `delay`, `webhook`, or `manual` returns `400 Invalid Input`.
+    `github_issues`, `github_pull_requests`, `cron`, and `delay` are fully implemented. `webhook` and `manual` are defined but not yet runnable — attempting to create a workflow with either type returns `400 Invalid Input`.
+
+    See [Schedule Triggers](schedule-triggers.md) for full documentation of the `cron` and `delay` types.
 
 ### JSON tagged-union format
 
