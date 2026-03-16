@@ -313,6 +313,7 @@ async fn memory_health(client: &MemoryClient, json: bool) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn remember(
     client: &MemoryClient,
     content: &str,
@@ -376,6 +377,7 @@ async fn recall(client: &MemoryClient, id: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn search(
     client: &MemoryClient,
     query: &str,
@@ -459,6 +461,7 @@ async fn forget(client: &MemoryClient, id: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn list(
     client: &MemoryClient,
     memory_type: Option<&str>,
