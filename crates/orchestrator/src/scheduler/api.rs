@@ -55,6 +55,41 @@ async fn create_workflow(
         )));
     }
 
+    // Validate trigger configuration.
+    match &req.trigger_config {
+        TriggerConfig::GithubIssues { owner, repo, .. }
+        | TriggerConfig::GithubPullRequests { owner, repo, .. } => {
+            if owner.trim().is_empty() || repo.trim().is_empty() {
+                return Err(ApiError::InvalidInput(
+                    "GitHub trigger requires non-empty 'owner' and 'repo'".to_string(),
+                ));
+            }
+        }
+        TriggerConfig::Cron { expression } => {
+            if expression.trim().is_empty() {
+                return Err(ApiError::InvalidInput(
+                    "Cron trigger requires a non-empty 'expression'".to_string(),
+                ));
+            }
+        }
+        TriggerConfig::Delay { run_at } => {
+            if run_at.trim().is_empty() {
+                return Err(ApiError::InvalidInput(
+                    "Delay trigger requires a non-empty 'run_at' datetime".to_string(),
+                ));
+            }
+        }
+        TriggerConfig::Webhook { .. } | TriggerConfig::Manual {} => {}
+    }
+
+    // Reject trigger types that are not yet implemented.
+    if !req.trigger_config.is_poll_based() {
+        return Err(ApiError::InvalidInput(format!(
+            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests",
+            req.trigger_config.trigger_type()
+        )));
+    }
+
     // Validate that the agent exists and is running.
     let agent = state
         .manager

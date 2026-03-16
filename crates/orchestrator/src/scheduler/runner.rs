@@ -220,27 +220,34 @@ pub async fn notify_complete(
 }
 
 /// Create a [`TaskSource`] from a [`TriggerConfig`].
-fn create_source(config: &TriggerConfig) -> Box<dyn TaskSource> {
+///
+/// Returns an error for trigger types that are not yet implemented
+/// (cron, delay, webhook, manual).
+fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> {
     match config {
-        TriggerConfig::GithubIssues { owner, repo, labels, state } => Box::new(
+        TriggerConfig::GithubIssues { owner, repo, labels, state } => Ok(Box::new(
             GithubIssueSource::new(owner.clone(), repo.clone(), labels.clone(), state.clone()),
-        ),
+        )),
         TriggerConfig::GithubPullRequests { owner, repo, labels, state } => {
-            Box::new(GithubPullRequestSource::new(
+            Ok(Box::new(GithubPullRequestSource::new(
                 owner.clone(),
                 repo.clone(),
                 labels.clone(),
                 state.clone(),
-            ))
+            )))
         }
+        other => anyhow::bail!(
+            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests",
+            other.trigger_type()
+        ),
     }
 }
 
 /// Create the appropriate [`TriggerStrategy`] for a workflow configuration.
 ///
-/// Currently all workflows use polling, so this builds a [`PollingStrategy`]
-/// wrapping the task source derived from the workflow's `trigger_config`.
-pub fn create_strategy(config: &WorkflowConfig) -> Box<dyn TriggerStrategy> {
-    let source = create_source(&config.trigger_config);
-    Box::new(PollingStrategy::new(source, config.poll_interval_secs))
+/// Currently all poll-based workflows use [`PollingStrategy`]. Returns an
+/// error for trigger types that are not yet implemented.
+pub fn create_strategy(config: &WorkflowConfig) -> anyhow::Result<Box<dyn TriggerStrategy>> {
+    let source = create_source(&config.trigger_config)?;
+    Ok(Box::new(PollingStrategy::new(source, config.poll_interval_secs)))
 }

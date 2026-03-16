@@ -116,6 +116,17 @@ pub enum SourceTemplate {
         #[serde(default = "default_state")]
         state: String,
     },
+    Cron {
+        expression: String,
+    },
+    Delay {
+        run_at: String,
+    },
+    Webhook {
+        #[serde(default)]
+        secret: Option<String>,
+    },
+    Manual {},
 }
 
 fn default_state() -> String {
@@ -331,6 +342,10 @@ pub async fn apply_workflow_file(
         SourceTemplate::GithubPullRequests { owner, repo, labels, state } => {
             TriggerConfig::GithubPullRequests { owner, repo, labels, state }
         }
+        SourceTemplate::Cron { expression } => TriggerConfig::Cron { expression },
+        SourceTemplate::Delay { run_at } => TriggerConfig::Delay { run_at },
+        SourceTemplate::Webhook { secret } => TriggerConfig::Webhook { secret },
+        SourceTemplate::Manual {} => TriggerConfig::Manual {},
     };
 
     let request = CreateWorkflowRequest {
