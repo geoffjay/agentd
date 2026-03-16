@@ -55,8 +55,7 @@ use uuid::Uuid;
 
 use orchestrator::client::OrchestratorClient;
 use orchestrator::scheduler::types::{
-    CreateWorkflowRequest, DispatchResponse, TaskSourceConfig, UpdateWorkflowRequest,
-    WorkflowResponse,
+    CreateWorkflowRequest, DispatchResponse, TriggerConfig, UpdateWorkflowRequest, WorkflowResponse,
 };
 use orchestrator::types::{
     AddDirResponse, AgentResponse, AgentStatus, AgentUsageStats, ApprovalStatus,
@@ -2032,7 +2031,7 @@ async fn create_workflow(
     let request = CreateWorkflowRequest {
         name: name.to_string(),
         agent_id: resolved_agent_id,
-        source_config: TaskSourceConfig::GithubIssues {
+        trigger_config: TriggerConfig::GithubIssues {
             owner: owner.to_string(),
             repo: repo.to_string(),
             labels: labels_vec,
@@ -2295,12 +2294,12 @@ fn display_workflow(workflow: &WorkflowResponse) {
     let status = if workflow.enabled { "enabled".green() } else { "disabled".red() };
     println!("{}: {}", "Status".bold(), status);
     println!("{}: {}s", "Poll Interval".bold(), workflow.poll_interval_secs);
-    match &workflow.source_config {
-        TaskSourceConfig::GithubIssues { owner, repo, .. } => {
+    match &workflow.trigger_config {
+        TriggerConfig::GithubIssues { owner, repo, .. } => {
             println!("{}: github_issues", "Source Type".bold());
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
         }
-        TaskSourceConfig::GithubPullRequests { owner, repo, .. } => {
+        TriggerConfig::GithubPullRequests { owner, repo, .. } => {
             println!("{}: github_pull_requests", "Source Type".bold());
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
         }
@@ -2380,7 +2379,7 @@ mod tests {
             id: Uuid::new_v4(),
             name: "test-workflow".to_string(),
             agent_id: Uuid::new_v4(),
-            source_config: TaskSourceConfig::GithubIssues {
+            trigger_config: TriggerConfig::GithubIssues {
                 owner: "acme".to_string(),
                 repo: "widgets".to_string(),
                 labels: vec!["bug".to_string()],
