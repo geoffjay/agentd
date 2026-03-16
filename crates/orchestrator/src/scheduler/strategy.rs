@@ -8,9 +8,12 @@
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::types::Task;
 use async_trait::async_trait;
+use chrono::Utc;
+use croner::Cron;
+use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::watch;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// Abstracts how a workflow waits for its next trigger event.
 ///
@@ -140,6 +143,109 @@ impl TriggerStrategy for PollingStrategy {
                     "Poll cycle failed, applying backoff"
                 );
                 Err(e)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CronStrategy
+// ---------------------------------------------------------------------------
+
+/// A [`TriggerStrategy`] that fires based on a cron expression.
+///
+/// On each call to `next_tasks()`, the strategy calculates the next fire time
+/// from the cron expression and sleeps until that instant. When the fire time
+/// arrives, it produces a synthetic [`Task`] with a unique `source_id` derived
+/// from the fire timestamp.
+///
+/// # Shutdown
+///
+/// The sleep is interruptible — if the shutdown signal fires before the next
+/// cron tick, the strategy returns an empty vec immediately.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use orchestrator::scheduler::strategy::CronStrategy;
+///
+/// // Fire at 9:00 AM on weekdays
+/// let strategy = CronStrategy::new("0 9 * * MON-FRI")?;
+/// ```
+pub struct CronStrategy {
+    cron: Cron,
+    expression: String,
+}
+
+impl std::fmt::Debug for CronStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CronStrategy").field("expression", &self.expression).finish()
+    }
+}
+
+impl CronStrategy {
+    /// Create a new cron strategy from a cron expression.
+    ///
+    /// Returns an error if the expression cannot be parsed.
+    pub fn new(expression: &str) -> anyhow::Result<Self> {
+        let cron: Cron = expression
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Invalid cron expression '{}': {}", expression, e))?;
+        Ok(Self { cron, expression: expression.to_string() })
+    }
+
+    /// Calculate the next fire time from now.
+    fn next_fire_time(&self) -> anyhow::Result<chrono::DateTime<Utc>> {
+        self.cron
+            .find_next_occurrence(&Utc::now(), false)
+            .map_err(|e| anyhow::anyhow!("Failed to calculate next cron fire time: {}", e))
+    }
+
+    /// Build a synthetic task for a cron firing.
+    fn build_task(&self, fire_time: &chrono::DateTime<Utc>) -> Task {
+        let fire_time_str = fire_time.to_rfc3339();
+        let mut metadata = HashMap::new();
+        metadata.insert("fire_time".to_string(), fire_time_str.clone());
+        metadata.insert("cron_expression".to_string(), self.expression.clone());
+
+        Task {
+            source_id: format!("cron:{}", fire_time_str),
+            title: format!("Cron trigger: {}", self.expression),
+            body: String::new(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }
+    }
+}
+
+#[async_trait]
+impl TriggerStrategy for CronStrategy {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
+        let next = self.next_fire_time()?;
+        let now = Utc::now();
+        let wait_duration = (next - now).to_std().unwrap_or(Duration::ZERO);
+
+        info!(
+            expression = %self.expression,
+            next_fire = %next,
+            wait_secs = wait_duration.as_secs(),
+            "Cron strategy waiting for next fire time"
+        );
+
+        // Sleep until the fire time, respecting shutdown.
+        let mut shutdown = shutdown.clone();
+        tokio::select! {
+            _ = tokio::time::sleep(wait_duration) => {
+                let task = self.build_task(&next);
+                Ok(vec![task])
+            }
+            _ = shutdown.changed() => {
+                if *shutdown.borrow() {
+                    return Ok(vec![]);
+                }
+                Ok(vec![])
             }
         }
     }
@@ -319,5 +425,130 @@ mod tests {
         let mut strategy = strategy;
         let result = strategy.next_tasks(&rx).await.unwrap();
         assert!(result.is_empty());
+    }
+
+    // ── CronStrategy tests ──────────────────────────────────────────
+
+    #[test]
+    fn cron_strategy_parses_valid_expression() {
+        let strategy = CronStrategy::new("0 9 * * MON-FRI");
+        assert!(strategy.is_ok());
+    }
+
+    #[test]
+    fn cron_strategy_rejects_invalid_expression() {
+        let result = CronStrategy::new("not a cron");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid cron expression"));
+    }
+
+    #[test]
+    fn cron_strategy_rejects_empty_expression() {
+        let result = CronStrategy::new("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cron_strategy_next_fire_time_is_in_future() {
+        // "every minute" should always have a next fire time
+        let strategy = CronStrategy::new("* * * * *").unwrap();
+        let next = strategy.next_fire_time().unwrap();
+        assert!(next > Utc::now());
+    }
+
+    #[test]
+    fn cron_strategy_build_task_has_correct_fields() {
+        let strategy = CronStrategy::new("0 9 * * MON-FRI").unwrap();
+        let fire_time = Utc::now();
+        let task = strategy.build_task(&fire_time);
+
+        // source_id should start with "cron:"
+        assert!(task.source_id.starts_with("cron:"));
+        // source_id contains the RFC 3339 timestamp
+        assert!(task.source_id.contains(&fire_time.to_rfc3339()));
+        // title contains the expression
+        assert_eq!(task.title, "Cron trigger: 0 9 * * MON-FRI");
+        // metadata has fire_time and cron_expression
+        assert_eq!(task.metadata.get("fire_time"), Some(&fire_time.to_rfc3339()));
+        assert_eq!(
+            task.metadata.get("cron_expression"),
+            Some(&"0 9 * * MON-FRI".to_string())
+        );
+    }
+
+    #[test]
+    fn cron_strategy_tasks_have_unique_source_ids() {
+        let strategy = CronStrategy::new("* * * * *").unwrap();
+        let t1 = Utc::now();
+        let t2 = t1 + chrono::Duration::minutes(1);
+
+        let task1 = strategy.build_task(&t1);
+        let task2 = strategy.build_task(&t2);
+
+        assert_ne!(task1.source_id, task2.source_id);
+    }
+
+    #[tokio::test]
+    async fn cron_strategy_fires_on_every_minute() {
+        // Use "every second" pattern — should fire almost immediately.
+        let mut strategy = CronStrategy::new("* * * * * *").unwrap();
+        let (_tx, rx) = watch::channel(false);
+
+        let start = tokio::time::Instant::now();
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.starts_with("cron:"));
+        // Should complete within 2 seconds (next second boundary).
+        assert!(elapsed < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn cron_strategy_respects_shutdown() {
+        // Use a far-future cron (once a year) so it would block forever.
+        let mut strategy = CronStrategy::new("0 0 1 1 *").unwrap();
+        let (tx, rx) = watch::channel(false);
+
+        // Fire shutdown after a short delay.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(true);
+        });
+
+        let start = tokio::time::Instant::now();
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        // Should return quickly (well under a second).
+        assert!(elapsed < Duration::from_secs(2));
+        // Should return empty vec on shutdown.
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cron_strategy_is_object_safe() {
+        let strategy: Box<dyn TriggerStrategy> =
+            Box::new(CronStrategy::new("* * * * * *").unwrap());
+        let (_tx, rx) = watch::channel(false);
+
+        let mut strategy = strategy;
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn cron_strategy_common_expressions() {
+        // Various standard cron expressions should all parse.
+        let expressions = vec![
+            "0 9 * * MON-FRI",   // 9 AM weekdays
+            "*/5 * * * *",       // every 5 minutes
+            "0 0 * * *",         // midnight daily
+            "0 12 1 * *",        // noon on 1st of month
+            "30 4 * * SUN",      // 4:30 AM on Sundays
+        ];
+        for expr in expressions {
+            assert!(CronStrategy::new(expr).is_ok(), "Failed to parse: {}", expr);
+        }
     }
 }

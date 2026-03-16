@@ -42,6 +42,9 @@ metrics-exporter-prometheus = { workspace = true }
 # HTTP client (for OrchestratorClient)
 reqwest = { version = "0.12", features = ["json"] }
 
+# Cron expression parsing
+croner = { workspace = true }
+
 # Tmux management (reuse from wrap crate)
 wrap = { path = "../wrap" }
 

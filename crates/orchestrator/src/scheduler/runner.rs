@@ -1,7 +1,7 @@
 use crate::scheduler::github::{GithubIssueSource, GithubPullRequestSource};
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
-use crate::scheduler::strategy::{PollingStrategy, TriggerStrategy};
+use crate::scheduler::strategy::{CronStrategy, PollingStrategy, TriggerStrategy};
 use crate::scheduler::template::render_template;
 use crate::scheduler::types::{
     DispatchRecord, DispatchStatus, Task, TriggerConfig, WorkflowConfig,
@@ -245,9 +245,18 @@ fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> 
 
 /// Create the appropriate [`TriggerStrategy`] for a workflow configuration.
 ///
-/// Currently all poll-based workflows use [`PollingStrategy`]. Returns an
-/// error for trigger types that are not yet implemented.
+/// Poll-based workflows (GitHub triggers) use [`PollingStrategy`].
+/// Cron workflows use [`CronStrategy`]. Returns an error for trigger types
+/// that are not yet implemented.
 pub fn create_strategy(config: &WorkflowConfig) -> anyhow::Result<Box<dyn TriggerStrategy>> {
-    let source = create_source(&config.trigger_config)?;
-    Ok(Box::new(PollingStrategy::new(source, config.poll_interval_secs)))
+    match &config.trigger_config {
+        TriggerConfig::Cron { expression } => {
+            let strategy = CronStrategy::new(expression)?;
+            Ok(Box::new(strategy))
+        }
+        _ => {
+            let source = create_source(&config.trigger_config)?;
+            Ok(Box::new(PollingStrategy::new(source, config.poll_interval_secs)))
+        }
+    }
 }
