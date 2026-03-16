@@ -172,13 +172,96 @@ pub fn detect_template_kind(path: &Path) -> Result<TemplateKind> {
     Ok(TemplateKind::Workflow)
 }
 
+// ── Environment variable substitution ────────────────────────────────
+
+/// Expand `${VAR}` and `${VAR:-default}` placeholders in a string using
+/// the process environment.
+///
+/// - `${VAR}` — replaced with `std::env::var("VAR")`; returns an error
+///   if `VAR` is not set.
+/// - `${VAR:-default}` — replaced with `std::env::var("VAR")` if set,
+///   otherwise uses `default`.
+///
+/// Literal `$` characters that are not followed by `{` are left as-is.
+fn expand_env_in_value(value: &str) -> Result<String> {
+    let mut result = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '$' && chars.peek() == Some(&'{') {
+            // Consume the '{'
+            chars.next();
+
+            // Read until closing '}'
+            let mut placeholder = String::new();
+            let mut found_close = false;
+            for c in chars.by_ref() {
+                if c == '}' {
+                    found_close = true;
+                    break;
+                }
+                placeholder.push(c);
+            }
+
+            if !found_close {
+                bail!("Unclosed ${{}} in env value: missing closing '}}' in \"{}\"", value);
+            }
+
+            if placeholder.is_empty() {
+                bail!("Empty variable name in ${{}} substitution in \"{}\"", value);
+            }
+
+            // Check for :- default syntax
+            if let Some(sep_pos) = placeholder.find(":-") {
+                let var_name = &placeholder[..sep_pos];
+                let default_val = &placeholder[sep_pos + 2..];
+                if var_name.is_empty() {
+                    bail!("Empty variable name in ${{:-...}} substitution in \"{}\"", value);
+                }
+                match std::env::var(var_name) {
+                    Ok(v) => result.push_str(&v),
+                    Err(_) => result.push_str(default_val),
+                }
+            } else {
+                match std::env::var(&placeholder) {
+                    Ok(v) => result.push_str(&v),
+                    Err(_) => bail!(
+                        "Environment variable '{}' is not set (referenced in env value \"{}\")",
+                        placeholder,
+                        value
+                    ),
+                }
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    Ok(result)
+}
+
+/// Expand environment variable references in all values of an env HashMap.
+fn expand_env_vars(env: &mut HashMap<String, String>) -> Result<()> {
+    let keys: Vec<String> = env.keys().cloned().collect();
+    for key in keys {
+        let raw = env.get(&key).unwrap().clone();
+        let expanded = expand_env_in_value(&raw)
+            .with_context(|| format!("Failed to expand env var in key '{}'", key))?;
+        env.insert(key, expanded);
+    }
+    Ok(())
+}
+
 // ── Parsing helpers ──────────────────────────────────────────────────
 
 fn parse_agent_template(path: &Path) -> Result<AgentTemplate> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read: {}", path.display()))?;
-    serde_yaml::from_str(&content)
-        .with_context(|| format!("Failed to parse agent template: {}", path.display()))
+    let mut tmpl: AgentTemplate = serde_yaml::from_str(&content)
+        .with_context(|| format!("Failed to parse agent template: {}", path.display()))?;
+    expand_env_vars(&mut tmpl.env)
+        .with_context(|| format!("Failed to expand env vars in {}", path.display()))?;
+    Ok(tmpl)
 }
 
 fn parse_workflow_template(path: &Path) -> Result<WorkflowTemplate> {
@@ -917,6 +1000,125 @@ env: {}
 "#;
         let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
         assert!(tmpl.env.is_empty());
+    }
+
+    // ── Environment variable substitution tests ────────────────────
+
+    #[test]
+    fn test_expand_env_required_var() {
+        std::env::set_var("AGENTD_TEST_KEY_1", "hello");
+        let result = expand_env_in_value("${AGENTD_TEST_KEY_1}").unwrap();
+        assert_eq!(result, "hello");
+        std::env::remove_var("AGENTD_TEST_KEY_1");
+    }
+
+    #[test]
+    fn test_expand_env_required_var_missing() {
+        std::env::remove_var("AGENTD_TEST_MISSING");
+        let result = expand_env_in_value("${AGENTD_TEST_MISSING}");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("AGENTD_TEST_MISSING"));
+        assert!(msg.contains("not set"));
+    }
+
+    #[test]
+    fn test_expand_env_with_default_set() {
+        std::env::set_var("AGENTD_TEST_KEY_2", "from_env");
+        let result = expand_env_in_value("${AGENTD_TEST_KEY_2:-fallback}").unwrap();
+        assert_eq!(result, "from_env");
+        std::env::remove_var("AGENTD_TEST_KEY_2");
+    }
+
+    #[test]
+    fn test_expand_env_with_default_not_set() {
+        std::env::remove_var("AGENTD_TEST_KEY_3");
+        let result = expand_env_in_value("${AGENTD_TEST_KEY_3:-fallback}").unwrap();
+        assert_eq!(result, "fallback");
+    }
+
+    #[test]
+    fn test_expand_env_with_empty_default() {
+        std::env::remove_var("AGENTD_TEST_KEY_4");
+        let result = expand_env_in_value("${AGENTD_TEST_KEY_4:-}").unwrap();
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_expand_env_no_substitution() {
+        let result = expand_env_in_value("plain-value").unwrap();
+        assert_eq!(result, "plain-value");
+    }
+
+    #[test]
+    fn test_expand_env_dollar_without_brace() {
+        let result = expand_env_in_value("price is $5").unwrap();
+        assert_eq!(result, "price is $5");
+    }
+
+    #[test]
+    fn test_expand_env_multiple_vars() {
+        std::env::set_var("AGENTD_TEST_A", "one");
+        std::env::set_var("AGENTD_TEST_B", "two");
+        let result = expand_env_in_value("${AGENTD_TEST_A}-${AGENTD_TEST_B}").unwrap();
+        assert_eq!(result, "one-two");
+        std::env::remove_var("AGENTD_TEST_A");
+        std::env::remove_var("AGENTD_TEST_B");
+    }
+
+    #[test]
+    fn test_expand_env_mixed_with_text() {
+        std::env::set_var("AGENTD_TEST_HOST", "localhost");
+        let result = expand_env_in_value("https://${AGENTD_TEST_HOST}:8080/api").unwrap();
+        assert_eq!(result, "https://localhost:8080/api");
+        std::env::remove_var("AGENTD_TEST_HOST");
+    }
+
+    #[test]
+    fn test_expand_env_unclosed_brace() {
+        let result = expand_env_in_value("${UNCLOSED");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unclosed"));
+    }
+
+    #[test]
+    fn test_expand_env_empty_var_name() {
+        let result = expand_env_in_value("${}");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Empty variable name"));
+    }
+
+    #[test]
+    fn test_expand_env_empty_var_name_with_default() {
+        let result = expand_env_in_value("${:-default}");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Empty variable name"));
+    }
+
+    #[test]
+    fn test_expand_env_vars_in_hashmap() {
+        std::env::set_var("AGENTD_TEST_MAP_VAL", "secret123");
+        let mut env = HashMap::new();
+        env.insert("API_KEY".to_string(), "${AGENTD_TEST_MAP_VAL}".to_string());
+        env.insert("STATIC".to_string(), "no-change".to_string());
+        env.insert("WITH_DEFAULT".to_string(), "${AGENTD_TEST_NONEXIST:-default_val}".to_string());
+
+        expand_env_vars(&mut env).unwrap();
+
+        assert_eq!(env.get("API_KEY").unwrap(), "secret123");
+        assert_eq!(env.get("STATIC").unwrap(), "no-change");
+        assert_eq!(env.get("WITH_DEFAULT").unwrap(), "default_val");
+        std::env::remove_var("AGENTD_TEST_MAP_VAL");
+    }
+
+    #[test]
+    fn test_expand_env_vars_hashmap_error_propagates() {
+        std::env::remove_var("AGENTD_TEST_REQUIRED_MISSING");
+        let mut env = HashMap::new();
+        env.insert("KEY".to_string(), "${AGENTD_TEST_REQUIRED_MISSING}".to_string());
+
+        let result = expand_env_vars(&mut env);
+        assert!(result.is_err());
     }
 
     #[test]
