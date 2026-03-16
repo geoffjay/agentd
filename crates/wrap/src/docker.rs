@@ -1170,7 +1170,9 @@ mod tests {
         // Verify the builder actually changes the port.
         let Some(custom) =
             DockerBackend::new("test", "image:latest").ok().map(|b| b.with_orchestrator_port(9090))
-        else { return };
+        else {
+            return;
+        };
         assert_eq!(custom.orchestrator_port(), 9090);
     }
 
