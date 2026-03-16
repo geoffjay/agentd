@@ -93,6 +93,9 @@ nav:
       - Notify: public/services/notify.md
       - Ask: public/services/ask.md
       - Wrap: public/services/wrap.md
+  - Workflows:
+      - Trigger Strategies: public/trigger-strategies.md
+      - Migration (source_config → trigger_config): public/migration-trigger.md
   - Development:
       - Error Handling & Logging: public/error-handling.md
       - Storage Patterns: storage.md
