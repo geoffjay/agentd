@@ -71,6 +71,13 @@ async fn create_workflow(
                     "Cron trigger requires a non-empty 'expression'".to_string(),
                 ));
             }
+            // Validate the cron expression at creation time (fail fast).
+            if let Err(e) = expression.parse::<croner::Cron>() {
+                return Err(ApiError::InvalidInput(format!(
+                    "Invalid cron expression '{}': {}",
+                    expression, e
+                )));
+            }
         }
         TriggerConfig::Delay { run_at } => {
             if run_at.trim().is_empty() {
@@ -83,9 +90,9 @@ async fn create_workflow(
     }
 
     // Reject trigger types that are not yet implemented.
-    if !req.trigger_config.is_poll_based() {
+    if !req.trigger_config.is_implemented() {
         return Err(ApiError::InvalidInput(format!(
-            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests",
+            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests, cron",
             req.trigger_config.trigger_type()
         )));
     }

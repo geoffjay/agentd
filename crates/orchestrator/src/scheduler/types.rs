@@ -116,6 +116,16 @@ impl TriggerConfig {
             TriggerConfig::GithubIssues { .. } | TriggerConfig::GithubPullRequests { .. }
         )
     }
+
+    /// Returns `true` for trigger types that have a working implementation.
+    pub fn is_implemented(&self) -> bool {
+        matches!(
+            self,
+            TriggerConfig::GithubIssues { .. }
+                | TriggerConfig::GithubPullRequests { .. }
+                | TriggerConfig::Cron { .. }
+        )
+    }
 }
 
 /// A record tracking each task dispatch.
