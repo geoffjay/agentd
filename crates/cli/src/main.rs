@@ -144,7 +144,7 @@ enum Commands {
     /// workflow scheduling, and task dispatch.
     Orchestrator {
         #[command(subcommand)]
-        command: OrchestratorCommand,
+        command: Box<OrchestratorCommand>,
     },
     /// Generate shell completion scripts.
     ///
