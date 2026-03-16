@@ -74,9 +74,7 @@ pub enum TriggerConfig {
         state: String,
     },
     /// Cron-based trigger (Phase 2).
-    Cron {
-        expression: String,
-    },
+    Cron { expression: String },
     /// One-shot delayed trigger (Phase 2).
     Delay {
         /// ISO 8601 datetime string.
@@ -113,7 +111,10 @@ impl TriggerConfig {
 
     /// Returns `true` for trigger types that use poll-based task fetching.
     pub fn is_poll_based(&self) -> bool {
-        matches!(self, TriggerConfig::GithubIssues { .. } | TriggerConfig::GithubPullRequests { .. })
+        matches!(
+            self,
+            TriggerConfig::GithubIssues { .. } | TriggerConfig::GithubPullRequests { .. }
+        )
     }
 }
 

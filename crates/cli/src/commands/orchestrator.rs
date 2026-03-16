@@ -2082,8 +2082,10 @@ async fn create_workflow(
     // Build trigger config based on trigger type with validation.
     let trigger_config = match trigger_type {
         TriggerType::GithubIssues => {
-            let owner = owner.ok_or_else(|| anyhow::anyhow!("--owner is required for github-issues trigger"))?;
-            let repo = repo.ok_or_else(|| anyhow::anyhow!("--repo is required for github-issues trigger"))?;
+            let owner = owner
+                .ok_or_else(|| anyhow::anyhow!("--owner is required for github-issues trigger"))?;
+            let repo = repo
+                .ok_or_else(|| anyhow::anyhow!("--repo is required for github-issues trigger"))?;
             let labels_vec: Vec<String> = labels
                 .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default();
@@ -2095,8 +2097,12 @@ async fn create_workflow(
             }
         }
         TriggerType::GithubPullRequests => {
-            let owner = owner.ok_or_else(|| anyhow::anyhow!("--owner is required for github-pull-requests trigger"))?;
-            let repo = repo.ok_or_else(|| anyhow::anyhow!("--repo is required for github-pull-requests trigger"))?;
+            let owner = owner.ok_or_else(|| {
+                anyhow::anyhow!("--owner is required for github-pull-requests trigger")
+            })?;
+            let repo = repo.ok_or_else(|| {
+                anyhow::anyhow!("--repo is required for github-pull-requests trigger")
+            })?;
             let labels_vec: Vec<String> = labels
                 .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default();
@@ -2113,16 +2119,14 @@ async fn create_workflow(
             TriggerConfig::Cron { expression: expression.to_string() }
         }
         TriggerType::Delay => {
-            let run_at_val = run_at
-                .ok_or_else(|| anyhow::anyhow!("--run-at is required for delay trigger"))?;
+            let run_at_val =
+                run_at.ok_or_else(|| anyhow::anyhow!("--run-at is required for delay trigger"))?;
             TriggerConfig::Delay { run_at: run_at_val.to_string() }
         }
         TriggerType::Webhook => {
             TriggerConfig::Webhook { secret: webhook_secret.map(|s| s.to_string()) }
         }
-        TriggerType::Manual => {
-            TriggerConfig::Manual {}
-        }
+        TriggerType::Manual => TriggerConfig::Manual {},
     };
 
     let request = CreateWorkflowRequest {
