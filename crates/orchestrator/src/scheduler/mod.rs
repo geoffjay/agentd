@@ -3,6 +3,7 @@ pub mod github;
 pub mod runner;
 pub mod source;
 pub mod storage;
+pub mod strategy;
 pub mod template;
 pub mod types;
 
