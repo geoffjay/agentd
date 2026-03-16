@@ -39,15 +39,15 @@ impl SchedulerStorage {
 
     /// Inserts a workflow and returns its UUID.
     pub async fn add_workflow(&self, workflow: &WorkflowConfig) -> Result<Uuid> {
-        let source_config_json = serde_json::to_string(&workflow.trigger_config)?;
+        let trigger_config_json = serde_json::to_string(&workflow.trigger_config)?;
         let tool_policy_json = serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
 
         let model = workflow_entity::ActiveModel {
             id: Set(workflow.id.to_string()),
             name: Set(workflow.name.clone()),
             agent_id: Set(workflow.agent_id.to_string()),
-            source_type: Set(workflow.trigger_config.trigger_type().to_string()),
-            source_config: Set(source_config_json),
+            trigger_type: Set(workflow.trigger_config.trigger_type().to_string()),
+            trigger_config: Set(trigger_config_json),
             prompt_template: Set(workflow.prompt_template.clone()),
             poll_interval_secs: Set(workflow.poll_interval_secs as i64),
             enabled: Set(if workflow.enabled { 1 } else { 0 }),
@@ -290,7 +290,7 @@ fn model_to_workflow(model: workflow_entity::Model) -> Result<WorkflowConfig> {
         id: Uuid::parse_str(&model.id)?,
         name: model.name,
         agent_id: Uuid::parse_str(&model.agent_id)?,
-        trigger_config: serde_json::from_str(&model.source_config)?,
+        trigger_config: serde_json::from_str(&model.trigger_config)?,
         prompt_template: model.prompt_template,
         poll_interval_secs: model.poll_interval_secs as u64,
         enabled: model.enabled != 0,
