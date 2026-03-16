@@ -8,7 +8,7 @@ pub mod template;
 pub mod types;
 
 use crate::websocket::ConnectionRegistry;
-use runner::{notify_complete, WorkflowRunner};
+use runner::{create_strategy, notify_complete, WorkflowRunner};
 use std::collections::HashMap;
 use std::sync::Arc;
 use storage::SchedulerStorage;
@@ -55,7 +55,9 @@ impl Scheduler {
             }
         }
 
-        let runner = WorkflowRunner::new(config, self.storage.clone(), self.registry.clone());
+        let strategy = create_strategy(&config);
+        let runner =
+            WorkflowRunner::new(config, self.storage.clone(), self.registry.clone(), strategy);
         let shutdown_tx = runner.shutdown_handle();
         let busy = runner.busy_handle();
 
