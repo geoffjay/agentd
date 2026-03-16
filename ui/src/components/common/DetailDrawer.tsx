@@ -166,7 +166,7 @@ function DetailDrawer({ open, title, onClose, children }: DetailDrawerProps) {
         aria-label={title}
         tabIndex={-1}
         className={[
-          'fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col',
+          'fixed inset-y-0 right-0 z-50 flex sm:w-full md:w-120 lg:w-180 flex-col',
           'bg-white shadow-xl dark:bg-gray-900 dark:border-l dark:border-gray-700',
           'transition-transform duration-300 ease-in-out',
           animating ? 'translate-x-0' : 'translate-x-full',
