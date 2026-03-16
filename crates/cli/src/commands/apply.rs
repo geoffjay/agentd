@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use orchestrator::client::OrchestratorClient;
-use orchestrator::scheduler::types::{CreateWorkflowRequest, TaskSourceConfig};
+use orchestrator::scheduler::types::{CreateWorkflowRequest, TriggerConfig};
 use orchestrator::types::{AgentResponse, AgentStatus, CreateAgentRequest, ToolPolicy};
 
 // ── YAML template types ──────────────────────────────────────────────
@@ -324,19 +324,19 @@ pub async fn apply_workflow_file(
         return Ok(());
     }
 
-    let source_config = match tmpl.source {
+    let trigger_config = match tmpl.source {
         SourceTemplate::GithubIssues { owner, repo, labels, state } => {
-            TaskSourceConfig::GithubIssues { owner, repo, labels, state }
+            TriggerConfig::GithubIssues { owner, repo, labels, state }
         }
         SourceTemplate::GithubPullRequests { owner, repo, labels, state } => {
-            TaskSourceConfig::GithubPullRequests { owner, repo, labels, state }
+            TriggerConfig::GithubPullRequests { owner, repo, labels, state }
         }
     };
 
     let request = CreateWorkflowRequest {
         name: tmpl.name.clone(),
         agent_id: agent.id,
-        source_config,
+        trigger_config,
         prompt_template: prompt,
         poll_interval_secs: tmpl.poll_interval,
         enabled: tmpl.enabled,

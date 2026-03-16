@@ -26,8 +26,9 @@ pub struct WorkflowConfig {
     pub name: String,
     /// The agent that will execute tasks from this workflow.
     pub agent_id: Uuid,
-    /// Configuration for the task source.
-    pub source_config: TaskSourceConfig,
+    /// Configuration for the trigger (task source).
+    #[serde(rename = "source_config")]
+    pub trigger_config: TriggerConfig,
     /// Template string with {{placeholders}} for rendering prompts.
     pub prompt_template: String,
     /// How often to poll the task source, in seconds.
@@ -52,10 +53,10 @@ fn default_enabled() -> bool {
     true
 }
 
-/// Tagged enum for different task source backends.
+/// Tagged enum for different trigger backends.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum TaskSourceConfig {
+pub enum TriggerConfig {
     GithubIssues {
         owner: String,
         repo: String,
@@ -82,11 +83,11 @@ fn default_pr_state() -> String {
     "open".to_string()
 }
 
-impl TaskSourceConfig {
-    pub fn source_type(&self) -> &'static str {
+impl TriggerConfig {
+    pub fn trigger_type(&self) -> &'static str {
         match self {
-            TaskSourceConfig::GithubIssues { .. } => "github_issues",
-            TaskSourceConfig::GithubPullRequests { .. } => "github_pull_requests",
+            TriggerConfig::GithubIssues { .. } => "github_issues",
+            TriggerConfig::GithubPullRequests { .. } => "github_pull_requests",
         }
     }
 }
@@ -146,7 +147,8 @@ impl std::str::FromStr for DispatchStatus {
 pub struct CreateWorkflowRequest {
     pub name: String,
     pub agent_id: Uuid,
-    pub source_config: TaskSourceConfig,
+    #[serde(rename = "source_config")]
+    pub trigger_config: TriggerConfig,
     pub prompt_template: String,
     #[serde(default = "default_poll_interval")]
     pub poll_interval_secs: u64,
@@ -174,7 +176,8 @@ pub struct WorkflowResponse {
     pub id: Uuid,
     pub name: String,
     pub agent_id: Uuid,
-    pub source_config: TaskSourceConfig,
+    #[serde(rename = "source_config")]
+    pub trigger_config: TriggerConfig,
     pub prompt_template: String,
     pub poll_interval_secs: u64,
     pub enabled: bool,
@@ -189,7 +192,7 @@ impl From<WorkflowConfig> for WorkflowResponse {
             id: w.id,
             name: w.name,
             agent_id: w.agent_id,
-            source_config: w.source_config,
+            trigger_config: w.trigger_config,
             prompt_template: w.prompt_template,
             poll_interval_secs: w.poll_interval_secs,
             enabled: w.enabled,

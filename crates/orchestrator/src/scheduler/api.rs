@@ -74,7 +74,7 @@ async fn create_workflow(
         id: Uuid::new_v4(),
         name: req.name,
         agent_id: req.agent_id,
-        source_config: req.source_config,
+        trigger_config: req.trigger_config,
         prompt_template: req.prompt_template,
         poll_interval_secs: req.poll_interval_secs,
         enabled: req.enabled,

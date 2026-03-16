@@ -39,14 +39,14 @@ impl SchedulerStorage {
 
     /// Inserts a workflow and returns its UUID.
     pub async fn add_workflow(&self, workflow: &WorkflowConfig) -> Result<Uuid> {
-        let source_config_json = serde_json::to_string(&workflow.source_config)?;
+        let source_config_json = serde_json::to_string(&workflow.trigger_config)?;
         let tool_policy_json = serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
 
         let model = workflow_entity::ActiveModel {
             id: Set(workflow.id.to_string()),
             name: Set(workflow.name.clone()),
             agent_id: Set(workflow.agent_id.to_string()),
-            source_type: Set(workflow.source_config.source_type().to_string()),
+            source_type: Set(workflow.trigger_config.trigger_type().to_string()),
             source_config: Set(source_config_json),
             prompt_template: Set(workflow.prompt_template.clone()),
             poll_interval_secs: Set(workflow.poll_interval_secs as i64),
@@ -290,7 +290,7 @@ fn model_to_workflow(model: workflow_entity::Model) -> Result<WorkflowConfig> {
         id: Uuid::parse_str(&model.id)?,
         name: model.name,
         agent_id: Uuid::parse_str(&model.agent_id)?,
-        source_config: serde_json::from_str(&model.source_config)?,
+        trigger_config: serde_json::from_str(&model.source_config)?,
         prompt_template: model.prompt_template,
         poll_interval_secs: model.poll_interval_secs as u64,
         enabled: model.enabled != 0,
@@ -323,7 +323,7 @@ fn model_to_dispatch(model: dispatch_entity::Model) -> Result<DispatchRecord> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scheduler::types::TaskSourceConfig;
+    use crate::scheduler::types::TriggerConfig;
     use crate::storage::AgentStorage;
     use tempfile::TempDir;
 
@@ -342,7 +342,7 @@ mod tests {
             id: Uuid::new_v4(),
             name: "test-workflow".to_string(),
             agent_id: Uuid::new_v4(),
-            source_config: TaskSourceConfig::GithubIssues {
+            trigger_config: TriggerConfig::GithubIssues {
                 owner: "org".to_string(),
                 repo: "repo".to_string(),
                 labels: vec!["agent".to_string()],

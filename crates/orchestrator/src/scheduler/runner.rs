@@ -4,7 +4,7 @@ use crate::scheduler::storage::SchedulerStorage;
 use crate::scheduler::strategy::{PollingStrategy, TriggerStrategy};
 use crate::scheduler::template::render_template;
 use crate::scheduler::types::{
-    DispatchRecord, DispatchStatus, Task, TaskSourceConfig, WorkflowConfig,
+    DispatchRecord, DispatchStatus, Task, TriggerConfig, WorkflowConfig,
 };
 use crate::websocket::ConnectionRegistry;
 use chrono::Utc;
@@ -219,13 +219,13 @@ pub async fn notify_complete(
     }
 }
 
-/// Create a [`TaskSource`] from a [`TaskSourceConfig`].
-fn create_source(config: &TaskSourceConfig) -> Box<dyn TaskSource> {
+/// Create a [`TaskSource`] from a [`TriggerConfig`].
+fn create_source(config: &TriggerConfig) -> Box<dyn TaskSource> {
     match config {
-        TaskSourceConfig::GithubIssues { owner, repo, labels, state } => Box::new(
+        TriggerConfig::GithubIssues { owner, repo, labels, state } => Box::new(
             GithubIssueSource::new(owner.clone(), repo.clone(), labels.clone(), state.clone()),
         ),
-        TaskSourceConfig::GithubPullRequests { owner, repo, labels, state } => {
+        TriggerConfig::GithubPullRequests { owner, repo, labels, state } => {
             Box::new(GithubPullRequestSource::new(
                 owner.clone(),
                 repo.clone(),
@@ -239,8 +239,8 @@ fn create_source(config: &TaskSourceConfig) -> Box<dyn TaskSource> {
 /// Create the appropriate [`TriggerStrategy`] for a workflow configuration.
 ///
 /// Currently all workflows use polling, so this builds a [`PollingStrategy`]
-/// wrapping the task source derived from the workflow's `source_config`.
+/// wrapping the task source derived from the workflow's `trigger_config`.
 pub fn create_strategy(config: &WorkflowConfig) -> Box<dyn TriggerStrategy> {
-    let source = create_source(&config.source_config);
+    let source = create_source(&config.trigger_config);
     Box::new(PollingStrategy::new(source, config.poll_interval_secs))
 }
