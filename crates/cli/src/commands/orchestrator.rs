@@ -55,8 +55,7 @@ use uuid::Uuid;
 
 use orchestrator::client::OrchestratorClient;
 use orchestrator::scheduler::types::{
-    CreateWorkflowRequest, DispatchResponse, TriggerConfig, UpdateWorkflowRequest,
-    WorkflowResponse,
+    CreateWorkflowRequest, DispatchResponse, TriggerConfig, UpdateWorkflowRequest, WorkflowResponse,
 };
 use orchestrator::types::{
     AddDirResponse, AgentResponse, AgentStatus, AgentUsageStats, ApprovalStatus,
