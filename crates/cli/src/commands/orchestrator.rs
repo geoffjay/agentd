@@ -3539,24 +3539,24 @@ mod tests {
     }
 
     #[test]
-    fn test_trigger_config_is_poll_based() {
+    fn test_trigger_config_is_implemented() {
         assert!(TriggerConfig::GithubIssues {
             owner: "a".into(),
             repo: "b".into(),
             labels: vec![],
             state: "open".into(),
         }
-        .is_poll_based());
+        .is_implemented());
         assert!(TriggerConfig::GithubPullRequests {
             owner: "a".into(),
             repo: "b".into(),
             labels: vec![],
             state: "open".into(),
         }
-        .is_poll_based());
-        assert!(!TriggerConfig::Cron { expression: "* * * * *".into() }.is_poll_based());
-        assert!(!TriggerConfig::Delay { run_at: "2026-01-01T00:00:00Z".into() }.is_poll_based());
-        assert!(!TriggerConfig::Webhook { secret: None }.is_poll_based());
-        assert!(!TriggerConfig::Manual {}.is_poll_based());
+        .is_implemented());
+        assert!(TriggerConfig::Cron { expression: "* * * * *".into() }.is_implemented());
+        assert!(TriggerConfig::Delay { run_at: "2026-01-01T00:00:00Z".into() }.is_implemented());
+        assert!(!TriggerConfig::Webhook { secret: None }.is_implemented());
+        assert!(!TriggerConfig::Manual {}.is_implemented());
     }
 }
