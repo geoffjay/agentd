@@ -1,3 +1,4 @@
+use crate::scheduler::events::SystemEvent;
 use crate::storage::AgentStorage;
 use crate::types::{Agent, AgentConfig, AgentStatus, AgentUsageStats, ClearContextResponse};
 use crate::websocket::ConnectionRegistry;
@@ -419,6 +420,11 @@ impl AgentManager {
 
         // The new session number is deterministic: previous count + 1.
         let new_session_number = stats.session_count + 1;
+
+        // Publish context-cleared event.
+        if let Some(bus) = self.registry.event_bus() {
+            bus.publish(SystemEvent::ContextCleared { agent_id: *id });
+        }
 
         info!(agent_id = %id, new_session_number, "Agent context cleared");
 

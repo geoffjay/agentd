@@ -1,4 +1,5 @@
 use crate::approvals::ApprovalRegistry;
+use crate::scheduler::events::{EventBus, SystemEvent};
 use crate::types::{ApprovalDecision, ResultInfo, ToolPolicy, UsageSnapshot};
 use axum::{
     extract::{
@@ -39,6 +40,8 @@ pub struct ConnectionRegistry {
     connect_notify: Arc<tokio::sync::Notify>,
     /// In-memory store of pending human tool approvals.
     pub approvals: ApprovalRegistry,
+    /// Optional event bus for publishing lifecycle events.
+    event_bus: Option<Arc<EventBus>>,
 }
 
 impl Default for ConnectionRegistry {
@@ -57,7 +60,19 @@ impl ConnectionRegistry {
             stream_tx,
             connect_notify: Arc::new(tokio::sync::Notify::new()),
             approvals: ApprovalRegistry::new(300), // 5-minute default timeout
+            event_bus: None,
         }
+    }
+
+    /// Create a registry with an event bus for publishing lifecycle events.
+    pub fn with_event_bus(mut self, bus: Arc<EventBus>) -> Self {
+        self.event_bus = Some(bus);
+        self
+    }
+
+    /// Return a reference to the event bus, if one was configured.
+    pub fn event_bus(&self) -> Option<&Arc<EventBus>> {
+        self.event_bus.as_ref()
     }
 
     /// Broadcast a raw JSON string to all /stream subscribers.
@@ -73,6 +88,9 @@ impl ConnectionRegistry {
     pub async fn register(&self, agent_id: Uuid, conn: AgentConnection) {
         self.connections.write().await.insert(agent_id, conn);
         self.connect_notify.notify_waiters();
+        if let Some(bus) = &self.event_bus {
+            bus.publish(SystemEvent::AgentConnected { agent_id });
+        }
         info!(%agent_id, "Agent WebSocket registered");
     }
 
@@ -103,6 +121,9 @@ impl ConnectionRegistry {
     pub async fn unregister(&self, agent_id: &Uuid) {
         self.connections.write().await.remove(agent_id);
         self.policies.write().await.remove(agent_id);
+        if let Some(bus) = &self.event_bus {
+            bus.publish(SystemEvent::AgentDisconnected { agent_id: *agent_id });
+        }
         info!(%agent_id, "Agent WebSocket unregistered");
     }
 

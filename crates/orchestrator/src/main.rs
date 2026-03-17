@@ -12,6 +12,7 @@ use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
 use manager::AgentManager;
 use metrics_exporter_prometheus::PrometheusHandle;
+use scheduler::events::EventBus;
 use scheduler::storage::SchedulerStorage;
 use scheduler::Scheduler;
 use std::collections::HashSet;
@@ -90,8 +91,11 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Shared event bus for internal lifecycle events.
+    let event_bus = EventBus::shared(256);
+
     // WebSocket connection registry.
-    let registry = ConnectionRegistry::new();
+    let registry = ConnectionRegistry::new().with_event_bus(event_bus.clone());
 
     // Agent manager (Arc'd immediately so it can be shared with callbacks and API state).
     let manager =
@@ -100,7 +104,9 @@ async fn main() -> anyhow::Result<()> {
     // Scheduler for autonomous workflows (shares the same SeaORM connection).
     // Schema is already applied by AgentStorage::with_path() via Migrator::up().
     let scheduler_storage = SchedulerStorage::new(storage.db().clone());
-    let scheduler = Arc::new(Scheduler::new(scheduler_storage, registry.clone()));
+    let scheduler = Arc::new(
+        Scheduler::new(scheduler_storage, registry.clone()).with_event_bus(event_bus.clone()),
+    );
 
     // Register scheduler as a result callback so it gets notified when agents finish.
     {
