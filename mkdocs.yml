@@ -97,6 +97,7 @@ nav:
       - Trigger Strategies: public/trigger-strategies.md
       - Schedule Triggers (Cron & Delay): public/schedule-triggers.md
       - Event-Driven Triggers: public/event-triggers.md
+      - Webhook Triggers: public/webhook-triggers.md
       - Migration (source_config → trigger_config): public/migration-trigger.md
   - Development:
       - Error Handling & Logging: public/error-handling.md
