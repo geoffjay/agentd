@@ -983,10 +983,7 @@ mod tests {
     async fn event_strategy_matches_agent_connected() {
         let bus = EventBus::shared(16);
         let agent_id = Uuid::new_v4();
-        let filter = EventFilter::AgentLifecycle {
-            event: "session_start".to_string(),
-            agent_id,
-        };
+        let filter = EventFilter::AgentLifecycle { event: "session_start".to_string(), agent_id };
         let mut strategy = EventStrategy::new(bus.clone(), filter);
         let (_tx, rx) = watch::channel(false);
 
@@ -1006,10 +1003,7 @@ mod tests {
     async fn event_strategy_matches_agent_disconnected() {
         let bus = EventBus::shared(16);
         let agent_id = Uuid::new_v4();
-        let filter = EventFilter::AgentLifecycle {
-            event: "session_end".to_string(),
-            agent_id,
-        };
+        let filter = EventFilter::AgentLifecycle { event: "session_end".to_string(), agent_id };
         let mut strategy = EventStrategy::new(bus.clone(), filter);
         let (_tx, rx) = watch::channel(false);
 
@@ -1025,10 +1019,7 @@ mod tests {
     async fn event_strategy_matches_context_cleared() {
         let bus = EventBus::shared(16);
         let agent_id = Uuid::new_v4();
-        let filter = EventFilter::AgentLifecycle {
-            event: "context_clear".to_string(),
-            agent_id,
-        };
+        let filter = EventFilter::AgentLifecycle { event: "context_clear".to_string(), agent_id };
         let mut strategy = EventStrategy::new(bus.clone(), filter);
         let (_tx, rx) = watch::channel(false);
 
@@ -1066,10 +1057,7 @@ mod tests {
     async fn event_strategy_ignores_wrong_event_type() {
         let bus = EventBus::shared(16);
         let agent_id = Uuid::new_v4();
-        let filter = EventFilter::AgentLifecycle {
-            event: "session_start".to_string(),
-            agent_id,
-        };
+        let filter = EventFilter::AgentLifecycle { event: "session_start".to_string(), agent_id };
         let mut strategy = EventStrategy::new(bus.clone(), filter);
         let (_tx, rx) = watch::channel(false);
 
@@ -1105,14 +1093,8 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(result[0].source_id.starts_with("event:dispatch:"));
         assert!(result[0].source_id.contains(&dispatch_id.to_string()));
-        assert_eq!(
-            result[0].metadata.get("source_workflow_id"),
-            Some(&workflow_id.to_string())
-        );
-        assert_eq!(
-            result[0].metadata.get("dispatch_id"),
-            Some(&dispatch_id.to_string())
-        );
+        assert_eq!(result[0].metadata.get("source_workflow_id"), Some(&workflow_id.to_string()));
+        assert_eq!(result[0].metadata.get("dispatch_id"), Some(&dispatch_id.to_string()));
         assert_eq!(result[0].metadata.get("status"), Some(&"completed".to_string()));
     }
 
@@ -1121,10 +1103,8 @@ mod tests {
         let bus = EventBus::shared(16);
         let target_wf = Uuid::new_v4();
         let other_wf = Uuid::new_v4();
-        let filter = EventFilter::DispatchResult {
-            source_workflow_id: Some(target_wf),
-            status: None,
-        };
+        let filter =
+            EventFilter::DispatchResult { source_workflow_id: Some(target_wf), status: None };
         let mut strategy = EventStrategy::new(bus.clone(), filter);
         let (_tx, rx) = watch::channel(false);
 
@@ -1180,10 +1160,7 @@ mod tests {
     #[tokio::test]
     async fn event_strategy_dispatch_result_no_filters_matches_any() {
         let bus = EventBus::shared(16);
-        let filter = EventFilter::DispatchResult {
-            source_workflow_id: None,
-            status: None,
-        };
+        let filter = EventFilter::DispatchResult { source_workflow_id: None, status: None };
         let mut strategy = EventStrategy::new(bus.clone(), filter);
         let (_tx, rx) = watch::channel(false);
 
@@ -1227,10 +1204,7 @@ mod tests {
         // Capacity of 2 — publishing 4 events overflows the buffer.
         let bus = EventBus::shared(2);
         let agent_id = Uuid::new_v4();
-        let filter = EventFilter::AgentLifecycle {
-            event: "session_start".to_string(),
-            agent_id,
-        };
+        let filter = EventFilter::AgentLifecycle { event: "session_start".to_string(), agent_id };
         let mut strategy = EventStrategy::new(bus.clone(), filter);
         let (_tx, rx) = watch::channel(false);
 
@@ -1250,10 +1224,7 @@ mod tests {
     async fn event_strategy_returns_empty_on_bus_closed() {
         let bus = EventBus::shared(16);
         let agent_id = Uuid::new_v4();
-        let filter = EventFilter::AgentLifecycle {
-            event: "session_start".to_string(),
-            agent_id,
-        };
+        let filter = EventFilter::AgentLifecycle { event: "session_start".to_string(), agent_id };
         let mut strategy = EventStrategy::new(bus.clone(), filter);
         let (_tx, rx) = watch::channel(false);
 
@@ -1268,12 +1239,8 @@ mod tests {
     async fn event_strategy_is_object_safe() {
         let bus = EventBus::shared(16);
         let agent_id = Uuid::new_v4();
-        let filter = EventFilter::AgentLifecycle {
-            event: "session_start".to_string(),
-            agent_id,
-        };
-        let strategy: Box<dyn TriggerStrategy> =
-            Box::new(EventStrategy::new(bus.clone(), filter));
+        let filter = EventFilter::AgentLifecycle { event: "session_start".to_string(), agent_id };
+        let strategy: Box<dyn TriggerStrategy> = Box::new(EventStrategy::new(bus.clone(), filter));
         let (_tx, rx) = watch::channel(false);
 
         bus.publish(SystemEvent::AgentConnected { agent_id });
@@ -1287,10 +1254,7 @@ mod tests {
     async fn event_strategy_source_ids_are_unique() {
         let bus = EventBus::shared(16);
         let agent_id = Uuid::new_v4();
-        let filter = EventFilter::AgentLifecycle {
-            event: "session_start".to_string(),
-            agent_id,
-        };
+        let filter = EventFilter::AgentLifecycle { event: "session_start".to_string(), agent_id };
         let mut strategy = EventStrategy::new(bus.clone(), filter);
         let (_tx, rx) = watch::channel(false);
 
@@ -1310,10 +1274,7 @@ mod tests {
     fn event_filter_lifecycle_task_fields() {
         let bus = EventBus::shared(16);
         let agent_id = Uuid::new_v4();
-        let filter = EventFilter::AgentLifecycle {
-            event: "session_start".to_string(),
-            agent_id,
-        };
+        let filter = EventFilter::AgentLifecycle { event: "session_start".to_string(), agent_id };
         let strategy = EventStrategy::new(bus, filter);
         let task = strategy.build_lifecycle_task("session_start", &agent_id);
 
@@ -1328,10 +1289,7 @@ mod tests {
     #[test]
     fn event_filter_dispatch_task_fields() {
         let bus = EventBus::shared(16);
-        let filter = EventFilter::DispatchResult {
-            source_workflow_id: None,
-            status: None,
-        };
+        let filter = EventFilter::DispatchResult { source_workflow_id: None, status: None };
         let strategy = EventStrategy::new(bus, filter);
         let wf_id = Uuid::new_v4();
         let dispatch_id = Uuid::new_v4();

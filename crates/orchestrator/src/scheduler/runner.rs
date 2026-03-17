@@ -1,7 +1,7 @@
+use crate::scheduler::events::EventBus;
 use crate::scheduler::github::{GithubIssueSource, GithubPullRequestSource};
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
-use crate::scheduler::events::EventBus;
 use crate::scheduler::strategy::{
     CronStrategy, DelayStrategy, EventFilter, EventStrategy, PollingStrategy, TriggerStrategy,
 };
@@ -293,17 +293,17 @@ pub fn create_strategy(
             Ok(Box::new(strategy))
         }
         TriggerConfig::AgentLifecycle { event } => {
-            let bus = event_bus
-                .ok_or_else(|| anyhow::anyhow!("EventBus is required for agent_lifecycle triggers"))?;
-            let filter = EventFilter::AgentLifecycle {
-                event: event.clone(),
-                agent_id: config.agent_id,
-            };
+            let bus = event_bus.ok_or_else(|| {
+                anyhow::anyhow!("EventBus is required for agent_lifecycle triggers")
+            })?;
+            let filter =
+                EventFilter::AgentLifecycle { event: event.clone(), agent_id: config.agent_id };
             Ok(Box::new(EventStrategy::new(bus.clone(), filter)))
         }
         TriggerConfig::DispatchResult { source_workflow_id, status } => {
-            let bus = event_bus
-                .ok_or_else(|| anyhow::anyhow!("EventBus is required for dispatch_result triggers"))?;
+            let bus = event_bus.ok_or_else(|| {
+                anyhow::anyhow!("EventBus is required for dispatch_result triggers")
+            })?;
             let filter = EventFilter::DispatchResult {
                 source_workflow_id: *source_workflow_id,
                 status: status.clone(),
