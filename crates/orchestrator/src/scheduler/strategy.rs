@@ -5,15 +5,18 @@
 //! but the trait is designed so that webhook-driven, cron, or event-stream
 //! strategies can be swapped in without changing the runner.
 
+use crate::scheduler::events::{EventBus, SystemEvent};
 use crate::scheduler::source::TaskSource;
-use crate::scheduler::types::Task;
+use crate::scheduler::types::{DispatchStatus, Task};
 use async_trait::async_trait;
 use chrono::Utc;
 use croner::Cron;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 use tracing::{info, warn};
+use uuid::Uuid;
 
 /// Abstracts how a workflow waits for its next trigger event.
 ///
@@ -355,6 +358,209 @@ impl TriggerStrategy for DelayStrategy {
                     return Ok(vec![]);
                 }
                 Ok(vec![])
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EventStrategy
+// ---------------------------------------------------------------------------
+
+/// The internal filter configuration for an [`EventStrategy`].
+///
+/// Determines which [`SystemEvent`]s are converted into tasks.
+#[derive(Debug, Clone)]
+pub enum EventFilter {
+    /// Match agent lifecycle events (connect, disconnect, context clear).
+    AgentLifecycle {
+        /// The event name: `"session_start"`, `"session_end"`, or `"context_clear"`.
+        event: String,
+        /// The workflow's agent — only events for this agent produce tasks.
+        agent_id: Uuid,
+    },
+    /// Match dispatch completion events for workflow chaining.
+    DispatchResult {
+        /// If set, only match completions from this specific workflow.
+        source_workflow_id: Option<Uuid>,
+        /// If set, only match completions with this status.
+        status: Option<DispatchStatus>,
+    },
+}
+
+/// A [`TriggerStrategy`] that subscribes to the internal [`EventBus`] and
+/// produces tasks when matching [`SystemEvent`]s occur.
+///
+/// For `AgentLifecycle` triggers the strategy validates that the event's
+/// `agent_id` matches the workflow's configured agent. For `DispatchResult`
+/// triggers it optionally filters by `source_workflow_id` and `status`,
+/// enabling workflow chaining (trigger B when A completes).
+///
+/// # Broadcast Lag
+///
+/// If the subscriber falls behind the broadcast channel capacity, the
+/// strategy logs a warning and continues — some events will have been missed
+/// but no tasks are lost permanently since the next matching event will still
+/// produce a task.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use orchestrator::scheduler::strategy::EventStrategy;
+/// use orchestrator::scheduler::events::EventBus;
+///
+/// let bus = EventBus::shared(256);
+/// let filter = EventFilter::AgentLifecycle {
+///     event: "session_start".to_string(),
+///     agent_id: some_uuid,
+/// };
+/// let strategy = EventStrategy::new(bus, filter);
+/// ```
+pub struct EventStrategy {
+    rx: broadcast::Receiver<SystemEvent>,
+    filter: EventFilter,
+}
+
+impl EventStrategy {
+    /// Create a new event strategy that subscribes to the given event bus.
+    pub fn new(bus: Arc<EventBus>, filter: EventFilter) -> Self {
+        let rx = bus.subscribe();
+        Self { rx, filter }
+    }
+
+    /// Check whether a system event matches this strategy's filter and, if so,
+    /// convert it into a [`Task`].
+    fn match_event(&self, event: &SystemEvent) -> Option<Task> {
+        match (&self.filter, event) {
+            // AgentLifecycle: session_start matches AgentConnected
+            (
+                EventFilter::AgentLifecycle { event: filter_event, agent_id: filter_agent },
+                SystemEvent::AgentConnected { agent_id },
+            ) if filter_event == "session_start" && agent_id == filter_agent => {
+                Some(self.build_lifecycle_task("session_start", agent_id))
+            }
+
+            // AgentLifecycle: session_end matches AgentDisconnected
+            (
+                EventFilter::AgentLifecycle { event: filter_event, agent_id: filter_agent },
+                SystemEvent::AgentDisconnected { agent_id },
+            ) if filter_event == "session_end" && agent_id == filter_agent => {
+                Some(self.build_lifecycle_task("session_end", agent_id))
+            }
+
+            // AgentLifecycle: context_clear matches ContextCleared
+            (
+                EventFilter::AgentLifecycle { event: filter_event, agent_id: filter_agent },
+                SystemEvent::ContextCleared { agent_id },
+            ) if filter_event == "context_clear" && agent_id == filter_agent => {
+                Some(self.build_lifecycle_task("context_clear", agent_id))
+            }
+
+            // DispatchResult: match DispatchCompleted with optional filters
+            (
+                EventFilter::DispatchResult {
+                    source_workflow_id: filter_wf,
+                    status: filter_status,
+                },
+                SystemEvent::DispatchCompleted { workflow_id, dispatch_id, status },
+            ) => {
+                // Filter by source workflow ID if configured.
+                if let Some(expected_wf) = filter_wf {
+                    if workflow_id != expected_wf {
+                        return None;
+                    }
+                }
+                // Filter by status if configured.
+                if let Some(expected_status) = filter_status {
+                    if status != expected_status {
+                        return None;
+                    }
+                }
+                Some(self.build_dispatch_task(workflow_id, dispatch_id, status))
+            }
+
+            _ => None,
+        }
+    }
+
+    /// Build a task for an agent lifecycle event.
+    fn build_lifecycle_task(&self, event_type: &str, agent_id: &Uuid) -> Task {
+        let timestamp = Utc::now().to_rfc3339();
+        let mut metadata = HashMap::new();
+        metadata.insert("event_type".to_string(), event_type.to_string());
+        metadata.insert("agent_id".to_string(), agent_id.to_string());
+        metadata.insert("timestamp".to_string(), timestamp.clone());
+
+        Task {
+            source_id: format!("event:{}:{}:{}", event_type, agent_id, timestamp),
+            title: format!("Agent lifecycle: {}", event_type),
+            body: String::new(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }
+    }
+
+    /// Build a task for a dispatch completion event.
+    fn build_dispatch_task(
+        &self,
+        workflow_id: &Uuid,
+        dispatch_id: &Uuid,
+        status: &DispatchStatus,
+    ) -> Task {
+        let timestamp = Utc::now().to_rfc3339();
+        let mut metadata = HashMap::new();
+        metadata.insert("source_workflow_id".to_string(), workflow_id.to_string());
+        metadata.insert("dispatch_id".to_string(), dispatch_id.to_string());
+        metadata.insert("status".to_string(), status.to_string());
+        metadata.insert("timestamp".to_string(), timestamp.clone());
+
+        Task {
+            source_id: format!("event:dispatch:{}:{}", dispatch_id, timestamp),
+            title: format!("Dispatch completed: {} ({})", dispatch_id, status),
+            body: String::new(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }
+    }
+}
+
+#[async_trait]
+impl TriggerStrategy for EventStrategy {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
+        let mut shutdown = shutdown.clone();
+
+        loop {
+            tokio::select! {
+                result = self.rx.recv() => {
+                    match result {
+                        Ok(event) => {
+                            if let Some(task) = self.match_event(&event) {
+                                return Ok(vec![task]);
+                            }
+                            // Event didn't match filter — keep listening.
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(
+                                lagged = n,
+                                "EventStrategy: subscriber lagged, some events may have been missed"
+                            );
+                            // Continue receiving — next matching event will still produce a task.
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            // Event bus shut down — return empty to signal done.
+                            return Ok(vec![]);
+                        }
+                    }
+                }
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() {
+                        return Ok(vec![]);
+                    }
+                }
             }
         }
     }
@@ -769,5 +975,371 @@ mod tests {
 
         // source_id should be deterministic based on workflow_id for dedup.
         assert_eq!(task.source_id, format!("delay:{}", wf_id));
+    }
+
+    // ── EventStrategy tests ───────────────────────────────────────────
+
+    #[tokio::test]
+    async fn event_strategy_matches_agent_connected() {
+        let bus = EventBus::shared(16);
+        let agent_id = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_start".to_string(),
+            agent_id,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Publish a matching event.
+        bus.publish(SystemEvent::AgentConnected { agent_id });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.starts_with("event:session_start:"));
+        assert!(result[0].source_id.contains(&agent_id.to_string()));
+        assert_eq!(result[0].metadata.get("event_type"), Some(&"session_start".to_string()));
+        assert_eq!(result[0].metadata.get("agent_id"), Some(&agent_id.to_string()));
+        assert!(result[0].metadata.contains_key("timestamp"));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_matches_agent_disconnected() {
+        let bus = EventBus::shared(16);
+        let agent_id = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_end".to_string(),
+            agent_id,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        bus.publish(SystemEvent::AgentDisconnected { agent_id });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.starts_with("event:session_end:"));
+        assert_eq!(result[0].metadata.get("event_type"), Some(&"session_end".to_string()));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_matches_context_cleared() {
+        let bus = EventBus::shared(16);
+        let agent_id = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "context_clear".to_string(),
+            agent_id,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        bus.publish(SystemEvent::ContextCleared { agent_id });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.starts_with("event:context_clear:"));
+        assert_eq!(result[0].metadata.get("event_type"), Some(&"context_clear".to_string()));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_ignores_wrong_agent_id() {
+        let bus = EventBus::shared(16);
+        let target_agent = Uuid::new_v4();
+        let other_agent = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_start".to_string(),
+            agent_id: target_agent,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Publish event for a different agent — should not match.
+        bus.publish(SystemEvent::AgentConnected { agent_id: other_agent });
+        // Publish event for the correct agent — should match.
+        bus.publish(SystemEvent::AgentConnected { agent_id: target_agent });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.contains(&target_agent.to_string()));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_ignores_wrong_event_type() {
+        let bus = EventBus::shared(16);
+        let agent_id = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_start".to_string(),
+            agent_id,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Publish a disconnect event — should not match session_start filter.
+        bus.publish(SystemEvent::AgentDisconnected { agent_id });
+        // Now publish the matching connect event.
+        bus.publish(SystemEvent::AgentConnected { agent_id });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.starts_with("event:session_start:"));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_dispatch_result_matches() {
+        let bus = EventBus::shared(16);
+        let workflow_id = Uuid::new_v4();
+        let dispatch_id = Uuid::new_v4();
+        let filter = EventFilter::DispatchResult {
+            source_workflow_id: Some(workflow_id),
+            status: Some(DispatchStatus::Completed),
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        bus.publish(SystemEvent::DispatchCompleted {
+            workflow_id,
+            dispatch_id,
+            status: DispatchStatus::Completed,
+        });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.starts_with("event:dispatch:"));
+        assert!(result[0].source_id.contains(&dispatch_id.to_string()));
+        assert_eq!(
+            result[0].metadata.get("source_workflow_id"),
+            Some(&workflow_id.to_string())
+        );
+        assert_eq!(
+            result[0].metadata.get("dispatch_id"),
+            Some(&dispatch_id.to_string())
+        );
+        assert_eq!(result[0].metadata.get("status"), Some(&"completed".to_string()));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_dispatch_result_filters_by_workflow_id() {
+        let bus = EventBus::shared(16);
+        let target_wf = Uuid::new_v4();
+        let other_wf = Uuid::new_v4();
+        let filter = EventFilter::DispatchResult {
+            source_workflow_id: Some(target_wf),
+            status: None,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Publish for wrong workflow — should be skipped.
+        bus.publish(SystemEvent::DispatchCompleted {
+            workflow_id: other_wf,
+            dispatch_id: Uuid::new_v4(),
+            status: DispatchStatus::Completed,
+        });
+        // Publish for correct workflow — should match.
+        let expected_dispatch = Uuid::new_v4();
+        bus.publish(SystemEvent::DispatchCompleted {
+            workflow_id: target_wf,
+            dispatch_id: expected_dispatch,
+            status: DispatchStatus::Failed,
+        });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.contains(&expected_dispatch.to_string()));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_dispatch_result_filters_by_status() {
+        let bus = EventBus::shared(16);
+        let workflow_id = Uuid::new_v4();
+        let filter = EventFilter::DispatchResult {
+            source_workflow_id: None,
+            status: Some(DispatchStatus::Failed),
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Publish a Completed event — should be skipped (filter wants Failed).
+        bus.publish(SystemEvent::DispatchCompleted {
+            workflow_id,
+            dispatch_id: Uuid::new_v4(),
+            status: DispatchStatus::Completed,
+        });
+        // Publish a Failed event — should match.
+        let expected_dispatch = Uuid::new_v4();
+        bus.publish(SystemEvent::DispatchCompleted {
+            workflow_id,
+            dispatch_id: expected_dispatch,
+            status: DispatchStatus::Failed,
+        });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].metadata.get("status"), Some(&"failed".to_string()));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_dispatch_result_no_filters_matches_any() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::DispatchResult {
+            source_workflow_id: None,
+            status: None,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Any DispatchCompleted should match when no filters are set.
+        bus.publish(SystemEvent::DispatchCompleted {
+            workflow_id: Uuid::new_v4(),
+            dispatch_id: Uuid::new_v4(),
+            status: DispatchStatus::Completed,
+        });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn event_strategy_respects_shutdown() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_start".to_string(),
+            agent_id: Uuid::new_v4(),
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (tx, rx) = watch::channel(false);
+
+        // Fire shutdown after a short delay.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(true);
+        });
+
+        let start = tokio::time::Instant::now();
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(result.is_empty());
+        assert!(elapsed < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_handles_broadcast_lag() {
+        // Capacity of 2 — publishing 4 events overflows the buffer.
+        let bus = EventBus::shared(2);
+        let agent_id = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_start".to_string(),
+            agent_id,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Overflow the buffer with non-matching events, then send a matching one.
+        bus.publish(SystemEvent::AgentDisconnected { agent_id: Uuid::new_v4() });
+        bus.publish(SystemEvent::AgentDisconnected { agent_id: Uuid::new_v4() });
+        bus.publish(SystemEvent::AgentDisconnected { agent_id: Uuid::new_v4() });
+        bus.publish(SystemEvent::AgentConnected { agent_id });
+
+        // Should handle the lag and still find the matching event.
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.starts_with("event:session_start:"));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_returns_empty_on_bus_closed() {
+        let bus = EventBus::shared(16);
+        let agent_id = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_start".to_string(),
+            agent_id,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Drop the bus so the broadcast sender is dropped.
+        drop(bus);
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn event_strategy_is_object_safe() {
+        let bus = EventBus::shared(16);
+        let agent_id = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_start".to_string(),
+            agent_id,
+        };
+        let strategy: Box<dyn TriggerStrategy> =
+            Box::new(EventStrategy::new(bus.clone(), filter));
+        let (_tx, rx) = watch::channel(false);
+
+        bus.publish(SystemEvent::AgentConnected { agent_id });
+
+        let mut strategy = strategy;
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn event_strategy_source_ids_are_unique() {
+        let bus = EventBus::shared(16);
+        let agent_id = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_start".to_string(),
+            agent_id,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Publish two events with a small gap to get different timestamps.
+        bus.publish(SystemEvent::AgentConnected { agent_id });
+        let result1 = strategy.next_tasks(&rx).await.unwrap();
+
+        // Brief sleep to ensure different timestamp.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        bus.publish(SystemEvent::AgentConnected { agent_id });
+        let result2 = strategy.next_tasks(&rx).await.unwrap();
+
+        assert_ne!(result1[0].source_id, result2[0].source_id);
+    }
+
+    #[test]
+    fn event_filter_lifecycle_task_fields() {
+        let bus = EventBus::shared(16);
+        let agent_id = Uuid::new_v4();
+        let filter = EventFilter::AgentLifecycle {
+            event: "session_start".to_string(),
+            agent_id,
+        };
+        let strategy = EventStrategy::new(bus, filter);
+        let task = strategy.build_lifecycle_task("session_start", &agent_id);
+
+        assert!(task.source_id.starts_with("event:session_start:"));
+        assert_eq!(task.title, "Agent lifecycle: session_start");
+        assert!(task.body.is_empty());
+        assert!(task.url.is_empty());
+        assert!(task.labels.is_empty());
+        assert_eq!(task.assignee, None);
+    }
+
+    #[test]
+    fn event_filter_dispatch_task_fields() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::DispatchResult {
+            source_workflow_id: None,
+            status: None,
+        };
+        let strategy = EventStrategy::new(bus, filter);
+        let wf_id = Uuid::new_v4();
+        let dispatch_id = Uuid::new_v4();
+        let task = strategy.build_dispatch_task(&wf_id, &dispatch_id, &DispatchStatus::Completed);
+
+        assert!(task.source_id.starts_with("event:dispatch:"));
+        assert!(task.source_id.contains(&dispatch_id.to_string()));
+        assert!(task.title.contains(&dispatch_id.to_string()));
+        assert!(task.title.contains("completed"));
     }
 }

@@ -95,6 +95,19 @@ async fn create_workflow(
                 )));
             }
         }
+        TriggerConfig::AgentLifecycle { event } => {
+            let valid_events = ["session_start", "session_end", "context_clear"];
+            if !valid_events.contains(&event.as_str()) {
+                return Err(ApiError::InvalidInput(format!(
+                    "Invalid agent lifecycle event '{}'. Valid values: {}",
+                    event,
+                    valid_events.join(", ")
+                )));
+            }
+        }
+        TriggerConfig::DispatchResult { .. } => {
+            // No additional validation needed; source_workflow_id and status are optional.
+        }
         TriggerConfig::Webhook { .. } | TriggerConfig::Manual {} => {}
     }
 

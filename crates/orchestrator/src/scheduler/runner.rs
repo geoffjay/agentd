@@ -1,7 +1,10 @@
 use crate::scheduler::github::{GithubIssueSource, GithubPullRequestSource};
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
-use crate::scheduler::strategy::{CronStrategy, DelayStrategy, PollingStrategy, TriggerStrategy};
+use crate::scheduler::events::EventBus;
+use crate::scheduler::strategy::{
+    CronStrategy, DelayStrategy, EventFilter, EventStrategy, PollingStrategy, TriggerStrategy,
+};
 use crate::scheduler::template::render_template;
 use crate::scheduler::types::{
     DispatchRecord, DispatchStatus, Task, TriggerConfig, WorkflowConfig,
@@ -270,8 +273,12 @@ fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> 
 ///
 /// Poll-based workflows (GitHub triggers) use [`PollingStrategy`].
 /// Cron workflows use [`CronStrategy`]. Delay workflows use [`DelayStrategy`].
+/// Event-driven workflows (agent lifecycle, dispatch result) use [`EventStrategy`].
 /// Returns an error for trigger types that are not yet implemented.
-pub fn create_strategy(config: &WorkflowConfig) -> anyhow::Result<Box<dyn TriggerStrategy>> {
+pub fn create_strategy(
+    config: &WorkflowConfig,
+    event_bus: Option<&Arc<EventBus>>,
+) -> anyhow::Result<Box<dyn TriggerStrategy>> {
     match &config.trigger_config {
         TriggerConfig::Cron { expression } => {
             let strategy = CronStrategy::new(expression)?;
@@ -284,6 +291,24 @@ pub fn create_strategy(config: &WorkflowConfig) -> anyhow::Result<Box<dyn Trigge
                 .map_err(|e| anyhow::anyhow!("Invalid run_at datetime '{}': {}", run_at, e))?;
             let strategy = DelayStrategy::new(dt, config.id);
             Ok(Box::new(strategy))
+        }
+        TriggerConfig::AgentLifecycle { event } => {
+            let bus = event_bus
+                .ok_or_else(|| anyhow::anyhow!("EventBus is required for agent_lifecycle triggers"))?;
+            let filter = EventFilter::AgentLifecycle {
+                event: event.clone(),
+                agent_id: config.agent_id,
+            };
+            Ok(Box::new(EventStrategy::new(bus.clone(), filter)))
+        }
+        TriggerConfig::DispatchResult { source_workflow_id, status } => {
+            let bus = event_bus
+                .ok_or_else(|| anyhow::anyhow!("EventBus is required for dispatch_result triggers"))?;
+            let filter = EventFilter::DispatchResult {
+                source_workflow_id: *source_workflow_id,
+                status: status.clone(),
+            };
+            Ok(Box::new(EventStrategy::new(bus.clone(), filter)))
         }
         _ => {
             let source = create_source(&config.trigger_config)?;
