@@ -1,6 +1,4 @@
 pub mod api;
-// Event bus infrastructure for Phase 3; wired in by subsequent issues (#342+).
-#[allow(dead_code)]
 pub mod events;
 pub mod github;
 pub mod runner;
@@ -11,17 +9,20 @@ pub mod template;
 pub mod types;
 
 use crate::websocket::ConnectionRegistry;
+use events::{EventBus, SystemEvent};
 use runner::{create_strategy, notify_complete, RunOutcome, WorkflowRunner};
 use std::collections::HashMap;
 use std::sync::Arc;
 use storage::SchedulerStorage;
 use tokio::sync::{watch, Mutex, RwLock};
 use tracing::{error, info, warn};
-use types::WorkflowConfig;
+use types::{DispatchStatus, WorkflowConfig};
 use uuid::Uuid;
 
 /// Tracks a running workflow's control handles.
 struct RunningWorkflow {
+    /// The workflow ID (needed for dispatch completion events).
+    workflow_id: Uuid,
     /// The agent this workflow dispatches to.
     agent_id: Uuid,
     shutdown_tx: watch::Sender<bool>,
@@ -34,11 +35,19 @@ pub struct Scheduler {
     registry: ConnectionRegistry,
     /// Active workflow runners, keyed by workflow ID.
     runners: RwLock<HashMap<Uuid, RunningWorkflow>>,
+    /// Optional event bus for publishing dispatch lifecycle events.
+    event_bus: Option<Arc<EventBus>>,
 }
 
 impl Scheduler {
     pub fn new(storage: SchedulerStorage, registry: ConnectionRegistry) -> Self {
-        Self { storage, registry, runners: RwLock::new(HashMap::new()) }
+        Self { storage, registry, runners: RwLock::new(HashMap::new()), event_bus: None }
+    }
+
+    /// Create a scheduler with an event bus for publishing lifecycle events.
+    pub fn with_event_bus(mut self, bus: Arc<EventBus>) -> Self {
+        self.event_bus = Some(bus);
+        self
     }
 
     pub fn storage(&self) -> &SchedulerStorage {
@@ -83,7 +92,10 @@ impl Scheduler {
 
         // Track the runner.
         let mut runners = self.runners.write().await;
-        runners.insert(workflow_id, RunningWorkflow { agent_id, shutdown_tx, busy });
+        runners.insert(
+            workflow_id,
+            RunningWorkflow { workflow_id, agent_id, shutdown_tx, busy },
+        );
 
         info!(%workflow_id, "Workflow started");
         Ok(())
@@ -115,12 +127,27 @@ impl Scheduler {
                 continue;
             }
 
-            let has_active = {
+            let dispatch_id = {
                 let busy = running.busy.lock().await;
-                busy.active_dispatch_id.is_some()
+                busy.active_dispatch_id
             };
-            if has_active {
+            if let Some(dispatch_id) = dispatch_id {
                 notify_complete(&running.busy, &self.storage, is_error).await;
+
+                // Publish dispatch completion event.
+                if let Some(bus) = &self.event_bus {
+                    let status = if is_error {
+                        DispatchStatus::Failed
+                    } else {
+                        DispatchStatus::Completed
+                    };
+                    bus.publish(SystemEvent::DispatchCompleted {
+                        workflow_id: running.workflow_id,
+                        dispatch_id,
+                        status,
+                    });
+                }
+
                 info!(%agent_id, is_error, "Agent task completion processed");
                 return;
             }

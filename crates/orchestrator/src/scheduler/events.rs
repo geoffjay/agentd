@@ -11,7 +11,10 @@ const DEFAULT_CAPACITY: usize = 256;
 ///
 /// These events are broadcast to all subscribers and can be used for
 /// reactive workflows, audit logging, or inter-component coordination.
+///
+/// Fields are read by subscribers (wired in by future Phase 3 issues).
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum SystemEvent {
     /// An agent established a WebSocket connection.
     AgentConnected { agent_id: Uuid },
@@ -61,11 +64,17 @@ impl EventBus {
     ///
     /// Callers should handle [`broadcast::error::RecvError::Lagged`] by
     /// logging a warning and continuing — some events will have been missed.
+    ///
+    /// Subscribers will be wired in by future Phase 3 issues.
+    #[allow(dead_code)]
     pub fn subscribe(&self) -> broadcast::Receiver<SystemEvent> {
         self.tx.subscribe()
     }
 
     /// Return the number of active subscribers.
+    ///
+    /// Used by subscribers wired in by future Phase 3 issues.
+    #[allow(dead_code)]
     pub fn subscriber_count(&self) -> usize {
         self.tx.receiver_count()
     }
