@@ -65,8 +65,6 @@ impl EventBus {
     /// Callers should handle [`broadcast::error::RecvError::Lagged`] by
     /// logging a warning and continuing — some events will have been missed.
     ///
-    /// Subscribers will be wired in by future Phase 3 issues.
-    #[allow(dead_code)]
     pub fn subscribe(&self) -> broadcast::Receiver<SystemEvent> {
         self.tx.subscribe()
     }

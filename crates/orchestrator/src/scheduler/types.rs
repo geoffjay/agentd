@@ -80,6 +80,29 @@ pub enum TriggerConfig {
         /// ISO 8601 datetime string.
         run_at: String,
     },
+    /// Agent lifecycle event trigger (Phase 3).
+    ///
+    /// Fires when a matching agent lifecycle event occurs on the event bus.
+    /// The `event` field maps to system events:
+    /// - `"session_start"` → `AgentConnected`
+    /// - `"session_end"` → `AgentDisconnected`
+    /// - `"context_clear"` → `ContextCleared`
+    AgentLifecycle {
+        /// The lifecycle event type to listen for.
+        event: String,
+    },
+    /// Dispatch result trigger (Phase 3).
+    ///
+    /// Fires when a workflow dispatch completes, enabling workflow chaining.
+    /// Optionally filter by `source_workflow_id` and/or `status`.
+    DispatchResult {
+        /// Only trigger when this specific workflow completes.
+        #[serde(default)]
+        source_workflow_id: Option<Uuid>,
+        /// Only trigger on a specific completion status.
+        #[serde(default)]
+        status: Option<DispatchStatus>,
+    },
     /// Webhook-driven trigger (Phase 4).
     Webhook {
         #[serde(default)]
@@ -104,6 +127,8 @@ impl TriggerConfig {
             TriggerConfig::GithubPullRequests { .. } => "github_pull_requests",
             TriggerConfig::Cron { .. } => "cron",
             TriggerConfig::Delay { .. } => "delay",
+            TriggerConfig::AgentLifecycle { .. } => "agent_lifecycle",
+            TriggerConfig::DispatchResult { .. } => "dispatch_result",
             TriggerConfig::Webhook { .. } => "webhook",
             TriggerConfig::Manual { .. } => "manual",
         }
@@ -117,6 +142,8 @@ impl TriggerConfig {
                 | TriggerConfig::GithubPullRequests { .. }
                 | TriggerConfig::Cron { .. }
                 | TriggerConfig::Delay { .. }
+                | TriggerConfig::AgentLifecycle { .. }
+                | TriggerConfig::DispatchResult { .. }
         )
     }
 

@@ -2412,6 +2412,17 @@ fn display_workflow(workflow: &WorkflowResponse) {
         TriggerConfig::Delay { run_at } => {
             println!("{}: {}", "Run At".bold(), run_at);
         }
+        TriggerConfig::AgentLifecycle { event } => {
+            println!("{}: {}", "Event".bold(), event);
+        }
+        TriggerConfig::DispatchResult { source_workflow_id, status } => {
+            if let Some(wf_id) = source_workflow_id {
+                println!("{}: {}", "Source Workflow".bold(), wf_id);
+            }
+            if let Some(s) = status {
+                println!("{}: {}", "Status Filter".bold(), s);
+            }
+        }
         TriggerConfig::Webhook { secret } => {
             let secret_display = if secret.is_some() { "configured" } else { "none" };
             println!("{}: {}", "Secret".bold(), secret_display);
