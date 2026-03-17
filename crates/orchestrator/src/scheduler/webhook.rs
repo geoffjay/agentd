@@ -126,9 +126,7 @@ pub fn parse_webhook_payload(
     body: &[u8],
 ) -> Task {
     let timestamp = chrono::Utc::now().to_rfc3339();
-    let delivery = delivery_id
-        .map(|d| d.to_string())
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let delivery = delivery_id.map(|d| d.to_string()).unwrap_or_else(|| Uuid::new_v4().to_string());
 
     let mut metadata = HashMap::new();
     metadata.insert("delivery_id".to_string(), delivery.clone());

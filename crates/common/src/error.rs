@@ -66,9 +66,7 @@ impl IntoResponse for ApiError {
             ApiError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, self.to_string()),
             ApiError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, self.to_string()),
-            ApiError::ServiceUnavailable(_) => {
-                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-            }
+            ApiError::ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             ApiError::Internal(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         };
 

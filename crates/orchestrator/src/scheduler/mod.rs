@@ -87,8 +87,7 @@ impl Scheduler {
         // all other triggers use the standard factory.
         let strategy: Box<dyn strategy::TriggerStrategy> =
             if let TriggerConfig::Webhook { ref secret } = config.trigger_config {
-                let (tx, rx) =
-                    tokio::sync::mpsc::channel(webhook::DEFAULT_CHANNEL_CAPACITY);
+                let (tx, rx) = tokio::sync::mpsc::channel(webhook::DEFAULT_CHANNEL_CAPACITY);
                 self.webhook_registry.register(workflow_id, tx, secret.clone()).await;
                 Box::new(WebhookStrategy::new(rx))
             } else {

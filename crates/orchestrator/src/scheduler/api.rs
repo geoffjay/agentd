@@ -260,9 +260,7 @@ async fn dispatch_history(
 
 /// Routes for inbound webhook delivery.
 pub fn webhook_routes(state: WorkflowState) -> Router {
-    Router::new()
-        .route("/webhooks/{workflow_id}", post(handle_webhook))
-        .with_state(state)
+    Router::new().route("/webhooks/{workflow_id}", post(handle_webhook)).with_state(state)
 }
 
 /// Accept an inbound webhook POST, verify the signature (if configured),
@@ -300,31 +298,21 @@ async fn handle_webhook(
 
     // Verify HMAC-SHA256 signature if a secret is configured.
     if let Some(ref secret_value) = secret {
-        let signature = headers
-            .get("x-hub-signature-256")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
+        let signature =
+            headers.get("x-hub-signature-256").and_then(|v| v.to_str().ok()).unwrap_or("");
 
         if signature.is_empty() {
-            return Err(ApiError::Unauthorized(
-                "Missing X-Hub-Signature-256 header".to_string(),
-            ));
+            return Err(ApiError::Unauthorized("Missing X-Hub-Signature-256 header".to_string()));
         }
 
         if !webhook::verify_signature(secret_value, &body, signature) {
-            return Err(ApiError::Unauthorized(
-                "Invalid webhook signature".to_string(),
-            ));
+            return Err(ApiError::Unauthorized("Invalid webhook signature".to_string()));
         }
     }
 
     // Extract GitHub-specific headers for payload parsing.
-    let github_event = headers
-        .get("x-github-event")
-        .and_then(|v| v.to_str().ok());
-    let delivery_id = headers
-        .get("x-github-delivery")
-        .and_then(|v| v.to_str().ok());
+    let github_event = headers.get("x-github-event").and_then(|v| v.to_str().ok());
+    let delivery_id = headers.get("x-github-delivery").and_then(|v| v.to_str().ok());
 
     // Parse the payload into a Task.
     let task = webhook::parse_webhook_payload(github_event, delivery_id, &body);
