@@ -92,10 +92,7 @@ impl Scheduler {
 
         // Track the runner.
         let mut runners = self.runners.write().await;
-        runners.insert(
-            workflow_id,
-            RunningWorkflow { workflow_id, agent_id, shutdown_tx, busy },
-        );
+        runners.insert(workflow_id, RunningWorkflow { workflow_id, agent_id, shutdown_tx, busy });
 
         info!(%workflow_id, "Workflow started");
         Ok(())
@@ -136,11 +133,8 @@ impl Scheduler {
 
                 // Publish dispatch completion event.
                 if let Some(bus) = &self.event_bus {
-                    let status = if is_error {
-                        DispatchStatus::Failed
-                    } else {
-                        DispatchStatus::Completed
-                    };
+                    let status =
+                        if is_error { DispatchStatus::Failed } else { DispatchStatus::Completed };
                     bus.publish(SystemEvent::DispatchCompleted {
                         workflow_id: running.workflow_id,
                         dispatch_id,

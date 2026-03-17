@@ -48,7 +48,9 @@ import type { SessionUsage, SetModelRequest, ToolPolicy } from '@/types/orchestr
 const MODELS = [
   { label: 'Default (server)', value: '' },
   { label: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6' },
+  { label: 'Claude Sonnet 4.6 (1M Context)', value: 'claude-sonnet-4-6[1m]' },
   { label: 'Claude Opus 4.6', value: 'claude-opus-4-6' },
+  { label: 'Claude Opus 4.6 (1M Context)', value: 'claude-opus-4-6[1m]' },
   { label: 'Claude Haiku 4.6', value: 'claude-haiku-4-6' },
 ]
 
