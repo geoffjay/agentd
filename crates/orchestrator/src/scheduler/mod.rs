@@ -1,4 +1,7 @@
 pub mod api;
+// Event bus infrastructure for Phase 3; wired in by subsequent issues (#342+).
+#[allow(dead_code)]
+pub mod events;
 pub mod github;
 pub mod runner;
 pub mod source;

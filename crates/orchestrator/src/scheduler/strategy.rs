@@ -295,6 +295,7 @@ impl DelayStrategy {
     }
 
     /// Returns `true` after the delay has fired.
+    #[cfg(test)]
     pub fn has_fired(&self) -> bool {
         self.fired
     }
