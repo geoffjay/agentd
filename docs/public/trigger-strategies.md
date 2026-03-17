@@ -152,10 +152,11 @@ pub enum TriggerConfig {
 ```
 
 !!! info "Implementation status"
-    `github_issues`, `github_pull_requests`, `cron`, `delay`, `agent_lifecycle`, and `dispatch_result` are fully implemented. `webhook` and `manual` are defined but not yet runnable — attempting to create a workflow with either type returns `400 Invalid Input`.
+    `github_issues`, `github_pull_requests`, `cron`, `delay`, `agent_lifecycle`, `dispatch_result`, and `webhook` are fully implemented. `manual` is defined but not yet runnable — attempting to create a workflow with `manual` returns `400 Invalid Input`.
 
     - See [Schedule Triggers](schedule-triggers.md) for `cron` and `delay` documentation.
     - See [Event-Driven Triggers](event-triggers.md) for `agent_lifecycle` and `dispatch_result` documentation.
+    - See [Webhook Triggers](webhook-triggers.md) for `webhook` documentation.
 
 ### JSON tagged-union format
 

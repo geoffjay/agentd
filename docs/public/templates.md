@@ -189,6 +189,17 @@ Available `{{placeholders}}` in prompt templates:
 | `{{run_at}}` | `delay` | Scheduled datetime from the trigger config | `2026-04-01T09:00:00Z` |
 | `{{workflow_id}}` | `delay` | UUID of the workflow | `550e8400-...` |
 
+**Webhook trigger variables** — populated by the `webhook` trigger:
+
+| Variable | Trigger | Description | Example |
+|----------|---------|-------------|---------|
+| `{{delivery_id}}` | `webhook` | Delivery ID from `X-GitHub-Delivery` header or auto-generated UUID | `abc-123` |
+| `{{timestamp}}` | `webhook` | RFC 3339 time the webhook was received | `2026-04-01T09:00:00Z` |
+| `{{github_event}}` | `webhook` (GitHub) | GitHub event type | `issues` |
+| `{{action}}` | `webhook` (GitHub) | GitHub action | `opened` |
+| `{{issue_number}}` | `webhook` (GitHub issues) | Issue number | `42` |
+| `{{pr_number}}` | `webhook` (GitHub PRs) | Pull request number | `99` |
+
 **Event trigger variables** — populated by `agent_lifecycle` and `dispatch_result` triggers:
 
 | Variable | Trigger | Description | Example |
