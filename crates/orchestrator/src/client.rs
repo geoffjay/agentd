@@ -29,7 +29,8 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::scheduler::types::{
-    CreateWorkflowRequest, DispatchResponse, UpdateWorkflowRequest, WorkflowResponse,
+    CreateWorkflowRequest, DispatchResponse, TriggerWorkflowRequest, UpdateWorkflowRequest,
+    WorkflowResponse,
 };
 use crate::types::{
     AddDirRequest, AddDirResponse, AgentResponse, AgentUsageStats, ApprovalActionRequest,
@@ -249,6 +250,15 @@ impl OrchestratorClient {
     /// Get the dispatch history for a workflow.
     pub async fn dispatch_history(&self, id: &Uuid) -> Result<PaginatedResponse<DispatchResponse>> {
         self.get(&format!("/workflows/{}/history", id)).await
+    }
+
+    /// Manually trigger a workflow on demand, bypassing its normal trigger strategy.
+    pub async fn trigger_workflow(
+        &self,
+        id: &Uuid,
+        request: &TriggerWorkflowRequest,
+    ) -> Result<DispatchResponse> {
+        self.post(&format!("/workflows/{}/trigger", id), request).await
     }
 
     // -- Private HTTP helpers --

@@ -55,7 +55,8 @@ use uuid::Uuid;
 
 use orchestrator::client::OrchestratorClient;
 use orchestrator::scheduler::types::{
-    CreateWorkflowRequest, DispatchResponse, TriggerConfig, UpdateWorkflowRequest, WorkflowResponse,
+    CreateWorkflowRequest, DispatchResponse, TriggerConfig, TriggerWorkflowRequest,
+    UpdateWorkflowRequest, WorkflowResponse,
 };
 use orchestrator::types::{
     AddDirResponse, AgentResponse, AgentStatus, AgentUsageStats, ApprovalStatus,
@@ -713,6 +714,32 @@ pub enum OrchestratorCommand {
         id: String,
     },
 
+    /// Manually trigger a workflow on demand.
+    ///
+    /// Dispatches the workflow immediately, bypassing its normal trigger strategy.
+    /// Useful for testing or ad-hoc automation. Works for `Manual` trigger type
+    /// workflows as well as any other trigger type.
+    ///
+    /// # Examples
+    ///
+    ///   agent orchestrator trigger-workflow <WORKFLOW_ID>
+    ///
+    ///   agent orchestrator trigger-workflow <WORKFLOW_ID> \
+    ///     --title "Deploy hotfix" \
+    ///     --body "Please review and merge PR #123"
+    TriggerWorkflow {
+        /// Workflow ID (UUID)
+        id: String,
+
+        /// Task title (defaults to "Manual trigger")
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Task body / description
+        #[arg(long)]
+        body: Option<String>,
+    },
+
     /// Add an additional directory to an agent's accessible paths.
     ///
     /// The directory must exist on the local filesystem. The change takes
@@ -910,6 +937,9 @@ impl OrchestratorCommand {
             }
             OrchestratorCommand::DeleteWorkflow { id } => delete_workflow(client, id, json).await,
             OrchestratorCommand::WorkflowHistory { id } => workflow_history(client, id, json).await,
+            OrchestratorCommand::TriggerWorkflow { id, title, body } => {
+                trigger_workflow_cmd(client, id, title.as_deref(), body.as_deref(), json).await
+            }
             OrchestratorCommand::AddDir { id, path } => add_dir_cmd(client, id, path, json).await,
             OrchestratorCommand::RemoveDir { id, path } => {
                 remove_dir_cmd(client, id, path, json).await
@@ -2250,6 +2280,53 @@ async fn workflow_history(client: &OrchestratorClient, id: &str, json: bool) -> 
     Ok(())
 }
 
+async fn trigger_workflow_cmd(
+    client: &OrchestratorClient,
+    id: &str,
+    title: Option<&str>,
+    body: Option<&str>,
+    json: bool,
+) -> Result<()> {
+    let uuid = parse_uuid(id)?;
+
+    let request = TriggerWorkflowRequest {
+        title: title.map(|s| s.to_string()),
+        body: body.map(|s| s.to_string()),
+        metadata: std::collections::HashMap::new(),
+    };
+
+    let dispatch = client
+        .trigger_workflow(&uuid, &request)
+        .await
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("404") {
+                anyhow::anyhow!(
+                    "Workflow '{}' not found. Use 'agent orchestrator list-workflows' to see available workflows.",
+                    id
+                )
+            } else if msg.contains("400") {
+                anyhow::anyhow!("Workflow '{}' is disabled. Enable it first with update-workflow --enabled true.", id)
+            } else if msg.contains("409") {
+                anyhow::anyhow!("Workflow '{}' agent is currently busy processing another task.", id)
+            } else if msg.contains("503") {
+                anyhow::anyhow!("Agent for workflow '{}' is not connected.", id)
+            } else {
+                e.context("Failed to trigger workflow")
+            }
+        })?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&dispatch)?);
+    } else {
+        println!("{}", "Workflow triggered successfully.".green().bold());
+        println!("{}", "=".repeat(80).cyan());
+        display_dispatch(&dispatch);
+    }
+
+    Ok(())
+}
+
 // -- Helper functions --
 
 /// Parse a string as a UUID, providing a user-friendly error message.
@@ -3567,7 +3644,7 @@ mod tests {
         .is_implemented());
         assert!(TriggerConfig::Cron { expression: "* * * * *".into() }.is_implemented());
         assert!(TriggerConfig::Delay { run_at: "2026-01-01T00:00:00Z".into() }.is_implemented());
-        assert!(!TriggerConfig::Webhook { secret: None }.is_implemented());
-        assert!(!TriggerConfig::Manual {}.is_implemented());
+        assert!(TriggerConfig::Webhook { secret: None }.is_implemented());
+        assert!(TriggerConfig::Manual {}.is_implemented());
     }
 }
