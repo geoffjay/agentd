@@ -145,6 +145,7 @@ impl TriggerConfig {
                 | TriggerConfig::AgentLifecycle { .. }
                 | TriggerConfig::DispatchResult { .. }
                 | TriggerConfig::Webhook { .. }
+                | TriggerConfig::Manual { .. }
         )
     }
 
@@ -203,6 +204,23 @@ impl std::str::FromStr for DispatchStatus {
             _ => Err(anyhow::anyhow!("Unknown dispatch status: {}", s)),
         }
     }
+}
+
+/// Request body for manually triggering a workflow via the API.
+///
+/// All fields are optional. Defaults are used when not provided:
+/// - `title`: "Manual trigger"
+/// - `body`: empty string
+/// - `metadata`: empty map
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TriggerWorkflowRequest {
+    /// Task title (defaults to "Manual trigger").
+    pub title: Option<String>,
+    /// Task body / description.
+    pub body: Option<String>,
+    /// Arbitrary metadata key-value pairs.
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
 }
 
 /// Request body for creating a workflow.

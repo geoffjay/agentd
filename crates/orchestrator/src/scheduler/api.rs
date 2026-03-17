@@ -36,6 +36,7 @@ pub fn workflow_routes(state: WorkflowState) -> Router {
         .route("/workflows", get(list_workflows).post(create_workflow))
         .route("/workflows/{id}", get(get_workflow).put(update_workflow).delete(delete_workflow))
         .route("/workflows/{id}/history", get(dispatch_history))
+        .route("/workflows/{id}/trigger", post(trigger_workflow))
         .with_state(state)
 }
 
@@ -252,6 +253,68 @@ async fn dispatch_history(
         state.scheduler.storage().list_dispatches_paginated(&id, limit, offset).await?;
     let items: Vec<DispatchResponse> = dispatches.into_iter().map(DispatchResponse::from).collect();
     Ok(Json(PaginatedResponse { items, total, limit, offset }))
+}
+
+// ---------------------------------------------------------------------------
+// Manual trigger endpoint
+// ---------------------------------------------------------------------------
+
+/// Manually trigger a workflow on demand, bypassing its normal trigger strategy.
+///
+/// Accepts an optional JSON body:
+/// ```json
+/// { "title": "...", "body": "...", "metadata": { "key": "value" } }
+/// ```
+///
+/// Returns:
+/// - `200 OK` with the [`DispatchResponse`] on success
+/// - `400 Bad Request` if the workflow is disabled
+/// - `404 Not Found` if the workflow does not exist
+/// - `409 Conflict` if the agent is currently busy
+/// - `503 Service Unavailable` if the agent is not connected
+async fn trigger_workflow(
+    State(state): State<WorkflowState>,
+    Path(id): Path<Uuid>,
+    body: Option<Json<TriggerWorkflowRequest>>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify workflow exists.
+    state.scheduler.storage().get_workflow(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let req = body.map(|Json(r)| r).unwrap_or_default();
+
+    // Build a synthetic Task from the request body (or defaults).
+    let source_id = format!("manual:{}", Uuid::new_v4());
+    let task = Task {
+        source_id,
+        title: req.title.unwrap_or_else(|| "Manual trigger".to_string()),
+        body: req.body.unwrap_or_default(),
+        url: String::new(),
+        labels: vec![],
+        assignee: None,
+        metadata: req.metadata,
+    };
+
+    info!(
+        workflow_id = %id,
+        source_id = %task.source_id,
+        title = %task.title,
+        "Manual workflow trigger requested"
+    );
+
+    let record = state.scheduler.trigger_workflow(&id, task).await.map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("not enabled") {
+            ApiError::InvalidInput(msg)
+        } else if msg.contains("currently busy") {
+            ApiError::Conflict(msg)
+        } else if msg.contains("not connected") {
+            ApiError::ServiceUnavailable(msg)
+        } else {
+            ApiError::Internal(e)
+        }
+    })?;
+
+    Ok(Json(DispatchResponse::from(record)))
 }
 
 // ---------------------------------------------------------------------------

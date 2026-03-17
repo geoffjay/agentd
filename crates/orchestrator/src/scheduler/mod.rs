@@ -15,10 +15,10 @@ use runner::{create_strategy, notify_complete, RunOutcome, WorkflowRunner};
 use std::collections::HashMap;
 use std::sync::Arc;
 use storage::SchedulerStorage;
-use strategy::WebhookStrategy;
-use tokio::sync::{watch, Mutex, RwLock};
+use strategy::{ManualStrategy, WebhookStrategy};
+use tokio::sync::{mpsc, watch, Mutex, RwLock};
 use tracing::{error, info, warn};
-use types::{DispatchStatus, TriggerConfig, WorkflowConfig};
+use types::{DispatchRecord, DispatchStatus, Task, TriggerConfig, WorkflowConfig};
 use uuid::Uuid;
 use webhook::WebhookRegistry;
 
@@ -30,6 +30,9 @@ struct RunningWorkflow {
     agent_id: Uuid,
     shutdown_tx: watch::Sender<bool>,
     busy: Arc<Mutex<runner::BusyState>>,
+    /// Channel sender for Manual-type workflows.
+    /// Used by the `POST /workflows/{id}/trigger` API endpoint.
+    manual_tx: Option<mpsc::Sender<Task>>,
 }
 
 /// Manages all active WorkflowRunners.
@@ -83,13 +86,17 @@ impl Scheduler {
             }
         }
 
-        // Webhook triggers use a channel-based strategy with a shared registry;
-        // all other triggers use the standard factory.
+        // Build strategy and capture any channel sender for the workflow type.
+        let mut manual_tx: Option<mpsc::Sender<Task>> = None;
         let strategy: Box<dyn strategy::TriggerStrategy> =
             if let TriggerConfig::Webhook { ref secret } = config.trigger_config {
-                let (tx, rx) = tokio::sync::mpsc::channel(webhook::DEFAULT_CHANNEL_CAPACITY);
+                let (tx, rx) = mpsc::channel(webhook::DEFAULT_CHANNEL_CAPACITY);
                 self.webhook_registry.register(workflow_id, tx, secret.clone()).await;
                 Box::new(WebhookStrategy::new(rx))
+            } else if matches!(config.trigger_config, TriggerConfig::Manual {}) {
+                let (tx, rx) = mpsc::channel(webhook::DEFAULT_CHANNEL_CAPACITY);
+                manual_tx = Some(tx);
+                Box::new(ManualStrategy::new(rx))
             } else {
                 create_strategy(&config, self.event_bus.as_ref())?
             };
@@ -117,7 +124,10 @@ impl Scheduler {
 
         // Track the runner.
         let mut runners = self.runners.write().await;
-        runners.insert(workflow_id, RunningWorkflow { workflow_id, agent_id, shutdown_tx, busy });
+        runners.insert(
+            workflow_id,
+            RunningWorkflow { workflow_id, agent_id, shutdown_tx, busy, manual_tx },
+        );
 
         info!(%workflow_id, "Workflow started");
         Ok(())
@@ -240,6 +250,145 @@ impl Scheduler {
     /// Return the set of currently running workflow IDs and their assigned agent IDs.
     pub async fn running_workflows(&self) -> Vec<(Uuid, Uuid)> {
         self.runners.read().await.iter().map(|(wf_id, rw)| (*wf_id, rw.agent_id)).collect()
+    }
+
+    /// Manually trigger a workflow, bypassing its normal trigger strategy.
+    ///
+    /// Creates a synthetic [`Task`] from the provided data, renders the
+    /// workflow's prompt template, records the dispatch, and sends the prompt
+    /// to the workflow's agent.
+    ///
+    /// For `Manual`-type workflows, the task is pushed through the workflow's
+    /// dedicated `mpsc` channel so the running [`WorkflowRunner`] handles it
+    /// with full busy-state tracking.  For all other trigger types the task
+    /// is dispatched directly (bypassing the strategy), which is useful for
+    /// ad-hoc testing.
+    ///
+    /// Returns the created [`DispatchRecord`] on success.
+    pub async fn trigger_workflow(
+        &self,
+        workflow_id: &Uuid,
+        task: Task,
+    ) -> anyhow::Result<DispatchRecord> {
+        use crate::scheduler::template::render_template;
+
+        // Load workflow config (must exist and be enabled).
+        let workflow = self
+            .storage
+            .get_workflow(workflow_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Workflow not found"))?;
+
+        if !workflow.enabled {
+            anyhow::bail!("Workflow {} is not enabled", workflow_id);
+        }
+
+        // For Manual-type workflows with a running runner, send via the channel
+        // so the runner can apply its full dispatch logic (busy-state tracking, etc.).
+        {
+            let runners = self.runners.read().await;
+            if let Some(running) = runners.get(workflow_id) {
+                if let Some(ref tx) = running.manual_tx {
+                    // Check busy state before sending.
+                    let busy = running.busy.lock().await;
+                    if busy.active_dispatch_id.is_some() {
+                        anyhow::bail!("Agent is currently busy processing another task");
+                    }
+                    drop(busy);
+
+                    tx.try_send(task.clone()).map_err(|e| match e {
+                        mpsc::error::TrySendError::Full(_) => {
+                            anyhow::anyhow!("Manual trigger channel full")
+                        }
+                        mpsc::error::TrySendError::Closed(_) => {
+                            anyhow::anyhow!("Manual trigger channel closed")
+                        }
+                    })?;
+
+                    // Create the dispatch record immediately so we can return it.
+                    let prompt = render_template(&workflow.prompt_template, &task);
+                    let record = DispatchRecord {
+                        id: Uuid::new_v4(),
+                        workflow_id: *workflow_id,
+                        source_id: task.source_id.clone(),
+                        agent_id: workflow.agent_id,
+                        prompt_sent: prompt,
+                        status: DispatchStatus::Pending,
+                        dispatched_at: chrono::Utc::now(),
+                        completed_at: None,
+                    };
+                    self.storage.add_dispatch(&record).await?;
+
+                    info!(
+                        %workflow_id,
+                        source_id = %task.source_id,
+                        "Manual trigger queued via channel"
+                    );
+                    return Ok(record);
+                }
+            }
+        }
+
+        // Direct dispatch: render prompt, record, and send to agent.
+        // Works for any workflow type (bypasses normal trigger strategy).
+        let prompt = render_template(&workflow.prompt_template, &task);
+
+        // Verify the agent is connected.
+        if !self.registry.is_connected(&workflow.agent_id).await {
+            anyhow::bail!("Agent {} is not connected", workflow.agent_id);
+        }
+
+        let record = DispatchRecord {
+            id: Uuid::new_v4(),
+            workflow_id: *workflow_id,
+            source_id: task.source_id.clone(),
+            agent_id: workflow.agent_id,
+            prompt_sent: prompt.clone(),
+            status: DispatchStatus::Dispatched,
+            dispatched_at: chrono::Utc::now(),
+            completed_at: None,
+        };
+        self.storage.add_dispatch(&record).await?;
+
+        // Update the runner's busy state so completion is tracked correctly.
+        {
+            let runners = self.runners.read().await;
+            if let Some(running) = runners.get(workflow_id) {
+                let mut busy = running.busy.lock().await;
+                busy.active_dispatch_id = Some(record.id);
+            }
+        }
+
+        // Apply the workflow's tool policy.
+        self.registry.set_policy(workflow.agent_id, workflow.tool_policy.clone()).await;
+
+        // Send the prompt to the agent.
+        if let Err(e) = self.registry.send_user_message(&workflow.agent_id, &prompt).await {
+            // Best-effort: mark the dispatch as failed.
+            let _ = self
+                .storage
+                .update_dispatch_status(
+                    &record.id,
+                    DispatchStatus::Failed,
+                    Some(chrono::Utc::now()),
+                )
+                .await;
+            // Clear busy state.
+            let runners = self.runners.read().await;
+            if let Some(running) = runners.get(workflow_id) {
+                let mut busy = running.busy.lock().await;
+                busy.active_dispatch_id = None;
+            }
+            return Err(e);
+        }
+
+        info!(
+            %workflow_id,
+            source_id = %task.source_id,
+            "Manual trigger dispatched directly to agent"
+        );
+
+        Ok(record)
     }
 
     /// Shutdown all running workflows gracefully.

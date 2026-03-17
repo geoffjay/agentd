@@ -622,6 +622,65 @@ impl TriggerStrategy for WebhookStrategy {
 }
 
 // ---------------------------------------------------------------------------
+// ManualStrategy
+// ---------------------------------------------------------------------------
+
+/// A [`TriggerStrategy`] that receives tasks from an explicit API trigger call
+/// via an `mpsc` channel.
+///
+/// Manual workflows do not poll or respond to events — they are triggered on
+/// demand via the `POST /workflows/{id}/trigger` API endpoint or the
+/// `agent orchestrator trigger-workflow` CLI command.
+///
+/// Each manual workflow gets a bounded `mpsc` channel. The HTTP endpoint
+/// pushes parsed [`Task`]s through the sender; this strategy receives them.
+/// When the sender is dropped (e.g., workflow stopped), `recv()` returns
+/// `None` and the strategy signals completion with an empty vec.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use tokio::sync::mpsc;
+/// use orchestrator::scheduler::strategy::ManualStrategy;
+///
+/// let (tx, rx) = mpsc::channel(64);
+/// let strategy = ManualStrategy::new(rx);
+/// // Register `tx` for access by the trigger API handler.
+/// ```
+pub struct ManualStrategy {
+    rx: mpsc::Receiver<Task>,
+}
+
+impl ManualStrategy {
+    /// Create a new manual strategy from a channel receiver.
+    pub fn new(rx: mpsc::Receiver<Task>) -> Self {
+        Self { rx }
+    }
+}
+
+#[async_trait]
+impl TriggerStrategy for ManualStrategy {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
+        let mut shutdown = shutdown.clone();
+
+        tokio::select! {
+            task = self.rx.recv() => {
+                match task {
+                    Some(task) => Ok(vec![task]),
+                    None => Ok(vec![]),  // Sender dropped — workflow stopped.
+                }
+            }
+            _ = shutdown.changed() => {
+                if *shutdown.borrow() {
+                    return Ok(vec![]);
+                }
+                Ok(vec![])
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
