@@ -9,8 +9,10 @@
 //! | Variant | HTTP Status |
 //! |---------|-------------|
 //! | `NotFound` | 404 Not Found |
+//! | `Unauthorized` | 401 Unauthorized |
 //! | `InvalidInput` | 400 Bad Request |
 //! | `Conflict` | 409 Conflict |
+//! | `ServiceUnavailable` | 503 Service Unavailable |
 //! | `Internal` | 500 Internal Server Error |
 //!
 //! # Examples
@@ -36,6 +38,10 @@ pub enum ApiError {
     #[error("not found")]
     NotFound,
 
+    /// Authentication or signature verification failed (HTTP 401).
+    #[error("unauthorized: {0}")]
+    Unauthorized(String),
+
     /// Invalid input or request (HTTP 400).
     #[error("invalid input: {0}")]
     InvalidInput(String),
@@ -43,6 +49,10 @@ pub enum ApiError {
     /// Resource conflict or invalid state transition (HTTP 409).
     #[error("conflict: {0}")]
     Conflict(String),
+
+    /// Service temporarily unavailable (HTTP 503).
+    #[error("service unavailable: {0}")]
+    ServiceUnavailable(String),
 
     /// Internal server error (HTTP 500).
     #[error(transparent)]
@@ -53,8 +63,12 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match &self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            ApiError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, self.to_string()),
             ApiError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, self.to_string()),
+            ApiError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
             ApiError::Internal(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         };
 

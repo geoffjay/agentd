@@ -7,6 +7,7 @@ pub mod storage;
 pub mod strategy;
 pub mod template;
 pub mod types;
+pub mod webhook;
 
 use crate::websocket::ConnectionRegistry;
 use events::{EventBus, SystemEvent};
@@ -14,10 +15,12 @@ use runner::{create_strategy, notify_complete, RunOutcome, WorkflowRunner};
 use std::collections::HashMap;
 use std::sync::Arc;
 use storage::SchedulerStorage;
+use strategy::WebhookStrategy;
 use tokio::sync::{watch, Mutex, RwLock};
 use tracing::{error, info, warn};
-use types::{DispatchStatus, WorkflowConfig};
+use types::{DispatchStatus, TriggerConfig, WorkflowConfig};
 use uuid::Uuid;
+use webhook::WebhookRegistry;
 
 /// Tracks a running workflow's control handles.
 struct RunningWorkflow {
@@ -37,11 +40,19 @@ pub struct Scheduler {
     runners: RwLock<HashMap<Uuid, RunningWorkflow>>,
     /// Optional event bus for publishing dispatch lifecycle events.
     event_bus: Option<Arc<EventBus>>,
+    /// Shared registry for webhook channel senders.
+    webhook_registry: Arc<WebhookRegistry>,
 }
 
 impl Scheduler {
     pub fn new(storage: SchedulerStorage, registry: ConnectionRegistry) -> Self {
-        Self { storage, registry, runners: RwLock::new(HashMap::new()), event_bus: None }
+        Self {
+            storage,
+            registry,
+            runners: RwLock::new(HashMap::new()),
+            event_bus: None,
+            webhook_registry: Arc::new(WebhookRegistry::new()),
+        }
     }
 
     /// Create a scheduler with an event bus for publishing lifecycle events.
@@ -52,6 +63,11 @@ impl Scheduler {
 
     pub fn storage(&self) -> &SchedulerStorage {
         &self.storage
+    }
+
+    /// Return a reference to the webhook registry for use by API handlers.
+    pub fn webhook_registry(&self) -> &Arc<WebhookRegistry> {
+        &self.webhook_registry
     }
 
     /// Start a workflow runner as a background tokio task.
@@ -67,7 +83,17 @@ impl Scheduler {
             }
         }
 
-        let strategy = create_strategy(&config, self.event_bus.as_ref())?;
+        // Webhook triggers use a channel-based strategy with a shared registry;
+        // all other triggers use the standard factory.
+        let strategy: Box<dyn strategy::TriggerStrategy> =
+            if let TriggerConfig::Webhook { ref secret } = config.trigger_config {
+                let (tx, rx) =
+                    tokio::sync::mpsc::channel(webhook::DEFAULT_CHANNEL_CAPACITY);
+                self.webhook_registry.register(workflow_id, tx, secret.clone()).await;
+                Box::new(WebhookStrategy::new(rx))
+            } else {
+                create_strategy(&config, self.event_bus.as_ref())?
+            };
         let runner =
             WorkflowRunner::new(config, self.storage.clone(), self.registry.clone(), strategy);
         let shutdown_tx = runner.shutdown_handle();
@@ -103,6 +129,8 @@ impl Scheduler {
         let mut runners = self.runners.write().await;
         if let Some(running) = runners.remove(workflow_id) {
             let _ = running.shutdown_tx.send(true);
+            // Unregister from webhook registry (no-op if not a webhook workflow).
+            self.webhook_registry.unregister(workflow_id).await;
             info!(%workflow_id, "Workflow stopped");
             Ok(())
         } else {

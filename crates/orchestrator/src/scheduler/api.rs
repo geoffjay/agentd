@@ -2,18 +2,21 @@ use crate::api::ApiError;
 use crate::manager::AgentManager;
 use crate::scheduler::template::validate_template;
 use crate::scheduler::types::*;
+use crate::scheduler::webhook;
 use crate::scheduler::Scheduler;
 use crate::types::{clamp_limit, AgentStatus, PaginatedResponse};
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use chrono::Utc;
 use serde::Deserialize;
 use std::sync::Arc;
+use tracing::info;
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -249,4 +252,99 @@ async fn dispatch_history(
         state.scheduler.storage().list_dispatches_paginated(&id, limit, offset).await?;
     let items: Vec<DispatchResponse> = dispatches.into_iter().map(DispatchResponse::from).collect();
     Ok(Json(PaginatedResponse { items, total, limit, offset }))
+}
+
+// ---------------------------------------------------------------------------
+// Webhook endpoint
+// ---------------------------------------------------------------------------
+
+/// Routes for inbound webhook delivery.
+pub fn webhook_routes(state: WorkflowState) -> Router {
+    Router::new()
+        .route("/webhooks/{workflow_id}", post(handle_webhook))
+        .with_state(state)
+}
+
+/// Accept an inbound webhook POST, verify the signature (if configured),
+/// parse the payload into a [`Task`], and push it to the workflow's channel.
+///
+/// Returns:
+/// - `202 Accepted` on success
+/// - `401 Unauthorized` if the signature is invalid
+/// - `404 Not Found` if the workflow is not running or not a webhook trigger
+/// - `422 Unprocessable Entity` if the workflow exists but is not a webhook type
+/// - `503 Service Unavailable` if the channel is full (backpressure)
+async fn handle_webhook(
+    State(state): State<WorkflowState>,
+    Path(workflow_id): Path<Uuid>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<impl IntoResponse, ApiError> {
+    // Look up the workflow in the webhook registry.
+    let (sender, secret) = match state.scheduler.webhook_registry().lookup(&workflow_id).await {
+        Some(entry) => entry,
+        None => {
+            // Distinguish between "not found" and "not a webhook trigger".
+            if let Ok(Some(wf)) = state.scheduler.storage().get_workflow(&workflow_id).await {
+                if !matches!(wf.trigger_config, TriggerConfig::Webhook { .. }) {
+                    return Err(ApiError::InvalidInput(format!(
+                        "Workflow {} is not a webhook trigger (type: {})",
+                        workflow_id,
+                        wf.trigger_config.trigger_type()
+                    )));
+                }
+            }
+            return Err(ApiError::NotFound);
+        }
+    };
+
+    // Verify HMAC-SHA256 signature if a secret is configured.
+    if let Some(ref secret_value) = secret {
+        let signature = headers
+            .get("x-hub-signature-256")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        if signature.is_empty() {
+            return Err(ApiError::Unauthorized(
+                "Missing X-Hub-Signature-256 header".to_string(),
+            ));
+        }
+
+        if !webhook::verify_signature(secret_value, &body, signature) {
+            return Err(ApiError::Unauthorized(
+                "Invalid webhook signature".to_string(),
+            ));
+        }
+    }
+
+    // Extract GitHub-specific headers for payload parsing.
+    let github_event = headers
+        .get("x-github-event")
+        .and_then(|v| v.to_str().ok());
+    let delivery_id = headers
+        .get("x-github-delivery")
+        .and_then(|v| v.to_str().ok());
+
+    // Parse the payload into a Task.
+    let task = webhook::parse_webhook_payload(github_event, delivery_id, &body);
+
+    info!(
+        %workflow_id,
+        source_id = %task.source_id,
+        title = %task.title,
+        "Webhook payload received"
+    );
+
+    // Send the task through the channel.
+    sender.try_send(task).map_err(|e| match e {
+        tokio::sync::mpsc::error::TrySendError::Full(_) => ApiError::ServiceUnavailable(
+            "Webhook channel full — workflow runner cannot keep up".to_string(),
+        ),
+        tokio::sync::mpsc::error::TrySendError::Closed(_) => ApiError::ServiceUnavailable(
+            "Webhook channel closed — workflow runner may have stopped".to_string(),
+        ),
+    })?;
+
+    Ok(StatusCode::ACCEPTED)
 }

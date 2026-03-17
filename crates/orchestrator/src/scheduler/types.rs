@@ -144,6 +144,7 @@ impl TriggerConfig {
                 | TriggerConfig::Delay { .. }
                 | TriggerConfig::AgentLifecycle { .. }
                 | TriggerConfig::DispatchResult { .. }
+                | TriggerConfig::Webhook { .. }
         )
     }
 
