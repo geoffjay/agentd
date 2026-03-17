@@ -189,8 +189,19 @@ Available `{{placeholders}}` in prompt templates:
 | `{{run_at}}` | `delay` | Scheduled datetime from the trigger config | `2026-04-01T09:00:00Z` |
 | `{{workflow_id}}` | `delay` | UUID of the workflow | `550e8400-...` |
 
+**Event trigger variables** — populated by `agent_lifecycle` and `dispatch_result` triggers:
+
+| Variable | Trigger | Description | Example |
+|----------|---------|-------------|---------|
+| `{{event_type}}` | `agent_lifecycle` | Lifecycle event name | `session_start` |
+| `{{agent_id}}` | `agent_lifecycle` | UUID of the agent that fired the event | `550e8400-...` |
+| `{{timestamp}}` | `agent_lifecycle`, `dispatch_result` | RFC 3339 timestamp of the event | `2026-04-01T09:00:00Z` |
+| `{{source_workflow_id}}` | `dispatch_result` | UUID of the workflow that completed | `a1b2c3d4-...` |
+| `{{dispatch_id}}` | `dispatch_result` | UUID of the dispatch record | `b2c3d4e5-...` |
+| `{{status}}` | `dispatch_result` | Completion status | `completed` |
+
 !!! note
-    Schedule trigger variables are stored in the task's `metadata` map and resolved during template rendering. If a variable is referenced but not present for the trigger type (e.g. `{{fire_time}}` in a delay workflow), the placeholder is left as-is in the rendered prompt.
+    Schedule and event trigger variables are stored in the task's `metadata` map and resolved during template rendering. If a variable is referenced but not present for the trigger type (e.g. `{{fire_time}}` in a delay workflow), the placeholder is left as-is in the rendered prompt.
 
 Validate templates before creating workflows:
 

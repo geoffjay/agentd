@@ -15,11 +15,15 @@ graph LR
         Polling["PollingStrategy"]
         CronS["CronStrategy"]
         DelayS["DelayStrategy"]
+        EventS["EventStrategy"]
         TaskSrc["TaskSource (e.g. GithubIssueSource)"]
+        EventBus["EventBus"]
         Polling -->|delegates to| TaskSrc
+        EventS -->|subscribes to| EventBus
         Strategy -.->|implemented by| Polling
         Strategy -.->|implemented by| CronS
         Strategy -.->|implemented by| DelayS
+        Strategy -.->|implemented by| EventS
     end
 ```
 
@@ -126,26 +130,32 @@ pub enum TriggerConfig {
     GithubIssues {
         owner: String,
         repo: String,
-        labels: Vec<String>,   // default: []
-        state: String,         // default: "open"
+        labels: Vec<String>,            // default: []
+        state: String,                  // default: "open"
     },
     GithubPullRequests {
         owner: String,
         repo: String,
-        labels: Vec<String>,   // default: []
-        state: String,         // default: "open"
+        labels: Vec<String>,            // default: []
+        state: String,                  // default: "open"
     },
-    Cron { expression: String },       // Phase 2
-    Delay { run_at: String },          // Phase 2 — ISO 8601
+    Cron { expression: String },        // Phase 2
+    Delay { run_at: String },           // Phase 2 — ISO 8601
+    AgentLifecycle { event: String },   // Phase 3
+    DispatchResult {                    // Phase 3
+        source_workflow_id: Option<Uuid>,
+        status: Option<DispatchStatus>,
+    },
     Webhook { secret: Option<String> }, // Phase 4
     Manual {},
 }
 ```
 
 !!! info "Implementation status"
-    `github_issues`, `github_pull_requests`, `cron`, and `delay` are fully implemented. `webhook` and `manual` are defined but not yet runnable — attempting to create a workflow with either type returns `400 Invalid Input`.
+    `github_issues`, `github_pull_requests`, `cron`, `delay`, `agent_lifecycle`, and `dispatch_result` are fully implemented. `webhook` and `manual` are defined but not yet runnable — attempting to create a workflow with either type returns `400 Invalid Input`.
 
-    See [Schedule Triggers](schedule-triggers.md) for full documentation of the `cron` and `delay` types.
+    - See [Schedule Triggers](schedule-triggers.md) for `cron` and `delay` documentation.
+    - See [Event-Driven Triggers](event-triggers.md) for `agent_lifecycle` and `dispatch_result` documentation.
 
 ### JSON tagged-union format
 
@@ -154,6 +164,10 @@ pub enum TriggerConfig {
 ```json
 { "type": "github_issues", "owner": "myorg", "repo": "myrepo", "labels": ["agent"] }
 { "type": "github_pull_requests", "owner": "myorg", "repo": "myrepo", "state": "open" }
+{ "type": "cron", "expression": "0 9 * * MON-FRI" }
+{ "type": "delay", "run_at": "2026-04-01T09:00:00Z" }
+{ "type": "agent_lifecycle", "event": "session_start" }
+{ "type": "dispatch_result", "source_workflow_id": "<UUID>", "status": "completed" }
 ```
 
 ---
