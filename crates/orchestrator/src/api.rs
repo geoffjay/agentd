@@ -1,5 +1,5 @@
 use crate::manager::AgentManager;
-use crate::scheduler::api::{workflow_routes, WorkflowState};
+use crate::scheduler::api::{webhook_routes, workflow_routes, WorkflowState};
 use crate::scheduler::Scheduler;
 use crate::types::*;
 use crate::websocket::{
@@ -38,7 +38,8 @@ pub fn create_router(state: ApiState) -> Router {
 
     let wf_state =
         WorkflowState { scheduler: state.scheduler.clone(), manager: state.manager.clone() };
-    let wf_routes = workflow_routes(wf_state);
+    let wf_routes = workflow_routes(wf_state.clone());
+    let wh_routes = webhook_routes(wf_state);
 
     let api_routes = Router::new()
         .route("/health", get(health_check))
@@ -58,7 +59,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/debug/agents", get(debug_agents))
         .with_state(state);
 
-    api_routes.merge(ws_agent_routes).merge(ws_stream_routes).merge(wf_routes)
+    api_routes.merge(ws_agent_routes).merge(ws_stream_routes).merge(wf_routes).merge(wh_routes)
 }
 
 #[derive(Deserialize)]

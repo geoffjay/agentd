@@ -14,7 +14,7 @@ use croner::Cron;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{broadcast, mpsc, watch};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -561,6 +561,61 @@ impl TriggerStrategy for EventStrategy {
                         return Ok(vec![]);
                     }
                 }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WebhookStrategy
+// ---------------------------------------------------------------------------
+
+/// A [`TriggerStrategy`] that receives tasks from an inbound HTTP webhook
+/// via an `mpsc` channel.
+///
+/// Each webhook workflow gets a bounded `mpsc` channel. The HTTP endpoint
+/// pushes parsed [`Task`]s through the sender; this strategy receives them.
+/// When the sender is dropped (e.g., workflow stopped), `recv()` returns
+/// `None` and the strategy signals completion with an empty vec.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use tokio::sync::mpsc;
+/// use orchestrator::scheduler::strategy::WebhookStrategy;
+///
+/// let (tx, rx) = mpsc::channel(64);
+/// let strategy = WebhookStrategy::new(rx);
+/// // Register `tx` in the WebhookRegistry; hand `strategy` to WorkflowRunner.
+/// ```
+pub struct WebhookStrategy {
+    rx: mpsc::Receiver<Task>,
+}
+
+impl WebhookStrategy {
+    /// Create a new webhook strategy from a channel receiver.
+    pub fn new(rx: mpsc::Receiver<Task>) -> Self {
+        Self { rx }
+    }
+}
+
+#[async_trait]
+impl TriggerStrategy for WebhookStrategy {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
+        let mut shutdown = shutdown.clone();
+
+        tokio::select! {
+            task = self.rx.recv() => {
+                match task {
+                    Some(task) => Ok(vec![task]),
+                    None => Ok(vec![]),  // Sender dropped — workflow stopped.
+                }
+            }
+            _ = shutdown.changed() => {
+                if *shutdown.borrow() {
+                    return Ok(vec![]);
+                }
+                Ok(vec![])
             }
         }
     }
@@ -1299,5 +1354,84 @@ mod tests {
         assert!(task.source_id.contains(&dispatch_id.to_string()));
         assert!(task.title.contains(&dispatch_id.to_string()));
         assert!(task.title.contains("completed"));
+    }
+
+    // ── WebhookStrategy tests ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn webhook_strategy_receives_task() {
+        let (tx, rx) = mpsc::channel(16);
+        let mut strategy = WebhookStrategy::new(rx);
+        let (_stx, srx) = watch::channel(false);
+
+        let task = sample_task("webhook-1");
+        tx.send(task).await.unwrap();
+
+        let result = strategy.next_tasks(&srx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source_id, "webhook-1");
+    }
+
+    #[tokio::test]
+    async fn webhook_strategy_returns_empty_on_sender_drop() {
+        let (tx, rx) = mpsc::channel(16);
+        let mut strategy = WebhookStrategy::new(rx);
+        let (_stx, srx) = watch::channel(false);
+
+        // Drop the sender — strategy should return empty.
+        drop(tx);
+
+        let result = strategy.next_tasks(&srx).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn webhook_strategy_respects_shutdown() {
+        let (_tx, rx) = mpsc::channel::<Task>(16);
+        let mut strategy = WebhookStrategy::new(rx);
+        let (stx, srx) = watch::channel(false);
+
+        // Fire shutdown after a short delay.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = stx.send(true);
+        });
+
+        let start = tokio::time::Instant::now();
+        let result = strategy.next_tasks(&srx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(result.is_empty());
+        assert!(elapsed < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn webhook_strategy_is_object_safe() {
+        let (tx, rx) = mpsc::channel(16);
+        let strategy: Box<dyn TriggerStrategy> = Box::new(WebhookStrategy::new(rx));
+        let (_stx, srx) = watch::channel(false);
+
+        tx.send(sample_task("obj-safe")).await.unwrap();
+
+        let mut strategy = strategy;
+        let result = strategy.next_tasks(&srx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source_id, "obj-safe");
+    }
+
+    #[tokio::test]
+    async fn webhook_strategy_receives_multiple_tasks_sequentially() {
+        let (tx, rx) = mpsc::channel(16);
+        let mut strategy = WebhookStrategy::new(rx);
+        let (_stx, srx) = watch::channel(false);
+
+        tx.send(sample_task("wh-1")).await.unwrap();
+        tx.send(sample_task("wh-2")).await.unwrap();
+
+        let r1 = strategy.next_tasks(&srx).await.unwrap();
+        assert_eq!(r1[0].source_id, "wh-1");
+
+        let r2 = strategy.next_tasks(&srx).await.unwrap();
+        assert_eq!(r2[0].source_id, "wh-2");
     }
 }
