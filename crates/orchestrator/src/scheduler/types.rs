@@ -109,14 +109,6 @@ impl TriggerConfig {
         }
     }
 
-    /// Returns `true` for trigger types that use poll-based task fetching.
-    pub fn is_poll_based(&self) -> bool {
-        matches!(
-            self,
-            TriggerConfig::GithubIssues { .. } | TriggerConfig::GithubPullRequests { .. }
-        )
-    }
-
     /// Returns `true` for trigger types that have a working implementation.
     pub fn is_implemented(&self) -> bool {
         matches!(
