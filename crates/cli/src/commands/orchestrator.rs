@@ -2547,6 +2547,7 @@ mod tests {
             id: Uuid::new_v4(),
             name: "test-agent".to_string(),
             status: AgentStatus::Running,
+            activity: Default::default(),
             config: AgentConfig {
                 working_dir: "/tmp/test".to_string(),
                 user: None,
@@ -3393,6 +3394,7 @@ mod tests {
             id: Uuid::new_v4(),
             name: "docker-agent".to_string(),
             status: AgentStatus::Running,
+            activity: Default::default(),
             config: AgentConfig {
                 working_dir: "/workspace".to_string(),
                 user: None,
