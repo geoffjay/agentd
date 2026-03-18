@@ -191,6 +191,20 @@ pub trait ExecutionBackend: Send + Sync {
         Ok(None)
     }
 
+    /// Sends an interrupt signal (SIGINT / Ctrl-C) to a running session.
+    ///
+    /// For tmux backends this sends `C-c` via `send-keys`; for Docker backends
+    /// this sends `SIGINT` to the container via `docker kill --signal=SIGINT`.
+    ///
+    /// This interrupts the currently running process (e.g., an in-flight
+    /// Claude Code prompt) without terminating the session or container.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the session/container does not exist or the
+    /// underlying signal delivery fails.
+    async fn send_interrupt(&self, session_id: &str) -> anyhow::Result<()>;
+
     /// Stops all sessions managed by this backend.
     ///
     /// Used during graceful shutdown to clean up all running sessions.
@@ -303,6 +317,13 @@ impl ExecutionBackend for TmuxBackend {
         let tmux = self.tmux.clone();
 
         tokio::task::spawn_blocking(move || tmux.list_sessions()).await?
+    }
+
+    async fn send_interrupt(&self, session_id: &str) -> anyhow::Result<()> {
+        let tmux = self.tmux.clone();
+        let name = session_id.to_string();
+
+        tokio::task::spawn_blocking(move || tmux.send_interrupt(&name)).await?
     }
 
     fn prefix(&self) -> &str {
@@ -547,5 +568,25 @@ mod tests {
         let backend = TmuxBackend::new("test");
         let exit_info = backend.session_exit_info("nonexistent").await.unwrap();
         assert!(exit_info.is_none());
+    }
+
+    // -- send_interrupt tests --
+
+    /// `TmuxBackend::send_interrupt` must return `Err` for a session that does
+    /// not exist (either because tmux is not installed or the session is absent).
+    #[tokio::test]
+    async fn tmux_backend_send_interrupt_nonexistent_session_returns_err() {
+        let backend = TmuxBackend::new("test");
+        let result = backend.send_interrupt("definitely-does-not-exist-xyzzy").await;
+        assert!(result.is_err(), "Expected Err for non-existent session, got Ok");
+    }
+
+    /// Verify that `TmuxBackend` satisfies the `ExecutionBackend` trait including
+    /// the new `send_interrupt` method.
+    #[test]
+    fn tmux_backend_implements_send_interrupt_in_trait() {
+        fn _assert_object_safe(_: &dyn ExecutionBackend) {}
+        let backend = TmuxBackend::new("agentd");
+        _assert_object_safe(&backend);
     }
 }

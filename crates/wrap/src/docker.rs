@@ -40,8 +40,8 @@
 use crate::backend::{ExecutionBackend, SessionConfig, SessionExitInfo, SessionHealth};
 use async_trait::async_trait;
 use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, RemoveContainerOptions,
-    StartContainerOptions, StopContainerOptions,
+    Config, CreateContainerOptions, KillContainerOptions, ListContainersOptions,
+    RemoveContainerOptions, StartContainerOptions, StopContainerOptions,
 };
 use bollard::exec::CreateExecOptions;
 use bollard::models::{ContainerStateStatusEnum, HealthStatusEnum};
@@ -781,6 +781,36 @@ impl ExecutionBackend for DockerBackend {
         }
     }
 
+    /// Sends SIGINT to a running Docker container.
+    ///
+    /// Uses `docker kill --signal=SIGINT` to deliver SIGINT to PID 1
+    /// of the container. This interrupts the currently running process
+    /// (e.g., an in-flight Claude Code prompt) without stopping the container.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the container does not exist or is not running.
+    async fn send_interrupt(&self, session_id: &str) -> anyhow::Result<()> {
+        debug!(session = %session_id, "Sending SIGINT to Docker container");
+
+        self.docker
+            .kill_container(session_id, Some(KillContainerOptions { signal: "SIGINT" }))
+            .await
+            .map_err(|e| {
+                if is_not_found(&e) {
+                    anyhow::anyhow!(
+                        "Cannot send interrupt: container '{}' does not exist",
+                        session_id
+                    )
+                } else {
+                    anyhow::anyhow!("Failed to send SIGINT to container '{}': {}", session_id, e)
+                }
+            })?;
+
+        debug!(session = %session_id, "SIGINT delivered to Docker container");
+        Ok(())
+    }
+
     /// Stops all containers managed by this Docker backend.
     ///
     /// Lists all containers with the matching prefix label and stops + removes
@@ -1232,5 +1262,31 @@ mod tests {
             "Bridge mode should use host.docker.internal"
         );
         assert!(url.contains("/ws/myid"), "URL should contain agent ID");
+    }
+
+    // -- send_interrupt --
+
+    /// `DockerBackend::send_interrupt` must return `Err` when the container
+    /// does not exist. If Docker is not available the test is skipped.
+    #[tokio::test]
+    async fn docker_backend_send_interrupt_nonexistent_container_returns_err() {
+        let Some(backend) = test_backend() else { return };
+        let result = backend.send_interrupt("definitely-does-not-exist-xyzzy").await;
+        assert!(result.is_err(), "Expected Err for non-existent container, got Ok");
+        let msg = result.unwrap_err().to_string();
+        // The error should mention the container name or come from Docker.
+        assert!(
+            msg.contains("definitely-does-not-exist-xyzzy") || msg.contains("No such container"),
+            "Unexpected error message: {msg}"
+        );
+    }
+
+    /// Verify that `DockerBackend` satisfies the `ExecutionBackend` trait including
+    /// the new `send_interrupt` method.
+    #[test]
+    fn docker_backend_implements_send_interrupt_in_trait() {
+        fn _assert_object_safe(_: &dyn ExecutionBackend) {}
+        let Some(backend) = test_backend() else { return };
+        _assert_object_safe(&backend);
     }
 }
