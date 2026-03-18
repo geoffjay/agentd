@@ -347,6 +347,17 @@ export interface ContextClearedEvent {
   timestamp: string
 }
 
+/** Agent invoked a tool — carries full input and a human-readable summary */
+export interface AgentToolUseEvent {
+  type: 'agent:tool_use'
+  agentId: string
+  tool_name: string
+  tool_id: string
+  tool_input: Record<string, unknown>
+  summary: string
+  timestamp: string
+}
+
 /** Union of all agent-related WebSocket events */
 export type AgentEvent =
   | AgentOutputEvent
@@ -357,6 +368,7 @@ export type AgentEvent =
   | WorkflowTaskCompletedEvent
   | UsageUpdateEvent
   | ContextClearedEvent
+  | AgentToolUseEvent
 
 // ---------------------------------------------------------------------------
 // Query params

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { WebSocketManager } from '@/services/websocket'
 import { serviceConfig } from '@/services/config'
 import { agentEventBus } from '@/services/eventBus'
-import type { AgentEvent, UsageUpdateEvent, ContextClearedEvent } from '@/types/orchestrator'
+import type { AgentEvent, UsageUpdateEvent, ContextClearedEvent, AgentToolUseEvent } from '@/types/orchestrator'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,6 +26,13 @@ export interface LogLine {
   /** Raw text (may contain ANSI escape sequences) */
   text: string
   timestamp: string
+  /** When set, this line represents a tool call rather than plain output */
+  toolUse?: {
+    tool_name: string
+    tool_id: string
+    tool_input: Record<string, unknown>
+    summary: string
+  }
 }
 
 /** Callback invoked when a real-time usage update event arrives */
@@ -65,6 +72,20 @@ function makeLogLine(text: string): LogLine {
     id: ++globalLineId,
     text,
     timestamp: new Date().toISOString(),
+  }
+}
+
+function makeToolUseLine(event: AgentToolUseEvent): LogLine {
+  return {
+    id: ++globalLineId,
+    text: `[${event.tool_name}] ${event.summary}`,
+    timestamp: event.timestamp,
+    toolUse: {
+      tool_name: event.tool_name,
+      tool_id: event.tool_id,
+      tool_input: event.tool_input,
+      summary: event.summary,
+    },
   }
 }
 
@@ -149,6 +170,13 @@ export function useAgentStream(
         // For agent:output events, extract the line text
         if (parsed.type === 'agent:output') {
           const incoming = [makeLogLine(parsed.line)]
+          setLines((prev) => capLines(prev, incoming))
+          return
+        }
+
+        // For agent:tool_use events, add a structured tool call line
+        if (parsed.type === 'agent:tool_use') {
+          const incoming = [makeToolUseLine(parsed)]
           setLines((prev) => capLines(prev, incoming))
           return
         }

@@ -296,12 +296,59 @@ fn extract_usage(msg: &Value) -> Option<UsageSnapshot> {
     })
 }
 
+/// Generate a human-readable one-line summary of a tool call input.
+fn summarize_tool_input(tool_name: &str, input: &Value) -> String {
+    let truncate = |s: &str, max: usize| -> String {
+        if s.len() <= max {
+            s.to_string()
+        } else {
+            format!("{}…", &s[..max])
+        }
+    };
+
+    match tool_name {
+        "Bash" => {
+            let cmd = input.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            truncate(cmd, 100)
+        }
+        "Read" => {
+            let path = input.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+            truncate(path, 100)
+        }
+        "Edit" | "Write" => {
+            let path = input.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+            truncate(path, 100)
+        }
+        "Grep" => {
+            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
+            let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            truncate(&format!("{} in {}", pattern, path), 100)
+        }
+        "Glob" => {
+            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
+            truncate(pattern, 100)
+        }
+        "WebFetch" => {
+            let url = input.get("url").and_then(|v| v.as_str()).unwrap_or("");
+            truncate(url, 100)
+        }
+        _ => {
+            let serialized = serde_json::to_string(input).unwrap_or_default();
+            truncate(&serialized, 100)
+        }
+    }
+}
+
 /// Extract displayable text lines from a Claude Code `assistant` message.
 ///
 /// The `message` object may have a `content` field that is either a plain
 /// string or an array of content blocks (text blocks, tool_use blocks, etc.).
-fn extract_assistant_text(message: &Value) -> Vec<String> {
+///
+/// Returns a tuple of (text_lines, tool_use_blocks) where tool_use_blocks
+/// carries structured tool use data for broadcasting as separate events.
+fn extract_assistant_content(message: &Value) -> (Vec<String>, Vec<Value>) {
     let mut lines = Vec::new();
+    let mut tool_uses = Vec::new();
     if let Some(content) = message.get("content") {
         if let Some(text) = content.as_str() {
             lines.push(text.to_string());
@@ -315,15 +362,26 @@ fn extract_assistant_text(message: &Value) -> Vec<String> {
                         }
                     }
                     "tool_use" => {
-                        let tool = block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                        lines.push(format!("[Tool: {}]", tool));
+                        let tool_name =
+                            block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let tool_id =
+                            block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let tool_input =
+                            block.get("input").cloned().unwrap_or(Value::Object(Default::default()));
+                        let summary = summarize_tool_input(tool_name, &tool_input);
+                        tool_uses.push(serde_json::json!({
+                            "tool_name": tool_name,
+                            "tool_id": tool_id,
+                            "tool_input": tool_input,
+                            "summary": summary,
+                        }));
                     }
                     _ => {}
                 }
             }
         }
     }
-    lines
+    (lines, tool_uses)
 }
 
 /// Broadcast a single `agent:output` event on the multiplexed stream.
@@ -372,10 +430,24 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
             }
             "assistant" => {
                 debug!(%agent_id, "Assistant response received");
-                // Extract text content and broadcast as agent:output events.
+                // Extract text content and tool use blocks; broadcast both.
                 if let Some(message) = msg.get("message") {
-                    for text in extract_assistant_text(message) {
+                    let (texts, tool_uses) = extract_assistant_content(message);
+                    for text in texts {
                         broadcast_output(agent_id, &text, registry);
+                    }
+                    for tool_use in tool_uses {
+                        let event = serde_json::json!({
+                            "type": "agent:tool_use",
+                            "agent_id": agent_id.to_string(),
+                            "agentId": agent_id.to_string(),
+                            "tool_name": tool_use["tool_name"],
+                            "tool_id": tool_use["tool_id"],
+                            "tool_input": tool_use["tool_input"],
+                            "summary": tool_use["summary"],
+                            "timestamp": Utc::now().to_rfc3339(),
+                        });
+                        let _ = registry.stream_tx.send(event.to_string());
                     }
                 }
             }
