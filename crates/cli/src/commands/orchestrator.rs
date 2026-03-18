@@ -2505,6 +2505,25 @@ fn display_workflow(workflow: &WorkflowResponse) {
             println!("{}: {}", "Secret".bold(), secret_display);
         }
         TriggerConfig::Manual {} => {}
+        TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } => {
+            if let Some(tk) = team_key {
+                println!("{}: {}", "Team Key".bold(), tk);
+            }
+            if let Some(proj) = project {
+                println!("{}: {}", "Project".bold(), proj);
+            }
+            if let Some(statuses) = status {
+                if !statuses.is_empty() {
+                    println!("{}: {}", "Status".bold(), statuses.join(", "));
+                }
+            }
+            if !labels.is_empty() {
+                println!("{}: {}", "Labels".bold(), labels.join(", "));
+            }
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
+            }
+        }
     }
     let template = &workflow.prompt_template;
     let display =
@@ -3648,5 +3667,81 @@ mod tests {
         assert!(TriggerConfig::Delay { run_at: "2026-01-01T00:00:00Z".into() }.is_implemented());
         assert!(TriggerConfig::Webhook { secret: None }.is_implemented());
         assert!(TriggerConfig::Manual {}.is_implemented());
+        // LinearIssues is not yet implemented — source added in issue #475.
+        assert!(!TriggerConfig::LinearIssues {
+            team_key: None,
+            project: None,
+            status: None,
+            labels: vec![],
+            assignee: None,
+        }
+        .is_implemented());
+    }
+
+    #[test]
+    fn test_trigger_config_linear_issues_trigger_type() {
+        let cfg = TriggerConfig::LinearIssues {
+            team_key: Some("ENG".into()),
+            project: None,
+            status: None,
+            labels: vec![],
+            assignee: None,
+        };
+        assert_eq!(cfg.trigger_type(), "linear_issues");
+    }
+
+    #[test]
+    fn test_trigger_config_linear_issues_serde_full() {
+        let json = r#"{
+            "type": "linear_issues",
+            "team_key": "ENG",
+            "project": "Backend",
+            "status": ["Todo", "In Progress"],
+            "labels": ["bug", "urgent"],
+            "assignee": "alice@example.com"
+        }"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.trigger_type(), "linear_issues");
+        if let TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } = cfg {
+            assert_eq!(team_key.as_deref(), Some("ENG"));
+            assert_eq!(project.as_deref(), Some("Backend"));
+            assert_eq!(status.as_deref(), Some(&["Todo".to_string(), "In Progress".to_string()][..]));
+            assert_eq!(labels, vec!["bug", "urgent"]);
+            assert_eq!(assignee.as_deref(), Some("alice@example.com"));
+        } else {
+            panic!("Expected LinearIssues variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_linear_issues_serde_minimal_defaults() {
+        // All optional fields omitted — should deserialize with defaults.
+        let json = r#"{"type": "linear_issues"}"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        if let TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } = cfg {
+            assert!(team_key.is_none());
+            assert!(project.is_none());
+            assert!(status.is_none());
+            assert!(labels.is_empty());
+            assert!(assignee.is_none());
+        } else {
+            panic!("Expected LinearIssues variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_linear_issues_serde_roundtrip() {
+        let original = TriggerConfig::LinearIssues {
+            team_key: Some("OPS".into()),
+            project: Some("Infra".into()),
+            status: Some(vec!["Todo".into()]),
+            labels: vec!["infra".into()],
+            assignee: Some("bob@example.com".into()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: TriggerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.trigger_type(), "linear_issues");
+        // Serialized tag must be snake_case.
+        assert!(json.contains(r#""type":"linear_issues""#));
     }
 }

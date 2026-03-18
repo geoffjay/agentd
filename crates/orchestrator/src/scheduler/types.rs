@@ -110,6 +110,37 @@ pub enum TriggerConfig {
     },
     /// Manual trigger — dispatched explicitly via the API.
     Manual {},
+    /// Linear issues trigger — polls Linear for issues matching the given filters.
+    ///
+    /// Requires `AGENTD_LINEAR_API_KEY` to be set in the environment.
+    /// All filter fields are optional; omitting them returns all accessible issues.
+    ///
+    /// # Fields
+    ///
+    /// - `team_key` — Linear team key to filter by (e.g. `"ENG"`).
+    /// - `project` — Linear project name or ID to filter by.
+    /// - `status` — Issue status names to include (e.g. `["Todo", "In Progress"]`).
+    ///   Defaults to all statuses when omitted.
+    /// - `labels` — Label names the issue must have (all must match).
+    /// - `assignee` — Assignee display name or email to filter by.
+    LinearIssues {
+        /// Linear team key filter (e.g. `"ENG"`).
+        #[serde(default)]
+        team_key: Option<String>,
+        /// Linear project name or ID filter.
+        #[serde(default)]
+        project: Option<String>,
+        /// Issue status filter (e.g. `["Todo", "In Progress"]`).
+        /// Defaults to all statuses when `None`.
+        #[serde(default)]
+        status: Option<Vec<String>>,
+        /// Label filter — issue must carry all listed labels.
+        #[serde(default)]
+        labels: Vec<String>,
+        /// Assignee display name or email filter.
+        #[serde(default)]
+        assignee: Option<String>,
+    },
 }
 
 fn default_issue_state() -> String {
@@ -131,22 +162,24 @@ impl TriggerConfig {
             TriggerConfig::DispatchResult { .. } => "dispatch_result",
             TriggerConfig::Webhook { .. } => "webhook",
             TriggerConfig::Manual { .. } => "manual",
+            TriggerConfig::LinearIssues { .. } => "linear_issues",
         }
     }
 
     /// Returns `true` for trigger types that have a working implementation.
     pub fn is_implemented(&self) -> bool {
-        matches!(
-            self,
+        match self {
             TriggerConfig::GithubIssues { .. }
-                | TriggerConfig::GithubPullRequests { .. }
-                | TriggerConfig::Cron { .. }
-                | TriggerConfig::Delay { .. }
-                | TriggerConfig::AgentLifecycle { .. }
-                | TriggerConfig::DispatchResult { .. }
-                | TriggerConfig::Webhook { .. }
-                | TriggerConfig::Manual { .. }
-        )
+            | TriggerConfig::GithubPullRequests { .. }
+            | TriggerConfig::Cron { .. }
+            | TriggerConfig::Delay { .. }
+            | TriggerConfig::AgentLifecycle { .. }
+            | TriggerConfig::DispatchResult { .. }
+            | TriggerConfig::Webhook { .. }
+            | TriggerConfig::Manual { .. } => true,
+            // LinearIssues source is not yet implemented — see issue #475.
+            TriggerConfig::LinearIssues { .. } => false,
+        }
     }
 
     /// Returns `true` for one-shot trigger types that should auto-disable
