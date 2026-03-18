@@ -235,6 +235,16 @@ source:
   state: open            # Issue state filter (default: open)
 ```
 
+**GitHub Pull Requests:**
+```yaml
+source:
+  type: github_pull_requests
+  owner: myorg           # GitHub user or organization
+  repo: myrepo           # Repository name
+  labels: [needs-review] # Filter by labels (optional)
+  state: open            # PR state filter (default: open)
+```
+
 **Cron (recurring schedule):**
 ```yaml
 source:
@@ -250,6 +260,26 @@ source:
 ```
 
 See [Schedule Triggers](schedule-triggers.md) for full syntax reference, common expression examples, and operational notes.
+
+**Webhook:**
+```yaml
+source:
+  type: webhook
+  secret: "my-hmac-secret"   # optional — omit to disable HMAC verification
+```
+
+See [Webhook Triggers](webhook-triggers.md) for endpoint details, HMAC verification, payload parsing, and GitHub setup.
+
+**Manual:**
+```yaml
+source:
+  type: manual
+```
+
+See [Manual Triggers](manual-trigger.md) for the `trigger-workflow` CLI command and the `POST /workflows/{id}/trigger` API endpoint.
+
+!!! note "Event-driven triggers (API only)"
+    The `agent_lifecycle` and `dispatch_result` trigger types are configured via the REST API only. They are not supported in `.agentd/` YAML templates. See [Event-Driven Triggers](event-triggers.md).
 
 ---
 
