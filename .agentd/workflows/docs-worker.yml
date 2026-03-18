@@ -25,6 +25,14 @@ prompt_template: |
 
   {{body}}
 
+  Step 0 — Gather context from memory:
+  Before starting documentation work, search shared memory for relevant context:
+  1. Search for memories related to this documentation topic:
+     agent memory search "{{title}}" --as-actor documenter --limit 5 --json
+  2. Search for known documentation gaps or conventions:
+     agent memory search "documentation gaps" --as-actor documenter --tags documenter --limit 5 --json
+  3. Review results to understand prior documentation decisions and known gaps.
+
   Instructions:
   1. Read the issue carefully to understand what documentation is needed
   2. Check the current state of docs/ and the relevant source code in crates/
@@ -37,5 +45,7 @@ prompt_template: |
        --title "docs: <short description>" \
        --body "Closes #{{source_id}}" \
        --label documentation
-  8. Move the issue to In Progress on the project board:
+  8. Store any documentation decisions or discovered gaps for future reference:
+     agent memory remember "<what you learned>" --created-by documenter --type information --tags documenter,issue-{{source_id}} --visibility public
+  9. Move the issue to In Progress on the project board:
      gh issue edit {{source_id}} --repo geoffjay/agentd --add-project "https://github.com/users/geoffjay/projects/5"

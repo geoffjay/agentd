@@ -33,6 +33,14 @@ prompt_template: |
   Description:
   {{body}}
 
+  Step 0 — Gather context from memory:
+  Before starting the review, search shared memory for relevant context:
+  1. Search for memories related to the PR topic and changed areas:
+     agent memory search "{{title}}" --as-actor reviewer --limit 5 --json
+  2. Search for known issues or patterns in the areas being modified:
+     agent memory search "review findings" --as-actor reviewer --tags reviewer --limit 5 --json
+  3. Review results to inform your review — look for recurring issues or past decisions.
+
   Instructions:
   1. Fetch the full diff: gh pr diff {{source_id}} --repo geoffjay/agentd
   2. Read the diff carefully, noting each changed file and the nature of the changes
@@ -43,5 +51,7 @@ prompt_template: |
      - Approve if the changes are good
      - Comment if you have non-blocking suggestions
      - Request changes if there are issues that need to be fixed
-  7. Remove the "review-agent" label after review:
+  7. If you found a recurring pattern or notable issue worth tracking, store it:
+     agent memory remember "<finding>" --created-by reviewer --type information --tags reviewer,pr-{{source_id}} --visibility public
+  8. Remove the "review-agent" label after review:
      gh pr edit {{source_id}} --repo geoffjay/agentd --remove-label review-agent
