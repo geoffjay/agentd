@@ -1,0 +1,20 @@
+{
+  "markdown": {
+    "command": "markdown-oxide",
+    "extensionToLanguage": {
+      ".md": "markdown"
+    }
+  },
+  "rust": {
+    "command": "lspmux",
+    "args": [
+      "client"
+    ],
+    "extensionToLanguage": {
+      ".rs": "rust"
+    },
+    "env": {
+      "LSPMUX_SERVER": "rust-analyzer"
+    }
+  }
+}

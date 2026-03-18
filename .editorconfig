@@ -12,7 +12,7 @@ max_line_length = 100
 [*.md]
 indent_size = 2
 
-[*.{yml,yaml}]
+[*.{yml,yaml,json,jsonc,jsonl}]
 indent_size = 2
 
 [COMMIT_EDITMSG]
