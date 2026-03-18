@@ -9,10 +9,12 @@
  * - Timestamp prefix on each line
  * - Connection status indicator
  * - Clear button
+ * - Thinking/reasoning line display (toggleable, persisted to localStorage)
+ * - Reconnection gap separator lines
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDown, ChevronDown, ChevronRight, Eraser, Wifi, WifiOff, Loader2 } from 'lucide-react'
+import { ArrowDown, ChevronDown, ChevronRight, Eraser, Eye, EyeOff, Wifi, WifiOff, Loader2 } from 'lucide-react'
 import type { LogLine, StreamStatus } from '@/hooks/useAgentStream'
 
 // ---------------------------------------------------------------------------
@@ -25,6 +27,12 @@ const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g
 function stripAnsi(text: string): string {
   return text.replace(ANSI_RE, '')
 }
+
+// ---------------------------------------------------------------------------
+// localStorage key for thinking toggle preference
+// ---------------------------------------------------------------------------
+
+const THINKING_PREF_KEY = 'agentd:show-thinking'
 
 // ---------------------------------------------------------------------------
 // Status indicator
@@ -123,6 +131,22 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scrollLocked, setScrollLocked] = useState(false)
 
+  // Thinking toggle — persisted to localStorage
+  const [showThinking, setShowThinking] = useState<boolean>(
+    () => localStorage.getItem(THINKING_PREF_KEY) === 'true',
+  )
+
+  const toggleThinking = useCallback(() => {
+    setShowThinking((prev) => {
+      const next = !prev
+      localStorage.setItem(THINKING_PREF_KEY, String(next))
+      return next
+    })
+  }, [])
+
+  // Filter lines based on showThinking preference
+  const visibleLines = showThinking ? lines : lines.filter((l) => !l.isThinking)
+
   // Auto-scroll to bottom when new lines arrive (unless scroll-locked)
   useEffect(() => {
     if (scrollLocked) return
@@ -130,7 +154,7 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
     if (el) {
       el.scrollTop = el.scrollHeight
     }
-  }, [lines, scrollLocked])
+  }, [visibleLines, scrollLocked])
 
   // Detect when user scrolls up — engage scroll lock
   const handleScroll = useCallback(() => {
@@ -171,6 +195,19 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
           )}
           <button
             type="button"
+            aria-label={showThinking ? 'Hide thinking' : 'Show thinking'}
+            onClick={toggleThinking}
+            className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-white"
+          >
+            {showThinking ? (
+              <EyeOff size={12} aria-hidden="true" />
+            ) : (
+              <Eye size={12} aria-hidden="true" />
+            )}
+            {showThinking ? 'Hide thinking' : 'Show thinking'}
+          </button>
+          <button
+            type="button"
             aria-label="Clear log"
             onClick={onClear}
             className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-white"
@@ -190,7 +227,7 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
         aria-atomic="false"
         aria-relevant="additions"
       >
-        {lines.length === 0 ? (
+        {visibleLines.length === 0 ? (
           <p className="text-gray-600 italic select-none">
             {status === 'connecting'
               ? 'Connecting to agent stream…'
@@ -199,13 +236,34 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
                 : 'Waiting for agent output…'}
           </p>
         ) : (
-          lines.map((line) => {
+          visibleLines.map((line) => {
             const ts = new Date(line.timestamp).toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit',
               second: '2-digit',
               hour12: false,
             })
+
+            if (line.isSeparator) {
+              return (
+                <div key={line.id} className="my-1 flex items-center gap-2 select-none">
+                  <div className="flex-1 border-t border-dashed border-gray-700" />
+                  <span className="text-xs text-gray-500 italic">{line.text}</span>
+                  <div className="flex-1 border-t border-dashed border-gray-700" />
+                </div>
+              )
+            }
+
+            if (line.isThinking) {
+              return (
+                <div key={line.id} className="flex gap-2 whitespace-pre-wrap break-all italic text-blue-300/70">
+                  <span className="flex-shrink-0 select-none text-gray-600">{ts}</span>
+                  <span className="flex-shrink-0 select-none">💭</span>
+                  <span>{stripAnsi(line.text)}</span>
+                </div>
+              )
+            }
+
             if (line.toolUse) {
               return (
                 <ToolUseLine
@@ -217,6 +275,7 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
                 />
               )
             }
+
             return (
               <div key={line.id} className="flex gap-2 whitespace-pre-wrap break-all">
                 <span className="flex-shrink-0 select-none text-gray-600">{ts}</span>

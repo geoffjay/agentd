@@ -6,14 +6,16 @@
  * and message buffering.
  *
  * Returns a capped circular buffer of up to MAX_LINES log lines plus
- * a connection status indicator.
+ * a connection status indicator. Log history is persisted to sessionStorage
+ * so it survives component remounts within the same browser tab. A separator
+ * line is injected when history is rehydrated to mark any gap in output.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { WebSocketManager } from '@/services/websocket'
 import { serviceConfig } from '@/services/config'
 import { agentEventBus } from '@/services/eventBus'
-import type { AgentEvent, UsageUpdateEvent, ContextClearedEvent, AgentToolUseEvent } from '@/types/orchestrator'
+import type { AgentEvent, UsageUpdateEvent, ContextClearedEvent, AgentToolUseEvent, AgentThinkingEvent } from '@/types/orchestrator'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +35,10 @@ export interface LogLine {
     tool_input: Record<string, unknown>
     summary: string
   }
+  /** When true, this line is a thinking/reasoning block */
+  isThinking?: boolean
+  /** When true, this line is a reconnection gap separator */
+  isSeparator?: boolean
 }
 
 /** Callback invoked when a real-time usage update event arrives */
@@ -60,6 +66,45 @@ export interface UseAgentStreamResult {
 // ---------------------------------------------------------------------------
 
 const MAX_LINES = 5_000
+const MAX_STORED_LINES = 1_000
+
+// ---------------------------------------------------------------------------
+// sessionStorage helpers
+// ---------------------------------------------------------------------------
+
+const LOG_STORAGE_KEY = (agentId: string) => `agentd:log-history:${agentId}`
+
+interface StoredLogHistory {
+  lines: LogLine[]
+  lastTimestamp: string
+}
+
+function loadLogHistory(agentId: string): StoredLogHistory | null {
+  try {
+    const raw = sessionStorage.getItem(LOG_STORAGE_KEY(agentId))
+    if (!raw) return null
+    return JSON.parse(raw) as StoredLogHistory
+  } catch {
+    return null
+  }
+}
+
+function saveLogHistory(agentId: string, lines: LogLine[], lastTimestamp: string): void {
+  try {
+    const stored: StoredLogHistory = { lines, lastTimestamp }
+    sessionStorage.setItem(LOG_STORAGE_KEY(agentId), JSON.stringify(stored))
+  } catch {
+    // sessionStorage may be full or unavailable — silently ignore
+  }
+}
+
+function clearLogHistory(agentId: string): void {
+  try {
+    sessionStorage.removeItem(LOG_STORAGE_KEY(agentId))
+  } catch {
+    // ignore
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -89,6 +134,26 @@ function makeToolUseLine(event: AgentToolUseEvent): LogLine {
   }
 }
 
+function makeThinkingLine(text: string, timestamp: string): LogLine {
+  return {
+    id: ++globalLineId,
+    text,
+    timestamp,
+    isThinking: true,
+  }
+}
+
+function makeSeparatorLine(fromTs: string, toTs: string): LogLine {
+  const fmt = (ts: string) =>
+    new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  return {
+    id: ++globalLineId,
+    text: `─── Reconnected · missed output from ${fmt(fromTs)} to ${fmt(toTs)} ───`,
+    timestamp: toTs,
+    isSeparator: true,
+  }
+}
+
 function capLines(prev: LogLine[], incoming: LogLine[]): LogLine[] {
   const combined = [...prev, ...incoming]
   if (combined.length <= MAX_LINES) return combined
@@ -111,6 +176,13 @@ export function useAgentStream(
   const [lines, setLines] = useState<LogLine[]>([])
   const [status, setStatus] = useState<StreamStatus>('connecting')
 
+  // linesRef stays in sync with lines state for use in cleanup
+  const linesRef = useRef<LogLine[]>([])
+
+  // Stores the last stored timestamp when history is rehydrated; cleared
+  // after the first new message arrives (so we can insert a separator)
+  const pendingSeparatorRef = useRef<string | null>(null)
+
   // Store callbacks in refs so the WebSocket effect doesn't re-run when
   // callbacks change.
   const onUsageUpdateRef = useRef(options.onUsageUpdate)
@@ -121,6 +193,17 @@ export function useAgentStream(
   const managerRef = useRef<WebSocketManager | null>(null)
 
   useEffect(() => {
+    // Rehydrate persisted log history on mount
+    const stored = loadLogHistory(agentId)
+    if (stored && stored.lines.length > 0) {
+      setLines((prev) => {
+        const next = capLines(prev, stored.lines)
+        linesRef.current = next
+        return next
+      })
+      pendingSeparatorRef.current = stored.lastTimestamp
+    }
+
     const manager = new WebSocketManager(agentStreamUrl(agentId), {
       // Disable heartbeat — agent output arrives irregularly; a ping
       // would be noise in the log stream
@@ -169,15 +252,50 @@ export function useAgentStream(
 
         // For agent:output events, extract the line text
         if (parsed.type === 'agent:output') {
-          const incoming = [makeLogLine(parsed.line)]
-          setLines((prev) => capLines(prev, incoming))
+          const newLine = makeLogLine(parsed.line)
+          const separator = pendingSeparatorRef.current
+          pendingSeparatorRef.current = null
+          setLines((prev) => {
+            const incoming = separator
+              ? [makeSeparatorLine(separator, newLine.timestamp), newLine]
+              : [newLine]
+            const next = capLines(prev, incoming)
+            linesRef.current = next
+            return next
+          })
           return
         }
 
         // For agent:tool_use events, add a structured tool call line
         if (parsed.type === 'agent:tool_use') {
-          const incoming = [makeToolUseLine(parsed)]
-          setLines((prev) => capLines(prev, incoming))
+          const newLine = makeToolUseLine(parsed)
+          const separator = pendingSeparatorRef.current
+          pendingSeparatorRef.current = null
+          setLines((prev) => {
+            const incoming = separator
+              ? [makeSeparatorLine(separator, newLine.timestamp), newLine]
+              : [newLine]
+            const next = capLines(prev, incoming)
+            linesRef.current = next
+            return next
+          })
+          return
+        }
+
+        // For agent:thinking events, add a thinking log line
+        if (parsed.type === 'agent:thinking') {
+          const thinkingEvent = parsed as AgentThinkingEvent
+          const newLine = makeThinkingLine(thinkingEvent.text, thinkingEvent.timestamp)
+          const separator = pendingSeparatorRef.current
+          pendingSeparatorRef.current = null
+          setLines((prev) => {
+            const incoming = separator
+              ? [makeSeparatorLine(separator, newLine.timestamp), newLine]
+              : [newLine]
+            const next = capLines(prev, incoming)
+            linesRef.current = next
+            return next
+          })
           return
         }
 
@@ -187,8 +305,17 @@ export function useAgentStream(
       }
 
       // Plain text fallback
-      const incoming = rawText.split('\n').filter(Boolean).map(makeLogLine)
-      setLines((prev) => capLines(prev, incoming))
+      const separator = pendingSeparatorRef.current
+      pendingSeparatorRef.current = null
+      setLines((prev) => {
+        const newLines = rawText.split('\n').filter(Boolean).map(makeLogLine)
+        const incoming = separator && newLines.length > 0
+          ? [makeSeparatorLine(separator, newLines[0].timestamp), ...newLines]
+          : newLines
+        const next = capLines(prev, incoming)
+        linesRef.current = next
+        return next
+      })
     })
 
     manager.connect()
@@ -198,10 +325,23 @@ export function useAgentStream(
       unsubMsg()
       manager.disconnect()
       managerRef.current = null
+
+      // Persist log history (excluding separator lines) on unmount
+      const currentLines = linesRef.current.filter((l) => !l.isSeparator)
+      const trimmed = currentLines.slice(-MAX_STORED_LINES)
+      if (trimmed.length > 0) {
+        const lastTimestamp = trimmed[trimmed.length - 1].timestamp
+        saveLogHistory(agentId, trimmed, lastTimestamp)
+      }
     }
   }, [agentId])
 
-  const clear = useCallback(() => setLines([]), [])
+  const clear = useCallback(() => {
+    linesRef.current = []
+    pendingSeparatorRef.current = null
+    setLines([])
+    clearLogHistory(agentId)
+  }, [agentId])
 
   return { lines, status, clear }
 }
