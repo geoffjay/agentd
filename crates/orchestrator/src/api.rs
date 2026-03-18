@@ -93,7 +93,13 @@ async fn list_agents(
     let offset = query.offset.unwrap_or(0);
 
     let (agents, total) = state.manager.list_agents_paginated(status_filter, limit, offset).await?;
-    let items: Vec<AgentResponse> = agents.into_iter().map(AgentResponse::from).collect();
+    let mut items: Vec<AgentResponse> = Vec::with_capacity(agents.len());
+    for agent in agents {
+        let id = agent.id;
+        let mut response = AgentResponse::from(agent);
+        response.activity = state.registry.get_activity_state(&id).await;
+        items.push(response);
+    }
 
     Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
@@ -133,8 +139,10 @@ async fn get_agent(
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
     let agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+    let mut response = AgentResponse::from(agent);
+    response.activity = state.registry.get_activity_state(&id).await;
 
-    Ok(Json(AgentResponse::from(agent)))
+    Ok(Json(response))
 }
 
 async fn terminate_agent(

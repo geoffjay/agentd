@@ -1,6 +1,6 @@
 use crate::approvals::ApprovalRegistry;
 use crate::scheduler::events::{EventBus, SystemEvent};
-use crate::types::{ApprovalDecision, ResultInfo, ToolPolicy, UsageSnapshot};
+use crate::types::{ActivityState, ApprovalDecision, ResultInfo, ToolPolicy, UsageSnapshot};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -34,6 +34,8 @@ pub struct ConnectionRegistry {
     result_callbacks: Arc<RwLock<Vec<ResultCallback>>>,
     /// Per-agent tool policies (set during agent creation).
     policies: Arc<RwLock<HashMap<Uuid, ToolPolicy>>>,
+    /// Per-agent activity state (idle or busy).
+    activity_states: Arc<RwLock<HashMap<Uuid, ActivityState>>>,
     /// Broadcast channel for the multiplexed agent stream.
     stream_tx: broadcast::Sender<String>,
     /// Notifies waiters when any agent connects.
@@ -57,6 +59,7 @@ impl ConnectionRegistry {
             connections: Arc::new(RwLock::new(HashMap::new())),
             result_callbacks: Arc::new(RwLock::new(Vec::new())),
             policies: Arc::new(RwLock::new(HashMap::new())),
+            activity_states: Arc::new(RwLock::new(HashMap::new())),
             stream_tx,
             connect_notify: Arc::new(tokio::sync::Notify::new()),
             approvals: ApprovalRegistry::new(300), // 5-minute default timeout
@@ -87,6 +90,7 @@ impl ConnectionRegistry {
 
     pub async fn register(&self, agent_id: Uuid, conn: AgentConnection) {
         self.connections.write().await.insert(agent_id, conn);
+        self.activity_states.write().await.insert(agent_id, ActivityState::Idle);
         self.connect_notify.notify_waiters();
         if let Some(bus) = &self.event_bus {
             bus.publish(SystemEvent::AgentConnected { agent_id });
@@ -121,6 +125,7 @@ impl ConnectionRegistry {
     pub async fn unregister(&self, agent_id: &Uuid) {
         self.connections.write().await.remove(agent_id);
         self.policies.write().await.remove(agent_id);
+        self.activity_states.write().await.remove(agent_id);
         if let Some(bus) = &self.event_bus {
             bus.publish(SystemEvent::AgentDisconnected { agent_id: *agent_id });
         }
@@ -137,10 +142,20 @@ impl ConnectionRegistry {
         self.policies.read().await.get(agent_id).cloned().unwrap_or_default()
     }
 
+    /// Get the current activity state for an agent.
+    ///
+    /// Returns `Idle` for agents that are not connected (no entry in the map).
+    pub async fn get_activity_state(&self, agent_id: &Uuid) -> ActivityState {
+        self.activity_states.read().await.get(agent_id).cloned().unwrap_or_default()
+    }
+
     /// Send a user message (prompt) to a connected agent.
     ///
     /// Uses the Claude Code SDK `stream-json` input format:
     /// `{"type": "user", "message": {"role": "user", "content": "..."}}`
+    ///
+    /// Transitions the agent's activity state to `Busy` and broadcasts an
+    /// `agent:activity_changed` event on the stream.
     pub async fn send_user_message(&self, agent_id: &Uuid, content: &str) -> anyhow::Result<()> {
         let connections = self.connections.read().await;
         let conn = connections
@@ -157,6 +172,19 @@ impl ConnectionRegistry {
         conn.tx
             .send(serde_json::to_string(&msg)? + "\n")
             .map_err(|e| anyhow::anyhow!("Failed to send to agent: {}", e))?;
+
+        drop(connections);
+
+        // Transition to Busy and broadcast activity change.
+        self.activity_states.write().await.insert(*agent_id, ActivityState::Busy);
+        let event = serde_json::json!({
+            "type": "agent:activity_changed",
+            "agent_id": agent_id.to_string(),
+            "agentId": agent_id.to_string(),
+            "activity": "busy",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        let _ = self.stream_tx.send(event.to_string());
 
         Ok(())
     }
@@ -479,6 +507,17 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 } else {
                     info!(%agent_id, "Agent query completed successfully");
                 }
+
+                // Transition to Idle and broadcast activity change.
+                registry.activity_states.write().await.insert(*agent_id, ActivityState::Idle);
+                let activity_event = serde_json::json!({
+                    "type": "agent:activity_changed",
+                    "agent_id": agent_id.to_string(),
+                    "agentId": agent_id.to_string(),
+                    "activity": "idle",
+                    "timestamp": Utc::now().to_rfc3339(),
+                });
+                let _ = registry.stream_tx.send(activity_event.to_string());
 
                 // Broadcast result text as agent:output
                 if let Some(result_text) = msg.get("result").and_then(|v| v.as_str()) {
@@ -998,5 +1037,143 @@ mod tests {
         assert_eq!(usage.num_turns, 2);
         assert_eq!(usage.duration_ms, 300);
         assert_eq!(usage.duration_api_ms, 250);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Activity state tests
+    // ---------------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_new_connection_defaults_to_idle() {
+        let registry = ConnectionRegistry::new();
+        let agent_id = Uuid::new_v4();
+
+        // Before connection: unknown agent should default to Idle.
+        assert_eq!(registry.get_activity_state(&agent_id).await, ActivityState::Idle);
+    }
+
+    #[tokio::test]
+    async fn test_register_sets_idle() {
+        let registry = ConnectionRegistry::new();
+        let agent_id = Uuid::new_v4();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        assert_eq!(registry.get_activity_state(&agent_id).await, ActivityState::Idle);
+    }
+
+    #[tokio::test]
+    async fn test_unregister_removes_activity_state() {
+        let registry = ConnectionRegistry::new();
+        let agent_id = Uuid::new_v4();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        // Manually set Busy to verify unregister clears it.
+        registry.activity_states.write().await.insert(agent_id, ActivityState::Busy);
+        registry.unregister(&agent_id).await;
+
+        // After unregister: defaults back to Idle (no entry in map).
+        assert_eq!(registry.get_activity_state(&agent_id).await, ActivityState::Idle);
+    }
+
+    #[tokio::test]
+    async fn test_send_user_message_transitions_to_busy() {
+        let registry = ConnectionRegistry::new();
+        let agent_id = Uuid::new_v4();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        assert_eq!(registry.get_activity_state(&agent_id).await, ActivityState::Idle);
+
+        registry.send_user_message(&agent_id, "hello").await.unwrap();
+
+        assert_eq!(registry.get_activity_state(&agent_id).await, ActivityState::Busy);
+    }
+
+    #[tokio::test]
+    async fn test_result_message_transitions_to_idle() {
+        let registry = ConnectionRegistry::new();
+        let agent_id = Uuid::new_v4();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        // Simulate busy state.
+        registry.activity_states.write().await.insert(agent_id, ActivityState::Busy);
+        assert_eq!(registry.get_activity_state(&agent_id).await, ActivityState::Busy);
+
+        // Simulate receiving a result message.
+        let result_msg = json!({
+            "type": "result",
+            "is_error": false,
+            "result": "done",
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+            }
+        });
+        handle_incoming_message(&agent_id, &result_msg.to_string(), &registry).await;
+
+        assert_eq!(registry.get_activity_state(&agent_id).await, ActivityState::Idle);
+    }
+
+    #[tokio::test]
+    async fn test_result_message_broadcasts_activity_changed_event() {
+        let registry = ConnectionRegistry::new();
+        let agent_id = Uuid::new_v4();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        let mut stream_rx = registry.subscribe_stream();
+
+        // Set busy then receive result.
+        registry.activity_states.write().await.insert(agent_id, ActivityState::Busy);
+        let result_msg = json!({
+            "type": "result",
+            "is_error": false,
+            "result": "",
+            "usage": { "input_tokens": 1, "output_tokens": 1 }
+        });
+        handle_incoming_message(&agent_id, &result_msg.to_string(), &registry).await;
+
+        // Drain broadcast messages looking for the activity_changed event.
+        let mut found = false;
+        while let Ok(msg) = stream_rx.try_recv() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&msg) {
+                if v.get("type").and_then(|t| t.as_str()) == Some("agent:activity_changed")
+                    && v.get("activity").and_then(|a| a.as_str()) == Some("idle")
+                {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        assert!(found, "Expected agent:activity_changed (idle) event on stream");
+    }
+
+    #[tokio::test]
+    async fn test_send_user_message_broadcasts_activity_changed_event() {
+        let registry = ConnectionRegistry::new();
+        let agent_id = Uuid::new_v4();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        let mut stream_rx = registry.subscribe_stream();
+
+        registry.send_user_message(&agent_id, "test prompt").await.unwrap();
+
+        // Drain looking for the busy activity_changed event.
+        let mut found = false;
+        while let Ok(msg) = stream_rx.try_recv() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&msg) {
+                if v.get("type").and_then(|t| t.as_str()) == Some("agent:activity_changed")
+                    && v.get("activity").and_then(|a| a.as_str()) == Some("busy")
+                {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        assert!(found, "Expected agent:activity_changed (busy) event on stream");
     }
 }

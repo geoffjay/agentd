@@ -57,6 +57,21 @@ impl std::fmt::Display for AgentStatus {
     }
 }
 
+/// Activity state of a connected agent — whether it is currently processing a
+/// prompt or waiting for input.
+///
+/// This is tracked in memory by the [`ConnectionRegistry`] and is not
+/// persisted to the database. A newly connected agent defaults to `Idle`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityState {
+    /// Agent is waiting for input — no prompt is currently being processed.
+    #[default]
+    Idle,
+    /// Agent is actively processing a prompt.
+    Busy,
+}
+
 impl std::str::FromStr for AgentStatus {
     type Err = anyhow::Error;
 
@@ -365,6 +380,12 @@ pub struct AgentResponse {
     pub id: Uuid,
     pub name: String,
     pub status: AgentStatus,
+    /// Current activity state of the agent (idle or busy).
+    ///
+    /// This reflects whether the agent is currently processing a prompt.
+    /// Defaults to `idle` for agents that are not connected via WebSocket.
+    #[serde(default)]
+    pub activity: ActivityState,
     pub config: AgentConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
@@ -384,6 +405,7 @@ impl From<Agent> for AgentResponse {
             id: agent.id,
             name: agent.name,
             status: agent.status,
+            activity: ActivityState::default(),
             config,
             session_id: agent.session_id,
             backend_type: agent.backend_type,
@@ -1296,5 +1318,58 @@ mod tests {
         assert!(policy.evaluate("Bash", Some(&make_input("rm -rf /"))));
         assert!(policy.evaluate("Read", None));
         assert!(!policy.evaluate("Write", None));
+    }
+
+    #[test]
+    fn test_activity_state_default_is_idle() {
+        let state: ActivityState = Default::default();
+        assert_eq!(state, ActivityState::Idle);
+    }
+
+    #[test]
+    fn test_activity_state_serializes_as_snake_case() {
+        let idle = serde_json::to_string(&ActivityState::Idle).unwrap();
+        let busy = serde_json::to_string(&ActivityState::Busy).unwrap();
+        assert_eq!(idle, "\"idle\"");
+        assert_eq!(busy, "\"busy\"");
+    }
+
+    #[test]
+    fn test_activity_state_deserializes_from_snake_case() {
+        let idle: ActivityState = serde_json::from_str("\"idle\"").unwrap();
+        let busy: ActivityState = serde_json::from_str("\"busy\"").unwrap();
+        assert_eq!(idle, ActivityState::Idle);
+        assert_eq!(busy, ActivityState::Busy);
+    }
+
+    #[test]
+    fn test_agent_response_includes_activity_field() {
+        let config = AgentConfig {
+            working_dir: "/tmp".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: None,
+            tool_policy: ToolPolicy::default(),
+            model: None,
+            env: Default::default(),
+            auto_clear_threshold: None,
+            network_policy: None,
+            docker_image: None,
+            extra_mounts: None,
+            resource_limits: None,
+            additional_dirs: vec![],
+        };
+        let agent = Agent::new("test".to_string(), config);
+        let response = AgentResponse::from(agent);
+
+        // Default from the From<Agent> impl is Idle.
+        assert_eq!(response.activity, ActivityState::Idle);
+
+        // The JSON representation should contain the activity field.
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"activity\":\"idle\""));
     }
 }
