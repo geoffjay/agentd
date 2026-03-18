@@ -152,11 +152,12 @@ pub enum TriggerConfig {
 ```
 
 !!! info "Implementation status"
-    `github_issues`, `github_pull_requests`, `cron`, `delay`, `agent_lifecycle`, `dispatch_result`, and `webhook` are fully implemented. `manual` is defined but not yet runnable — attempting to create a workflow with `manual` returns `400 Invalid Input`.
+    All trigger types are fully implemented.
 
     - See [Schedule Triggers](schedule-triggers.md) for `cron` and `delay` documentation.
     - See [Event-Driven Triggers](event-triggers.md) for `agent_lifecycle` and `dispatch_result` documentation.
     - See [Webhook Triggers](webhook-triggers.md) for `webhook` documentation.
+    - See [Manual Triggers](manual-trigger.md) for `manual` documentation.
 
 ### JSON tagged-union format
 
@@ -169,6 +170,8 @@ pub enum TriggerConfig {
 { "type": "delay", "run_at": "2026-04-01T09:00:00Z" }
 { "type": "agent_lifecycle", "event": "session_start" }
 { "type": "dispatch_result", "source_workflow_id": "<UUID>", "status": "completed" }
+{ "type": "webhook", "secret": "my-hmac-secret" }
+{ "type": "manual" }
 ```
 
 ---
