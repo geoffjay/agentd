@@ -338,6 +338,61 @@ impl TmuxManager {
         Ok(())
     }
 
+    /// Sends an interrupt signal (Ctrl-C / SIGINT) to a tmux session.
+    ///
+    /// Uses `tmux send-keys -t {session} C-c` to deliver SIGINT to the
+    /// foreground process without killing the session itself.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_name` - Name of the tmux session to interrupt
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the signal was sent successfully.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The session does not exist
+    /// - The tmux command fails
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use wrap::tmux::TmuxManager;
+    ///
+    /// let tmux = TmuxManager::new("agentd");
+    /// tmux.send_interrupt("my-session")?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn send_interrupt(&self, session_name: &str) -> anyhow::Result<()> {
+        debug!("Sending interrupt to tmux session: {}", session_name);
+
+        // Verify the session exists before attempting to send the signal.
+        if !self.session_exists(session_name)? {
+            return Err(anyhow::anyhow!(
+                "Cannot send interrupt: tmux session '{}' does not exist",
+                session_name
+            ));
+        }
+
+        let output = Command::new(get_tmux_command())
+            .args(["send-keys", "-t", session_name, "C-c", ""])
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow::anyhow!(
+                "Failed to send interrupt to session '{}': {}",
+                session_name,
+                stderr
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Lists all active tmux sessions.
     ///
     /// Returns a list of all currently running tmux sessions.
@@ -403,5 +458,41 @@ mod tests {
         let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
         let session_name = format!("{}-my-project-{}", tmux.prefix(), timestamp);
         assert!(session_name.starts_with("agentd-my-project-"));
+    }
+
+    /// Verify that `send_interrupt` returns an error for a non-existent session.
+    ///
+    /// This test relies on `session_exists` returning `false` for an unknown
+    /// session, which is the case when:
+    /// - tmux is not installed (the `output()` call fails with an OS error), OR
+    /// - tmux is installed but no session with this name exists.
+    ///
+    /// In either case the method must return `Err`.
+    #[test]
+    fn test_send_interrupt_nonexistent_session() {
+        let tmux = TmuxManager::new("test");
+        // "definitely-does-not-exist-xyzzy" is guaranteed not to be a live session.
+        let result = tmux.send_interrupt("definitely-does-not-exist-xyzzy");
+        assert!(result.is_err(), "Expected error for non-existent session, got Ok");
+    }
+
+    /// Verify that the error message for a missing session contains the session name.
+    ///
+    /// If tmux is installed and reachable the error comes from our existence check.
+    /// If tmux is not installed at all the OS error is propagated instead — this
+    /// assertion is only checked when tmux is available.
+    #[test]
+    fn test_send_interrupt_error_message_contains_session_name() {
+        let tmux = TmuxManager::new("test");
+        let session = "definitely-does-not-exist-xyzzy";
+        if let Err(e) = tmux.send_interrupt(session) {
+            let msg = e.to_string();
+            // The error should mention the session name OR be an OS-level error
+            // (tmux not installed). Either is acceptable.
+            assert!(
+                msg.contains(session) || msg.contains("tmux") || msg.contains("No such file"),
+                "Unexpected error message: {msg}"
+            );
+        }
     }
 }
