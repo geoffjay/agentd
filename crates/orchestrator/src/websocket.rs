@@ -472,7 +472,7 @@ async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &Connect
                     });
                 }
                 _ => {
-                    let allowed = policy.evaluate(&tool_name);
+                    let allowed = policy.evaluate(&tool_name, Some(&input));
                     if allowed {
                         info!(%agent_id, %tool_name, decision = "allow", %policy_mode, "Tool use decision");
                         let response = make_allow_response(&request_id, &input);
