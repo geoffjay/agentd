@@ -1493,4 +1493,85 @@ mod tests {
         let r2 = strategy.next_tasks(&srx).await.unwrap();
         assert_eq!(r2[0].source_id, "wh-2");
     }
+
+    // ── ManualStrategy tests ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn manual_strategy_receives_task() {
+        let (tx, rx) = mpsc::channel(16);
+        let mut strategy = ManualStrategy::new(rx);
+        let (_stx, srx) = watch::channel(false);
+
+        let task = sample_task("manual-1");
+        tx.send(task).await.unwrap();
+
+        let result = strategy.next_tasks(&srx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source_id, "manual-1");
+    }
+
+    #[tokio::test]
+    async fn manual_strategy_returns_empty_on_sender_drop() {
+        let (tx, rx) = mpsc::channel::<Task>(16);
+        let mut strategy = ManualStrategy::new(rx);
+        let (_stx, srx) = watch::channel(false);
+
+        // Drop the sender — strategy should return empty vec (channel closed).
+        drop(tx);
+
+        let result = strategy.next_tasks(&srx).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn manual_strategy_respects_shutdown() {
+        let (_tx, rx) = mpsc::channel::<Task>(16);
+        let mut strategy = ManualStrategy::new(rx);
+        let (stx, srx) = watch::channel(false);
+
+        // Fire shutdown after a short delay — strategy should unblock.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = stx.send(true);
+        });
+
+        let start = tokio::time::Instant::now();
+        let result = strategy.next_tasks(&srx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(result.is_empty());
+        assert!(elapsed < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn manual_strategy_is_object_safe() {
+        let (tx, rx) = mpsc::channel(16);
+        let strategy: Box<dyn TriggerStrategy> = Box::new(ManualStrategy::new(rx));
+        let (_stx, srx) = watch::channel(false);
+
+        tx.send(sample_task("obj-safe-manual")).await.unwrap();
+
+        let mut strategy = strategy;
+        let result = strategy.next_tasks(&srx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source_id, "obj-safe-manual");
+    }
+
+    #[tokio::test]
+    async fn manual_strategy_receives_multiple_tasks_sequentially() {
+        let (tx, rx) = mpsc::channel(16);
+        let mut strategy = ManualStrategy::new(rx);
+        let (_stx, srx) = watch::channel(false);
+
+        tx.send(sample_task("manual-seq-1")).await.unwrap();
+        tx.send(sample_task("manual-seq-2")).await.unwrap();
+
+        let r1 = strategy.next_tasks(&srx).await.unwrap();
+        assert_eq!(r1.len(), 1);
+        assert_eq!(r1[0].source_id, "manual-seq-1");
+
+        let r2 = strategy.next_tasks(&srx).await.unwrap();
+        assert_eq!(r2.len(), 1);
+        assert_eq!(r2[0].source_id, "manual-seq-2");
+    }
 }
