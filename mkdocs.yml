@@ -94,6 +94,7 @@ nav:
       - Ask: public/services/ask.md
       - Wrap: public/services/wrap.md
   - Workflows:
+      - Trigger Reference: public/trigger-reference.md
       - Trigger Strategies: public/trigger-strategies.md
       - Schedule Triggers (Cron & Delay): public/schedule-triggers.md
       - Event-Driven Triggers: public/event-triggers.md
