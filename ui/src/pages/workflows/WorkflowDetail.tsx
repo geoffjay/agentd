@@ -24,8 +24,9 @@ import type { CreateWorkflowRequest } from '@/types/orchestrator'
 // ---------------------------------------------------------------------------
 
 function sourceDetail(
-  src: { type: string; owner?: string; repo?: string; labels?: string[]; state?: string },
+  src: { type: string; owner?: string; repo?: string; labels?: string[]; state?: string } | undefined,
 ): string {
+  if (!src) return 'No source configured'
   if (src.type === 'github_issues') {
     const parts: string[] = []
     if (src.owner && src.repo) parts.push(`${src.owner}/${src.repo}`)
