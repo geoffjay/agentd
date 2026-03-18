@@ -25,6 +25,14 @@ prompt_template: |
 
   {{body}}
 
+  Step 0 — Gather context from memory:
+  Before starting design work, search shared memory for relevant context:
+  1. Search for memories related to this design topic:
+     agent memory search "{{title}}" --as-actor designer --limit 5 --json
+  2. Search for prior design decisions and patterns:
+     agent memory search "design system decisions" --as-actor designer --tags designer --limit 5 --json
+  3. Review results to maintain consistency with prior design work.
+
   Instructions:
   1. Read the issue carefully to understand what design work is needed
   2. Check the current state of ui/design/ .pen files and ui/src/ components
@@ -41,5 +49,7 @@ prompt_template: |
        --title "design: <short description>" \
        --body "Closes #{{source_id}}" \
        --label design
-  9. Move the issue to In Progress on the project board:
-     gh issue edit {{source_id}} --repo geoffjay/agentd --add-project "https://github.com/users/geoffjay/projects/5"
+  9. Store any design decisions or findings for future reference:
+     agent memory remember "<what you decided>" --created-by designer --type information --tags designer,issue-{{source_id}} --visibility public
+  10. Move the issue to In Progress on the project board:
+      gh issue edit {{source_id}} --repo geoffjay/agentd --add-project "https://github.com/users/geoffjay/projects/5"
