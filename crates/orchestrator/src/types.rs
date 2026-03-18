@@ -96,14 +96,22 @@ pub enum ToolPolicy {
 impl ToolPolicy {
     /// Evaluate whether a tool is allowed by this policy.
     ///
+    /// `input` is the full tool-input JSON (e.g. `{"command": "cargo test"}`).
+    /// When a pattern like `"Bash(cargo *)"` appears in the list, it is matched
+    /// against the tool name and the `command` field of the input.
+    ///
     /// Note: `RequireApproval` returns `false` here as a fallback — the actual
     /// approval logic is handled in `websocket.rs` before `evaluate` is called.
-    pub fn evaluate(&self, tool_name: &str) -> bool {
+    pub fn evaluate(&self, tool_name: &str, input: Option<&serde_json::Value>) -> bool {
         match self {
             ToolPolicy::AllowAll => true,
             ToolPolicy::DenyAll => false,
-            ToolPolicy::AllowList { tools } => tools.iter().any(|t| t == tool_name),
-            ToolPolicy::DenyList { tools } => !tools.iter().any(|t| t == tool_name),
+            ToolPolicy::AllowList { tools } => {
+                tools.iter().any(|t| match_tool(t, tool_name, input))
+            }
+            ToolPolicy::DenyList { tools } => {
+                !tools.iter().any(|t| match_tool(t, tool_name, input))
+            }
             ToolPolicy::RequireApproval => false,
         }
     }
@@ -118,6 +126,69 @@ impl ToolPolicy {
             ToolPolicy::RequireApproval => "require_approval",
         }
     }
+}
+
+/// Match a tool entry against a tool name and its input.
+///
+/// Supports two forms:
+/// - `"Bash"` — plain name match, ignores input.
+/// - `"Bash(cargo *)"` — matches only when the tool is `Bash` and its
+///   `command` input field satisfies the glob-style pattern.
+fn match_tool(pattern: &str, tool_name: &str, input: Option<&serde_json::Value>) -> bool {
+    if pattern == tool_name {
+        return true;
+    }
+    if let Some((tool, cmd_pattern)) = parse_tool_pattern(pattern) {
+        if tool == tool_name {
+            if let Some(cmd) = input.and_then(|v| v.get("command")).and_then(|v| v.as_str()) {
+                return match_command_pattern(cmd_pattern, cmd);
+            }
+        }
+    }
+    false
+}
+
+/// Parse `"Bash(cargo *)"` into `("Bash", "cargo *")`.
+fn parse_tool_pattern(pattern: &str) -> Option<(&str, &str)> {
+    let open = pattern.find('(')?;
+    if !pattern.ends_with(')') {
+        return None;
+    }
+    let tool = &pattern[..open];
+    let cmd_pattern = &pattern[open + 1..pattern.len() - 1];
+    Some((tool, cmd_pattern))
+}
+
+/// Match a command string against a simple glob-style pattern.
+///
+/// Supported forms:
+/// - `"*"` — matches anything.
+/// - `"prefix *"` — matches commands that start with `prefix`.
+/// - `"* suffix"` — matches commands that end with `suffix`.
+/// - `"* word *"` — matches commands that contain `word` as a token.
+/// - `"exact"` — exact match (after leading whitespace is trimmed).
+fn match_command_pattern(pattern: &str, command: &str) -> bool {
+    let cmd = command.trim_start();
+
+    if pattern == "*" {
+        return true;
+    }
+
+    if let Some(suffix) = pattern.strip_prefix("* ") {
+        if let Some(rest) = suffix.strip_suffix(" *") {
+            return cmd.contains(&format!(" {rest} "))
+                || cmd.starts_with(&format!("{rest} "))
+                || cmd.ends_with(&format!(" {rest}"))
+                || cmd == rest;
+        }
+        return cmd.ends_with(&format!(" {suffix}")) || cmd == suffix;
+    }
+
+    if let Some(prefix) = pattern.strip_suffix(" *") {
+        return cmd == prefix || cmd.starts_with(&format!("{prefix} "));
+    }
+
+    cmd == pattern
 }
 
 /// Configuration for spawning an agent.
@@ -523,43 +594,43 @@ mod tests {
     #[test]
     fn test_tool_policy_allow_all() {
         let policy = ToolPolicy::AllowAll;
-        assert!(policy.evaluate("Bash"));
-        assert!(policy.evaluate("Read"));
-        assert!(policy.evaluate("Write"));
-        assert!(policy.evaluate("anything"));
+        assert!(policy.evaluate("Bash", None));
+        assert!(policy.evaluate("Read", None));
+        assert!(policy.evaluate("Write", None));
+        assert!(policy.evaluate("anything", None));
     }
 
     #[test]
     fn test_tool_policy_deny_all() {
         let policy = ToolPolicy::DenyAll;
-        assert!(!policy.evaluate("Bash"));
-        assert!(!policy.evaluate("Read"));
-        assert!(!policy.evaluate("anything"));
+        assert!(!policy.evaluate("Bash", None));
+        assert!(!policy.evaluate("Read", None));
+        assert!(!policy.evaluate("anything", None));
     }
 
     #[test]
     fn test_tool_policy_allow_list() {
         let policy = ToolPolicy::AllowList { tools: vec!["Read".to_string(), "Grep".to_string()] };
-        assert!(policy.evaluate("Read"));
-        assert!(policy.evaluate("Grep"));
-        assert!(!policy.evaluate("Bash"));
-        assert!(!policy.evaluate("Write"));
+        assert!(policy.evaluate("Read", None));
+        assert!(policy.evaluate("Grep", None));
+        assert!(!policy.evaluate("Bash", None));
+        assert!(!policy.evaluate("Write", None));
     }
 
     #[test]
     fn test_tool_policy_deny_list() {
         let policy = ToolPolicy::DenyList { tools: vec!["Bash".to_string(), "Write".to_string()] };
-        assert!(!policy.evaluate("Bash"));
-        assert!(!policy.evaluate("Write"));
-        assert!(policy.evaluate("Read"));
-        assert!(policy.evaluate("Grep"));
+        assert!(!policy.evaluate("Bash", None));
+        assert!(!policy.evaluate("Write", None));
+        assert!(policy.evaluate("Read", None));
+        assert!(policy.evaluate("Grep", None));
     }
 
     #[test]
     fn test_tool_policy_default_is_allow_all() {
         let policy = ToolPolicy::default();
         assert_eq!(policy, ToolPolicy::AllowAll);
-        assert!(policy.evaluate("anything"));
+        assert!(policy.evaluate("anything", None));
     }
 
     #[test]
@@ -595,23 +666,23 @@ mod tests {
     #[test]
     fn test_tool_policy_empty_allow_list_denies_all() {
         let policy = ToolPolicy::AllowList { tools: vec![] };
-        assert!(!policy.evaluate("Read"));
-        assert!(!policy.evaluate("Bash"));
+        assert!(!policy.evaluate("Read", None));
+        assert!(!policy.evaluate("Bash", None));
     }
 
     #[test]
     fn test_tool_policy_empty_deny_list_allows_all() {
         let policy = ToolPolicy::DenyList { tools: vec![] };
-        assert!(policy.evaluate("Read"));
-        assert!(policy.evaluate("Bash"));
+        assert!(policy.evaluate("Read", None));
+        assert!(policy.evaluate("Bash", None));
     }
 
     #[test]
     fn test_tool_policy_require_approval() {
         let policy = ToolPolicy::RequireApproval;
         // evaluate returns false as fallback — actual logic is in websocket.rs
-        assert!(!policy.evaluate("Bash"));
-        assert!(!policy.evaluate("Read"));
+        assert!(!policy.evaluate("Bash", None));
+        assert!(!policy.evaluate("Read", None));
     }
 
     #[test]
@@ -1074,5 +1145,156 @@ mod tests {
         let json = r#"{"working_dir":"/tmp","shell":"zsh","tool_policy":{"mode":"allow_all"}}"#;
         let config: AgentConfig = serde_json::from_str(json).unwrap();
         assert!(config.additional_dirs.is_empty());
+    }
+
+    // -- Bash(pattern) command-level filtering tests --
+
+    fn make_input(command: &str) -> serde_json::Value {
+        serde_json::json!({"command": command})
+    }
+
+    #[test]
+    fn test_match_command_pattern_wildcard() {
+        assert!(match_command_pattern("*", "cargo test"));
+        assert!(match_command_pattern("*", "anything at all"));
+        assert!(match_command_pattern("*", ""));
+    }
+
+    #[test]
+    fn test_match_command_pattern_prefix() {
+        assert!(match_command_pattern("cargo *", "cargo test"));
+        assert!(match_command_pattern("cargo *", "cargo build --release"));
+        assert!(match_command_pattern("cargo *", "cargo"));
+        assert!(!match_command_pattern("cargo *", "git status"));
+        assert!(!match_command_pattern("cargo *", "notcargo test"));
+    }
+
+    #[test]
+    fn test_match_command_pattern_suffix() {
+        assert!(match_command_pattern("* --release", "cargo build --release"));
+        assert!(match_command_pattern("* --release", "--release"));
+        assert!(!match_command_pattern("* --release", "cargo build"));
+        assert!(!match_command_pattern("* --release", "cargo build --release --extra"));
+    }
+
+    #[test]
+    fn test_match_command_pattern_contains() {
+        assert!(match_command_pattern("* test *", "cargo test --verbose"));
+        assert!(match_command_pattern("* test *", "test"));
+        assert!(match_command_pattern("* test *", "test --verbose"));
+        assert!(match_command_pattern("* test *", "cargo test"));
+        assert!(!match_command_pattern("* test *", "cargo testing"));
+    }
+
+    #[test]
+    fn test_match_command_pattern_exact() {
+        assert!(match_command_pattern("cargo test", "cargo test"));
+        assert!(match_command_pattern("cargo test", "  cargo test"));
+        assert!(!match_command_pattern("cargo test", "cargo test --verbose"));
+        assert!(!match_command_pattern("cargo test", "cargo"));
+    }
+
+    #[test]
+    fn test_parse_tool_pattern_valid() {
+        assert_eq!(parse_tool_pattern("Bash(cargo *)"), Some(("Bash", "cargo *")));
+        assert_eq!(parse_tool_pattern("Bash(*)"), Some(("Bash", "*")));
+        assert_eq!(parse_tool_pattern("Bash(git status)"), Some(("Bash", "git status")));
+    }
+
+    #[test]
+    fn test_parse_tool_pattern_invalid() {
+        assert_eq!(parse_tool_pattern("Bash"), None);
+        assert_eq!(parse_tool_pattern("Bash(cargo *"), None);
+        assert_eq!(parse_tool_pattern("(*)"), Some(("", "*")));
+    }
+
+    #[test]
+    fn test_match_tool_plain_name() {
+        assert!(match_tool("Bash", "Bash", None));
+        assert!(match_tool("Read", "Read", None));
+        assert!(!match_tool("Bash", "Read", None));
+    }
+
+    #[test]
+    fn test_match_tool_with_pattern_and_input() {
+        let input = make_input("cargo test");
+        assert!(match_tool("Bash(cargo *)", "Bash", Some(&input)));
+        assert!(!match_tool("Bash(cargo *)", "Bash", Some(&make_input("git status"))));
+        assert!(!match_tool("Bash(cargo *)", "Read", Some(&input)));
+    }
+
+    #[test]
+    fn test_match_tool_pattern_no_input() {
+        // Pattern "Bash(cargo *)" requires input; without input it should not match
+        assert!(!match_tool("Bash(cargo *)", "Bash", None));
+    }
+
+    #[test]
+    fn test_tool_policy_allow_list_with_bash_pattern() {
+        let policy = ToolPolicy::AllowList {
+            tools: vec![
+                "Read".to_string(),
+                "Write".to_string(),
+                "Bash(cargo *)".to_string(),
+                "Bash(git *)".to_string(),
+            ],
+        };
+
+        // Plain tools work as before
+        assert!(policy.evaluate("Read", None));
+        assert!(policy.evaluate("Write", None));
+
+        // Bash allowed for cargo and git commands
+        let cargo_input = make_input("cargo test");
+        let git_input = make_input("git status");
+        let rm_input = make_input("rm -rf /");
+
+        assert!(policy.evaluate("Bash", Some(&cargo_input)));
+        assert!(policy.evaluate("Bash", Some(&git_input)));
+
+        // Bash denied for other commands
+        assert!(!policy.evaluate("Bash", Some(&rm_input)));
+        // Bash denied when no input
+        assert!(!policy.evaluate("Bash", None));
+        // Other tools not in list are denied
+        assert!(!policy.evaluate("Grep", None));
+    }
+
+    #[test]
+    fn test_tool_policy_deny_list_with_bash_pattern() {
+        let policy = ToolPolicy::DenyList {
+            tools: vec!["Bash(rm *)".to_string(), "Bash(sudo *)".to_string()],
+        };
+
+        // Dangerous commands denied
+        assert!(!policy.evaluate("Bash", Some(&make_input("rm -rf /"))));
+        assert!(!policy.evaluate("Bash", Some(&make_input("sudo apt install vim"))));
+
+        // Safe commands allowed
+        assert!(policy.evaluate("Bash", Some(&make_input("cargo test"))));
+        assert!(policy.evaluate("Bash", Some(&make_input("git status"))));
+
+        // Other tools not in deny list are allowed
+        assert!(policy.evaluate("Read", None));
+        assert!(policy.evaluate("Write", None));
+    }
+
+    #[test]
+    fn test_tool_policy_bash_wildcard_pattern() {
+        let policy = ToolPolicy::AllowList { tools: vec!["Bash(*)".to_string()] };
+        assert!(policy.evaluate("Bash", Some(&make_input("anything"))));
+        assert!(policy.evaluate("Bash", Some(&make_input("rm -rf /"))));
+        // Still requires input for pattern match
+        assert!(!policy.evaluate("Bash", None));
+    }
+
+    #[test]
+    fn test_tool_policy_backward_compat_plain_bash() {
+        // Plain "Bash" in the list should still allow any Bash call regardless of input
+        let policy = ToolPolicy::AllowList { tools: vec!["Bash".to_string(), "Read".to_string()] };
+        assert!(policy.evaluate("Bash", None));
+        assert!(policy.evaluate("Bash", Some(&make_input("rm -rf /"))));
+        assert!(policy.evaluate("Read", None));
+        assert!(!policy.evaluate("Write", None));
     }
 }
