@@ -298,7 +298,11 @@ impl AgentManager {
             }
         };
 
+        let prefix = self.backend.prefix();
         for session in backend_sessions {
+            if !session.starts_with(prefix) {
+                continue;
+            }
             if !known_sessions.contains(&session) {
                 warn!(
                     session = %session,
