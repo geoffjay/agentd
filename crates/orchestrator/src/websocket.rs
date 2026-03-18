@@ -342,13 +342,17 @@ fn summarize_tool_input(tool_name: &str, input: &Value) -> String {
 /// Extract displayable text lines from a Claude Code `assistant` message.
 ///
 /// The `message` object may have a `content` field that is either a plain
-/// string or an array of content blocks (text blocks, tool_use blocks, etc.).
+/// string or an array of content blocks (text blocks, tool_use blocks,
+/// thinking blocks, etc.).
 ///
-/// Returns a tuple of (text_lines, tool_use_blocks) where tool_use_blocks
-/// carries structured tool use data for broadcasting as separate events.
-fn extract_assistant_content(message: &Value) -> (Vec<String>, Vec<Value>) {
+/// Returns a tuple of (text_lines, tool_use_blocks, thinking_lines) where
+/// tool_use_blocks carries structured tool use data for broadcasting as
+/// separate events, and thinking_lines holds reasoning text from thinking
+/// blocks.
+fn extract_assistant_content(message: &Value) -> (Vec<String>, Vec<Value>, Vec<String>) {
     let mut lines = Vec::new();
     let mut tool_uses = Vec::new();
+    let mut thinking_lines = Vec::new();
     if let Some(content) = message.get("content") {
         if let Some(text) = content.as_str() {
             lines.push(text.to_string());
@@ -361,13 +365,20 @@ fn extract_assistant_content(message: &Value) -> (Vec<String>, Vec<Value>) {
                             lines.push(text.to_string());
                         }
                     }
+                    "thinking" => {
+                        if let Some(thinking) = block.get("thinking").and_then(|v| v.as_str()) {
+                            thinking_lines.push(thinking.to_string());
+                        }
+                    }
                     "tool_use" => {
                         let tool_name =
                             block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
                         let tool_id =
                             block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let tool_input =
-                            block.get("input").cloned().unwrap_or(Value::Object(Default::default()));
+                        let tool_input = block
+                            .get("input")
+                            .cloned()
+                            .unwrap_or(Value::Object(Default::default()));
                         let summary = summarize_tool_input(tool_name, &tool_input);
                         tool_uses.push(serde_json::json!({
                             "tool_name": tool_name,
@@ -381,7 +392,7 @@ fn extract_assistant_content(message: &Value) -> (Vec<String>, Vec<Value>) {
             }
         }
     }
-    (lines, tool_uses)
+    (lines, tool_uses, thinking_lines)
 }
 
 /// Broadcast a single `agent:output` event on the multiplexed stream.
@@ -430,9 +441,9 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
             }
             "assistant" => {
                 debug!(%agent_id, "Assistant response received");
-                // Extract text content and tool use blocks; broadcast both.
+                // Extract text content, tool use blocks, and thinking lines; broadcast all.
                 if let Some(message) = msg.get("message") {
-                    let (texts, tool_uses) = extract_assistant_content(message);
+                    let (texts, tool_uses, thinking_lines) = extract_assistant_content(message);
                     for text in texts {
                         broadcast_output(agent_id, &text, registry);
                     }
@@ -445,6 +456,16 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                             "tool_id": tool_use["tool_id"],
                             "tool_input": tool_use["tool_input"],
                             "summary": tool_use["summary"],
+                            "timestamp": Utc::now().to_rfc3339(),
+                        });
+                        let _ = registry.stream_tx.send(event.to_string());
+                    }
+                    for thinking in thinking_lines {
+                        let event = serde_json::json!({
+                            "type": "agent:thinking",
+                            "agent_id": agent_id.to_string(),
+                            "agentId": agent_id.to_string(),
+                            "text": thinking,
                             "timestamp": Utc::now().to_rfc3339(),
                         });
                         let _ = registry.stream_tx.send(event.to_string());
@@ -869,6 +890,92 @@ mod tests {
         // Token fields always come from the nested usage object.
         assert_eq!(usage.input_tokens, 100);
         assert_eq!(usage.output_tokens, 50);
+    }
+
+    #[test]
+    fn test_extract_assistant_content_thinking_block() {
+        let message = json!({
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "thinking",
+                    "thinking": "Let me reason about this step by step."
+                },
+                {
+                    "type": "text",
+                    "text": "Here is my answer."
+                }
+            ]
+        });
+
+        let (texts, tool_uses, thinking_lines) = extract_assistant_content(&message);
+        assert_eq!(texts, vec!["Here is my answer."]);
+        assert!(tool_uses.is_empty());
+        assert_eq!(thinking_lines, vec!["Let me reason about this step by step."]);
+    }
+
+    #[test]
+    fn test_extract_assistant_content_no_thinking_block() {
+        let message = json!({
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Plain response."
+                }
+            ]
+        });
+
+        let (texts, tool_uses, thinking_lines) = extract_assistant_content(&message);
+        assert_eq!(texts, vec!["Plain response."]);
+        assert!(tool_uses.is_empty());
+        assert!(thinking_lines.is_empty());
+    }
+
+    #[test]
+    fn test_extract_assistant_content_multiple_thinking_blocks() {
+        let message = json!({
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "thinking",
+                    "thinking": "First thought."
+                },
+                {
+                    "type": "thinking",
+                    "thinking": "Second thought."
+                },
+                {
+                    "type": "text",
+                    "text": "Conclusion."
+                }
+            ]
+        });
+
+        let (texts, _tool_uses, thinking_lines) = extract_assistant_content(&message);
+        assert_eq!(texts, vec!["Conclusion."]);
+        assert_eq!(thinking_lines, vec!["First thought.", "Second thought."]);
+    }
+
+    #[test]
+    fn test_extract_assistant_content_thinking_block_missing_field() {
+        // A thinking block with no "thinking" field should be silently ignored.
+        let message = json!({
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "thinking"
+                },
+                {
+                    "type": "text",
+                    "text": "Answer."
+                }
+            ]
+        });
+
+        let (texts, _tool_uses, thinking_lines) = extract_assistant_content(&message);
+        assert_eq!(texts, vec!["Answer."]);
+        assert!(thinking_lines.is_empty());
     }
 
     #[test]

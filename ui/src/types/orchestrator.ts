@@ -358,6 +358,14 @@ export interface AgentToolUseEvent {
   timestamp: string
 }
 
+/** Agent emitted a thinking/reasoning block */
+export interface AgentThinkingEvent {
+  type: 'agent:thinking'
+  agentId: string
+  text: string
+  timestamp: string
+}
+
 /** Union of all agent-related WebSocket events */
 export type AgentEvent =
   | AgentOutputEvent
@@ -369,6 +377,7 @@ export type AgentEvent =
   | UsageUpdateEvent
   | ContextClearedEvent
   | AgentToolUseEvent
+  | AgentThinkingEvent
 
 // ---------------------------------------------------------------------------
 // Query params
