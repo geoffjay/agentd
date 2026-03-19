@@ -5,6 +5,7 @@ members = [
     "crates/baml",
     "crates/cli",
     "crates/common",
+    "crates/communicate",
     "crates/hook",
     "crates/memory",
     "crates/monitor",
