@@ -12,6 +12,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use communicate::client::CommunicateClient;
+use communicate::types::{
+    AddParticipantRequest, CreateMessageRequest, CreateRoomRequest, ParticipantKind,
+    ParticipantRole, RoomType,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,6 +28,7 @@ pub struct ApiState {
     pub manager: Arc<AgentManager>,
     pub registry: ConnectionRegistry,
     pub scheduler: Arc<Scheduler>,
+    pub communicate: CommunicateClient,
 }
 
 pub fn create_router(state: ApiState) -> Router {
@@ -52,6 +58,12 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents/{id}/usage", get(get_agent_usage))
         .route("/agents/{id}/clear-context", post(clear_agent_context))
         .route("/agents/{id}/approvals", get(list_agent_approvals))
+        .route("/agents/{id}/rooms", get(list_agent_rooms).post(join_agent_room))
+        .route("/agents/{id}/rooms/{room_id}", axum::routing::delete(leave_agent_room))
+        .route(
+            "/agents/{id}/rooms/{room_id}/messages",
+            get(get_agent_room_messages).post(send_agent_room_message),
+        )
         .route("/approvals", get(list_all_approvals))
         .route("/approvals/{id}", get(get_approval))
         .route("/approvals/{id}/approve", post(approve_tool))
@@ -524,6 +536,289 @@ async fn debug_agents(State(state): State<ApiState>) -> Result<impl IntoResponse
     };
 
     Ok(Json(DebugResponse { agents: entries, orphan_connections, summary }))
+}
+
+// -- Room management endpoints --
+
+/// Request body for joining (or creating) a room.
+#[derive(Deserialize)]
+struct JoinRoomRequest {
+    /// Room name — looked up first; created if it does not exist.
+    room_name: Option<String>,
+    /// Room UUID — used directly when provided (takes priority over `room_name`).
+    room_id: Option<Uuid>,
+}
+
+/// Request body for sending a message to a room as an agent.
+#[derive(Deserialize)]
+struct SendRoomMessageRequest {
+    /// Message content.
+    content: String,
+    /// Optional ID of the message being replied to.
+    reply_to: Option<Uuid>,
+}
+
+/// Query parameters for listing room messages.
+#[derive(Deserialize)]
+struct RoomMessagesQuery {
+    /// Maximum number of messages to return (default: 20, max: 100).
+    limit: Option<usize>,
+    /// RFC3339 timestamp cursor — return only messages before this time.
+    before: Option<String>,
+}
+
+/// Convert a communicate-service error into an `ApiError`.
+///
+/// Connection-refused / transport errors become `503 Service Unavailable`;
+/// everything else falls through to `500 Internal Server Error`.
+fn communicate_error(e: anyhow::Error) -> ApiError {
+    let msg = e.to_string();
+    if msg.contains("connection refused")
+        || msg.contains("os error 61")
+        || msg.contains("Failed to GET")
+        || msg.contains("Failed to POST")
+        || msg.contains("Failed to DELETE")
+    {
+        ApiError::ServiceUnavailable(
+            "communicate service is unavailable — ensure it is running".to_string(),
+        )
+    } else {
+        ApiError::Internal(e)
+    }
+}
+
+/// Check that `agent_id` is a participant of `room_id`.
+///
+/// Returns `ApiError::Forbidden` when the agent is not in the room,
+/// or the appropriate service/internal error on failure.
+async fn assert_agent_in_room(
+    communicate: &CommunicateClient,
+    agent_id: &Uuid,
+    room_id: Uuid,
+) -> Result<(), ApiError> {
+    let rooms = communicate
+        .get_rooms_for_participant(&agent_id.to_string())
+        .await
+        .map_err(communicate_error)?;
+
+    if rooms.iter().any(|r| r.id == room_id) {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden(format!("agent {} is not a member of room {}", agent_id, room_id)))
+    }
+}
+
+/// `GET /agents/{id}/rooms` — list all rooms the agent is a member of.
+async fn list_agent_rooms(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify agent exists.
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let rooms = state
+        .communicate
+        .get_rooms_for_participant(&id.to_string())
+        .await
+        .map_err(communicate_error)?;
+
+    Ok(Json(rooms))
+}
+
+/// `POST /agents/{id}/rooms` — join (or create and join) a room.
+///
+/// Accepts either `room_id` (UUID of an existing room) or `room_name`
+/// (find-or-create semantics). `room_id` takes priority when both are given.
+/// Adding an agent that is already a participant is treated as success (idempotent).
+async fn join_agent_room(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<JoinRoomRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify agent exists.
+    let agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    // Resolve the room.
+    let room = match req.room_id {
+        Some(room_id) => state
+            .communicate
+            .get_room(room_id)
+            .await
+            .map_err(communicate_error)?
+            .ok_or(ApiError::NotFound)?,
+        None => {
+            let name = req.room_name.ok_or_else(|| {
+                ApiError::InvalidInput("either room_id or room_name must be provided".to_string())
+            })?;
+
+            match state.communicate.get_room_by_name(&name).await.map_err(communicate_error)? {
+                Some(r) => r,
+                None => state
+                    .communicate
+                    .create_room(&CreateRoomRequest {
+                        name: name.clone(),
+                        topic: None,
+                        description: None,
+                        room_type: RoomType::Group,
+                        created_by: agent.name.clone(),
+                    })
+                    .await
+                    .map_err(communicate_error)?,
+            }
+        }
+    };
+
+    // Add the agent as a Member participant — 409 Conflict is treated as success
+    // (the agent is already in the room).
+    let result = state
+        .communicate
+        .add_participant(
+            room.id,
+            &AddParticipantRequest {
+                identifier: id.to_string(),
+                kind: ParticipantKind::Agent,
+                display_name: agent.name.clone(),
+                role: ParticipantRole::Member,
+            },
+        )
+        .await;
+
+    match result {
+        Ok(participant) => {
+            info!(agent_id = %id, room_id = %room.id, room_name = %room.name, "Agent joined room via API");
+            Ok((
+                StatusCode::CREATED,
+                Json(serde_json::json!({
+                    "room": room,
+                    "participant": participant,
+                })),
+            ))
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("409") || msg.contains("conflict") || msg.contains("Conflict") {
+                // Already a member — idempotent success.
+                info!(agent_id = %id, room_id = %room.id, "Agent already in room (join idempotent)");
+                Ok((
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "room": room,
+                        "participant": null,
+                    })),
+                ))
+            } else {
+                Err(communicate_error(e))
+            }
+        }
+    }
+}
+
+/// `DELETE /agents/{id}/rooms/{room_id}` — remove an agent from a room.
+async fn leave_agent_room(
+    State(state): State<ApiState>,
+    Path((id, room_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify agent exists.
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    // Verify room exists.
+    state
+        .communicate
+        .get_room(room_id)
+        .await
+        .map_err(communicate_error)?
+        .ok_or(ApiError::NotFound)?;
+
+    state
+        .communicate
+        .remove_participant(room_id, &id.to_string())
+        .await
+        .map_err(communicate_error)?;
+
+    info!(agent_id = %id, %room_id, "Agent left room via API");
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /agents/{id}/rooms/{room_id}/messages` — send a message to a room as
+/// the specified agent.
+async fn send_agent_room_message(
+    State(state): State<ApiState>,
+    Path((id, room_id)): Path<(Uuid, Uuid)>,
+    Json(req): Json<SendRoomMessageRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify agent exists.
+    let agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    // Verify room exists.
+    state
+        .communicate
+        .get_room(room_id)
+        .await
+        .map_err(communicate_error)?
+        .ok_or(ApiError::NotFound)?;
+
+    // Verify agent is a member of the room.
+    assert_agent_in_room(&state.communicate, &id, room_id).await?;
+
+    let message = state
+        .communicate
+        .send_message(
+            room_id,
+            &CreateMessageRequest {
+                sender_id: id.to_string(),
+                sender_name: agent.name.clone(),
+                sender_kind: ParticipantKind::Agent,
+                content: req.content,
+                metadata: Default::default(),
+                reply_to: req.reply_to,
+            },
+        )
+        .await
+        .map_err(communicate_error)?;
+
+    info!(agent_id = %id, %room_id, message_id = %message.id, "Agent sent room message via API");
+
+    Ok((StatusCode::CREATED, Json(message)))
+}
+
+/// `GET /agents/{id}/rooms/{room_id}/messages` — get recent messages from a
+/// room the agent is a member of.
+async fn get_agent_room_messages(
+    State(state): State<ApiState>,
+    Path((id, room_id)): Path<(Uuid, Uuid)>,
+    Query(query): Query<RoomMessagesQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify agent exists.
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    // Verify room exists.
+    state
+        .communicate
+        .get_room(room_id)
+        .await
+        .map_err(communicate_error)?
+        .ok_or(ApiError::NotFound)?;
+
+    // Verify agent is a member of the room.
+    assert_agent_in_room(&state.communicate, &id, room_id).await?;
+
+    let limit = query.limit.unwrap_or(20).min(100);
+
+    let messages = if let Some(before_str) = query.before {
+        let before: chrono::DateTime<chrono::Utc> = before_str
+            .parse()
+            .map_err(|_| ApiError::InvalidInput("invalid 'before' timestamp".to_string()))?;
+        state
+            .communicate
+            .list_messages(room_id, limit, Some(before))
+            .await
+            .map_err(communicate_error)?
+    } else {
+        state.communicate.get_latest_messages(room_id, limit).await.map_err(communicate_error)?
+    };
+
+    Ok(Json(messages))
 }
 
 // -- Error handling --

@@ -329,7 +329,12 @@ async fn main() -> anyhow::Result<()> {
     let metrics_handle = init_metrics();
 
     // Build router with metrics endpoint and request tracing middleware.
-    let state = ApiState { manager: manager.clone(), registry, scheduler: scheduler.clone() };
+    let state = ApiState {
+        manager: manager.clone(),
+        registry,
+        scheduler: scheduler.clone(),
+        communicate: communicate.clone(),
+    };
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
