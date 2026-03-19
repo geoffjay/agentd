@@ -1396,6 +1396,7 @@ dependencies = [
  "axum",
  "chrono",
  "directories",
+ "futures",
  "metrics",
  "metrics-exporter-prometheus",
  "reqwest",
