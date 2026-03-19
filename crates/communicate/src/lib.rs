@@ -36,6 +36,7 @@
 //! ```
 
 pub mod client;
+pub mod error;
 pub mod types;
 
 // Internal modules — used by the binary (main.rs) via its own `mod` declarations.

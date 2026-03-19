@@ -13,6 +13,7 @@ use axum::{
     Json, Router,
 };
 use communicate::client::CommunicateClient;
+use communicate::error::CommunicateError;
 use communicate::types::{
     AddParticipantRequest, CreateMessageRequest, CreateRoomRequest, ParticipantKind,
     ParticipantRole, RoomType,
@@ -567,23 +568,40 @@ struct RoomMessagesQuery {
     before: Option<String>,
 }
 
-/// Convert a communicate-service error into an `ApiError`.
+/// Convert a [`CommunicateError`] into an [`ApiError`].
 ///
-/// Connection-refused / transport errors become `503 Service Unavailable`;
-/// everything else falls through to `500 Internal Server Error`.
-fn communicate_error(e: anyhow::Error) -> ApiError {
-    let msg = e.to_string();
-    if msg.contains("connection refused")
-        || msg.contains("os error 61")
-        || msg.contains("Failed to GET")
-        || msg.contains("Failed to POST")
-        || msg.contains("Failed to DELETE")
-    {
-        ApiError::ServiceUnavailable(
-            "communicate service is unavailable — ensure it is running".to_string(),
-        )
-    } else {
-        ApiError::Internal(e)
+/// | `CommunicateError` variant | HTTP status |
+/// |---|---|
+/// | `Conflict`                  | 409 Conflict |
+/// | `NotFound`                  | 404 Not Found |
+/// | `Other` (connection refused / transport) | 503 Service Unavailable |
+/// | `Other` (anything else)     | 500 Internal Server Error |
+///
+/// The transport-error heuristics (`"Failed to GET"` / `"connection refused"`)
+/// match the exact context strings added by [`CommunicateClient`]'s internal
+/// helpers before the TCP/HTTP send, distinguishing them from application-level
+/// error messages (which start with `"GET {url} failed with status …"`).
+fn communicate_error(e: CommunicateError) -> ApiError {
+    match e {
+        CommunicateError::Conflict => {
+            ApiError::Conflict("resource already exists in communicate service".to_string())
+        }
+        CommunicateError::NotFound => ApiError::NotFound,
+        CommunicateError::Other(inner) => {
+            let msg = inner.to_string();
+            if msg.contains("connection refused")
+                || msg.contains("os error 61")
+                || msg.contains("Failed to GET")
+                || msg.contains("Failed to POST")
+                || msg.contains("Failed to DELETE")
+            {
+                ApiError::ServiceUnavailable(
+                    "communicate service is unavailable — ensure it is running".to_string(),
+                )
+            } else {
+                ApiError::Internal(inner)
+            }
+        }
     }
 }
 
@@ -599,7 +617,7 @@ async fn assert_agent_in_room(
     let rooms = communicate
         .get_rooms_for_participant(&agent_id.to_string())
         .await
-        .map_err(communicate_error)?;
+        .map_err(|e| communicate_error(e.into()))?;
 
     if rooms.iter().any(|r| r.id == room_id) {
         Ok(())
@@ -609,6 +627,10 @@ async fn assert_agent_in_room(
 }
 
 /// `GET /agents/{id}/rooms` — list all rooms the agent is a member of.
+///
+/// Returns a [`PaginatedResponse`] wrapper consistent with other list endpoints.
+/// The communicate client fetches up to 500 rooms; `total` reflects the actual
+/// count returned.
 async fn list_agent_rooms(
     State(state): State<ApiState>,
     Path(id): Path<Uuid>,
@@ -620,9 +642,10 @@ async fn list_agent_rooms(
         .communicate
         .get_rooms_for_participant(&id.to_string())
         .await
-        .map_err(communicate_error)?;
+        .map_err(|e| communicate_error(e.into()))?;
 
-    Ok(Json(rooms))
+    let total = rooms.len();
+    Ok(Json(PaginatedResponse { items: rooms, total, limit: total, offset: 0 }))
 }
 
 /// `POST /agents/{id}/rooms` — join (or create and join) a room.
@@ -644,14 +667,19 @@ async fn join_agent_room(
             .communicate
             .get_room(room_id)
             .await
-            .map_err(communicate_error)?
+            .map_err(|e| communicate_error(e.into()))?
             .ok_or(ApiError::NotFound)?,
         None => {
             let name = req.room_name.ok_or_else(|| {
                 ApiError::InvalidInput("either room_id or room_name must be provided".to_string())
             })?;
 
-            match state.communicate.get_room_by_name(&name).await.map_err(communicate_error)? {
+            match state
+                .communicate
+                .get_room_by_name(&name)
+                .await
+                .map_err(|e| communicate_error(e.into()))?
+            {
                 Some(r) => r,
                 None => state
                     .communicate
@@ -663,7 +691,7 @@ async fn join_agent_room(
                         created_by: agent.name.clone(),
                     })
                     .await
-                    .map_err(communicate_error)?,
+                    .map_err(|e| communicate_error(e.into()))?,
             }
         }
     };
@@ -694,22 +722,18 @@ async fn join_agent_room(
                 })),
             ))
         }
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("409") || msg.contains("conflict") || msg.contains("Conflict") {
-                // Already a member — idempotent success.
-                info!(agent_id = %id, room_id = %room.id, "Agent already in room (join idempotent)");
-                Ok((
-                    StatusCode::OK,
-                    Json(serde_json::json!({
-                        "room": room,
-                        "participant": null,
-                    })),
-                ))
-            } else {
-                Err(communicate_error(e))
-            }
+        Err(CommunicateError::Conflict) => {
+            // Already a member — idempotent success.
+            info!(agent_id = %id, room_id = %room.id, "Agent already in room (join idempotent)");
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "room": room,
+                    "participant": null,
+                })),
+            ))
         }
+        Err(e) => Err(communicate_error(e)),
     }
 }
 
@@ -726,7 +750,7 @@ async fn leave_agent_room(
         .communicate
         .get_room(room_id)
         .await
-        .map_err(communicate_error)?
+        .map_err(|e| communicate_error(e.into()))?
         .ok_or(ApiError::NotFound)?;
 
     state
@@ -755,7 +779,7 @@ async fn send_agent_room_message(
         .communicate
         .get_room(room_id)
         .await
-        .map_err(communicate_error)?
+        .map_err(|e| communicate_error(e.into()))?
         .ok_or(ApiError::NotFound)?;
 
     // Verify agent is a member of the room.
@@ -775,7 +799,7 @@ async fn send_agent_room_message(
             },
         )
         .await
-        .map_err(communicate_error)?;
+        .map_err(|e| communicate_error(e.into()))?;
 
     info!(agent_id = %id, %room_id, message_id = %message.id, "Agent sent room message via API");
 
@@ -797,7 +821,7 @@ async fn get_agent_room_messages(
         .communicate
         .get_room(room_id)
         .await
-        .map_err(communicate_error)?
+        .map_err(|e| communicate_error(e.into()))?
         .ok_or(ApiError::NotFound)?;
 
     // Verify agent is a member of the room.
@@ -813,9 +837,13 @@ async fn get_agent_room_messages(
             .communicate
             .list_messages(room_id, limit, Some(before))
             .await
-            .map_err(communicate_error)?
+            .map_err(|e| communicate_error(e.into()))?
     } else {
-        state.communicate.get_latest_messages(room_id, limit).await.map_err(communicate_error)?
+        state
+            .communicate
+            .get_latest_messages(room_id, limit)
+            .await
+            .map_err(|e| communicate_error(e.into()))?
     };
 
     Ok(Json(messages))

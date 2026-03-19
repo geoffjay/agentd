@@ -413,9 +413,10 @@ async fn join_or_create_room(
         }
     };
 
-    // Add the agent as a participant — treat 409/conflict as success.
+    // Add the agent as a participant — treat 409 Conflict as success
+    // (the agent is already a member).
     let identifier = agent_id.to_string();
-    let result = client
+    match client
         .add_participant(
             room.id,
             &AddParticipantRequest {
@@ -425,14 +426,9 @@ async fn join_or_create_room(
                 role: ParticipantRole::Member,
             },
         )
-        .await;
-
-    if let Err(ref e) = result {
-        let msg = e.to_string();
-        if msg.contains("409") || msg.contains("conflict") || msg.contains("Conflict") {
-            return Ok(room.id);
-        }
+        .await
+    {
+        Ok(_) | Err(communicate::error::CommunicateError::Conflict) => Ok(room.id),
+        Err(e) => Err(e.into()),
     }
-    result?;
-    Ok(room.id)
 }
