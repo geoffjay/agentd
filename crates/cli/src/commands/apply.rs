@@ -8,11 +8,15 @@
 //!
 //! ```text
 //! .agentd/
+//!   rooms/
+//!     engineering.yml     # room template (created before agents)
 //!   agents/
-//!     worker.yml
+//!     worker.yml          # references rooms by name
 //!   workflows/
 //!     issue-worker.yml    # references agent: worker
 //! ```
+//!
+//! Apply order: rooms → agents → workflows.
 
 use anyhow::{bail, Context, Result};
 use colored::*;
@@ -20,6 +24,11 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use communicate::client::CommunicateClient;
+use communicate::error::CommunicateError;
+use communicate::types::{
+    AddParticipantRequest, CreateRoomRequest, ParticipantKind, ParticipantRole, RoomType,
+};
 use orchestrator::client::OrchestratorClient;
 use orchestrator::scheduler::types::{CreateWorkflowRequest, TriggerConfig};
 use orchestrator::types::{AgentResponse, AgentStatus, CreateAgentRequest, ToolPolicy};
@@ -65,9 +74,11 @@ pub struct AgentTemplate {
     #[serde(default)]
     pub additional_dirs: Vec<String>,
     /// Rooms the agent should automatically join when it connects.
-    /// Each entry is a room name — rooms will be created if they don't exist.
+    ///
+    /// Each entry is either a plain room name or a structured config with a role.
+    /// Rooms are created (if missing) during `agent apply` before agents start.
     #[serde(default)]
-    pub rooms: Vec<String>,
+    pub rooms: Vec<AgentRoomConfig>,
 }
 
 fn default_working_dir() -> String {
@@ -75,6 +86,109 @@ fn default_working_dir() -> String {
 }
 fn default_shell() -> String {
     "zsh".to_string()
+}
+
+/// Configuration for a room that an agent should auto-join.
+///
+/// Supports both a plain room name (string) and a structured object with
+/// an optional role:
+///
+/// ```yaml
+/// rooms:
+///   - engineering                # plain string, defaults to member role
+///   - name: status-updates
+///     role: observer
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum AgentRoomConfig {
+    /// Plain room name — role defaults to "member".
+    Name(String),
+    /// Structured config with explicit role.
+    Config {
+        name: String,
+        #[serde(default = "default_room_role")]
+        #[allow(dead_code)]
+        role: String,
+    },
+}
+
+impl AgentRoomConfig {
+    /// Returns the room name.
+    pub fn name(&self) -> &str {
+        match self {
+            AgentRoomConfig::Name(s) => s,
+            AgentRoomConfig::Config { name, .. } => name,
+        }
+    }
+
+    /// Returns the role (defaults to "member").
+    #[allow(dead_code)]
+    pub fn role(&self) -> &str {
+        match self {
+            AgentRoomConfig::Name(_) => "member",
+            AgentRoomConfig::Config { role, .. } => role,
+        }
+    }
+}
+
+fn default_room_role() -> String {
+    "member".to_string()
+}
+
+/// Configuration for an initial participant in a room template.
+#[derive(Debug, Deserialize)]
+pub struct RoomParticipantConfig {
+    /// Participant identifier (agent name/UUID or human username).
+    pub identifier: String,
+    /// Participant kind: agent (default) or human.
+    #[serde(default = "default_participant_kind")]
+    pub kind: String,
+    /// Role in the room: member (default), admin, or observer.
+    #[serde(default = "default_room_role")]
+    pub role: String,
+    /// Display name (defaults to identifier if absent).
+    pub display_name: Option<String>,
+}
+
+fn default_participant_kind() -> String {
+    "agent".to_string()
+}
+
+/// YAML room template (`.agentd/rooms/<name>.yml`).
+///
+/// Declares a room that should exist after `agent apply`. Rooms are created
+/// before agents so that agent configs can reference them by name.
+///
+/// ```yaml
+/// # .agentd/rooms/engineering.yml
+/// name: engineering
+/// topic: "Engineering team coordination"
+/// description: "General channel for engineering agents and humans"
+/// type: group
+/// participants:
+///   - identifier: worker
+///     kind: agent
+///     role: member
+///   - identifier: alice
+///     kind: human
+///     role: admin
+/// ```
+#[derive(Debug, Deserialize)]
+pub struct RoomTemplate {
+    pub name: String,
+    pub topic: Option<String>,
+    pub description: Option<String>,
+    /// Room type: direct, group (default), or broadcast.
+    #[serde(rename = "type", default = "default_room_type_str")]
+    pub room_type: String,
+    /// Initial participants to add when the room is first created.
+    #[serde(default)]
+    pub participants: Vec<RoomParticipantConfig>,
+}
+
+fn default_room_type_str() -> String {
+    "group".to_string()
 }
 
 /// YAML workflow template (`.agentd/workflows/<name>.yml`).
@@ -282,6 +396,13 @@ fn parse_workflow_template(path: &Path) -> Result<WorkflowTemplate> {
     Ok(tmpl)
 }
 
+fn parse_room_template(path: &Path) -> Result<RoomTemplate> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read: {}", path.display()))?;
+    serde_yaml::from_str(&content)
+        .with_context(|| format!("Failed to parse room template: {}", path.display()))
+}
+
 fn resolve_prompt(tmpl: &WorkflowTemplate, yaml_path: &Path) -> Result<String> {
     if let Some(ref t) = tmpl.prompt_template {
         return Ok(t.clone());
@@ -456,6 +577,114 @@ pub async fn apply_workflow_file(
     Ok(())
 }
 
+// ── Apply: room from template ─────────────────────────────────────────
+
+/// Create a room (and add initial participants) from a room template.
+///
+/// If the room already exists the creation is skipped; participants listed
+/// in the template that are not yet members are added idempotently.
+async fn apply_room(
+    communicate: &CommunicateClient,
+    tmpl: &RoomTemplate,
+    dry_run: bool,
+    json: bool,
+) -> Result<()> {
+    let room_type: RoomType = tmpl.room_type.parse().map_err(|_| {
+        anyhow::anyhow!("Invalid room type '{}' in room '{}'", tmpl.room_type, tmpl.name)
+    })?;
+
+    if dry_run {
+        if !json {
+            println!("  {} room '{}'", "ok".green(), tmpl.name);
+        }
+        return Ok(());
+    }
+
+    // Check if the room already exists.
+    let room = match communicate
+        .get_room_by_name(&tmpl.name)
+        .await
+        .context("Failed to reach communicate service")?
+    {
+        Some(existing) => {
+            if !json {
+                println!(
+                    "  {} room '{}' (ID: {})",
+                    "Skipping".yellow(),
+                    tmpl.name,
+                    existing.id.to_string().bright_black()
+                );
+            }
+            existing
+        }
+        None => {
+            if !json {
+                print!("  {} room '{}'... ", "Creating".cyan(), tmpl.name);
+            }
+            let created = communicate
+                .create_room(&CreateRoomRequest {
+                    name: tmpl.name.clone(),
+                    topic: tmpl.topic.clone(),
+                    description: tmpl.description.clone(),
+                    room_type,
+                    created_by: "agent-apply".to_string(),
+                })
+                .await
+                .context("Failed to create room")?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&created)?);
+            } else {
+                println!("{} (ID: {})", "created".green(), created.id.to_string().bright_black());
+            }
+            created
+        }
+    };
+
+    // Add each configured participant (idempotent — Conflict → already a member).
+    for p in &tmpl.participants {
+        let kind: ParticipantKind = p.kind.parse().map_err(|_| {
+            anyhow::anyhow!(
+                "Invalid kind '{}' for participant '{}' in room '{}'",
+                p.kind,
+                p.identifier,
+                tmpl.name
+            )
+        })?;
+        let role: ParticipantRole = p.role.parse().map_err(|_| {
+            anyhow::anyhow!(
+                "Invalid role '{}' for participant '{}' in room '{}'",
+                p.role,
+                p.identifier,
+                tmpl.name
+            )
+        })?;
+        let display_name = p.display_name.clone().unwrap_or_else(|| p.identifier.clone());
+
+        match communicate
+            .add_participant(
+                room.id,
+                &AddParticipantRequest {
+                    identifier: p.identifier.clone(),
+                    kind,
+                    display_name,
+                    role,
+                },
+            )
+            .await
+        {
+            Ok(_) | Err(CommunicateError::Conflict) => {}
+            Err(e) => {
+                return Err(anyhow::anyhow!(e).context(format!(
+                    "Failed to add participant '{}' to room '{}'",
+                    p.identifier, tmpl.name
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 // ── Apply: composite .agentd/ directory ──────────────────────────────
 
 pub async fn apply_directory(
@@ -465,19 +694,25 @@ pub async fn apply_directory(
     wait_timeout: u64,
     json: bool,
 ) -> Result<()> {
+    let rooms_dir = dir.join("rooms");
     let agents_dir = dir.join("agents");
     let workflows_dir = dir.join("workflows");
 
+    let room_files = collect_yaml_files(&rooms_dir)?;
     let agent_files = collect_yaml_files(&agents_dir)?;
     let workflow_files = collect_yaml_files(&workflows_dir)?;
 
     // Also check for loose YAML files in the directory itself (single-type dirs)
     let loose_files = collect_yaml_files(dir)?;
-    let has_subdirs = agents_dir.is_dir() || workflows_dir.is_dir();
+    let has_subdirs = rooms_dir.is_dir() || agents_dir.is_dir() || workflows_dir.is_dir();
 
-    if agent_files.is_empty() && workflow_files.is_empty() && loose_files.is_empty() {
+    if room_files.is_empty()
+        && agent_files.is_empty()
+        && workflow_files.is_empty()
+        && loose_files.is_empty()
+    {
         bail!(
-            "No YAML templates found in '{}'. Expected agents/ and/or workflows/ subdirectories.",
+            "No YAML templates found in '{}'. Expected rooms/, agents/, and/or workflows/ subdirectories.",
             dir.display()
         );
     }
@@ -485,6 +720,16 @@ pub async fn apply_directory(
     // Phase 0: Parse and validate all templates upfront (fail fast)
     if !json {
         println!("{}", "Validating templates...".blue().bold());
+    }
+
+    let mut room_templates = Vec::new();
+    for path in &room_files {
+        let tmpl = parse_room_template(path)
+            .with_context(|| format!("Validation failed for {}", path.display()))?;
+        if !json {
+            println!("  {} room '{}'", "ok".green(), tmpl.name);
+        }
+        room_templates.push((path.clone(), tmpl));
     }
 
     let mut agent_templates = Vec::new();
@@ -526,15 +771,21 @@ pub async fn apply_directory(
             let result = serde_json::json!({
                 "dry_run": true,
                 "valid": true,
+                "rooms": room_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
                 "agents": agent_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
                 "workflows": workflow_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
+            // Dry-run room validation
+            for (_, tmpl) in &room_templates {
+                apply_room(&CommunicateClient::from_env(), tmpl, true, json).await?;
+            }
             println!();
             println!(
-                "{} {} agent(s), {} workflow(s)",
+                "{} {} room(s), {} agent(s), {} workflow(s)",
                 "Dry run passed:".yellow(),
+                room_templates.len(),
                 agent_templates.len(),
                 workflow_templates.len()
             );
@@ -542,7 +793,19 @@ pub async fn apply_directory(
         return Ok(());
     }
 
-    // Phase 1: Create agents
+    // Phase 1: Create rooms (before agents, so room names are valid)
+    if !room_templates.is_empty() {
+        if !json {
+            println!();
+            println!("{}", "Creating rooms...".blue().bold());
+        }
+        let communicate = CommunicateClient::from_env();
+        for (_, tmpl) in &room_templates {
+            apply_room(&communicate, tmpl, false, json).await?;
+        }
+    }
+
+    // Phase 2: Create agents
     if !agent_templates.is_empty() {
         if !json {
             println!();
@@ -552,7 +815,7 @@ pub async fn apply_directory(
             apply_agent(client, tmpl, path, json).await?;
         }
 
-        // Phase 2: Wait for all agents to reach running status
+        // Phase 3: Wait for all agents to reach running status
         if !json {
             println!();
             println!("{}", "Waiting for agents to start...".blue().bold());
@@ -568,7 +831,7 @@ pub async fn apply_directory(
         }
     }
 
-    // Phase 3: Create workflows
+    // Phase 4: Create workflows
     if !workflow_templates.is_empty() {
         if !json {
             println!();
@@ -585,7 +848,8 @@ pub async fn apply_directory(
         println!(
             "{}",
             format!(
-                "Applied {} agent(s) and {} workflow(s)",
+                "Applied {} room(s), {} agent(s), and {} workflow(s)",
+                room_templates.len(),
                 agent_templates.len(),
                 workflow_templates.len()
             )
@@ -682,7 +946,7 @@ async fn apply_agent(
         },
         resource_limits: tmpl.resource_limits.clone(),
         additional_dirs,
-        rooms: tmpl.rooms.clone(),
+        rooms: tmpl.rooms.iter().map(|r| r.name().to_string()).collect(),
     };
 
     let agent = client.create_agent(&request).await?;
@@ -710,11 +974,11 @@ pub async fn teardown_directory(
     let agent_files = collect_yaml_files(&agents_dir)?;
     let workflow_files = collect_yaml_files(&workflows_dir)?;
 
-    // Parse templates just for names
-    let mut agent_names = Vec::new();
+    // Parse templates just for names (and room configs for cleanup)
+    let mut agent_infos: Vec<(String, Vec<AgentRoomConfig>)> = Vec::new();
     for path in &agent_files {
         let tmpl = parse_agent_template(path)?;
-        agent_names.push(tmpl.name);
+        agent_infos.push((tmpl.name, tmpl.rooms));
     }
 
     let mut workflow_names = Vec::new();
@@ -728,7 +992,7 @@ pub async fn teardown_directory(
             let result = serde_json::json!({
                 "dry_run": true,
                 "workflows_to_delete": workflow_names,
-                "agents_to_delete": agent_names,
+                "agents_to_delete": agent_infos.iter().map(|(n, _)| n).collect::<Vec<_>>(),
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
@@ -736,7 +1000,7 @@ pub async fn teardown_directory(
             for name in &workflow_names {
                 println!("  workflow: {}", name);
             }
-            for name in &agent_names {
+            for (name, _) in &agent_infos {
                 println!("  agent: {}", name);
             }
         }
@@ -761,13 +1025,40 @@ pub async fn teardown_directory(
         }
     }
 
-    // Then delete agents
-    if !agent_names.is_empty() {
+    // Then delete agents, removing them from rooms first.
+    if !agent_infos.is_empty() {
         if !json {
             println!("{}", "Deleting agents...".blue().bold());
         }
-        for name in &agent_names {
+        let communicate = CommunicateClient::from_env();
+        for (name, rooms) in &agent_infos {
             if let Some(agent) = find_agent_by_name(client, name).await? {
+                // Remove agent from each configured room before terminating.
+                if !rooms.is_empty() {
+                    for room_cfg in rooms {
+                        if let Ok(Some(room)) = communicate.get_room_by_name(room_cfg.name()).await
+                        {
+                            // Use agent UUID as participant identifier (how auto-join registers).
+                            match communicate
+                                .remove_participant(room.id, &agent.id.to_string())
+                                .await
+                            {
+                                Ok(()) | Err(CommunicateError::NotFound) => {}
+                                Err(e) => {
+                                    if !json {
+                                        eprintln!(
+                                            "  {} removing '{}' from room '{}': {}",
+                                            "Warning:".yellow(),
+                                            name,
+                                            room_cfg.name(),
+                                            e
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 client.terminate_agent(&agent.id).await?;
                 if !json {
                     println!("  {} agent '{}'", "deleted".red(), name);
@@ -1124,6 +1415,118 @@ env: {}
 
         let result = expand_env_vars(&mut env);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_agent_with_rooms_plain_strings() {
+        let yaml = r#"
+name: worker
+rooms:
+  - engineering
+  - status-updates
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.rooms.len(), 2);
+        assert_eq!(tmpl.rooms[0].name(), "engineering");
+        assert_eq!(tmpl.rooms[0].role(), "member");
+        assert_eq!(tmpl.rooms[1].name(), "status-updates");
+    }
+
+    #[test]
+    fn test_parse_agent_with_rooms_structured() {
+        let yaml = r#"
+name: worker
+rooms:
+  - name: engineering
+    role: member
+  - name: status-updates
+    role: observer
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.rooms.len(), 2);
+        assert_eq!(tmpl.rooms[0].name(), "engineering");
+        assert_eq!(tmpl.rooms[0].role(), "member");
+        assert_eq!(tmpl.rooms[1].name(), "status-updates");
+        assert_eq!(tmpl.rooms[1].role(), "observer");
+    }
+
+    #[test]
+    fn test_parse_agent_with_rooms_mixed() {
+        let yaml = r#"
+name: worker
+rooms:
+  - engineering
+  - name: status-updates
+    role: observer
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.rooms.len(), 2);
+        assert_eq!(tmpl.rooms[0].name(), "engineering");
+        assert_eq!(tmpl.rooms[0].role(), "member");
+        assert_eq!(tmpl.rooms[1].role(), "observer");
+    }
+
+    #[test]
+    fn test_parse_agent_rooms_defaults_empty() {
+        let yaml = r#"name: minimal"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert!(tmpl.rooms.is_empty());
+    }
+
+    #[test]
+    fn test_parse_room_template_minimal() {
+        let yaml = r#"
+name: engineering
+"#;
+        let tmpl: RoomTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.name, "engineering");
+        assert_eq!(tmpl.room_type, "group");
+        assert!(tmpl.participants.is_empty());
+        assert!(tmpl.topic.is_none());
+        assert!(tmpl.description.is_none());
+    }
+
+    #[test]
+    fn test_parse_room_template_full() {
+        let yaml = r#"
+name: engineering
+topic: "Engineering coordination"
+description: "Main engineering channel"
+type: group
+participants:
+  - identifier: worker
+    kind: agent
+    role: member
+  - identifier: alice
+    kind: human
+    role: admin
+    display_name: "Alice"
+"#;
+        let tmpl: RoomTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(tmpl.name, "engineering");
+        assert_eq!(tmpl.room_type, "group");
+        assert_eq!(tmpl.participants.len(), 2);
+        assert_eq!(tmpl.participants[0].identifier, "worker");
+        assert_eq!(tmpl.participants[0].kind, "agent");
+        assert_eq!(tmpl.participants[0].role, "member");
+        assert_eq!(tmpl.participants[1].identifier, "alice");
+        assert_eq!(tmpl.participants[1].kind, "human");
+        assert_eq!(tmpl.participants[1].role, "admin");
+        assert_eq!(tmpl.participants[1].display_name, Some("Alice".to_string()));
+    }
+
+    #[test]
+    fn test_parse_room_template_participant_defaults() {
+        let yaml = r#"
+name: ops
+participants:
+  - identifier: bot
+"#;
+        let tmpl: RoomTemplate = serde_yaml::from_str(yaml).unwrap();
+        let p = &tmpl.participants[0];
+        assert_eq!(p.kind, "agent");
+        assert_eq!(p.role, "member");
+        assert!(p.display_name.is_none());
     }
 
     #[test]
