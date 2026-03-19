@@ -10,6 +10,7 @@
 //! |---------|-------------|
 //! | `NotFound` | 404 Not Found |
 //! | `Unauthorized` | 401 Unauthorized |
+//! | `Forbidden` | 403 Forbidden |
 //! | `InvalidInput` | 400 Bad Request |
 //! | `Conflict` | 409 Conflict |
 //! | `ServiceUnavailable` | 503 Service Unavailable |
@@ -42,6 +43,10 @@ pub enum ApiError {
     #[error("unauthorized: {0}")]
     Unauthorized(String),
 
+    /// Access denied — caller lacks permission (HTTP 403).
+    #[error("forbidden: {0}")]
+    Forbidden(String),
+
     /// Invalid input or request (HTTP 400).
     #[error("invalid input: {0}")]
     InvalidInput(String),
@@ -64,6 +69,7 @@ impl IntoResponse for ApiError {
         let (status, message) = match &self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
             ApiError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, self.to_string()),
+            ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, self.to_string()),
             ApiError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, self.to_string()),
             ApiError::ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),

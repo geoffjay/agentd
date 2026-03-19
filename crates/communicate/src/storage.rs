@@ -6,8 +6,8 @@
 use crate::entity;
 use crate::migration::Migrator;
 use crate::types::{
-    AddParticipantRequest, CreateRoomRequest, Participant, ParticipantKind, ParticipantRole, Room,
-    RoomType,
+    AddParticipantRequest, CreateMessageRequest, CreateRoomRequest, Message, MessageStatus,
+    Participant, ParticipantKind, ParticipantRole, Room, RoomType,
 };
 use agentd_common::error::ApiError;
 use anyhow::Result;
@@ -450,6 +450,213 @@ impl CommunicateStorage {
             .map_err(|e| ApiError::Internal(e.into()))? as usize;
         Ok(count)
     }
+
+    // -----------------------------------------------------------------------
+    // Message operations
+    // -----------------------------------------------------------------------
+
+    /// Sends a message to a room.
+    ///
+    /// Validates that:
+    /// - Content is non-empty.
+    /// - The room exists (`ApiError::NotFound`).
+    /// - The sender is a participant in the room (`ApiError::Forbidden`).
+    /// - `reply_to`, if present, references an existing message in the same room
+    ///   (`ApiError::InvalidInput`).
+    pub async fn send_message(
+        &self,
+        room_id: &Uuid,
+        req: &CreateMessageRequest,
+    ) -> Result<Message, ApiError> {
+        if req.content.trim().is_empty() {
+            return Err(ApiError::InvalidInput("message content must not be empty".to_string()));
+        }
+
+        // Verify room exists.
+        let room_exists = entity::room::Entity::find_by_id(room_id.to_string())
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?
+            .is_some();
+
+        if !room_exists {
+            return Err(ApiError::NotFound);
+        }
+
+        // Verify sender is a participant.
+        let is_participant = entity::participant::Entity::find()
+            .filter(entity::participant::Column::RoomId.eq(room_id.to_string()))
+            .filter(entity::participant::Column::Identifier.eq(req.sender_id.as_str()))
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?
+            .is_some();
+
+        if !is_participant {
+            return Err(ApiError::Forbidden(format!(
+                "'{}' is not a participant in room '{}'",
+                req.sender_id, room_id
+            )));
+        }
+
+        // Validate reply_to references an existing message in the same room.
+        if let Some(reply_id) = &req.reply_to {
+            let reply_in_room = entity::message::Entity::find_by_id(reply_id.to_string())
+                .one(&self.db)
+                .await
+                .map_err(|e| ApiError::Internal(e.into()))?
+                .map(|m| m.room_id == room_id.to_string())
+                .unwrap_or(false);
+
+            if !reply_in_room {
+                return Err(ApiError::InvalidInput(format!(
+                    "reply_to '{}' does not reference a message in this room",
+                    reply_id
+                )));
+            }
+        }
+
+        let id = Uuid::new_v4();
+        let now = chrono::Utc::now();
+
+        let metadata_json = serde_json::to_string(&req.metadata).map_err(|e| {
+            ApiError::Internal(anyhow::anyhow!("failed to serialize metadata: {}", e))
+        })?;
+
+        let model = entity::message::ActiveModel {
+            id: Set(id.to_string()),
+            room_id: Set(room_id.to_string()),
+            sender_id: Set(req.sender_id.clone()),
+            sender_name: Set(req.sender_name.clone()),
+            sender_kind: Set(req.sender_kind.to_string()),
+            content: Set(req.content.clone()),
+            metadata: Set(metadata_json),
+            reply_to: Set(req.reply_to.map(|u| u.to_string())),
+            status: Set(MessageStatus::Sent.to_string()),
+            created_at: Set(now.to_rfc3339()),
+        };
+
+        model.insert(&self.db).await.map_err(|e| ApiError::Internal(e.into()))?;
+
+        let inserted = entity::message::Entity::find_by_id(id.to_string())
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?
+            .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("message not found after insert")))?;
+
+        model_to_message(inserted).map_err(ApiError::Internal)
+    }
+
+    /// Retrieves a single message by its UUID.
+    pub async fn get_message(&self, id: &Uuid) -> Result<Option<Message>, ApiError> {
+        let row = entity::message::Entity::find_by_id(id.to_string())
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        row.map(|m| model_to_message(m).map_err(ApiError::Internal)).transpose()
+    }
+
+    /// Returns a paginated list of messages in a room, optionally filtered by
+    /// timestamp.
+    ///
+    /// - `before` — only messages created strictly before this timestamp.
+    /// - `after`  — only messages created strictly after this timestamp.
+    ///
+    /// Messages are returned in ascending creation order.
+    pub async fn list_messages(
+        &self,
+        room_id: &Uuid,
+        limit: usize,
+        offset: usize,
+        before: Option<chrono::DateTime<chrono::Utc>>,
+        after: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(Vec<Message>, usize), ApiError> {
+        let id_str = room_id.to_string();
+
+        let mut count_query = entity::message::Entity::find()
+            .filter(entity::message::Column::RoomId.eq(id_str.as_str()));
+        let mut list_query = entity::message::Entity::find()
+            .filter(entity::message::Column::RoomId.eq(id_str.as_str()));
+
+        if let Some(before_ts) = before {
+            let before_str = before_ts.to_rfc3339();
+            count_query =
+                count_query.filter(entity::message::Column::CreatedAt.lt(before_str.clone()));
+            list_query = list_query.filter(entity::message::Column::CreatedAt.lt(before_str));
+        }
+        if let Some(after_ts) = after {
+            let after_str = after_ts.to_rfc3339();
+            count_query =
+                count_query.filter(entity::message::Column::CreatedAt.gt(after_str.clone()));
+            list_query = list_query.filter(entity::message::Column::CreatedAt.gt(after_str));
+        }
+
+        let total =
+            count_query.count(&self.db).await.map_err(|e| ApiError::Internal(e.into()))? as usize;
+
+        let rows = list_query
+            .order_by_asc(entity::message::Column::CreatedAt)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        let messages = rows
+            .into_iter()
+            .map(model_to_message)
+            .collect::<Result<Vec<_>>>()
+            .map_err(ApiError::Internal)?;
+
+        Ok((messages, total))
+    }
+
+    /// Deletes a message by ID. Returns `true` if deleted, `false` if not found.
+    pub async fn delete_message(&self, id: &Uuid) -> Result<bool, ApiError> {
+        let result = entity::message::Entity::delete_by_id(id.to_string())
+            .exec(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        Ok(result.rows_affected > 0)
+    }
+
+    /// Returns the total number of messages in a room.
+    pub async fn get_room_message_count(&self, room_id: &Uuid) -> Result<usize, ApiError> {
+        let count = entity::message::Entity::find()
+            .filter(entity::message::Column::RoomId.eq(room_id.to_string()))
+            .count(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))? as usize;
+        Ok(count)
+    }
+
+    /// Returns the N most recent messages in a room, ordered oldest-first.
+    pub async fn get_latest_messages(
+        &self,
+        room_id: &Uuid,
+        count: usize,
+    ) -> Result<Vec<Message>, ApiError> {
+        // Fetch the latest `count` rows ordered by created_at DESC, then
+        // reverse to return them oldest-first.
+        let rows = entity::message::Entity::find()
+            .filter(entity::message::Column::RoomId.eq(room_id.to_string()))
+            .order_by_desc(entity::message::Column::CreatedAt)
+            .limit(count as u64)
+            .all(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        let mut messages = rows
+            .into_iter()
+            .map(model_to_message)
+            .collect::<Result<Vec<_>>>()
+            .map_err(ApiError::Internal)?;
+
+        messages.reverse();
+        Ok(messages)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -480,6 +687,24 @@ pub fn model_to_participant(m: entity::participant::Model) -> Result<Participant
         display_name: m.display_name,
         role: m.role.parse::<ParticipantRole>()?,
         joined_at: m.joined_at.parse::<chrono::DateTime<chrono::Utc>>()?,
+    })
+}
+
+/// Converts a SeaORM message model into the domain `Message` type.
+pub fn model_to_message(m: entity::message::Model) -> Result<Message> {
+    let metadata = serde_json::from_str(&m.metadata).unwrap_or_default();
+    let reply_to = m.reply_to.map(|s| s.parse::<Uuid>()).transpose()?;
+    Ok(Message {
+        id: m.id.parse::<Uuid>()?,
+        room_id: m.room_id.parse::<Uuid>()?,
+        sender_id: m.sender_id,
+        sender_name: m.sender_name,
+        sender_kind: m.sender_kind.parse()?,
+        content: m.content,
+        metadata,
+        reply_to,
+        status: m.status.parse()?,
+        created_at: m.created_at.parse::<chrono::DateTime<chrono::Utc>>()?,
     })
 }
 

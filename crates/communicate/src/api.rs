@@ -14,6 +14,11 @@
 //! - `PUT /rooms/{id}/participants/{identifier}` — update participant role
 //! - `DELETE /rooms/{id}/participants/{identifier}` — remove participant from room
 //! - `GET /participants/{identifier}/rooms` — list all rooms for a participant
+//! - `POST /rooms/{id}/messages` — send a message to a room (201 Created)
+//! - `GET /rooms/{id}/messages` — list messages (paginated, with before/after filters)
+//! - `GET /rooms/{id}/messages/latest` — get N most recent messages (default 50)
+//! - `GET /messages/{id}` — get a specific message
+//! - `DELETE /messages/{id}` — delete a message
 
 use axum::{
     extract::{Path, Query, State},
@@ -27,8 +32,9 @@ use uuid::Uuid;
 
 use crate::storage::CommunicateStorage;
 use crate::types::{
-    AddParticipantRequest, CreateRoomRequest, PaginatedResponse, ParticipantResponse, RoomResponse,
-    RoomType, UpdateParticipantRoleRequest, UpdateRoomRequest,
+    AddParticipantRequest, CreateMessageRequest, CreateRoomRequest, MessageResponse,
+    PaginatedResponse, ParticipantResponse, RoomResponse, RoomType, UpdateParticipantRoleRequest,
+    UpdateRoomRequest,
 };
 
 pub use agentd_common::error::ApiError;
@@ -47,18 +53,26 @@ pub fn create_router(state: ApiState) -> Router {
             get(get_participant).put(update_participant_role).delete(remove_participant),
         );
 
+    let messages_nested = Router::new()
+        .route("/", get(list_messages_in_room).post(send_message))
+        .route("/latest", get(get_latest_messages));
+
     let rooms_router = Router::new()
         .route("/", post(create_room).get(list_rooms))
         .route("/{id}", get(get_room).put(update_room).delete(delete_room))
-        .nest("/{id}/participants", participant_nested);
+        .nest("/{id}/participants", participant_nested)
+        .nest("/{id}/messages", messages_nested);
 
     let participants_router =
         Router::new().route("/{identifier}/rooms", get(list_rooms_for_participant));
+
+    let messages_router = Router::new().route("/{id}", get(get_message).delete(delete_message));
 
     Router::new()
         .route("/health", get(health))
         .nest("/rooms", rooms_router)
         .nest("/participants", participants_router)
+        .nest("/messages", messages_router)
         .with_state(state)
 }
 
@@ -84,6 +98,23 @@ struct ListRoomsParams {
 struct PaginationParams {
     limit: Option<usize>,
     offset: Option<usize>,
+}
+
+/// Query parameters for `GET /rooms/{id}/messages`.
+#[derive(Debug, Deserialize)]
+struct ListMessagesParams {
+    limit: Option<usize>,
+    offset: Option<usize>,
+    /// RFC3339 timestamp — return only messages created before this time.
+    before: Option<String>,
+    /// RFC3339 timestamp — return only messages created after this time.
+    after: Option<String>,
+}
+
+/// Query parameters for `GET /rooms/{id}/messages/latest`.
+#[derive(Debug, Deserialize)]
+struct LatestMessagesParams {
+    count: Option<usize>,
 }
 
 fn clamp_limit(limit: Option<usize>) -> usize {
@@ -261,6 +292,99 @@ async fn list_rooms_for_participant(
 }
 
 // ---------------------------------------------------------------------------
+// Message handlers
+// ---------------------------------------------------------------------------
+
+/// `POST /rooms/{id}/messages` — send a message to a room.
+async fn send_message(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<CreateMessageRequest>,
+) -> Result<(StatusCode, Json<MessageResponse>), ApiError> {
+    let message = state.storage.send_message(&id, &req).await?;
+
+    metrics::counter!("messages_sent_total", "room_id" => id.to_string()).increment(1);
+
+    let count = state.storage.get_room_message_count(&id).await?;
+    metrics::histogram!("messages_per_room", "room_id" => id.to_string()).record(count as f64);
+
+    Ok((StatusCode::CREATED, Json(MessageResponse::from(message))))
+}
+
+/// `GET /rooms/{id}/messages` — list messages in a room (paginated, filterable).
+async fn list_messages_in_room(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Query(params): Query<ListMessagesParams>,
+) -> Result<Json<PaginatedResponse<MessageResponse>>, ApiError> {
+    // Verify room exists.
+    state.storage.get_room(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let limit = clamp_limit(params.limit);
+    let offset = params.offset.unwrap_or(0);
+
+    let before = params
+        .before
+        .as_deref()
+        .map(|s| {
+            s.parse::<chrono::DateTime<chrono::Utc>>()
+                .map_err(|e| ApiError::InvalidInput(format!("invalid 'before' timestamp: {}", e)))
+        })
+        .transpose()?;
+
+    let after = params
+        .after
+        .as_deref()
+        .map(|s| {
+            s.parse::<chrono::DateTime<chrono::Utc>>()
+                .map_err(|e| ApiError::InvalidInput(format!("invalid 'after' timestamp: {}", e)))
+        })
+        .transpose()?;
+
+    let (messages, total) = state.storage.list_messages(&id, limit, offset, before, after).await?;
+
+    let items = messages.into_iter().map(MessageResponse::from).collect();
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
+}
+
+/// `GET /rooms/{id}/messages/latest` — get the N most recent messages.
+async fn get_latest_messages(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Query(params): Query<LatestMessagesParams>,
+) -> Result<Json<Vec<MessageResponse>>, ApiError> {
+    // Verify room exists.
+    state.storage.get_room(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let count = params.count.unwrap_or(50).min(200);
+    let messages = state.storage.get_latest_messages(&id, count).await?;
+
+    Ok(Json(messages.into_iter().map(MessageResponse::from).collect()))
+}
+
+/// `GET /messages/{id}` — get a specific message by ID.
+async fn get_message(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<MessageResponse>, ApiError> {
+    let message = state.storage.get_message(&id).await?.ok_or(ApiError::NotFound)?;
+    Ok(Json(MessageResponse::from(message)))
+}
+
+/// `DELETE /messages/{id}` — delete a message.
+async fn delete_message(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    let deleted = state.storage.delete_message(&id).await?;
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -314,6 +438,64 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
         body_json(resp.into_body()).await["id"].as_str().unwrap().to_string()
+    }
+
+    /// Adds a participant and returns the response JSON.
+    async fn add_participant_to_room(
+        app: &Router,
+        room_id: &str,
+        identifier: &str,
+        kind: &str,
+    ) -> Value {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/rooms/{room_id}/participants"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "identifier": identifier,
+                            "kind": kind,
+                            "display_name": identifier
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        body_json(resp.into_body()).await
+    }
+
+    /// Sends a message and returns the response body.
+    async fn send_msg(
+        app: &Router,
+        room_id: &str,
+        sender_id: &str,
+        content: &str,
+    ) -> axum::response::Response {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/rooms/{room_id}/messages"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "sender_id": sender_id,
+                            "sender_name": sender_id,
+                            "sender_kind": "agent",
+                            "content": content
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
     }
 
     // -----------------------------------------------------------------------
@@ -807,5 +989,360 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // -----------------------------------------------------------------------
+    // Message tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_send_message_as_participant_returns_201() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "msg-room").await;
+        add_participant_to_room(&app, &room_id, "agent-sender", "agent").await;
+
+        let resp = send_msg(&app, &room_id, "agent-sender", "Hello, room!").await;
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["content"], "Hello, room!");
+        assert_eq!(json["sender_id"], "agent-sender");
+        assert_eq!(json["status"], "sent");
+        assert!(json["id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_send_message_as_non_participant_returns_403() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "forbidden-room").await;
+        // Do NOT add "outsider" as participant.
+
+        let resp = send_msg(&app, &room_id, "outsider", "I shouldn't be here").await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn test_send_empty_message_returns_400() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "empty-content-room").await;
+        add_participant_to_room(&app, &room_id, "sender", "agent").await;
+
+        let resp = send_msg(&app, &room_id, "sender", "   ").await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_send_message_to_missing_room_returns_404() {
+        let (app, _temp) = build_test_app().await;
+        let missing_id = Uuid::new_v4();
+
+        let resp = send_msg(&app, &missing_id.to_string(), "agent-1", "Hello").await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_get_message_by_id() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "get-msg-room").await;
+        add_participant_to_room(&app, &room_id, "sender", "agent").await;
+
+        let send_resp = send_msg(&app, &room_id, "sender", "Fetchable message").await;
+        assert_eq!(send_resp.status(), StatusCode::CREATED);
+        let msg_id = body_json(send_resp.into_body()).await["id"].as_str().unwrap().to_string();
+
+        let get_resp = app
+            .oneshot(
+                Request::builder().uri(format!("/messages/{msg_id}")).body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(get_resp.status(), StatusCode::OK);
+        let json = body_json(get_resp.into_body()).await;
+        assert_eq!(json["id"], msg_id);
+        assert_eq!(json["content"], "Fetchable message");
+    }
+
+    #[tokio::test]
+    async fn test_delete_message_returns_204() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "del-msg-room").await;
+        add_participant_to_room(&app, &room_id, "sender", "agent").await;
+
+        let send_resp = send_msg(&app, &room_id, "sender", "Delete me").await;
+        assert_eq!(send_resp.status(), StatusCode::CREATED);
+        let msg_id = body_json(send_resp.into_body()).await["id"].as_str().unwrap().to_string();
+
+        let del_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/messages/{msg_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
+
+        // Verify it's gone.
+        let get_resp = app
+            .oneshot(
+                Request::builder().uri(format!("/messages/{msg_id}")).body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_message_returns_404() {
+        let (app, _temp) = build_test_app().await;
+        let missing_id = Uuid::new_v4();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/messages/{missing_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_list_messages_paginated() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "list-msg-room").await;
+        add_participant_to_room(&app, &room_id, "sender", "agent").await;
+
+        for i in 0..5 {
+            let resp = send_msg(&app, &room_id, "sender", &format!("Message {i}")).await;
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
+
+        let list_resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/rooms/{room_id}/messages?limit=3&offset=0"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(list_resp.status(), StatusCode::OK);
+        let json = body_json(list_resp.into_body()).await;
+        assert_eq!(json["total"], 5);
+        assert_eq!(json["items"].as_array().unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_list_messages_returns_404_for_missing_room() {
+        let (app, _temp) = build_test_app().await;
+        let missing_id = Uuid::new_v4();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/rooms/{missing_id}/messages"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_reply_to_creates_threading() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "thread-room").await;
+        add_participant_to_room(&app, &room_id, "sender", "agent").await;
+
+        // Send original message.
+        let orig_resp = send_msg(&app, &room_id, "sender", "Original message").await;
+        assert_eq!(orig_resp.status(), StatusCode::CREATED);
+        let orig_id = body_json(orig_resp.into_body()).await["id"].as_str().unwrap().to_string();
+
+        // Send reply.
+        let reply_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/rooms/{room_id}/messages"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "sender_id": "sender",
+                            "sender_name": "Sender",
+                            "sender_kind": "agent",
+                            "content": "This is a reply",
+                            "reply_to": orig_id
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(reply_resp.status(), StatusCode::CREATED);
+        let reply_json = body_json(reply_resp.into_body()).await;
+        assert_eq!(reply_json["reply_to"], orig_id);
+        assert_eq!(reply_json["content"], "This is a reply");
+    }
+
+    #[tokio::test]
+    async fn test_reply_to_wrong_room_returns_400() {
+        let (app, _temp) = build_test_app().await;
+        let room1 = create_room_get_id(&app, "room-a").await;
+        let room2 = create_room_get_id(&app, "room-b").await;
+        add_participant_to_room(&app, &room1, "sender", "agent").await;
+        add_participant_to_room(&app, &room2, "sender", "agent").await;
+
+        // Send a message in room1.
+        let msg_resp = send_msg(&app, &room1, "sender", "Room-1 message").await;
+        assert_eq!(msg_resp.status(), StatusCode::CREATED);
+        let msg_id = body_json(msg_resp.into_body()).await["id"].as_str().unwrap().to_string();
+
+        // Try to reply in room2 referencing the room1 message.
+        let bad_reply = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/rooms/{room2}/messages"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "sender_id": "sender",
+                            "sender_name": "Sender",
+                            "sender_kind": "agent",
+                            "content": "Bad reply",
+                            "reply_to": msg_id
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(bad_reply.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_message_metadata_stored_and_returned() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "meta-room").await;
+        add_participant_to_room(&app, &room_id, "sender", "agent").await;
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/rooms/{room_id}/messages"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "sender_id": "sender",
+                            "sender_name": "Sender",
+                            "sender_kind": "agent",
+                            "content": "Message with metadata",
+                            "metadata": {
+                                "source": "workflow",
+                                "dispatch_id": "wf-123"
+                            }
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["metadata"]["source"], "workflow");
+        assert_eq!(json["metadata"]["dispatch_id"], "wf-123");
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_messages() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "latest-room").await;
+        add_participant_to_room(&app, &room_id, "sender", "agent").await;
+
+        for i in 0..10 {
+            let resp = send_msg(&app, &room_id, "sender", &format!("Message {i:02}")).await;
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
+
+        let latest_resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/rooms/{room_id}/messages/latest?count=3"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(latest_resp.status(), StatusCode::OK);
+        let json = body_json(latest_resp.into_body()).await;
+        let items = json.as_array().unwrap();
+        assert_eq!(items.len(), 3);
+        // Should be the 3 most recent (last 3 sent), returned oldest-first.
+        assert_eq!(items[0]["content"], "Message 07");
+        assert_eq!(items[1]["content"], "Message 08");
+        assert_eq!(items[2]["content"], "Message 09");
+    }
+
+    #[tokio::test]
+    async fn test_list_messages_with_before_after_filters() {
+        let (app, _temp) = build_test_app().await;
+        let room_id = create_room_get_id(&app, "filter-room").await;
+        add_participant_to_room(&app, &room_id, "sender", "agent").await;
+
+        // Use a fixed "before" anchor in the past — all messages will be after it.
+        let before_anchor = "2099-01-01T00:00:00Z";
+        let after_anchor = "2000-01-01T00:00:00Z";
+
+        for i in 0..4 {
+            let resp = send_msg(&app, &room_id, "sender", &format!("Msg {i}")).await;
+            assert_eq!(resp.status(), StatusCode::CREATED);
+        }
+
+        // before=far future should include all messages.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/rooms/{room_id}/messages?before={before_anchor}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["total"], 4);
+
+        // after=far past should also include all messages.
+        let resp2 = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/rooms/{room_id}/messages?after={after_anchor}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp2.status(), StatusCode::OK);
+        let json2 = body_json(resp2.into_body()).await;
+        assert_eq!(json2["total"], 4);
     }
 }
