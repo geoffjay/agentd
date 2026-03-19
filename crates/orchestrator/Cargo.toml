@@ -53,5 +53,8 @@ croner = { workspace = true }
 # Tmux management (reuse from wrap crate)
 wrap = { path = "../wrap" }
 
+# Inter-agent communication client
+communicate = { path = "../communicate" }
+
 [dev-dependencies]
 tempfile = "3.14"
