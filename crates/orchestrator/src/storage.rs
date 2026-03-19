@@ -543,6 +543,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
                 .as_deref()
                 .and_then(|s| serde_json::from_str(s).ok()),
             additional_dirs: serde_json::from_str(&model.additional_dirs).unwrap_or_default(),
+            rooms: vec![],
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
@@ -611,6 +612,7 @@ mod tests {
                 extra_mounts: None,
                 resource_limits: None,
                 additional_dirs: vec![],
+                rooms: vec![],
             },
         )
     }
