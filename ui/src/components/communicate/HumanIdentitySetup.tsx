@@ -78,7 +78,7 @@ export function HumanIdentitySetup({ open, onSave }: HumanIdentitySetupProps) {
           role="dialog"
           aria-modal="true"
           aria-labelledby="identity-setup-title"
-          className="relative z-10 w-full max-w-sm rounded-xl bg-gray-800 shadow-xl border border-gray-700"
+          className="relative z-10 rounded-xl bg-gray-800 shadow-xl border border-gray-700"
         >
           {/* Header */}
           <div className="flex flex-col items-center px-6 py-6 text-center border-b border-gray-700">
