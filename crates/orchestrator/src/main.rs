@@ -2,6 +2,7 @@ mod api;
 mod approvals;
 mod entity;
 mod manager;
+mod message_bridge;
 mod migration;
 mod scheduler;
 mod storage;
@@ -15,6 +16,7 @@ use communicate::types::{
     AddParticipantRequest, CreateRoomRequest, ParticipantKind, ParticipantRole, RoomType,
 };
 use manager::AgentManager;
+use message_bridge::MessageBridge;
 use metrics_exporter_prometheus::PrometheusHandle;
 use scheduler::events::EventBus;
 use scheduler::storage::SchedulerStorage;
@@ -300,6 +302,24 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         });
+    }
+
+    // Start the message bridge: connects to the communicate service and routes
+    // room messages to agent prompts (and agent responses back to rooms).
+    // Errors connecting to the communicate service are non-fatal — the bridge
+    // logs a warning and the orchestrator continues without it.
+    {
+        let communicate_url = std::env::var("AGENTD_COMMUNICATE_SERVICE_URL")
+            .unwrap_or_else(|_| "http://localhost:17010".to_string());
+        let bridge = Arc::new(MessageBridge::new(
+            registry.clone(),
+            CommunicateClient::from_env(),
+            storage.clone(),
+            event_bus.clone(),
+            &communicate_url,
+        ));
+        bridge.start().await;
+        info!("MessageBridge started (communicate service: {})", communicate_url);
     }
 
     // Initialize Prometheus metrics

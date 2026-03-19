@@ -26,6 +26,7 @@ pub mod approvals;
 pub mod client;
 pub mod entity;
 pub mod manager;
+pub mod message_bridge;
 pub(crate) mod migration;
 pub mod scheduler;
 pub mod storage;
