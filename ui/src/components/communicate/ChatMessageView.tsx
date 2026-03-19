@@ -10,7 +10,7 @@
  * - Loading states for initial load and older-page load
  */
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { Bot, User, CornerUpLeft, Loader2 } from 'lucide-react'
 import type { ChatMessage, ParticipantKind } from '@/types/communicate'
 
@@ -165,8 +165,8 @@ export function ChatMessageView({
     }
   }, [loadingOlder, hasMore, onLoadOlder])
 
-  // Build lookup map for reply references
-  const messageMap = new Map(messages.map((m) => [m.id, m]))
+  // Build lookup map for reply references — memoised to avoid re-allocating on every render
+  const messageMap = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages])
 
   if (loading) {
     return (

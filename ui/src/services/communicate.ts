@@ -129,7 +129,7 @@ export class CommunicateClient extends ApiClient {
    * to start receiving room events.
    */
   openWebSocket(): WebSocket {
-    return this.openWebSocket('/ws')
+    return super.openWebSocket('/ws')
   }
 }
 

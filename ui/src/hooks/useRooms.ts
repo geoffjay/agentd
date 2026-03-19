@@ -110,5 +110,8 @@ export function useRooms({
 
   const refetch = useCallback(() => fetchRooms(false), [fetchRooms])
 
+  // NOTE: `total` reflects the client-filtered count (after name search), not
+  // the server total. All rooms are fetched in a single request (limit 200) and
+  // filtered client-side, so this is accurate for the current usage pattern.
   return { rooms, total: rooms.length, loading, refreshing, error, refetch }
 }
