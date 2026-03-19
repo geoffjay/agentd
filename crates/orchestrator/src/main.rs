@@ -2,6 +2,7 @@ mod api;
 mod approvals;
 mod entity;
 mod manager;
+mod message_bridge;
 mod migration;
 mod scheduler;
 mod storage;
@@ -232,6 +233,10 @@ async fn main() -> anyhow::Result<()> {
             .await;
     }
 
+    // Single shared communicate client used by both the room auto-join task
+    // and the MessageBridge below.
+    let communicate = CommunicateClient::from_env();
+
     // Spawn a task that auto-joins agents to their configured rooms on connect.
     //
     // Subscribes to the event bus and reacts to `AgentConnected` events.
@@ -240,7 +245,7 @@ async fn main() -> anyhow::Result<()> {
     {
         let mut event_rx = event_bus.subscribe();
         let manager = manager.clone();
-        let communicate = CommunicateClient::from_env();
+        let communicate = communicate.clone();
         let bus = event_bus.clone();
         tokio::spawn(async move {
             loop {
@@ -300,6 +305,24 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         });
+    }
+
+    // Start the message bridge: connects to the communicate service and routes
+    // room messages to agent prompts (and agent responses back to rooms).
+    // start() spawns background tasks and returns immediately — it does not
+    // block the orchestrator startup even if the communicate service is slow.
+    {
+        let communicate_url = env::var("AGENTD_COMMUNICATE_SERVICE_URL")
+            .unwrap_or_else(|_| "http://localhost:17010".to_string());
+        let bridge = Arc::new(message_bridge::MessageBridge::new(
+            registry.clone(),
+            communicate.clone(),
+            storage.clone(),
+            event_bus.clone(),
+            &communicate_url,
+        ));
+        bridge.start().await;
+        info!("MessageBridge started (communicate service: {})", communicate_url);
     }
 
     // Initialize Prometheus metrics

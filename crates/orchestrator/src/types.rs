@@ -595,6 +595,10 @@ pub struct ResultInfo {
     pub is_error: bool,
     /// Token/cost/timing snapshot parsed from the `result` message, if present.
     pub usage: Option<UsageSnapshot>,
+    /// The result text produced by the agent (the `result` field of the SDK
+    /// `result` message). Empty string when the agent produced no text output.
+    #[serde(default)]
+    pub result_text: String,
 }
 
 /// Request body for POST /agents/{id}/clear-context.

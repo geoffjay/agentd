@@ -149,6 +149,29 @@ impl ConnectionRegistry {
         self.activity_states.read().await.get(agent_id).cloned().unwrap_or_default()
     }
 
+    /// Atomically check whether an agent is `Idle` and, if so, transition it
+    /// to `Busy`.
+    ///
+    /// Returns `true` when the agent was idle and has been claimed (it is now
+    /// `Busy`).  Returns `false` when the agent was already busy or not
+    /// connected — the caller should enqueue the message instead of delivering
+    /// it.
+    ///
+    /// This eliminates the TOCTOU race that would exist if callers first called
+    /// [`get_activity_state`] and then [`send_user_message`] (which sets `Busy`
+    /// separately): a second concurrent caller can observe `Idle` between those
+    /// two operations, causing two simultaneous deliveries.
+    pub async fn try_claim_idle(&self, agent_id: &Uuid) -> bool {
+        let mut states = self.activity_states.write().await;
+        match states.get(agent_id) {
+            Some(ActivityState::Idle) => {
+                states.insert(*agent_id, ActivityState::Busy);
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Send a user message (prompt) to a connected agent.
     ///
     /// Uses the Claude Code SDK `stream-json` input format:
@@ -532,6 +555,8 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                 }
 
                 let usage = extract_usage(&msg);
+                let result_text =
+                    msg.get("result").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
                 // Broadcast agent:usage_update event for UI consumers
                 if let Some(ref usage_snap) = usage {
@@ -555,7 +580,9 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                     let _ = registry.stream_tx.send(event.to_string());
                 }
 
-                registry.notify_result(ResultInfo { agent_id: *agent_id, is_error, usage }).await;
+                registry
+                    .notify_result(ResultInfo { agent_id: *agent_id, is_error, usage, result_text })
+                    .await;
             }
             "control_request" => {
                 handle_control_request(agent_id, &msg, registry).await;
