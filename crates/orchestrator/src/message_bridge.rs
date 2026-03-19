@@ -472,15 +472,8 @@ impl MessageBridge {
         };
 
         match self.communicate.add_participant(room_id, &req).await {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("409") || msg.contains("conflict") || msg.contains("Conflict") {
-                    Ok(()) // already a participant
-                } else {
-                    Err(e)
-                }
-            }
+            Ok(_) | Err(communicate::error::CommunicateError::Conflict) => Ok(()),
+            Err(e) => Err(e.into()),
         }
     }
 

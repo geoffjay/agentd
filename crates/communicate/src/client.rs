@@ -36,6 +36,7 @@
 //! # }
 //! ```
 
+use crate::error::CommunicateError;
 use crate::types::{
     AddParticipantRequest, CreateMessageRequest, CreateRoomRequest, MessageResponse,
     PaginatedResponse, ParticipantResponse, RoomResponse,
@@ -131,18 +132,30 @@ impl CommunicateClient {
     // -----------------------------------------------------------------------
 
     /// `POST /rooms/{room_id}/participants` — add a participant to a room.
+    ///
+    /// Returns [`CommunicateError::Conflict`] when the participant is already a
+    /// member (HTTP 409), allowing callers to treat duplicates as success
+    /// without parsing error strings.
     pub async fn add_participant(
         &self,
         room_id: Uuid,
         req: &AddParticipantRequest,
-    ) -> Result<ParticipantResponse> {
-        self.post(&format!("/rooms/{room_id}/participants"), req).await
+    ) -> std::result::Result<ParticipantResponse, CommunicateError> {
+        self.post_or_conflict(&format!("/rooms/{room_id}/participants"), req).await
     }
 
     /// `DELETE /rooms/{room_id}/participants/{identifier}` — remove a
     /// participant from a room.
-    pub async fn remove_participant(&self, room_id: Uuid, identifier: &str) -> Result<()> {
-        self.delete(&format!("/rooms/{room_id}/participants/{identifier}")).await
+    ///
+    /// Returns [`CommunicateError::NotFound`] when the participant is not a
+    /// member of the room (HTTP 404), so callers can distinguish "not a member"
+    /// from transport or server errors.
+    pub async fn remove_participant(
+        &self,
+        room_id: Uuid,
+        identifier: &str,
+    ) -> std::result::Result<(), CommunicateError> {
+        self.delete_or_not_found(&format!("/rooms/{room_id}/participants/{identifier}")).await
     }
 
     /// `GET /participants/{identifier}/rooms` — list all rooms for a
@@ -207,6 +220,73 @@ impl CommunicateClient {
     // Internal HTTP helpers
     // -----------------------------------------------------------------------
 
+    /// POST that maps HTTP 409 Conflict to [`CommunicateError::Conflict`]
+    /// and all other non-2xx responses to [`CommunicateError::Other`].
+    ///
+    /// The `"status 409"` substring is the exact text embedded by [`Self::post`]
+    /// in its bail message (`"POST {url} failed with status 409 Conflict: …"`),
+    /// making this check tightly coupled to that formatting — intentionally so.
+    async fn post_or_conflict<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> std::result::Result<T, CommunicateError> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .post(&url)
+            .json(body)
+            .send()
+            .await
+            .context(format!("Failed to POST {url}"))
+            .map_err(CommunicateError::Other)?;
+
+        if response.status() == reqwest::StatusCode::CONFLICT {
+            return Err(CommunicateError::Conflict);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(CommunicateError::Other(anyhow::anyhow!(
+                "POST {url} failed with status {status}: {body}"
+            )));
+        }
+
+        response
+            .json()
+            .await
+            .context("Failed to deserialize POST response")
+            .map_err(CommunicateError::Other)
+    }
+
+    /// DELETE that maps HTTP 404 Not Found to [`CommunicateError::NotFound`]
+    /// and all other non-2xx responses to [`CommunicateError::Other`].
+    async fn delete_or_not_found(&self, path: &str) -> std::result::Result<(), CommunicateError> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .delete(&url)
+            .send()
+            .await
+            .context(format!("Failed to DELETE {url}"))
+            .map_err(CommunicateError::Other)?;
+
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(CommunicateError::NotFound);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(CommunicateError::Other(anyhow::anyhow!(
+                "DELETE {url} failed with status {status}: {body}"
+            )));
+        }
+
+        Ok(())
+    }
+
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
         let response =
@@ -258,20 +338,6 @@ impl CommunicateClient {
         }
 
         response.json().await.context("Failed to deserialize POST response")
-    }
-
-    async fn delete(&self, path: &str) -> Result<()> {
-        let url = format!("{}{}", self.base_url, path);
-        let response =
-            self.client.delete(&url).send().await.context(format!("Failed to DELETE {url}"))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("DELETE {url} failed with status {status}: {body}");
-        }
-
-        Ok(())
     }
 }
 
