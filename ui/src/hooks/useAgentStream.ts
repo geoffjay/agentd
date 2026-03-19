@@ -79,11 +79,24 @@ interface StoredLogHistory {
   lastTimestamp: string
 }
 
+/** Deduplicate lines by id, keeping the first occurrence. */
+function deduplicateLines(lines: LogLine[]): LogLine[] {
+  const seen = new Set<number>()
+  return lines.filter((l) => {
+    if (seen.has(l.id)) return false
+    seen.add(l.id)
+    return true
+  })
+}
+
 function loadLogHistory(agentId: string): StoredLogHistory | null {
   try {
     const raw = sessionStorage.getItem(LOG_STORAGE_KEY(agentId))
     if (!raw) return null
-    return JSON.parse(raw) as StoredLogHistory
+    const history = JSON.parse(raw) as StoredLogHistory
+    // Guard against corrupt storage with duplicate IDs
+    history.lines = deduplicateLines(history.lines)
+    return history
   } catch {
     return null
   }
@@ -91,7 +104,7 @@ function loadLogHistory(agentId: string): StoredLogHistory | null {
 
 function saveLogHistory(agentId: string, lines: LogLine[], lastTimestamp: string): void {
   try {
-    const stored: StoredLogHistory = { lines, lastTimestamp }
+    const stored: StoredLogHistory = { lines: deduplicateLines(lines), lastTimestamp }
     sessionStorage.setItem(LOG_STORAGE_KEY(agentId), JSON.stringify(stored))
   } catch {
     // sessionStorage may be full or unavailable — silently ignore
@@ -196,6 +209,12 @@ export function useAgentStream(
     // Rehydrate persisted log history on mount
     const stored = loadLogHistory(agentId)
     if (stored && stored.lines.length > 0) {
+      // Advance globalLineId past any rehydrated IDs so new lines never
+      // collide with stored ones (globalLineId resets to 0 on page reload).
+      const maxStoredId = stored.lines.reduce((max, l) => Math.max(max, l.id), 0)
+      if (maxStoredId >= globalLineId) {
+        globalLineId = maxStoredId
+      }
       setLines((prev) => {
         const next = capLines(prev, stored.lines)
         linesRef.current = next
