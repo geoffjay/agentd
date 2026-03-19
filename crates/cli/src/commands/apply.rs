@@ -122,7 +122,12 @@ impl AgentRoomConfig {
         }
     }
 
-    /// Returns the role (defaults to "member").
+    /// Returns the configured role (defaults to `"member"` for plain-string entries).
+    ///
+    /// **Note:** The role is stored and parsed but currently only the room *name* is
+    /// forwarded to the orchestrator (`CreateAgentRequest.rooms`). Per-room role
+    /// configuration at the agent level is reserved for a future release when the
+    /// orchestrator supports it in `AgentConfig`.
     #[allow(dead_code)]
     pub fn role(&self) -> &str {
         match self {
@@ -600,6 +605,9 @@ async fn apply_room(
         return Ok(());
     }
 
+    // Use the current OS user as creator for better audit trails.
+    let creator = std::env::var("USER").unwrap_or_else(|_| "agent-apply".to_string());
+
     // Check if the room already exists.
     let room = match communicate
         .get_room_by_name(&tmpl.name)
@@ -609,8 +617,8 @@ async fn apply_room(
         Some(existing) => {
             if !json {
                 println!(
-                    "  {} room '{}' (ID: {})",
-                    "Skipping".yellow(),
+                    "  {} room '{}' (ID: {}) — skipping creation, ensuring participants...",
+                    "Exists".yellow(),
                     tmpl.name,
                     existing.id.to_string().bright_black()
                 );
@@ -621,22 +629,48 @@ async fn apply_room(
             if !json {
                 print!("  {} room '{}'... ", "Creating".cyan(), tmpl.name);
             }
-            let created = communicate
-                .create_room(&CreateRoomRequest {
-                    name: tmpl.name.clone(),
-                    topic: tmpl.topic.clone(),
-                    description: tmpl.description.clone(),
-                    room_type,
-                    created_by: "agent-apply".to_string(),
-                })
-                .await
-                .context("Failed to create room")?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&created)?);
-            } else {
-                println!("{} (ID: {})", "created".green(), created.id.to_string().bright_black());
+            let req = CreateRoomRequest {
+                name: tmpl.name.clone(),
+                topic: tmpl.topic.clone(),
+                description: tmpl.description.clone(),
+                room_type,
+                created_by: creator,
+            };
+            // Use create_room_or_conflict to gracefully handle a race (or the
+            // get_room_by_name 500-room page cap) where the room already exists
+            // by the time we attempt creation.
+            match communicate.create_room_or_conflict(&req).await {
+                Ok(created) => {
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&created)?);
+                    } else {
+                        println!(
+                            "{} (ID: {})",
+                            "created".green(),
+                            created.id.to_string().bright_black()
+                        );
+                    }
+                    created
+                }
+                Err(CommunicateError::Conflict) => {
+                    // Room was created between our lookup and creation attempt.
+                    // Re-fetch to get the full response.
+                    if !json {
+                        println!("{}", "already exists".yellow());
+                    }
+                    communicate
+                        .get_room_by_name(&tmpl.name)
+                        .await
+                        .context("Failed to reach communicate service")?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Room '{}' conflict on create but not found on retry",
+                                tmpl.name
+                            )
+                        })?
+                }
+                Err(e) => return Err(anyhow::anyhow!(e).context("Failed to create room")),
             }
-            created
         }
     };
 
@@ -777,10 +811,7 @@ pub async fn apply_directory(
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
-            // Dry-run room validation
-            for (_, tmpl) in &room_templates {
-                apply_room(&CommunicateClient::from_env(), tmpl, true, json).await?;
-            }
+            // Room/agent/workflow names are already printed during Phase 0 validation above.
             println!();
             println!(
                 "{} {} room(s), {} agent(s), {} workflow(s)",
@@ -962,19 +993,32 @@ async fn apply_agent(
 
 // ── Teardown: delete resources in reverse order ──────────────────────
 
+/// Tear down all resources declared in a `.agentd/` directory.
+///
+/// Deletion order is the reverse of apply: workflows → agents → rooms.
+/// Agents are removed from their configured rooms before termination.
+/// Rooms declared in `.agentd/rooms/` are deleted last.
 pub async fn teardown_directory(
     client: &OrchestratorClient,
     dir: &Path,
     dry_run: bool,
     json: bool,
 ) -> Result<()> {
+    let rooms_dir = dir.join("rooms");
     let agents_dir = dir.join("agents");
     let workflows_dir = dir.join("workflows");
 
+    let room_files = collect_yaml_files(&rooms_dir)?;
     let agent_files = collect_yaml_files(&agents_dir)?;
     let workflow_files = collect_yaml_files(&workflows_dir)?;
 
-    // Parse templates just for names (and room configs for cleanup)
+    // Parse templates just for names (and room configs for agent cleanup).
+    let mut room_names: Vec<String> = Vec::new();
+    for path in &room_files {
+        let tmpl = parse_room_template(path)?;
+        room_names.push(tmpl.name);
+    }
+
     let mut agent_infos: Vec<(String, Vec<AgentRoomConfig>)> = Vec::new();
     for path in &agent_files {
         let tmpl = parse_agent_template(path)?;
@@ -993,6 +1037,7 @@ pub async fn teardown_directory(
                 "dry_run": true,
                 "workflows_to_delete": workflow_names,
                 "agents_to_delete": agent_infos.iter().map(|(n, _)| n).collect::<Vec<_>>(),
+                "rooms_to_delete": room_names,
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
@@ -1003,11 +1048,17 @@ pub async fn teardown_directory(
             for (name, _) in &agent_infos {
                 println!("  agent: {}", name);
             }
+            for name in &room_names {
+                println!("  room: {}", name);
+            }
         }
         return Ok(());
     }
 
-    // Delete workflows first (they depend on agents)
+    // Create communicate client once; used for room membership cleanup and room deletion.
+    let communicate = CommunicateClient::from_env();
+
+    // Phase 1: Delete workflows first (they depend on agents).
     if !workflow_names.is_empty() {
         if !json {
             println!("{}", "Deleting workflows...".blue().bold());
@@ -1025,19 +1076,17 @@ pub async fn teardown_directory(
         }
     }
 
-    // Then delete agents, removing them from rooms first.
+    // Phase 2: Remove agents from their rooms, then delete agents.
     if !agent_infos.is_empty() {
         if !json {
             println!("{}", "Deleting agents...".blue().bold());
         }
-        let communicate = CommunicateClient::from_env();
         for (name, rooms) in &agent_infos {
             if let Some(agent) = find_agent_by_name(client, name).await? {
                 // Remove agent from each configured room before terminating.
-                if !rooms.is_empty() {
-                    for room_cfg in rooms {
-                        if let Ok(Some(room)) = communicate.get_room_by_name(room_cfg.name()).await
-                        {
+                for room_cfg in rooms {
+                    match communicate.get_room_by_name(room_cfg.name()).await {
+                        Ok(Some(room)) => {
                             // Use agent UUID as participant identifier (how auto-join registers).
                             match communicate
                                 .remove_participant(room.id, &agent.id.to_string())
@@ -1057,6 +1106,21 @@ pub async fn teardown_directory(
                                 }
                             }
                         }
+                        Ok(None) => {} // Room not found — nothing to remove from.
+                        Err(e) => {
+                            // Communicate service unreachable: log and continue so the
+                            // agent is still terminated despite the cleanup failure.
+                            if !json {
+                                eprintln!(
+                                    "  {} looking up room '{}' for agent '{}': {} \
+                                     (agent will still be deleted)",
+                                    "Warning:".yellow(),
+                                    room_cfg.name(),
+                                    name,
+                                    e
+                                );
+                            }
+                        }
                     }
                 }
                 client.terminate_agent(&agent.id).await?;
@@ -1065,6 +1129,51 @@ pub async fn teardown_directory(
                 }
             } else if !json {
                 println!("  {} agent '{}' (not found)", "skipped".yellow(), name);
+            }
+        }
+    }
+
+    // Phase 3: Delete rooms (after agents, reverse of apply order).
+    if !room_names.is_empty() {
+        if !json {
+            println!("{}", "Deleting rooms...".blue().bold());
+        }
+        for name in &room_names {
+            match communicate.get_room_by_name(name).await {
+                Ok(Some(room)) => match communicate.delete_room(room.id).await {
+                    Ok(()) => {
+                        if !json {
+                            println!("  {} room '{}'", "deleted".red(), name);
+                        }
+                    }
+                    Err(CommunicateError::NotFound) => {
+                        if !json {
+                            println!("  {} room '{}' (not found)", "skipped".yellow(), name);
+                        }
+                    }
+                    Err(e) => {
+                        return Err(
+                            anyhow::anyhow!(e).context(format!("Failed to delete room '{}'", name))
+                        );
+                    }
+                },
+                Ok(None) => {
+                    if !json {
+                        println!("  {} room '{}' (not found)", "skipped".yellow(), name);
+                    }
+                }
+                Err(e) => {
+                    // Log as warning — a lookup failure should not abort teardown of
+                    // remaining rooms.
+                    if !json {
+                        eprintln!(
+                            "  {} looking up room '{}' for deletion: {}",
+                            "Warning:".yellow(),
+                            name,
+                            e
+                        );
+                    }
+                }
             }
         }
     }
