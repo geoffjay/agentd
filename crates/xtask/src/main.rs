@@ -146,6 +146,12 @@ const DB_SERVICES: &[DbService] = &[
         db_file: "orchestrator.db",
         entity_dir: "crates/orchestrator/src/entity",
     },
+    DbService {
+        name: "communicate",
+        project: "agentd-communicate",
+        db_file: "communicate.db",
+        entity_dir: "crates/communicate/src/entity",
+    },
 ];
 
 struct DbService {
