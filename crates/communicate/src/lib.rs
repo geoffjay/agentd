@@ -52,3 +52,21 @@ pub(crate) mod migration;
 pub(crate) mod storage;
 #[allow(dead_code)]
 pub(crate) mod websocket;
+
+// ---------------------------------------------------------------------------
+// Migration helpers (used by cargo xtask)
+// ---------------------------------------------------------------------------
+
+/// Apply all pending SeaORM migrations for the communicate database at the
+/// given path, creating the file if it does not yet exist.
+pub async fn apply_migrations_for_path(db_path: &std::path::Path) -> anyhow::Result<()> {
+    agentd_common::storage::apply_migrations::<migration::Migrator>(db_path).await
+}
+
+/// Return the migration status (name, applied) for every known migration of
+/// the communicate database at the given path.
+pub async fn migration_status_for_path(
+    db_path: &std::path::Path,
+) -> anyhow::Result<Vec<(String, bool)>> {
+    agentd_common::storage::migration_status::<migration::Migrator>(db_path).await
+}
