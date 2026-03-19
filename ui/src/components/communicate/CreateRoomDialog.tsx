@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { FocusTrap } from '@/components/common/FocusTrap'
 import { communicateClient } from '@/services/communicate'
+import { mapApiError } from '@/hooks/useToast'
 import type { Room, RoomType } from '@/types/communicate'
 
 // ---------------------------------------------------------------------------
@@ -91,7 +92,7 @@ export function CreateRoomDialog({
       })
       onCreated(room)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to create room')
+      setSaveError(mapApiError(err))
     } finally {
       setSaving(false)
     }

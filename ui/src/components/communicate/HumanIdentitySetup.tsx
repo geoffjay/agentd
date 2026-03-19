@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { User } from 'lucide-react'
+import { User, X } from 'lucide-react'
 import { FocusTrap } from '@/components/common/FocusTrap'
 
 // ---------------------------------------------------------------------------
@@ -16,13 +16,19 @@ import { FocusTrap } from '@/components/common/FocusTrap'
 export interface HumanIdentitySetupProps {
   open: boolean
   onSave: (identifier: string, displayName: string) => void
+  /**
+   * When provided the dialog is dismissible (close button + Escape key).
+   * Omit when this is a mandatory first-time setup — the user must complete
+   * identity configuration before continuing.
+   */
+  onClose?: () => void
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function HumanIdentitySetup({ open, onSave }: HumanIdentitySetupProps) {
+export function HumanIdentitySetup({ open, onSave, onClose }: HumanIdentitySetupProps) {
   const [displayName, setDisplayName] = useState('')
   const [identifier, setIdentifier] = useState('')
   const [errors, setErrors] = useState<{ displayName?: string; identifier?: string }>({})
@@ -72,21 +78,37 @@ export function HumanIdentitySetup({ open, onSave }: HumanIdentitySetupProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60" aria-hidden="true" />
-      <FocusTrap active>
+      {/* Backdrop — clickable only when dismissible */}
+      <div
+        className="absolute inset-0 bg-black/60"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+      <FocusTrap active onEscape={onClose}>
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="identity-setup-title"
-          className="relative z-10 rounded-xl bg-gray-800 shadow-xl border border-gray-700"
+          className="relative z-10 w-full max-w-sm rounded-xl bg-gray-800 shadow-xl border border-gray-700"
         >
           {/* Header */}
-          <div className="flex flex-col items-center px-6 py-6 text-center border-b border-gray-700">
+          <div className="relative flex flex-col items-center px-6 py-6 text-center border-b border-gray-700">
+            {/* Close button — only rendered when dismissible */}
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close dialog"
+                className="absolute right-3 top-3 rounded p-1 text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            )}
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 mb-3">
               <User size={24} className="text-white" />
             </div>
             <h2 id="identity-setup-title" className="text-lg font-semibold text-white">
-              Set up your identity
+              {onClose ? 'Edit your identity' : 'Set up your identity'}
             </h2>
             <p className="mt-1 text-sm text-gray-400">
               Choose how you appear to agents and other participants.

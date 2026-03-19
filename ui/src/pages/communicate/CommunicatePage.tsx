@@ -118,18 +118,34 @@ export function CommunicatePage() {
     loadOlder,
   } = useChatMessages({ roomId: selectedRoom?.id })
 
-  // Check if local human is a participant when room changes
+  // Check if local human is a participant when room changes.
+  // Paginates through all participants to handle rooms with >100 members.
   useEffect(() => {
     if (!selectedRoom || !identity) {
       setIsParticipant(false)
       return
     }
-    communicateClient
-      .listParticipants(selectedRoom.id, { limit: 100 })
-      .then((res) => {
-        setIsParticipant(res.items.some((p) => p.identifier === identity.identifier))
-      })
-      .catch(() => setIsParticipant(false))
+    const roomId = selectedRoom.id
+    const identifier = identity.identifier
+    let cancelled = false
+
+    async function checkMembership() {
+      const limit = 100
+      let offset = 0
+      while (!cancelled) {
+        const res = await communicateClient.listParticipants(roomId, { limit, offset })
+        if (res.items.some((p) => p.identifier === identifier)) {
+          if (!cancelled) setIsParticipant(true)
+          return
+        }
+        if (res.items.length < limit) break // no more pages
+        offset += limit
+      }
+      if (!cancelled) setIsParticipant(false)
+    }
+
+    checkMembership().catch(() => { if (!cancelled) setIsParticipant(false) })
+    return () => { cancelled = true }
   }, [selectedRoom, identity])
 
   // Handle new message from WebSocket — skip if it's from us (we already appended optimistically)
@@ -184,7 +200,7 @@ export function CommunicatePage() {
         })
         appendMessage(msg)
       } catch (err) {
-        toastRef.current.error(err instanceof Error ? err.message : 'Failed to send message')
+        toastRef.current.apiError(err, 'Failed to send message')
       }
     },
     [selectedRoom, identity, appendMessage],
@@ -202,7 +218,7 @@ export function CommunicatePage() {
       })
       setIsParticipant(true)
     } catch (err) {
-      toastRef.current.error(err instanceof Error ? err.message : 'Failed to join room')
+      toastRef.current.apiError(err, 'Failed to join room')
     } finally {
       setJoiningRoom(false)
     }
@@ -239,13 +255,14 @@ export function CommunicatePage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Identity setup modal */}
+      {/* Identity setup modal — dismissible only when editing an existing identity */}
       <HumanIdentitySetup
         open={showIdentitySetup}
         onSave={(identifier, displayName) => {
           setup(identifier, displayName)
           setShowIdentitySetup(false)
         }}
+        onClose={isSetup ? () => setShowIdentitySetup(false) : undefined}
       />
 
       {/* Create room dialog */}

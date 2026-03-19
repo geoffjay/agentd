@@ -106,9 +106,9 @@ describe('CreateRoomDialog', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /create room/i }))
 
-    // ApiClient extracts the `error` field from the JSON error body
+    // mapApiError maps 409 → "Conflict — resource already exists"
     await waitFor(() =>
-      expect(screen.getByText(/name already taken/i)).toBeInTheDocument(),
+      expect(screen.getByText(/conflict/i)).toBeInTheDocument(),
     )
   })
 

@@ -12,11 +12,11 @@
  * - Leave room for the local human participant
  */
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { X, Trash2, UserPlus, UserMinus, Save } from 'lucide-react'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { communicateClient } from '@/services/communicate'
-import { mapApiError } from '@/hooks/useToast'
+import { mapApiError, useToast } from '@/hooks/useToast'
 import type { Participant, ParticipantKind, ParticipantRole, Room } from '@/types/communicate'
 
 // ---------------------------------------------------------------------------
@@ -44,6 +44,10 @@ export function RoomSettingsPanel({
   onLeft,
   onRoomUpdated,
 }: RoomSettingsPanelProps) {
+  const toast = useToast()
+  const toastRef = useRef(toast)
+  toastRef.current = toast
+
   // Editable fields
   const [topic, setTopic] = useState(room.topic ?? '')
   const [description, setDescription] = useState(room.description ?? '')
@@ -81,11 +85,16 @@ export function RoomSettingsPanel({
     }
   }, [room.id])
 
+  // Fetch participants only when the room changes (not on every topic/description save)
+  useEffect(() => {
+    void fetchParticipants()
+  }, [fetchParticipants])
+
+  // Sync editable fields when the room prop updates (e.g. after a save)
   useEffect(() => {
     setTopic(room.topic ?? '')
     setDescription(room.description ?? '')
-    void fetchParticipants()
-  }, [room.id, room.topic, room.description, fetchParticipants])
+  }, [room.topic, room.description])
 
   // -------------------------------------------------------------------------
   // Handlers
@@ -136,8 +145,8 @@ export function RoomSettingsPanel({
     try {
       await communicateClient.removeParticipant(room.id, identifier)
       setParticipants((prev) => prev.filter((p) => p.identifier !== identifier))
-    } catch {
-      // Fail silently
+    } catch (err) {
+      toastRef.current.error('Failed to remove participant', { message: mapApiError(err) })
     } finally {
       setRemovingIdentifier(undefined)
     }
@@ -148,12 +157,12 @@ export function RoomSettingsPanel({
     try {
       await communicateClient.deleteRoom(room.id)
       onRoomDeleted()
-    } catch {
-      // Fail silently, close anyway
-      onRoomDeleted()
+    } catch (err) {
+      // Do NOT invoke onRoomDeleted — the room still exists on the server.
+      toastRef.current.error('Failed to delete room', { message: mapApiError(err) })
+      setShowDeleteRoom(false)
     } finally {
       setDeletingRoom(false)
-      setShowDeleteRoom(false)
     }
   }
 
@@ -162,11 +171,12 @@ export function RoomSettingsPanel({
     try {
       await communicateClient.removeParticipant(room.id, localIdentifier)
       onLeft()
-    } catch {
-      onLeft()
+    } catch (err) {
+      // Do NOT invoke onLeft — the participant is still in the room on the server.
+      toastRef.current.error('Failed to leave room', { message: mapApiError(err) })
+      setShowLeaveRoom(false)
     } finally {
       setLeavingRoom(false)
-      setShowLeaveRoom(false)
     }
   }
 
