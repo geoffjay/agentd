@@ -17,6 +17,7 @@ import {
   GitBranch,
   HelpCircle,
   Home,
+  MessageSquare,
   Webhook,
   X,
   Hexagon,
@@ -59,6 +60,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Questions', path: '/questions', icon: <HelpCircle size={20} /> },
   { label: 'Workflows', path: '/workflows', icon: <GitBranch size={20} /> },
   { label: 'Memories', path: '/memories', icon: <Brain size={20} /> },
+  { label: 'Communicate', path: '/communicate', icon: <MessageSquare size={20} /> },
   { label: 'Monitoring', path: '/monitoring', icon: <BarChart2 size={20} /> },
   { label: 'Hooks', path: '/hooks', icon: <Webhook size={20} /> },
 ]
