@@ -8,6 +8,7 @@ mod entity;
 mod migration;
 mod storage;
 mod types;
+mod websocket;
 
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
@@ -16,6 +17,7 @@ use std::env;
 use std::sync::Arc;
 use storage::CommunicateStorage;
 use tracing::info;
+use websocket::ConnectionManager;
 
 fn init_metrics() -> PrometheusHandle {
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
@@ -43,9 +45,10 @@ async fn main() -> anyhow::Result<()> {
     info!("Communicate storage initialized at: {:?}", CommunicateStorage::get_db_path()?);
 
     let storage = Arc::new(storage);
+    let connection_manager = Arc::new(ConnectionManager::new());
     let metrics_handle = init_metrics();
 
-    let api_state = ApiState { storage };
+    let api_state = ApiState { storage, connection_manager };
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 

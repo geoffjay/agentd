@@ -36,6 +36,7 @@ use crate::types::{
     PaginatedResponse, ParticipantResponse, RoomResponse, RoomType, UpdateParticipantRoleRequest,
     UpdateRoomRequest,
 };
+use crate::websocket::{ws_handler, ConnectionManager, RoomEvent};
 
 pub use agentd_common::error::ApiError;
 
@@ -43,6 +44,7 @@ pub use agentd_common::error::ApiError;
 #[derive(Clone)]
 pub struct ApiState {
     pub storage: Arc<CommunicateStorage>,
+    pub connection_manager: Arc<ConnectionManager>,
 }
 
 /// Build the Axum router with all communicate API routes.
@@ -70,6 +72,7 @@ pub fn create_router(state: ApiState) -> Router {
 
     Router::new()
         .route("/health", get(health))
+        .route("/ws", get(ws_handler))
         .nest("/rooms", rooms_router)
         .nest("/participants", participants_router)
         .nest("/messages", messages_router)
@@ -230,7 +233,15 @@ async fn add_participant(
     let count = state.storage.count_participants_in_room(&id).await?;
     metrics::gauge!("participants_total", "room_id" => id.to_string()).set(count as f64);
 
-    Ok((StatusCode::CREATED, Json(ParticipantResponse::from(participant))))
+    let response = ParticipantResponse::from(participant);
+
+    // Broadcast participant joined event to WebSocket subscribers
+    state
+        .connection_manager
+        .broadcast_to_room(id, RoomEvent::ParticipantJoined(response.clone()))
+        .await;
+
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 /// `GET /rooms/{id}/participants/{identifier}` — get a specific participant.
@@ -269,6 +280,16 @@ async fn remove_participant(
     if removed {
         let count = state.storage.count_participants_in_room(&id).await?;
         metrics::gauge!("participants_total", "room_id" => id.to_string()).set(count as f64);
+
+        // Broadcast participant left event to WebSocket subscribers
+        state
+            .connection_manager
+            .broadcast_to_room(
+                id,
+                RoomEvent::ParticipantLeft { room_id: id, identifier: identifier.clone() },
+            )
+            .await;
+
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
@@ -308,7 +329,12 @@ async fn send_message(
     let count = state.storage.get_room_message_count(&id).await?;
     metrics::histogram!("messages_per_room", "room_id" => id.to_string()).record(count as f64);
 
-    Ok((StatusCode::CREATED, Json(MessageResponse::from(message))))
+    let response = MessageResponse::from(message);
+
+    // Broadcast message to WebSocket subscribers
+    state.connection_manager.broadcast_to_room(id, RoomEvent::Message(response.clone())).await;
+
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 /// `GET /rooms/{id}/messages` — list messages in a room (paginated, filterable).
@@ -403,7 +429,8 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let storage = Arc::new(CommunicateStorage::with_path(&db_path).await.unwrap());
-        let state = ApiState { storage };
+        let connection_manager = Arc::new(ConnectionManager::new());
+        let state = ApiState { storage, connection_manager };
         (create_router(state), temp_dir)
     }
 
