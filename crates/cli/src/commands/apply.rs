@@ -64,6 +64,10 @@ pub struct AgentTemplate {
     /// Relative paths are resolved relative to the YAML file location.
     #[serde(default)]
     pub additional_dirs: Vec<String>,
+    /// Rooms the agent should automatically join when it connects.
+    /// Each entry is a room name — rooms will be created if they don't exist.
+    #[serde(default)]
+    pub rooms: Vec<String>,
 }
 
 fn default_working_dir() -> String {
@@ -678,6 +682,7 @@ async fn apply_agent(
         },
         resource_limits: tmpl.resource_limits.clone(),
         additional_dirs,
+        rooms: tmpl.rooms.clone(),
     };
 
     let agent = client.create_agent(&request).await?;

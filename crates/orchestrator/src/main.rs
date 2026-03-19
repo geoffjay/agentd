@@ -10,6 +10,10 @@ mod websocket;
 
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
+use communicate::client::CommunicateClient;
+use communicate::types::{
+    AddParticipantRequest, CreateRoomRequest, ParticipantKind, ParticipantRole, RoomType,
+};
 use manager::AgentManager;
 use metrics_exporter_prometheus::PrometheusHandle;
 use scheduler::events::EventBus;
@@ -21,7 +25,7 @@ use std::future::IntoFuture;
 use std::sync::Arc;
 use storage::AgentStorage;
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 use websocket::ConnectionRegistry;
 use wrap::backend::{ExecutionBackend, TmuxBackend};
@@ -228,6 +232,76 @@ async fn main() -> anyhow::Result<()> {
             .await;
     }
 
+    // Spawn a task that auto-joins agents to their configured rooms on connect.
+    //
+    // Subscribes to the event bus and reacts to `AgentConnected` events.
+    // Errors from the communicate service are logged as warnings and never
+    // prevent the agent from starting up.
+    {
+        let mut event_rx = event_bus.subscribe();
+        let manager = manager.clone();
+        let communicate = CommunicateClient::from_env();
+        let bus = event_bus.clone();
+        tokio::spawn(async move {
+            loop {
+                match event_rx.recv().await {
+                    Ok(scheduler::events::SystemEvent::AgentConnected { agent_id }) => {
+                        let agent = match manager.get_agent(&agent_id).await {
+                            Ok(Some(a)) => a,
+                            Ok(None) => continue,
+                            Err(e) => {
+                                warn!(%agent_id, %e, "Failed to look up agent for room auto-join");
+                                continue;
+                            }
+                        };
+                        if agent.config.rooms.is_empty() {
+                            continue;
+                        }
+                        let communicate = communicate.clone();
+                        let agent_name = agent.name.clone();
+                        let rooms = agent.config.rooms.clone();
+                        let bus = bus.clone();
+                        tokio::spawn(async move {
+                            for room_name in &rooms {
+                                match join_or_create_room(
+                                    &communicate,
+                                    &agent_id,
+                                    &agent_name,
+                                    room_name,
+                                )
+                                .await
+                                {
+                                    Ok(room_id) => {
+                                        info!(%agent_id, %room_name, %room_id, "Agent joined room");
+                                        bus.publish(
+                                            scheduler::events::SystemEvent::AgentJoinedRoom {
+                                                agent_id,
+                                                room_id,
+                                            },
+                                        );
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            %agent_id,
+                                            %room_name,
+                                            error = %e,
+                                            "Failed to auto-join room (communicate service may be unavailable)"
+                                        );
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        warn!("Room auto-join task lagged by {} events", n);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
     // Initialize Prometheus metrics
     let metrics_handle = init_metrics();
 
@@ -283,4 +357,54 @@ async fn main() -> anyhow::Result<()> {
 async fn shutdown_signal() {
     tokio::signal::ctrl_c().await.expect("Failed to install ctrl+c handler");
     info!("Shutdown signal received");
+}
+
+/// Look up a room by name via the communicate service, creating it if it doesn't
+/// exist, then add the agent as a participant.
+///
+/// Returns the room UUID on success. Treat duplicate-participant errors as success.
+async fn join_or_create_room(
+    client: &CommunicateClient,
+    agent_id: &Uuid,
+    agent_name: &str,
+    room_name: &str,
+) -> anyhow::Result<Uuid> {
+    // Find or create the room.
+    let room = match client.get_room_by_name(room_name).await? {
+        Some(room) => room,
+        None => {
+            client
+                .create_room(&CreateRoomRequest {
+                    name: room_name.to_string(),
+                    topic: None,
+                    description: None,
+                    room_type: RoomType::Group,
+                    created_by: agent_name.to_string(),
+                })
+                .await?
+        }
+    };
+
+    // Add the agent as a participant — treat 409/conflict as success.
+    let identifier = agent_id.to_string();
+    let result = client
+        .add_participant(
+            room.id,
+            &AddParticipantRequest {
+                identifier,
+                kind: ParticipantKind::Agent,
+                display_name: agent_name.to_string(),
+                role: ParticipantRole::Member,
+            },
+        )
+        .await;
+
+    if let Err(ref e) = result {
+        let msg = e.to_string();
+        if msg.contains("409") || msg.contains("conflict") || msg.contains("Conflict") {
+            return Ok(room.id);
+        }
+    }
+    result?;
+    Ok(room.id)
 }

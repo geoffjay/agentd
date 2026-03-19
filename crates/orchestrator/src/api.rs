@@ -125,6 +125,7 @@ async fn create_agent(
         extra_mounts: req.extra_mounts,
         resource_limits: req.resource_limits,
         additional_dirs: req.additional_dirs,
+        rooms: req.rooms,
     };
 
     let agent = state.manager.spawn_agent(req.name, config).await?;
