@@ -8,17 +8,22 @@
 //!
 //! # Architecture
 //!
-//! The bridge runs as a background task and maintains:
-//! - A WebSocket connection to the communicate service (to receive room events)
-//! - Per-agent message queues (for agents that are busy when a message arrives)
-//! - Echo-loop prevention via message metadata
-//! - Metrics counters for deliveries, queued messages, and drops
+//! The bridge runs as two long-lived background tasks:
+//!
+//! 1. **WS loop** — connects to the communicate service WebSocket with
+//!    automatic exponential-backoff reconnection. Re-subscribes to all known
+//!    rooms on each reconnect.
+//! 2. **Event bus listener** — reacts to [`SystemEvent::AgentJoinedRoom`]
+//!    events to update the room→agent mapping and subscribe to the new room.
+//!
+//! A [`ResultCallback`] is registered on the [`ConnectionRegistry`] so that
+//! agent responses are posted back to the originating room.
 //!
 //! # Room Semantics
 //!
 //! | Room type   | Delivery target                              |
 //! |-------------|----------------------------------------------|
-//! | `Direct`    | The other (non-sender) participant           |
+//! | `Direct`    | At most one other (non-sender) participant   |
 //! | `Group`     | All agent participants                        |
 //! | `Broadcast` | All agent participants                        |
 //!
@@ -29,10 +34,17 @@
 //! [Room: <room_name>] <sender_name> (<sender_kind>):
 //! <content>
 //! ```
+//!
+//! # Echo Prevention
+//!
+//! Messages posted by the bridge back to rooms carry the metadata key
+//! `"source"` with value `"agent_response"`. Incoming messages with this
+//! metadata are silently skipped so the agent does not receive its own reply
+//! as a new prompt.
 
 use crate::scheduler::events::{EventBus, SystemEvent};
 use crate::storage::AgentStorage;
-use crate::types::ActivityState;
+use crate::types::ResultInfo;
 use crate::websocket::ConnectionRegistry;
 use communicate::client::CommunicateClient;
 use communicate::types::{
@@ -42,6 +54,7 @@ use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{Mutex, RwLock};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -51,7 +64,7 @@ use uuid::Uuid;
 /// Sentinel identifier used when the bridge registers itself in rooms.
 const BRIDGE_IDENTIFIER: &str = "agentd-orchestrator";
 /// Display name shown in participant lists for the bridge.
-const BRIDGE_DISPLAY_NAME: &str = "Orchestrator Bridge";
+const BRIDGE_DISPLAY_NAME: &str = "Orchestrator%20Bridge";
 /// Default maximum number of queued messages per agent.
 const DEFAULT_MAX_QUEUE_DEPTH: usize = 10;
 /// Metadata key used to mark messages posted by the bridge (echo prevention).
@@ -60,6 +73,10 @@ const META_SOURCE_KEY: &str = "source";
 const META_SOURCE_VALUE: &str = "agent_response";
 /// Metadata key carrying the originating agent ID on response messages.
 const META_AGENT_ID_KEY: &str = "agent_id";
+/// Initial backoff duration for WebSocket reconnection attempts.
+const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
+/// Maximum backoff duration for WebSocket reconnection attempts.
+const MAX_BACKOFF: Duration = Duration::from_secs(60);
 
 // ---------------------------------------------------------------------------
 // Communicate WebSocket protocol types (client-side view)
@@ -127,8 +144,7 @@ type WsSink = futures::stream::SplitSink<
 pub struct MessageBridge {
     registry: ConnectionRegistry,
     communicate: CommunicateClient,
-    /// Agent storage for resolving display names. `None` in tests that don't
-    /// need the storage layer.
+    /// Agent storage for resolving display names. `None` in tests.
     storage: Option<Arc<AgentStorage>>,
     event_bus: Arc<EventBus>,
 
@@ -147,10 +163,10 @@ pub struct MessageBridge {
     /// Maximum number of pending messages per agent before dropping.
     max_queue_depth: usize,
 
-    /// Sink half of the communicate WebSocket (shared across tasks).
+    /// Sink half of the communicate WebSocket (replaced on each reconnect).
     ws_tx: Arc<Mutex<Option<WsSink>>>,
 
-    /// URL of the communicate service WebSocket endpoint (base, without query).
+    /// WS base URL for the communicate service (scheme already converted to ws/wss).
     ws_url: String,
 }
 
@@ -176,7 +192,9 @@ impl MessageBridge {
         )
     }
 
-    /// Internal constructor used by tests and production code alike.
+    /// Internal constructor that accepts `Option<Arc<AgentStorage>>`.
+    ///
+    /// Used by tests that do not exercise storage code paths.
     fn with_optional_storage(
         registry: ConnectionRegistry,
         communicate: CommunicateClient,
@@ -203,22 +221,16 @@ impl MessageBridge {
         }
     }
 
-    /// Override the maximum per-agent queue depth (default: 10).
-    #[allow(dead_code)]
-    pub fn with_max_queue_depth(mut self, depth: usize) -> Self {
-        self.max_queue_depth = depth;
-        self
-    }
-
-    /// Start the bridge as a background task.
+    /// Start the bridge as two background tasks.
     ///
-    /// This spawns two long-running tasks:
-    /// 1. **WS listener** — connects to communicate and forwards room messages.
-    /// 2. **Event bus listener** — reacts to `AgentJoinedRoom` events to subscribe
-    ///    to newly joined rooms.
+    /// This method returns immediately after spawning:
+    /// 1. A **WS loop** task that connects to the communicate service and
+    ///    reconnects automatically with exponential backoff on disconnect.
+    /// 2. An **event bus listener** task that reacts to `AgentJoinedRoom`
+    ///    events.
     ///
-    /// Also registers a result callback on the [`ConnectionRegistry`] so that
-    /// agent responses are posted back to the originating room.
+    /// A result callback is also registered on the [`ConnectionRegistry`] so
+    /// that agent responses are posted back to rooms.
     pub async fn start(self: Arc<Self>) {
         // Initialize metrics counters.
         metrics::counter!("messages_delivered_to_agents").absolute(0);
@@ -232,46 +244,21 @@ impl MessageBridge {
                 .on_result(Arc::new(move |info| {
                     let bridge = bridge.clone();
                     tokio::spawn(async move {
-                        bridge.on_agent_result(info.agent_id, info.is_error).await;
+                        bridge.on_agent_result(info).await;
                     });
                 }))
                 .await;
         }
 
-        // Connect to communicate WebSocket.
-        // URL-encode the display name for the query string.
-        let display_name_encoded = BRIDGE_DISPLAY_NAME.replace(' ', "%20");
-        let connect_url = format!(
-            "{}/ws?identifier={}&kind=agent&display_name={}",
-            self.ws_url, BRIDGE_IDENTIFIER, display_name_encoded,
-        );
-
-        let ws_stream = match connect_async(&connect_url).await {
-            Ok((ws, _)) => ws,
-            Err(e) => {
-                warn!(
-                    url = %connect_url,
-                    error = %e,
-                    "MessageBridge: could not connect to communicate WebSocket (service may be unavailable). Bridge will not be active."
-                );
-                return;
-            }
-        };
-
-        info!("MessageBridge: connected to communicate WebSocket at {}", connect_url);
-
-        let (ws_sink, ws_stream) = ws_stream.split();
-        *self.ws_tx.lock().await = Some(ws_sink);
-
-        // Task 1: receive room events from communicate WebSocket.
+        // Spawn WS loop (reconnects automatically — does NOT block startup).
         {
             let bridge = self.clone();
             tokio::spawn(async move {
-                bridge.run_ws_receiver(ws_stream).await;
+                bridge.run_ws_loop().await;
             });
         }
 
-        // Task 2: listen for AgentJoinedRoom events from the event bus.
+        // Spawn event bus listener.
         {
             let bridge = self.clone();
             tokio::spawn(async move {
@@ -281,8 +268,63 @@ impl MessageBridge {
     }
 
     // -----------------------------------------------------------------------
-    // WebSocket receiver task
+    // WebSocket connection loop with auto-reconnect
     // -----------------------------------------------------------------------
+
+    async fn run_ws_loop(&self) {
+        let connect_url = format!(
+            "{}/ws?identifier={}&kind=agent&display_name={}",
+            self.ws_url, BRIDGE_IDENTIFIER, BRIDGE_DISPLAY_NAME,
+        );
+
+        let mut backoff = INITIAL_BACKOFF;
+
+        loop {
+            match connect_async(&connect_url).await {
+                Ok((ws, _)) => {
+                    info!(url = %connect_url, "MessageBridge: connected to communicate WebSocket");
+                    backoff = INITIAL_BACKOFF; // reset on successful connect
+
+                    let (sink, stream) = ws.split();
+                    *self.ws_tx.lock().await = Some(sink);
+
+                    // Re-subscribe to all rooms tracked so far.
+                    self.resubscribe_all_rooms().await;
+
+                    // Block until the connection drops.
+                    self.run_ws_receiver(stream).await;
+
+                    // Connection dropped — clear the sink.
+                    *self.ws_tx.lock().await = None;
+                    warn!(
+                        retry_in = ?backoff,
+                        "MessageBridge: communicate WebSocket disconnected, will retry"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        retry_in = ?backoff,
+                        "MessageBridge: communicate WebSocket connect failed, will retry"
+                    );
+                }
+            }
+
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(MAX_BACKOFF);
+        }
+    }
+
+    /// Re-subscribe to every room the bridge already knows about.
+    ///
+    /// Called after a WS reconnection so that previously-subscribed rooms are
+    /// not silently dropped.
+    async fn resubscribe_all_rooms(&self) {
+        let room_ids: Vec<Uuid> = self.room_agents.read().await.keys().copied().collect();
+        for room_id in room_ids {
+            self.ws_subscribe(room_id).await;
+        }
+    }
 
     async fn run_ws_receiver(
         &self,
@@ -294,29 +336,26 @@ impl MessageBridge {
     ) {
         while let Some(msg) = stream.next().await {
             match msg {
-                Ok(Message::Text(text)) => {
-                    self.handle_ws_message(&text).await;
-                }
+                Ok(Message::Text(text)) => self.handle_ws_message(&text).await,
                 Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
                 Ok(Message::Close(_)) => {
-                    warn!("MessageBridge: communicate WebSocket closed");
+                    debug!("MessageBridge: communicate WebSocket closed by server");
                     break;
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    error!("MessageBridge: WebSocket error: {}", e);
+                    error!("MessageBridge: WebSocket receive error: {}", e);
                     break;
                 }
             }
         }
-        warn!("MessageBridge: WS receiver loop exited — bridge is no longer active");
     }
 
     async fn handle_ws_message(&self, text: &str) {
         let msg: ServerMessage = match serde_json::from_str(text) {
             Ok(m) => m,
             Err(e) => {
-                debug!("MessageBridge: could not parse message from communicate: {}: {}", e, text);
+                debug!(error = %e, raw = %text, "MessageBridge: could not parse communicate message");
                 return;
             }
         };
@@ -336,7 +375,7 @@ impl MessageBridge {
     }
 
     // -----------------------------------------------------------------------
-    // Event bus listener task
+    // Event bus listener
     // -----------------------------------------------------------------------
 
     async fn run_event_listener(&self) {
@@ -379,14 +418,14 @@ impl MessageBridge {
         // Update local tracking.
         {
             let mut room_agents = self.room_agents.write().await;
-            let agents = room_agents.entry(room_id).or_insert_with(Vec::new);
+            let agents = room_agents.entry(room_id).or_default();
             if !agents.contains(&agent_id) {
                 agents.push(agent_id);
             }
         }
         {
             let mut agent_rooms = self.agent_rooms.write().await;
-            let rooms = agent_rooms.entry(agent_id).or_insert_with(Vec::new);
+            let rooms = agent_rooms.entry(agent_id).or_default();
             if !rooms.contains(&room_id) {
                 rooms.push(room_id);
             }
@@ -394,7 +433,16 @@ impl MessageBridge {
         self.room_info.write().await.insert(room_id, (room.room_type.clone(), room.name.clone()));
 
         // Ensure the bridge itself is a participant so it can subscribe.
-        self.ensure_bridge_participant(room_id).await;
+        // If this fails we skip the subscription — there is no point subscribing
+        // if the communicate service will reject our subscribe request.
+        if let Err(e) = self.ensure_bridge_participant(room_id).await {
+            warn!(
+                %room_id,
+                error = %e,
+                "MessageBridge: could not add bridge as room participant; skipping subscription"
+            );
+            return Ok(());
+        }
 
         // Subscribe to room events over the WS connection.
         self.ws_subscribe(room_id).await;
@@ -411,26 +459,26 @@ impl MessageBridge {
     }
 
     /// Ensure `agentd-orchestrator` is registered as a participant in `room_id`.
-    async fn ensure_bridge_participant(&self, room_id: Uuid) {
+    ///
+    /// Returns `Ok(())` when the bridge is already a participant (409) or was
+    /// just added. Returns `Err` on any other failure so the caller can decide
+    /// whether to proceed with the WS subscription.
+    async fn ensure_bridge_participant(&self, room_id: Uuid) -> anyhow::Result<()> {
         let req = AddParticipantRequest {
             identifier: BRIDGE_IDENTIFIER.to_string(),
             kind: ParticipantKind::Agent,
-            display_name: BRIDGE_DISPLAY_NAME.to_string(),
+            display_name: "Orchestrator Bridge".to_string(),
             role: ParticipantRole::Observer,
         };
 
         match self.communicate.add_participant(room_id, &req).await {
-            Ok(_) => {}
+            Ok(_) => Ok(()),
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains("409") || msg.contains("conflict") || msg.contains("Conflict") {
-                    // Already a participant — fine.
+                    Ok(()) // already a participant
                 } else {
-                    warn!(
-                        %room_id,
-                        error = %msg,
-                        "MessageBridge: could not add bridge as room participant"
-                    );
+                    Err(e)
                 }
             }
         }
@@ -438,8 +486,7 @@ impl MessageBridge {
 
     /// Send a subscribe message to the communicate WebSocket.
     async fn ws_subscribe(&self, room_id: Uuid) {
-        let msg = ClientMessage::Subscribe { room_id };
-        self.ws_send(&msg).await;
+        self.ws_send(&ClientMessage::Subscribe { room_id }).await;
     }
 
     /// Serialize and send a message over the bridge WebSocket connection.
@@ -475,38 +522,35 @@ impl MessageBridge {
             return;
         }
 
-        // Get room info.
-        let room_info = self.room_info.read().await;
-        let (room_type, room_name) = match room_info.get(&room_id) {
-            Some(info) => info.clone(),
+        // Retrieve room info.
+        let (room_type, room_name) = match self.room_info.read().await.get(&room_id).cloned() {
+            Some(info) => info,
             None => {
                 debug!(%room_id, "MessageBridge: received message for untracked room");
                 return;
             }
         };
-        drop(room_info);
 
         // Get agent participants in this room.
-        let agent_ids: Vec<Uuid> = {
-            let room_agents = self.room_agents.read().await;
-            match room_agents.get(&room_id) {
-                Some(agents) => agents.clone(),
-                None => return,
-            }
+        let agent_ids: Vec<Uuid> = match self.room_agents.read().await.get(&room_id).cloned() {
+            Some(agents) if !agents.is_empty() => agents,
+            _ => return,
         };
-
-        if agent_ids.is_empty() {
-            return;
-        }
 
         // Determine target agents based on room type.
         let targets: Vec<Uuid> = match room_type {
             RoomType::Direct => {
-                // In a Direct room, deliver only to agents that are NOT the sender.
-                agent_ids.into_iter().filter(|id| id.to_string() != message.sender_id).collect()
+                // In a Direct room there are exactly two participants. Deliver
+                // to at most one agent that is NOT the sender, enforcing the
+                // one-to-one invariant even if the data is inconsistent.
+                agent_ids
+                    .into_iter()
+                    .filter(|id| id.to_string() != message.sender_id)
+                    .take(1)
+                    .collect()
             }
             RoomType::Group | RoomType::Broadcast => {
-                // Deliver to all agents that are not the sender.
+                // Deliver to all agent participants that are not the sender.
                 agent_ids.into_iter().filter(|id| id.to_string() != message.sender_id).collect()
             }
         };
@@ -515,10 +559,9 @@ impl MessageBridge {
             return;
         }
 
-        let sender_kind = message.sender_kind.to_string();
         let prompt = format!(
             "[Room: {}] {} ({}):\n{}",
-            room_name, message.sender_name, sender_kind, message.content
+            room_name, message.sender_name, message.sender_kind, message.content
         );
 
         for agent_id in targets {
@@ -528,6 +571,11 @@ impl MessageBridge {
     }
 
     /// Deliver a prompt to an agent, or enqueue it if the agent is busy.
+    ///
+    /// Uses [`ConnectionRegistry::try_claim_idle`] to atomically check and
+    /// transition the agent's activity state, eliminating the TOCTOU race
+    /// that would exist if `get_activity_state` and `send_user_message` were
+    /// called separately.
     async fn deliver_or_queue(
         &self,
         agent_id: Uuid,
@@ -536,10 +584,13 @@ impl MessageBridge {
         prompt: String,
         message: &communicate::types::MessageResponse,
     ) {
-        let state = self.registry.get_activity_state(&agent_id).await;
+        if self.registry.try_claim_idle(&agent_id).await {
+            // Agent was idle and is now claimed (Busy). Record the active room
+            // BEFORE sending so that if the result callback fires before this
+            // await resumes, the room is already tracked.
+            self.active_rooms.write().await.insert(agent_id, room_id);
 
-        if state == ActivityState::Idle {
-            // Agent is idle — deliver immediately.
+            // `send_user_message` will also set Busy — that is idempotent here.
             match self.registry.send_user_message(&agent_id, &prompt).await {
                 Ok(()) => {
                     info!(
@@ -548,10 +599,13 @@ impl MessageBridge {
                         message_id = %message.id,
                         "MessageBridge: delivered message to agent"
                     );
-                    self.active_rooms.write().await.insert(agent_id, room_id);
                     metrics::counter!("messages_delivered_to_agents").increment(1);
                 }
                 Err(e) => {
+                    // Send failed (agent likely disconnected). Roll back active
+                    // room tracking so the result callback does not attempt to
+                    // post to the room.
+                    self.active_rooms.write().await.remove(&agent_id);
                     warn!(
                         %agent_id,
                         %room_id,
@@ -563,7 +617,7 @@ impl MessageBridge {
         } else {
             // Agent is busy — enqueue.
             let mut queues = self.pending_queues.write().await;
-            let queue = queues.entry(agent_id).or_insert_with(VecDeque::new);
+            let queue = queues.entry(agent_id).or_default();
 
             if queue.len() >= self.max_queue_depth {
                 warn!(
@@ -581,14 +635,10 @@ impl MessageBridge {
                     sender_kind: message.sender_kind.to_string(),
                     content: message.content.clone(),
                 });
-                let depth = queue.len() as f64;
+                let total: usize = queues.values().map(|q| q.len()).sum();
                 drop(queues);
-                metrics::gauge!("messages_queued").set(depth);
-                debug!(
-                    %agent_id,
-                    %room_id,
-                    "MessageBridge: agent busy, message queued"
-                );
+                metrics::gauge!("messages_queued").set(total as f64);
+                debug!(%agent_id, %room_id, "MessageBridge: agent busy, message queued");
             }
         }
     }
@@ -597,35 +647,34 @@ impl MessageBridge {
     // Agent result → room response
     // -----------------------------------------------------------------------
 
-    async fn on_agent_result(&self, agent_id: Uuid, is_error: bool) {
+    async fn on_agent_result(&self, info: ResultInfo) {
+        let agent_id = info.agent_id;
+
         // Look up the room this agent was serving.
-        let room_id = {
-            let mut active = self.active_rooms.write().await;
-            active.remove(&agent_id)
-        };
+        let room_id = self.active_rooms.write().await.remove(&agent_id);
 
         if let Some(room_id) = room_id {
-            // Fetch the result text.  The SDK `result` message text is broadcast
-            // on the stream; here we reconstruct a brief summary.
-            let content = if is_error {
-                "[Agent completed with error]".to_string()
-            } else {
-                self.get_agent_result_text(&agent_id).await
-            };
-
-            self.post_to_room(agent_id, room_id, content).await;
+            if info.is_error {
+                self.post_to_room(agent_id, room_id, "[Agent completed with error]".to_string())
+                    .await;
+            } else if !info.result_text.is_empty() {
+                // Only post to the room if the agent produced actual text.
+                // Posting a placeholder when there is no text is worse than
+                // posting nothing — the streaming output already reached the
+                // room via the orchestrator event bus / UI.
+                self.post_to_room(agent_id, room_id, info.result_text.clone()).await;
+            }
         }
 
         // Drain the queue: deliver the next pending message if any.
         self.drain_queue(agent_id).await;
     }
 
-    /// Attempt to post a message to the room on behalf of an agent.
+    /// Post a message to a room on behalf of an agent.
     async fn post_to_room(&self, agent_id: Uuid, room_id: Uuid, content: String) {
-        // Fetch agent name for display.
         let agent_name = self.agent_display_name(&agent_id).await;
 
-        let mut metadata = std::collections::HashMap::new();
+        let mut metadata = HashMap::new();
         metadata.insert(META_SOURCE_KEY.to_string(), META_SOURCE_VALUE.to_string());
         metadata.insert(META_AGENT_ID_KEY.to_string(), agent_id.to_string());
 
@@ -640,11 +689,7 @@ impl MessageBridge {
 
         match self.communicate.send_message(room_id, &req).await {
             Ok(_) => {
-                info!(
-                    %agent_id,
-                    %room_id,
-                    "MessageBridge: posted agent response to room"
-                );
+                info!(%agent_id, %room_id, "MessageBridge: posted agent response to room");
             }
             Err(e) => {
                 warn!(
@@ -657,19 +702,28 @@ impl MessageBridge {
         }
     }
 
-    /// Deliver the next queued message to an agent (if any).
+    /// Pop and deliver the next queued message for `agent_id`, if any.
+    ///
+    /// Uses [`ConnectionRegistry::try_claim_idle`] to atomically claim the
+    /// agent before delivery — if the agent has already been claimed by a
+    /// concurrent delivery, the queued message is left in place and will be
+    /// delivered when that task completes.
     async fn drain_queue(&self, agent_id: Uuid) {
         let next = {
             let mut queues = self.pending_queues.write().await;
-            let queue = queues.entry(agent_id).or_insert_with(VecDeque::new);
-            let msg = queue.pop_front();
-            let depth = queue.len() as f64;
+            let msg = queues.entry(agent_id).or_default().pop_front();
+            let total: usize = queues.values().map(|q| q.len()).sum();
             drop(queues);
-            metrics::gauge!("messages_queued").set(depth);
+            metrics::gauge!("messages_queued").set(total as f64);
             msg
         };
 
-        if let Some(pending) = next {
+        let Some(pending) = next else { return };
+
+        if self.registry.try_claim_idle(&agent_id).await {
+            // Record room before sending (same ordering as deliver_or_queue).
+            self.active_rooms.write().await.insert(agent_id, pending.room_id);
+
             let prompt = format!(
                 "[Room: {}] {} ({}):\n{}",
                 pending.room_name, pending.sender_name, pending.sender_kind, pending.content,
@@ -682,10 +736,10 @@ impl MessageBridge {
                         room_id = %pending.room_id,
                         "MessageBridge: delivered queued message to agent"
                     );
-                    self.active_rooms.write().await.insert(agent_id, pending.room_id);
                     metrics::counter!("messages_delivered_to_agents").increment(1);
                 }
                 Err(e) => {
+                    self.active_rooms.write().await.remove(&agent_id);
                     warn!(
                         %agent_id,
                         error = %e,
@@ -693,20 +747,25 @@ impl MessageBridge {
                     );
                 }
             }
+        } else {
+            // Agent was claimed by another concurrent delivery between the
+            // queue pop and the claim attempt. Re-queue at the front so the
+            // message is not lost and will be delivered next result cycle.
+            warn!(
+                %agent_id,
+                "MessageBridge: agent busy during drain, re-queuing message"
+            );
+            let mut queues = self.pending_queues.write().await;
+            queues.entry(agent_id).or_default().push_front(pending);
+            let total: usize = queues.values().map(|q| q.len()).sum();
+            drop(queues);
+            metrics::gauge!("messages_queued").set(total as f64);
         }
     }
 
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
-
-    /// Return the result text for an agent from the most recent activity. Since
-    /// the SDK result text is not stored here (only streamed on the bus), we
-    /// return a placeholder that the agent's actual streamed response already
-    /// covers. This is used only as the "echo back" message content.
-    async fn get_agent_result_text(&self, _agent_id: &Uuid) -> String {
-        "[Agent completed]".to_string()
-    }
 
     /// Return a display name for an agent, falling back to the agent ID string.
     async fn agent_display_name(&self, agent_id: &Uuid) -> String {
@@ -716,6 +775,21 @@ impl MessageBridge {
             }
         }
         agent_id.to_string()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test-only helpers
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+impl MessageBridge {
+    /// Override the maximum per-agent queue depth (default: 10).
+    ///
+    /// Builder method for tests — call before `Arc::new(...)`.
+    fn with_max_queue_depth(mut self, depth: usize) -> Self {
+        self.max_queue_depth = depth;
+        self
     }
 }
 
@@ -735,7 +809,7 @@ mod tests {
         CommunicateClient::new("http://localhost:17010")
     }
 
-    /// Construct a bridge without real storage (for unit tests that don't
+    /// Construct a bridge without real storage (for unit tests that do not
     /// exercise the storage code path).
     fn make_bridge(base_url: &str) -> MessageBridge {
         MessageBridge::with_optional_storage(
@@ -747,29 +821,40 @@ mod tests {
         )
     }
 
+    // -----------------------------------------------------------------------
+    // URL conversion
+    // -----------------------------------------------------------------------
+
     #[test]
     fn test_bridge_ws_url_http_to_ws() {
-        let bridge = make_bridge("http://localhost:17010");
-        assert_eq!(bridge.ws_url, "ws://localhost:17010");
+        assert_eq!(make_bridge("http://localhost:17010").ws_url, "ws://localhost:17010");
     }
 
     #[test]
     fn test_bridge_ws_url_https_to_wss() {
-        let bridge = make_bridge("https://example.com");
-        assert_eq!(bridge.ws_url, "wss://example.com");
+        assert_eq!(make_bridge("https://example.com").ws_url, "wss://example.com");
     }
+
+    // -----------------------------------------------------------------------
+    // Queue depth configuration
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_bridge_default_queue_depth() {
-        let bridge = make_bridge("http://localhost:17010");
-        assert_eq!(bridge.max_queue_depth, DEFAULT_MAX_QUEUE_DEPTH);
+        assert_eq!(make_bridge("http://localhost:17010").max_queue_depth, DEFAULT_MAX_QUEUE_DEPTH);
     }
 
     #[test]
     fn test_bridge_custom_queue_depth() {
-        let bridge = make_bridge("http://localhost:17010").with_max_queue_depth(5);
-        assert_eq!(bridge.max_queue_depth, 5);
+        assert_eq!(
+            make_bridge("http://localhost:17010").with_max_queue_depth(5).max_queue_depth,
+            5
+        );
     }
+
+    // -----------------------------------------------------------------------
+    // WS protocol message serialization / deserialization
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_client_message_serializes_subscribe() {
@@ -793,83 +878,147 @@ mod tests {
         assert!(matches!(msg, ServerMessage::Error { .. }));
     }
 
+    // -----------------------------------------------------------------------
+    // Message queue — enqueue and dequeue
+    // -----------------------------------------------------------------------
+
     #[tokio::test]
     async fn test_pending_queue_enqueue_dequeue() {
-        // Verify the per-agent queue logic directly via the bridge's shared state.
         let bridge = make_bridge("http://localhost:17010").with_max_queue_depth(3);
-
         let agent_id = Uuid::new_v4();
         let room_id = Uuid::new_v4();
 
-        // Push one message directly into the queue.
-        {
-            let mut queues = bridge.pending_queues.write().await;
-            queues.entry(agent_id).or_insert_with(VecDeque::new).push_back(PendingMessage {
+        bridge.pending_queues.write().await.entry(agent_id).or_default().push_back(
+            PendingMessage {
                 room_id,
                 room_name: "test-room".to_string(),
                 sender_name: "Alice".to_string(),
                 sender_kind: "human".to_string(),
                 content: "hello".to_string(),
-            });
-        }
+            },
+        );
 
-        // Pop it.
-        let next = {
-            let mut queues = bridge.pending_queues.write().await;
-            queues.get_mut(&agent_id).and_then(|q| q.pop_front())
-        };
-
-        assert!(next.is_some());
-        let msg = next.unwrap();
+        let msg =
+            bridge.pending_queues.write().await.get_mut(&agent_id).and_then(|q| q.pop_front());
+        assert!(msg.is_some());
+        let msg = msg.unwrap();
         assert_eq!(msg.room_id, room_id);
         assert_eq!(msg.sender_name, "Alice");
         assert_eq!(msg.content, "hello");
     }
 
     #[tokio::test]
-    async fn test_queue_drop_at_max_depth() {
+    async fn test_queue_at_max_depth_signals_full() {
         let bridge = Arc::new(make_bridge("http://localhost:17010").with_max_queue_depth(2));
-
         let agent_id = Uuid::new_v4();
         let room_id = Uuid::new_v4();
 
-        // Fill the queue to capacity.
         for i in 0..2usize {
-            let mut queues = bridge.pending_queues.write().await;
-            queues.entry(agent_id).or_insert_with(VecDeque::new).push_back(PendingMessage {
-                room_id,
-                room_name: "r".to_string(),
-                sender_name: format!("user{i}"),
-                sender_kind: "human".to_string(),
-                content: format!("msg{i}"),
-            });
+            bridge.pending_queues.write().await.entry(agent_id).or_default().push_back(
+                PendingMessage {
+                    room_id,
+                    room_name: "r".to_string(),
+                    sender_name: format!("user{i}"),
+                    sender_kind: "human".to_string(),
+                    content: format!("msg{i}"),
+                },
+            );
         }
 
-        // Verify at capacity.
-        assert_eq!(bridge.pending_queues.read().await.get(&agent_id).map(|q| q.len()), Some(2));
-
-        // Another message now exceeds the limit — the deliver_or_queue method
-        // would drop it. We verify the depth logic here: if depth >= max_queue_depth
-        // we should NOT push.
         let depth = bridge.pending_queues.read().await.get(&agent_id).map(|q| q.len()).unwrap_or(0);
+        assert_eq!(depth, 2);
         assert!(depth >= bridge.max_queue_depth);
     }
 
+    // -----------------------------------------------------------------------
+    // Echo prevention
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_echo_message_is_skipped() {
+        use communicate::types::{MessageStatus, ParticipantKind as PK};
+        use std::collections::HashMap;
+
+        let bridge = make_bridge("http://localhost:17010");
+        let room_id = Uuid::new_v4();
+
+        // Seed room_info so the bridge would process the message if not filtered.
+        bridge.room_info.write().await.insert(room_id, (RoomType::Group, "test".to_string()));
+        let agent_id = Uuid::new_v4();
+        bridge.room_agents.write().await.insert(room_id, vec![agent_id]);
+
+        let mut meta = HashMap::new();
+        meta.insert(META_SOURCE_KEY.to_string(), META_SOURCE_VALUE.to_string());
+
+        let msg = communicate::types::MessageResponse {
+            id: Uuid::new_v4(),
+            room_id,
+            sender_id: "human-1".to_string(),
+            sender_name: "Human".to_string(),
+            sender_kind: PK::Human,
+            content: "original".to_string(),
+            metadata: meta,
+            reply_to: None,
+            status: MessageStatus::Sent,
+            created_at: chrono::Utc::now(),
+        };
+
+        // on_room_message should return early without touching the agent queue.
+        bridge.on_room_message(room_id, msg).await;
+
+        let queue_len =
+            bridge.pending_queues.read().await.get(&agent_id).map(|q| q.len()).unwrap_or(0);
+        assert_eq!(queue_len, 0, "echo-prevention should prevent any queuing");
+    }
+
+    // -----------------------------------------------------------------------
+    // Prompt format
+    // -----------------------------------------------------------------------
+
     #[test]
     fn test_prompt_format() {
-        let room_name = "general";
-        let sender_name = "Alice";
-        let sender_kind = "human";
-        let content = "Hello agent!";
-        let prompt =
-            format!("[Room: {}] {} ({}):\n{}", room_name, sender_name, sender_kind, content);
-        assert_eq!(prompt, "[Room: general] Alice (human):\nHello agent!");
+        let prompt = format!("[Room: {}] {} ({}):\n{}", "general", "Alice", "human", "Hello!");
+        assert_eq!(prompt, "[Room: general] Alice (human):\nHello!");
     }
+
+    // -----------------------------------------------------------------------
+    // Metadata constants
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_echo_metadata_constants() {
         assert_eq!(META_SOURCE_KEY, "source");
         assert_eq!(META_SOURCE_VALUE, "agent_response");
         assert_eq!(META_AGENT_ID_KEY, "agent_id");
+    }
+
+    // -----------------------------------------------------------------------
+    // Gauge total
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_gauge_reflects_total_across_agents() {
+        let bridge = make_bridge("http://localhost:17010");
+        let agent1 = Uuid::new_v4();
+        let agent2 = Uuid::new_v4();
+        let room_id = Uuid::new_v4();
+
+        let make_pending = |name: &str| PendingMessage {
+            room_id,
+            room_name: "r".to_string(),
+            sender_name: name.to_string(),
+            sender_kind: "human".to_string(),
+            content: "hi".to_string(),
+        };
+
+        {
+            let mut q = bridge.pending_queues.write().await;
+            q.entry(agent1).or_default().push_back(make_pending("Alice"));
+            q.entry(agent1).or_default().push_back(make_pending("Alice2"));
+            q.entry(agent2).or_default().push_back(make_pending("Bob"));
+        }
+
+        let total: usize = bridge.pending_queues.read().await.values().map(|q| q.len()).sum();
+        assert_eq!(total, 3, "total queue depth across all agents should be 3");
     }
 }

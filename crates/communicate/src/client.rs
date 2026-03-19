@@ -184,13 +184,6 @@ impl CommunicateClient {
         Ok(resp.items)
     }
 
-    /// `GET /rooms/{room_id}/participants` — list all participants in a room.
-    pub async fn list_participants(&self, room_id: Uuid) -> Result<Vec<ParticipantResponse>> {
-        let resp: PaginatedResponse<ParticipantResponse> =
-            self.get(&format!("/rooms/{room_id}/participants?limit=500")).await?;
-        Ok(resp.items)
-    }
-
     /// `GET /rooms/{room_id}/messages/latest` — get the N most recent
     /// messages in a room (returned oldest-first).
     pub async fn get_latest_messages(
