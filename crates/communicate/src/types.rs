@@ -245,6 +245,13 @@ impl From<Room> for RoomResponse {
     }
 }
 
+/// Request body for updating an existing room's mutable fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateRoomRequest {
+    pub topic: Option<String>,
+    pub description: Option<String>,
+}
+
 /// Request body for adding a participant to a room.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddParticipantRequest {
