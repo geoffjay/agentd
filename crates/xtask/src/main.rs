@@ -283,6 +283,7 @@ async fn migrate(service: Option<&str>) -> Result<()> {
             "memory" => memory::apply_migrations_for_path(&db_path).await,
             "notify" => notify::apply_migrations_for_path(&db_path).await,
             "orchestrator" => orchestrator::apply_migrations_for_path(&db_path).await,
+            "communicate" => communicate::apply_migrations_for_path(&db_path).await,
             _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
         };
 
@@ -327,6 +328,7 @@ async fn migrate_status(service: Option<&str>) -> Result<()> {
             "memory" => memory::migration_status_for_path(&db_path).await,
             "notify" => notify::migration_status_for_path(&db_path).await,
             "orchestrator" => orchestrator::migration_status_for_path(&db_path).await,
+            "communicate" => communicate::migration_status_for_path(&db_path).await,
             _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
         };
 
