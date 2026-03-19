@@ -15,7 +15,14 @@ import { orchestratorHandlers } from './orchestrator'
 import { notifyHandlers } from './notify'
 import { askHandlers } from './ask'
 import { memoryHandlers } from './memory'
+import { communicateHandlers } from './communicate'
 
-export const handlers = [...orchestratorHandlers, ...notifyHandlers, ...askHandlers, ...memoryHandlers]
+export const handlers = [
+  ...orchestratorHandlers,
+  ...notifyHandlers,
+  ...askHandlers,
+  ...memoryHandlers,
+  ...communicateHandlers,
+]
 
-export { orchestratorHandlers, notifyHandlers, askHandlers, memoryHandlers }
+export { orchestratorHandlers, notifyHandlers, askHandlers, memoryHandlers, communicateHandlers }

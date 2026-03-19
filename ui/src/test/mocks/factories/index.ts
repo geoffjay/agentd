@@ -41,3 +41,12 @@ export {
   makeDeleteResponse,
   resetMemorySeq,
 } from './memory'
+
+export {
+  makeRoom,
+  makeRoomList,
+  makeParticipant,
+  makeParticipantList,
+  makeChatMessage,
+  makeChatMessageList,
+} from './communicate'

@@ -3,6 +3,7 @@ import { AppShell } from '@/layouts'
 import {
   AgentsPage,
   ApprovalQueuePage,
+  CommunicatePage,
   DashboardPage,
   HooksPage,
   MemoriesPage,
@@ -36,6 +37,7 @@ function App() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/approvals" element={<ApprovalQueuePage />} />
             <Route path="/memories" element={<MemoriesPage />} />
+            <Route path="/communicate" element={<CommunicatePage />} />
           </Route>
 
           {/* 404 catch-all */}
