@@ -127,9 +127,32 @@ impl CommunicateClient {
         Ok(resp.items.into_iter().find(|r| r.name == name))
     }
 
+    /// `GET /rooms` — list rooms with pagination.
+    pub async fn list_rooms(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<PaginatedResponse<RoomResponse>> {
+        self.get(&format!("/rooms?limit={limit}&offset={offset}")).await
+    }
+
+    /// `DELETE /rooms/{id}` — delete a room by UUID.
+    ///
+    /// Returns [`CommunicateError::NotFound`] when the room does not exist.
+    pub async fn delete_room(&self, id: Uuid) -> std::result::Result<(), CommunicateError> {
+        self.delete_or_not_found(&format!("/rooms/{id}")).await
+    }
+
     // -----------------------------------------------------------------------
     // Participant operations
     // -----------------------------------------------------------------------
+
+    /// `GET /rooms/{room_id}/participants` — list participants in a room.
+    pub async fn list_participants(&self, room_id: Uuid) -> Result<Vec<ParticipantResponse>> {
+        let resp: PaginatedResponse<ParticipantResponse> =
+            self.get(&format!("/rooms/{room_id}/participants?limit=500")).await?;
+        Ok(resp.items)
+    }
 
     /// `POST /rooms/{room_id}/participants` — add a participant to a room.
     ///

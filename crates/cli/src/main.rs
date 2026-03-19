@@ -80,7 +80,10 @@ use ask::client::AskClient;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::*;
-use commands::{AskCommand, MemoryCommand, NotifyCommand, OrchestratorCommand, WrapCommand};
+use commands::{
+    AskCommand, CommunicateCommand, MemoryCommand, NotifyCommand, OrchestratorCommand, WrapCommand,
+};
+use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
 use notify::client::NotifyClient;
 use orchestrator::client::OrchestratorClient;
@@ -238,6 +241,15 @@ enum Commands {
         #[command(subcommand)]
         command: MemoryCommand,
     },
+    /// Interact with the communicate service
+    ///
+    /// Manage conversation rooms, participants, and messages. The communicate
+    /// service runs on port 7010 by default and provides real-time messaging
+    /// between agents and humans via WebSocket.
+    Communicate {
+        #[command(subcommand)]
+        command: Box<CommunicateCommand>,
+    },
 }
 
 /// Main entry point for the agent CLI.
@@ -335,6 +347,13 @@ async fn main() -> Result<()> {
             let client = MemoryClient::new(url);
             command.execute(&client, cli.json).await?;
         }
+        Commands::Communicate { command } => {
+            // Use AGENTD_COMMUNICATE_SERVICE_URL env var, default to production port
+            let url = env::var("AGENTD_COMMUNICATE_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7010".to_string());
+            let client = CommunicateClient::new(&url);
+            command.execute(&client, &url, cli.json).await?;
+        }
     }
 
     Ok(())
@@ -381,6 +400,11 @@ const SERVICES: &[ServiceDef] = &[
         name: "memory",
         env_var: "AGENTD_MEMORY_SERVICE_URL",
         default_url: "http://localhost:7008",
+    },
+    ServiceDef {
+        name: "communicate",
+        env_var: "AGENTD_COMMUNICATE_SERVICE_URL",
+        default_url: "http://localhost:7010",
     },
 ];
 

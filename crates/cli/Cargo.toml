@@ -23,6 +23,7 @@ prettytable-rs = "0.10"
 tokio-tungstenite = { version = "0.26", features = ["connect", "handshake"] }
 futures-util = "0.3"
 serde_yaml = "0.9"
+urlencoding = "2.1"
 
 # Internal dependencies
 notify = { path = "../notify" }
@@ -32,6 +33,7 @@ orchestrator = { path = "../orchestrator" }
 monitor = { path = "../monitor" }
 hook = { path = "../hook" }
 memory = { path = "../memory" }
+communicate = { path = "../communicate" }
 
 [dev-dependencies]
 mockito = "1.2"

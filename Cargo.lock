@@ -1332,6 +1332,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "colored",
+ "communicate",
  "futures-util",
  "hook",
  "memory",
@@ -1347,6 +1348,7 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tokio-tungstenite 0.26.2",
+ "urlencoding",
  "uuid",
  "wrap",
 ]
