@@ -1,7 +1,4 @@
 //! REST API router for the communicate service.
-//!
-//! Exposes a `GET /health` endpoint and serves as the extension point for
-//! rooms, messages, and other inter-agent communication endpoints.
 
 use axum::{routing::get, Json, Router};
 use std::sync::Arc;

@@ -1,5 +1,8 @@
-//! SeaORM entity modules.
+//! SeaORM entity modules for the communicate service.
 //!
-//! Entity modules are generated from the database schema using `sea-orm-cli`.
-//! As tables are added via migrations, run:
-//!   `cargo xtask generate-entities --service communicate`
+//! Each module corresponds to a database table managed by
+//! [`crate::migration::Migrator`].
+
+pub mod message;
+pub mod participant;
+pub mod room;

@@ -1,10 +1,12 @@
 pub use sea_orm_migration::prelude::*;
 
+mod m20250319_000001_create_communicate_tables;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        vec![]
+        vec![Box::new(m20250319_000001_create_communicate_tables::Migration)]
     }
 }
