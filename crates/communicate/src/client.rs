@@ -110,6 +110,19 @@ impl CommunicateClient {
         self.post("/rooms", req).await
     }
 
+    /// `POST /rooms` — create a room, returning [`CommunicateError::Conflict`] when
+    /// a room with the same name already exists (HTTP 409).
+    ///
+    /// Prefer this over [`Self::create_room`] in idempotent apply flows where
+    /// a concurrent creation or a missed `get_room_by_name` lookup (e.g. large
+    /// deployments exceeding the 500-room page limit) could race.
+    pub async fn create_room_or_conflict(
+        &self,
+        req: &CreateRoomRequest,
+    ) -> std::result::Result<RoomResponse, CommunicateError> {
+        self.post_or_conflict("/rooms", req).await
+    }
+
     /// `GET /rooms/{id}` — get a room by UUID.
     ///
     /// Returns `Ok(None)` if the room does not exist (404).
