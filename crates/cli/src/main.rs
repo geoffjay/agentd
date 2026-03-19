@@ -244,7 +244,7 @@ enum Commands {
     /// Interact with the communicate service
     ///
     /// Manage conversation rooms, participants, and messages. The communicate
-    /// service runs on port 7010 by default and provides real-time messaging
+    /// service runs on port 17010 by default and provides real-time messaging
     /// between agents and humans via WebSocket.
     Communicate {
         #[command(subcommand)]
@@ -350,7 +350,7 @@ async fn main() -> Result<()> {
         Commands::Communicate { command } => {
             // Use AGENTD_COMMUNICATE_SERVICE_URL env var, default to production port
             let url = env::var("AGENTD_COMMUNICATE_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7010".to_string());
+                .unwrap_or_else(|_| "http://localhost:17010".to_string());
             let client = CommunicateClient::new(&url);
             command.execute(&client, &url, cli.json).await?;
         }
@@ -404,7 +404,7 @@ const SERVICES: &[ServiceDef] = &[
     ServiceDef {
         name: "communicate",
         env_var: "AGENTD_COMMUNICATE_SERVICE_URL",
-        default_url: "http://localhost:7010",
+        default_url: "http://localhost:17010",
     },
 ];
 

@@ -148,9 +148,19 @@ impl CommunicateClient {
     // -----------------------------------------------------------------------
 
     /// `GET /rooms/{room_id}/participants` — list participants in a room.
-    pub async fn list_participants(&self, room_id: Uuid) -> Result<Vec<ParticipantResponse>> {
-        let resp: PaginatedResponse<ParticipantResponse> =
-            self.get(&format!("/rooms/{room_id}/participants?limit=500")).await?;
+    ///
+    /// `limit` caps the result set (max enforced server-side). Use `offset` for
+    /// cursor-based pagination. Rooms with more participants than `limit` will
+    /// require multiple calls to enumerate fully.
+    pub async fn list_participants(
+        &self,
+        room_id: Uuid,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<ParticipantResponse>> {
+        let resp: PaginatedResponse<ParticipantResponse> = self
+            .get(&format!("/rooms/{room_id}/participants?limit={limit}&offset={offset}"))
+            .await?;
         Ok(resp.items)
     }
 

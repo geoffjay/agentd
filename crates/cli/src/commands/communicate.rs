@@ -1,7 +1,7 @@
 //! Communicate service command implementations.
 //!
 //! Provides CLI subcommands for managing rooms, participants, and messages via
-//! the agentd-communicate service. The service runs on port 7010 by default.
+//! the agentd-communicate service. The service runs on port 17010 by default.
 //!
 //! # Available Commands
 //!
@@ -25,7 +25,7 @@
 //!
 //! ```bash
 //! # Create a group room
-//! agent communicate create-room --name ops-channel --type group
+//! agent communicate create-room --name ops-channel --room-type group
 //!
 //! # List rooms
 //! agent communicate list-rooms --limit 20
@@ -67,7 +67,7 @@ pub enum CommunicateCommand {
     ///
     /// ```bash
     /// agent communicate create-room --name ops-channel
-    /// agent communicate create-room --name alerts --type broadcast --topic "System alerts"
+    /// agent communicate create-room --name alerts --room-type broadcast --topic "System alerts"
     /// ```
     CreateRoom {
         /// Room name (must be unique)
@@ -84,9 +84,10 @@ pub enum CommunicateCommand {
 
         /// Room type: direct, group (default), or broadcast
         #[arg(long, default_value = "group")]
-        r#type: String,
+        room_type: String,
 
-        /// Display name of the creator (defaults to "cli")
+        /// Identifier recorded as the room creator for attribution and audit purposes.
+        /// Cannot be changed after creation.
         #[arg(long, default_value = "cli")]
         created_by: String,
     },
@@ -190,11 +191,20 @@ pub enum CommunicateCommand {
     ///
     /// ```bash
     /// agent communicate members ops-channel
+    /// agent communicate members ops-channel --limit 50 --offset 0
     /// agent communicate members ops-channel --json
     /// ```
     Members {
         /// Room UUID or name
         room: String,
+
+        /// Maximum number of participants to return (default: 100)
+        #[arg(long, default_value = "100")]
+        limit: usize,
+
+        /// Offset for pagination (default: 0)
+        #[arg(long, default_value = "0")]
+        offset: usize,
     },
 
     // -----------------------------------------------------------------------
@@ -296,13 +306,13 @@ impl CommunicateCommand {
     ) -> Result<()> {
         match self {
             CommunicateCommand::Health => health(client, json).await,
-            CommunicateCommand::CreateRoom { name, topic, description, r#type, created_by } => {
+            CommunicateCommand::CreateRoom { name, topic, description, room_type, created_by } => {
                 create_room(
                     client,
                     name,
                     topic.as_deref(),
                     description.as_deref(),
-                    r#type,
+                    room_type,
                     created_by,
                     json,
                 )
@@ -319,7 +329,9 @@ impl CommunicateCommand {
             CommunicateCommand::Leave { room, identifier } => {
                 leave_room(client, room, identifier, json).await
             }
-            CommunicateCommand::Members { room } => list_members(client, room, json).await,
+            CommunicateCommand::Members { room, limit, offset } => {
+                list_members(client, room, *limit, *offset, json).await
+            }
             CommunicateCommand::Send { room, from, message, metadata, kind, display_name } => {
                 send_message(
                     client,
@@ -610,10 +622,18 @@ async fn leave_room(
     Ok(())
 }
 
-async fn list_members(client: &CommunicateClient, room: &str, json: bool) -> Result<()> {
+async fn list_members(
+    client: &CommunicateClient,
+    room: &str,
+    limit: usize,
+    offset: usize,
+    json: bool,
+) -> Result<()> {
     let room_resp = resolve_room(client, room).await?;
-    let participants =
-        client.list_participants(room_resp.id).await.context("Failed to list participants")?;
+    let participants = client
+        .list_participants(room_resp.id, limit, offset)
+        .await
+        .context("Failed to list participants")?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&participants)?);
@@ -748,25 +768,66 @@ async fn list_messages(
     Ok(())
 }
 
+/// Build the WebSocket URL from the HTTP base URL and connection parameters.
+///
+/// Converts `http://` → `ws://` and `https://` → `wss://`, then appends
+/// the participant query-string parameters, each percent-encoded.
+fn build_ws_url(base_url: &str, identifier: &str, kind: &str, display_name: &str) -> String {
+    let ws_base = base_url.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1);
+    let identifier_enc = urlencoding::encode(identifier);
+    let kind_enc = urlencoding::encode(kind);
+    let display_name_enc = urlencoding::encode(display_name);
+    format!(
+        "{ws_base}/ws?identifier={identifier_enc}&kind={kind_enc}&display_name={display_name_enc}"
+    )
+}
+
 /// Live-tail a room's messages via the communicate service WebSocket.
+///
+/// Auto-joins the watcher as an observer before subscribing, and removes the
+/// observer on clean disconnect if it was auto-joined (i.e. was not already
+/// a participant). Sends a proper WebSocket close frame on Ctrl+C.
 async fn watch_room(
     client: &CommunicateClient,
     base_url: &str,
     room: &str,
     identifier: &str,
-    kind: &str,
+    kind_str: &str,
     display_name: &str,
     json: bool,
 ) -> Result<()> {
     // Resolve the room first to get its UUID.
     let room_resp = resolve_room(client, room).await?;
 
-    // Build the WebSocket URL from the HTTP base URL.
-    // e.g. http://localhost:7010 → ws://localhost:7010/ws
-    let ws_base = base_url.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1);
-    let display_name_enc = urlencoding::encode(display_name);
-    let ws_url =
-        format!("{ws_base}/ws?identifier={identifier}&kind={kind}&display_name={display_name_enc}");
+    let kind = parse_participant_kind(kind_str)?;
+
+    // Auto-join as observer if not already a member. Track whether we joined
+    // so we can clean up on disconnect.
+    let auto_joined = match client
+        .add_participant(
+            room_resp.id,
+            &AddParticipantRequest {
+                identifier: identifier.to_string(),
+                kind,
+                display_name: display_name.to_string(),
+                role: ParticipantRole::Observer,
+            },
+        )
+        .await
+    {
+        Ok(_) => {
+            if !json {
+                eprintln!("{}", format!("Joined '{}' as observer.", room_resp.name).bright_black());
+            }
+            true
+        }
+        // Already a member — don't remove them when we disconnect.
+        Err(CommunicateError::Conflict) => false,
+        Err(e) => return Err(anyhow::anyhow!(e).context("Failed to join room as observer")),
+    };
+
+    // Build the WebSocket URL, percent-encoding all query parameters.
+    let ws_url = build_ws_url(base_url, identifier, kind_str, display_name);
 
     if !json {
         eprintln!(
@@ -794,7 +855,7 @@ async fn watch_room(
         .context("Failed to subscribe to room")?;
 
     if !json {
-        eprintln!("{}", format!("Subscribed to '{}'.", room_resp.name).green());
+        eprintln!("{}", format!("Watching room '{}'...", room_resp.name).green());
         eprintln!();
     }
 
@@ -831,11 +892,26 @@ async fn watch_room(
                 }
             }
             _ = tokio::signal::ctrl_c() => {
+                // Send a clean WebSocket close frame before disconnecting.
+                write.send(tokio_tungstenite::tungstenite::Message::Close(None)).await.ok();
                 if !json {
                     eprintln!();
                     eprintln!("{}", "Disconnected.".yellow());
                 }
                 break;
+            }
+        }
+    }
+
+    // If we auto-joined as an observer, remove that participant so we don't
+    // leave phantom observers in the room.
+    if auto_joined {
+        if let Err(e) = client.remove_participant(room_resp.id, identifier).await {
+            if !json {
+                eprintln!(
+                    "{}",
+                    format!("Warning: failed to remove observer on disconnect: {e}").yellow()
+                );
             }
         }
     }
@@ -1035,5 +1111,84 @@ mod tests {
         let pairs = vec!["token=abc=def".to_string()];
         let map = parse_metadata(&pairs).unwrap();
         assert_eq!(map.get("token").unwrap(), "abc=def");
+    }
+
+    // -----------------------------------------------------------------------
+    // WebSocket URL construction tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_build_ws_url_http_to_ws() {
+        let url = build_ws_url("http://localhost:17010", "cli-observer", "human", "CLI");
+        assert!(url.starts_with("ws://"), "expected ws:// scheme, got: {url}");
+        assert!(url.contains("/ws?"), "expected /ws? path: {url}");
+        assert!(url.contains("identifier=cli-observer"));
+        assert!(url.contains("kind=human"));
+        assert!(url.contains("display_name=CLI"));
+    }
+
+    #[test]
+    fn test_build_ws_url_https_to_wss() {
+        let url = build_ws_url("https://example.com", "user", "agent", "My Agent");
+        assert!(url.starts_with("wss://"), "expected wss:// scheme, got: {url}");
+    }
+
+    #[test]
+    fn test_build_ws_url_encodes_identifier_with_special_chars() {
+        let url = build_ws_url("http://localhost:17010", "user@host.com", "human", "Display Name");
+        // '@' should be percent-encoded
+        assert!(url.contains("user%40host.com"), "expected encoded @: {url}");
+        // spaces in display_name should be encoded
+        assert!(url.contains("Display%20Name"), "expected encoded space: {url}");
+    }
+
+    #[test]
+    fn test_build_ws_url_encodes_kind() {
+        // kind with special chars (unlikely but should be safe)
+        let url = build_ws_url("http://localhost:17010", "id", "agent type", "Name");
+        assert!(url.contains("agent%20type"), "expected encoded space in kind: {url}");
+    }
+
+    // -----------------------------------------------------------------------
+    // format_watch_message smoke tests (ensures no panics on each type)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_format_watch_message_pong_no_panic() {
+        format_watch_message(r#"{"type":"pong"}"#, "test-room");
+    }
+
+    #[test]
+    fn test_format_watch_message_error_no_panic() {
+        format_watch_message(
+            r#"{"type":"error","message":"you are not a participant"}"#,
+            "test-room",
+        );
+    }
+
+    #[test]
+    fn test_format_watch_message_participant_event_no_panic() {
+        format_watch_message(
+            r#"{"type":"participant_event","event":"joined","participant":{"display_name":"Alice","identifier":"alice"}}"#,
+            "test-room",
+        );
+    }
+
+    #[test]
+    fn test_format_watch_message_message_no_panic() {
+        format_watch_message(
+            r#"{"type":"message","message":{"sender_name":"bot","sender_id":"bot-1","content":"hello","created_at":"2026-01-01T00:00:00Z"}}"#,
+            "test-room",
+        );
+    }
+
+    #[test]
+    fn test_format_watch_message_unknown_type_no_panic() {
+        format_watch_message(r#"{"type":"unknown_future_type","data":{}}"#, "test-room");
+    }
+
+    #[test]
+    fn test_format_watch_message_invalid_json_no_panic() {
+        format_watch_message("this is not json", "test-room");
     }
 }
