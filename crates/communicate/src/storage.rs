@@ -6,7 +6,8 @@
 use crate::entity;
 use crate::migration::Migrator;
 use crate::types::{
-    CreateRoomRequest, Participant, ParticipantKind, ParticipantRole, Room, RoomType,
+    AddParticipantRequest, CreateRoomRequest, Participant, ParticipantKind, ParticipantRole, Room,
+    RoomType,
 };
 use agentd_common::error::ApiError;
 use anyhow::Result;
@@ -262,6 +263,192 @@ impl CommunicateStorage {
             .map_err(ApiError::Internal)?;
 
         Ok((participants, total))
+    }
+
+    // -----------------------------------------------------------------------
+    // Participant operations
+    // -----------------------------------------------------------------------
+
+    /// Adds a participant to a room.
+    ///
+    /// Returns `ApiError::NotFound` if the room does not exist, or
+    /// `ApiError::Conflict` if the identifier is already in the room.
+    pub async fn add_participant(
+        &self,
+        room_id: &Uuid,
+        req: &AddParticipantRequest,
+    ) -> Result<Participant, ApiError> {
+        if req.identifier.trim().is_empty() {
+            return Err(ApiError::InvalidInput("identifier must not be empty".to_string()));
+        }
+
+        // Verify the room exists.
+        let room_exists = entity::room::Entity::find_by_id(room_id.to_string())
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?
+            .is_some();
+
+        if !room_exists {
+            return Err(ApiError::NotFound);
+        }
+
+        // Enforce uniqueness of (room_id, identifier).
+        let existing = entity::participant::Entity::find()
+            .filter(entity::participant::Column::RoomId.eq(room_id.to_string()))
+            .filter(entity::participant::Column::Identifier.eq(req.identifier.as_str()))
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        if existing.is_some() {
+            return Err(ApiError::Conflict(format!(
+                "participant '{}' is already a member of room '{}'",
+                req.identifier, room_id
+            )));
+        }
+
+        let id = Uuid::new_v4();
+        let now = chrono::Utc::now();
+
+        let model = entity::participant::ActiveModel {
+            id: Set(id.to_string()),
+            room_id: Set(room_id.to_string()),
+            identifier: Set(req.identifier.clone()),
+            kind: Set(req.kind.to_string()),
+            display_name: Set(req.display_name.clone()),
+            role: Set(req.role.to_string()),
+            joined_at: Set(now.to_rfc3339()),
+        };
+
+        model.insert(&self.db).await.map_err(|e| ApiError::Internal(e.into()))?;
+
+        let inserted = entity::participant::Entity::find_by_id(id.to_string())
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?
+            .ok_or_else(|| {
+                ApiError::Internal(anyhow::anyhow!("participant not found after insert"))
+            })?;
+
+        model_to_participant(inserted).map_err(ApiError::Internal)
+    }
+
+    /// Retrieves a participant from a room by identifier.
+    pub async fn get_participant(
+        &self,
+        room_id: &Uuid,
+        identifier: &str,
+    ) -> Result<Option<Participant>, ApiError> {
+        let row = entity::participant::Entity::find()
+            .filter(entity::participant::Column::RoomId.eq(room_id.to_string()))
+            .filter(entity::participant::Column::Identifier.eq(identifier))
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        row.map(|m| model_to_participant(m).map_err(ApiError::Internal)).transpose()
+    }
+
+    /// Removes a participant from a room by identifier.
+    ///
+    /// Returns `true` if removed, `false` if not found.
+    pub async fn remove_participant(
+        &self,
+        room_id: &Uuid,
+        identifier: &str,
+    ) -> Result<bool, ApiError> {
+        let result = entity::participant::Entity::delete_many()
+            .filter(entity::participant::Column::RoomId.eq(room_id.to_string()))
+            .filter(entity::participant::Column::Identifier.eq(identifier))
+            .exec(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        Ok(result.rows_affected > 0)
+    }
+
+    /// Updates a participant's role within a room.
+    ///
+    /// Returns `None` if the participant is not found.
+    pub async fn update_participant_role(
+        &self,
+        room_id: &Uuid,
+        identifier: &str,
+        role: ParticipantRole,
+    ) -> Result<Option<Participant>, ApiError> {
+        use sea_orm::IntoActiveModel;
+
+        let row = entity::participant::Entity::find()
+            .filter(entity::participant::Column::RoomId.eq(room_id.to_string()))
+            .filter(entity::participant::Column::Identifier.eq(identifier))
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        let row = match row {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        let mut active = row.into_active_model();
+        active.role = Set(role.to_string());
+
+        let updated = active.update(&self.db).await.map_err(|e| ApiError::Internal(e.into()))?;
+
+        let participant = model_to_participant(updated).map_err(ApiError::Internal)?;
+        Ok(Some(participant))
+    }
+
+    /// Returns all rooms a participant (by identifier) belongs to, paginated.
+    ///
+    /// Ordering is by room name ascending.
+    pub async fn get_rooms_for_participant(
+        &self,
+        identifier: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Room>, usize), ApiError> {
+        // Collect all room IDs for this identifier.
+        let participant_rows = entity::participant::Entity::find()
+            .filter(entity::participant::Column::Identifier.eq(identifier))
+            .all(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        let room_ids: Vec<String> = participant_rows.into_iter().map(|p| p.room_id).collect();
+        let total = room_ids.len();
+
+        let paginated_ids: Vec<String> = room_ids.into_iter().skip(offset).take(limit).collect();
+
+        if paginated_ids.is_empty() {
+            return Ok((vec![], total));
+        }
+
+        let rows = entity::room::Entity::find()
+            .filter(entity::room::Column::Id.is_in(paginated_ids))
+            .order_by_asc(entity::room::Column::Name)
+            .all(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        let rooms = rows
+            .into_iter()
+            .map(model_to_room)
+            .collect::<Result<Vec<_>>>()
+            .map_err(ApiError::Internal)?;
+
+        Ok((rooms, total))
+    }
+
+    /// Returns the number of participants currently in a room.
+    pub async fn count_participants_in_room(&self, room_id: &Uuid) -> Result<usize, ApiError> {
+        let count = entity::participant::Entity::find()
+            .filter(entity::participant::Column::RoomId.eq(room_id.to_string()))
+            .count(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))? as usize;
+        Ok(count)
     }
 }
 
