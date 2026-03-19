@@ -292,6 +292,12 @@ impl From<Participant> for ParticipantResponse {
     }
 }
 
+/// Request body for updating a participant's role within a room.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateParticipantRoleRequest {
+    pub role: ParticipantRole,
+}
+
 /// Request body for posting a message to a room.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMessageRequest {
