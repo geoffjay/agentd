@@ -1387,6 +1387,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "communicate"
+version = "0.2.0"
+dependencies = [
+ "agentd-common",
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "directories",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "reqwest",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "compression-codecs"
 version = "0.4.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
