@@ -7990,6 +7990,7 @@ dependencies = [
  "agentd-common",
  "anyhow",
  "colored",
+ "communicate",
  "memory",
  "notify",
  "orchestrator",
