@@ -411,19 +411,7 @@ async fn test_message_delivered_to_agent_via_ws() {
     let msg = make_message(room_id, "human-1", "Alice", ParticipantKind::Human, "Hello agent!");
     push_room_message(&push_tx, &msg);
 
-    // The bridge should deliver a prompt to the agent's mpsc channel.
-    let received = wait_until(
-        || {
-            // Try to read from the channel without blocking.
-            // We use a shared Arc to do the non-blocking try_recv inside an async fn.
-            let _ = &agent_rx; // borrow check: agent_rx outlives this closure
-            async { false } // placeholder — handled below with real try_recv
-        },
-        3000,
-    )
-    .await;
-
-    // Directly poll the channel with a small sleep loop (try_recv is sync).
+    // Poll the channel until the bridge delivers a prompt to the agent (up to 3 s).
     let prompt = {
         let mut result = None;
         for _ in 0..60 {
@@ -443,7 +431,6 @@ async fn test_message_delivered_to_agent_via_ws() {
     assert!(content.contains("general"), "prompt should include room name");
     assert!(content.contains("Alice"), "prompt should include sender name");
     assert!(content.contains("Hello agent!"), "prompt should include message content");
-    let _ = received;
 }
 
 /// Agent response: when the agent produces a result, the bridge posts the
