@@ -52,7 +52,7 @@ use communicate::types::{
 };
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, RwLock};
@@ -77,6 +77,46 @@ const META_AGENT_ID_KEY: &str = "agent_id";
 const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
 /// Maximum backoff duration for WebSocket reconnection attempts.
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
+/// Maximum number of message IDs to retain for deduplication.
+const MAX_SEEN_MESSAGES: usize = 1_000;
+
+// ---------------------------------------------------------------------------
+// SeenMessages — bounded deduplication tracker
+// ---------------------------------------------------------------------------
+
+/// Bounded set of recently-seen message IDs.
+///
+/// Maintains insertion order so that eviction removes the *oldest* entry
+/// rather than clearing the entire set. This preserves the deduplication
+/// window as the set rolls over, preventing a "full-clear" approach from
+/// creating a window where previously-processed message IDs could be
+/// re-delivered after eviction.
+#[derive(Default)]
+struct SeenMessages {
+    ids: HashSet<Uuid>,
+    order: VecDeque<Uuid>,
+}
+
+impl SeenMessages {
+    /// Records `id` as seen.
+    ///
+    /// Returns `true` if the ID was new, `false` if it was already present
+    /// (i.e. a duplicate that should be dropped).
+    fn insert(&mut self, id: Uuid) -> bool {
+        if !self.ids.insert(id) {
+            return false;
+        }
+        self.order.push_back(id);
+        // Evict the oldest entry when we exceed capacity, preserving the
+        // deduplication window rather than resetting it entirely.
+        if self.order.len() > MAX_SEEN_MESSAGES {
+            if let Some(evicted) = self.order.pop_front() {
+                self.ids.remove(&evicted);
+            }
+        }
+        true
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Communicate WebSocket protocol types (client-side view)
@@ -168,6 +208,13 @@ pub struct MessageBridge {
 
     /// WS base URL for the communicate service (scheme already converted to ws/wss).
     ws_url: String,
+
+    /// Bounded set of recently-seen message IDs for deduplication.
+    ///
+    /// Guards against duplicate delivery when the same WebSocket event is
+    /// received more than once (e.g. during the brief overlap when the bridge
+    /// reconnects and both the old and new subscriptions are momentarily active).
+    seen_messages: Arc<Mutex<SeenMessages>>,
 }
 
 impl MessageBridge {
@@ -218,6 +265,7 @@ impl MessageBridge {
             max_queue_depth: DEFAULT_MAX_QUEUE_DEPTH,
             ws_tx: Arc::new(Mutex::new(None)),
             ws_url,
+            seen_messages: Arc::new(Mutex::new(SeenMessages::default())),
         }
     }
 
@@ -505,6 +553,26 @@ impl MessageBridge {
     // -----------------------------------------------------------------------
 
     async fn on_room_message(&self, room_id: Uuid, message: communicate::types::MessageResponse) {
+        // Deduplication: skip messages we have already processed.
+        //
+        // The same WebSocket event can arrive more than once during the brief
+        // overlap when the bridge reconnects and both the old and new
+        // broadcast receivers are momentarily active for the same room.
+        // `SeenMessages` uses an ordered eviction structure so the window
+        // rolls over correctly — oldest entries are evicted one-by-one rather
+        // than the entire set being cleared.
+        {
+            let mut seen = self.seen_messages.lock().await;
+            if !seen.insert(message.id) {
+                debug!(
+                    %room_id,
+                    message_id = %message.id,
+                    "MessageBridge: skipping duplicate message"
+                );
+                return;
+            }
+        }
+
         // Echo prevention: skip messages posted by the bridge itself.
         if message.metadata.get(META_SOURCE_KEY).map(|s| s.as_str()) == Some(META_SOURCE_VALUE) {
             debug!(
@@ -1344,5 +1412,96 @@ mod tests {
 
         // Nothing delivered.
         assert!(rx.try_recv().is_err(), "messages for untracked rooms must be silently ignored");
+    }
+
+    // -----------------------------------------------------------------------
+    // SeenMessages — unit tests for deduplication tracker
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_seen_messages_new_id_returns_true() {
+        let mut seen = SeenMessages::default();
+        let id = Uuid::new_v4();
+        assert!(seen.insert(id), "first insert must return true (new message)");
+    }
+
+    #[test]
+    fn test_seen_messages_duplicate_id_returns_false() {
+        let mut seen = SeenMessages::default();
+        let id = Uuid::new_v4();
+        seen.insert(id);
+        assert!(!seen.insert(id), "second insert of same ID must return false (duplicate)");
+    }
+
+    #[test]
+    fn test_seen_messages_different_ids_all_return_true() {
+        let mut seen = SeenMessages::default();
+        for _ in 0..10 {
+            assert!(seen.insert(Uuid::new_v4()));
+        }
+    }
+
+    #[test]
+    fn test_seen_messages_eviction_removes_oldest_not_all() {
+        // Fill to capacity + 1 to trigger eviction.
+        let mut seen = SeenMessages::default();
+        let ids: Vec<Uuid> = (0..=MAX_SEEN_MESSAGES).map(|_| Uuid::new_v4()).collect();
+
+        for &id in &ids {
+            seen.insert(id);
+        }
+
+        // After inserting MAX_SEEN_MESSAGES + 1 items the oldest entry is evicted.
+        // The set should still contain MAX_SEEN_MESSAGES entries.
+        assert_eq!(seen.ids.len(), MAX_SEEN_MESSAGES);
+        assert_eq!(seen.order.len(), MAX_SEEN_MESSAGES);
+
+        // The FIRST id inserted (oldest) must have been evicted.
+        let oldest = ids[0];
+        assert!(
+            !seen.ids.contains(&oldest),
+            "oldest entry must be evicted when capacity is exceeded"
+        );
+
+        // All other IDs (indices 1..) must still be present.
+        for &id in ids.iter().skip(1) {
+            assert!(seen.ids.contains(&id), "non-evicted entry must remain in the set");
+        }
+
+        // After eviction, re-inserting the oldest ID must be treated as NEW
+        // (the entry was evicted, so it is no longer "seen").
+        assert!(seen.insert(oldest), "evicted ID must be accepted as new after rolling eviction");
+    }
+
+    // -----------------------------------------------------------------------
+    // on_room_message — duplicate delivery prevention
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_on_room_message_deduplicates_same_message_id() {
+        use communicate::types::ParticipantKind as PK;
+
+        let registry = make_registry();
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let agent_id = Uuid::new_v4();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        let bridge = make_bridge_with_registry(registry, "http://localhost:17010");
+        let room_id = Uuid::new_v4();
+
+        bridge.room_info.write().await.insert(room_id, (RoomType::Group, "test-room".to_string()));
+        bridge.room_agents.write().await.insert(room_id, vec![agent_id]);
+
+        // Build a message and call on_room_message twice with the same ID.
+        let msg = make_test_message(room_id, "human-1", "User", PK::Human, "hello");
+        let msg_clone = msg.clone();
+
+        bridge.on_room_message(room_id, msg).await;
+        bridge.on_room_message(room_id, msg_clone).await;
+
+        // First delivery must succeed.
+        assert!(rx.try_recv().is_ok(), "first delivery must reach the agent");
+        // Second delivery with the same message ID must be suppressed.
+        assert!(rx.try_recv().is_err(), "duplicate message ID must not be delivered a second time");
     }
 }

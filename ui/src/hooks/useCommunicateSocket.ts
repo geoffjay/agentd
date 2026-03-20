@@ -108,18 +108,21 @@ export function useCommunicateSocket({
     }
 
     if (event.type === 'message') {
-      if (event.sender_id === participantIdRef.current) return
+      // The server nests message fields under `message`; the frontend type
+      // currently models them as flat. Read from either shape.
+      const msg = (event as unknown as { message?: ChatMessage }).message ?? event
+      if (msg.sender_id === participantIdRef.current) return
       onMessageRef.current({
-        id: event.id,
-        room_id: event.room_id,
-        sender_id: event.sender_id,
-        sender_name: event.sender_name,
-        sender_kind: event.sender_kind,
-        content: event.content,
-        metadata: event.metadata,
-        reply_to: event.reply_to,
-        status: event.status,
-        created_at: event.created_at,
+        id: msg.id,
+        room_id: msg.room_id ?? event.room_id,
+        sender_id: msg.sender_id,
+        sender_name: msg.sender_name,
+        sender_kind: msg.sender_kind,
+        content: msg.content,
+        metadata: msg.metadata,
+        reply_to: msg.reply_to,
+        status: msg.status,
+        created_at: msg.created_at,
       })
     } else if (event.type === 'participant_joined') {
       onParticipantJoinedRef.current?.({

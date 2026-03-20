@@ -19,10 +19,12 @@ import type { ChatMessage, ParticipantKind } from '@/types/communicate'
 // ---------------------------------------------------------------------------
 
 function formatTime(iso: string): string {
+  const date = new Date(iso)
+  if (isNaN(date.getTime())) return ''
   return new Intl.DateTimeFormat(undefined, {
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(iso))
+  }).format(date)
 }
 
 // ---------------------------------------------------------------------------
