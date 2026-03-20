@@ -114,15 +114,31 @@ impl ConnectionManager {
             room_broadcasts.entry(room_id).or_insert_with(|| broadcast::channel(1024).0).clone()
         };
 
-        // Record the subscription
-        self.subscriptions
-            .write()
-            .await
-            .entry(conn_id)
-            .or_insert_with(HashSet::new)
-            .insert(room_id);
+        // Record the subscription, detecting duplicate subscribe requests.
+        //
+        // A duplicate occurs when a client sends a second Subscribe for a room
+        // it is already subscribed to on the same connection (e.g. the bridge
+        // calling ws_subscribe while resubscribe_all_rooms is also in flight).
+        // The handle_socket layer aborts the old receiver task on insert, so
+        // delivery correctness is maintained — but we log here so the pattern
+        // is visible in traces.
+        let already_subscribed = {
+            let mut subs = self.subscriptions.write().await;
+            let entry = subs.entry(conn_id).or_insert_with(HashSet::new);
+            let is_new = entry.insert(room_id);
+            !is_new
+        };
+        if already_subscribed {
+            warn!(
+                %conn_id,
+                %room_id,
+                %participant_id,
+                "Duplicate subscribe — replacing existing subscription for this connection"
+            );
+        } else {
+            info!(%conn_id, %room_id, %participant_id, "Subscribed to room");
+        }
 
-        info!(%conn_id, %room_id, %participant_id, "Subscribed to room");
         Ok(sender.subscribe())
     }
 
@@ -818,5 +834,65 @@ mod tests {
             .expect("channel closed");
 
         assert!(matches!(received, RoomEvent::ParticipantLeft { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_duplicate_is_recorded_only_once_in_set() {
+        // Calling subscribe() twice for the same (conn_id, room_id) pair
+        // must not inflate the subscriptions set — the room_id is present at
+        // most once per connection.
+        let (storage, _temp) = create_test_storage().await;
+        let manager = ConnectionManager::new();
+
+        let room_id = create_room_with_participant(&storage, "test-room", "agent-1").await;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn_id = manager.connect("agent-1".to_string(), tx).await;
+
+        // First subscription.
+        manager.subscribe(conn_id, room_id, &storage).await.unwrap();
+        // Second subscription on the same connection (simulates a client
+        // re-sending Subscribe without first Unsubscribing).
+        manager.subscribe(conn_id, room_id, &storage).await.unwrap();
+
+        let subs = manager.subscriptions.read().await;
+        let room_set = subs.get(&conn_id).expect("connection must have a subscriptions entry");
+        assert_eq!(
+            room_set.len(),
+            1,
+            "duplicate subscribe must not add the room_id to the set a second time"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_duplicate_still_receives_broadcasts() {
+        // Even after a duplicate subscribe, the latest receiver must still
+        // get broadcast events (the old task is replaced, not silently lost).
+        let (storage, _temp) = create_test_storage().await;
+        let manager = ConnectionManager::new();
+
+        let room_id = create_room_with_participant(&storage, "test-room-2", "agent-1").await;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn_id = manager.connect("agent-1".to_string(), tx).await;
+
+        // Subscribe twice.
+        manager.subscribe(conn_id, room_id, &storage).await.unwrap();
+        let mut rx = manager.subscribe(conn_id, room_id, &storage).await.unwrap();
+
+        // Broadcast to the room — the latest receiver must get it.
+        manager
+            .broadcast_to_room(
+                room_id,
+                RoomEvent::ParticipantLeft { room_id, identifier: "agent-2".to_string() },
+            )
+            .await;
+
+        let event = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
+            .await
+            .expect("timed out waiting for event after duplicate subscribe")
+            .expect("channel closed");
+
+        assert!(matches!(event, RoomEvent::ParticipantLeft { .. }));
     }
 }
