@@ -15,6 +15,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { useLayout } from '@/layouts/context'
 import { MessageSquare, Wifi, WifiOff, Loader2, Plus, Settings } from 'lucide-react'
 import {
   RoomList,
@@ -85,6 +86,7 @@ function NoRoomSelected() {
 // ---------------------------------------------------------------------------
 
 export function CommunicatePage() {
+  const { sidebarOpen } = useLayout()
   const { identity, isSetup, setup } = useHumanIdentity()
   const toast = useToast()
   const toastRef = useRef(toast)
@@ -254,7 +256,7 @@ export function CommunicatePage() {
   }, [])
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className={`fixed inset-0 top-16 flex overflow-hidden transition-all duration-300 ease-in-out ${sidebarOpen ? 'lg:left-60' : 'lg:left-16'}`}>
       {/* Identity setup modal — dismissible only when editing an existing identity */}
       <HumanIdentitySetup
         open={showIdentitySetup}
