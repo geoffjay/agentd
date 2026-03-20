@@ -260,6 +260,7 @@ fn default_state() -> String {
 pub enum TemplateKind {
     Agent,
     Workflow,
+    Room,
 }
 
 /// Determine whether a YAML file is an agent or workflow template.
@@ -277,17 +278,38 @@ pub fn detect_template_kind(path: &Path) -> Result<TemplateKind> {
         if parent == "workflows" {
             return Ok(TemplateKind::Workflow);
         }
+        if parent == "rooms" {
+            return Ok(TemplateKind::Room);
+        }
     }
 
     // Fallback: try parsing as each type
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read: {}", path.display()))?;
-    if serde_yaml::from_str::<AgentTemplate>(&content).is_ok() {
-        // Agent templates don't require `source`, so also check that the file
-        // does NOT contain the workflow-specific `source` key to avoid ambiguity.
-        if serde_yaml::from_str::<WorkflowTemplate>(&content).is_ok() {
-            return Ok(TemplateKind::Workflow);
+
+    // Workflow requires `agent` + `source`, so try it first (most specific).
+    if serde_yaml::from_str::<WorkflowTemplate>(&content).is_ok() {
+        return Ok(TemplateKind::Workflow);
+    }
+
+    // Room templates have no `agent` field and typically have `participants`
+    // or `topic`. Try room before agent since both have loose schemas.
+    if serde_yaml::from_str::<RoomTemplate>(&content).is_ok() {
+        // Disambiguate: if it also parses as an agent template, check for
+        // room-specific fields to decide.
+        if serde_yaml::from_str::<AgentTemplate>(&content).is_ok() {
+            // Room templates typically have `topic`, `participants`, or a
+            // `type` that is a room type. Use the presence of `participants`
+            // or `topic` as the tiebreaker.
+            if content.contains("participants:") || content.contains("topic:") {
+                return Ok(TemplateKind::Room);
+            }
+            return Ok(TemplateKind::Agent);
         }
+        return Ok(TemplateKind::Room);
+    }
+
+    if serde_yaml::from_str::<AgentTemplate>(&content).is_ok() {
         return Ok(TemplateKind::Agent);
     }
 
@@ -479,6 +501,29 @@ async fn wait_for_agent_running(
         }
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     }
+}
+
+// ── Apply: single room file ──────────────────────────────────────────
+
+pub async fn apply_room_file(path: &Path, dry_run: bool, json: bool) -> Result<()> {
+    let tmpl = parse_room_template(path)?;
+
+    if dry_run {
+        if json {
+            let result = serde_json::json!({
+                "dry_run": true,
+                "valid": true,
+                "rooms": [&tmpl.name],
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        } else {
+            println!("  {} room '{}'", "ok".green(), tmpl.name);
+        }
+        return Ok(());
+    }
+
+    let communicate = CommunicateClient::from_env();
+    apply_room(&communicate, &tmpl, false, json).await
 }
 
 // ── Apply: single agent file ─────────────────────────────────────────
@@ -787,16 +832,41 @@ pub async fn apply_directory(
         workflow_templates.push((path.clone(), tmpl));
     }
 
-    // If no subdirectories, treat loose files as workflows
+    // If no subdirectories, detect each loose file's type and parse accordingly
     if !has_subdirs && !loose_files.is_empty() {
         for path in &loose_files {
-            let tmpl = parse_workflow_template(path)
-                .with_context(|| format!("Validation failed for {}", path.display()))?;
-            let _prompt = resolve_prompt(&tmpl, path)?;
-            if !json {
-                println!("  {} workflow '{}' (agent: {})", "ok".green(), tmpl.name, tmpl.agent);
+            match detect_template_kind(path)? {
+                TemplateKind::Room => {
+                    let tmpl = parse_room_template(path)
+                        .with_context(|| format!("Validation failed for {}", path.display()))?;
+                    if !json {
+                        println!("  {} room '{}'", "ok".green(), tmpl.name);
+                    }
+                    room_templates.push((path.clone(), tmpl));
+                }
+                TemplateKind::Agent => {
+                    let tmpl = parse_agent_template(path)
+                        .with_context(|| format!("Validation failed for {}", path.display()))?;
+                    if !json {
+                        println!("  {} agent '{}'", "ok".green(), tmpl.name);
+                    }
+                    agent_templates.push((path.clone(), tmpl));
+                }
+                TemplateKind::Workflow => {
+                    let tmpl = parse_workflow_template(path)
+                        .with_context(|| format!("Validation failed for {}", path.display()))?;
+                    let _prompt = resolve_prompt(&tmpl, path)?;
+                    if !json {
+                        println!(
+                            "  {} workflow '{}' (agent: {})",
+                            "ok".green(),
+                            tmpl.name,
+                            tmpl.agent
+                        );
+                    }
+                    workflow_templates.push((path.clone(), tmpl));
+                }
             }
-            workflow_templates.push((path.clone(), tmpl));
         }
     }
 
