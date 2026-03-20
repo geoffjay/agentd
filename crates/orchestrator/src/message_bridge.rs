@@ -1445,7 +1445,7 @@ mod tests {
     fn test_seen_messages_eviction_removes_oldest_not_all() {
         // Fill to capacity + 1 to trigger eviction.
         let mut seen = SeenMessages::default();
-        let mut ids: Vec<Uuid> = (0..=MAX_SEEN_MESSAGES).map(|_| Uuid::new_v4()).collect();
+        let ids: Vec<Uuid> = (0..=MAX_SEEN_MESSAGES).map(|_| Uuid::new_v4()).collect();
 
         for &id in &ids {
             seen.insert(id);
