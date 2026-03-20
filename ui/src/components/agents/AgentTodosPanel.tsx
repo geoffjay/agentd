@@ -124,8 +124,21 @@ export function AgentTodosPanel({ agentId }: AgentTodosPanelProps) {
     return unsubscribe
   }, [agentId])
 
-  // Don't render until the agent has written at least one todo list
-  if (todos === null) return null
+  const renderEmpty = () => (
+    <section
+      aria-label="Agent todos"
+      className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+    >
+      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+        <Clock size={16} aria-hidden="true" className="text-gray-400" />
+        <h2 className="text-sm font-medium text-gray-900 dark:text-white">Todos</h2>
+        <p className="py-2 text-sm text-gray-400 dark:text-gray-500">No todos.</p>
+      </div>
+    </section>
+  )
+
+  // Render an empty state until the agent has written at least one todo list
+  if (todos === null) return renderEmpty()
 
   const pending = todos.filter((t) => t.status === 'pending').length
   const inProgress = todos.filter((t) => t.status === 'in_progress').length
@@ -136,7 +149,6 @@ export function AgentTodosPanel({ agentId }: AgentTodosPanelProps) {
       aria-label="Agent todos"
       className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
     >
-      {/* Header */}
       <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
         <Clock size={16} aria-hidden="true" className="text-gray-400" />
         <h2 className="text-sm font-medium text-gray-900 dark:text-white">Todos</h2>
