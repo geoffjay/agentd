@@ -2506,6 +2506,25 @@ fn display_workflow(workflow: &WorkflowResponse) {
             println!("{}: {}", "Secret".bold(), secret_display);
         }
         TriggerConfig::Manual {} => {}
+        TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } => {
+            if let Some(tk) = team_key {
+                println!("{}: {}", "Team Key".bold(), tk);
+            }
+            if let Some(proj) = project {
+                println!("{}: {}", "Project".bold(), proj);
+            }
+            if let Some(statuses) = status {
+                if !statuses.is_empty() {
+                    println!("{}: {}", "Status".bold(), statuses.join(", "));
+                }
+            }
+            if !labels.is_empty() {
+                println!("{}: {}", "Labels".bold(), labels.join(", "));
+            }
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
+            }
+        }
     }
     let template = &workflow.prompt_template;
     let display =
@@ -3651,5 +3670,14 @@ mod tests {
         assert!(TriggerConfig::Delay { run_at: "2026-01-01T00:00:00Z".into() }.is_implemented());
         assert!(TriggerConfig::Webhook { secret: None }.is_implemented());
         assert!(TriggerConfig::Manual {}.is_implemented());
+        // LinearIssues is not yet implemented — source added in issue #475.
+        assert!(!TriggerConfig::LinearIssues {
+            team_key: None,
+            project: None,
+            status: None,
+            labels: vec![],
+            assignee: None,
+        }
+        .is_implemented());
     }
 }

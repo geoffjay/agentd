@@ -2,4 +2,11 @@
 ignore = [
     # Marvin Attack in `rsa` crate - transitive dep via sqlx-mysql, which we don't use
     "RUSTSEC-2023-0071",
+    # lru 0.12.5 IterMut unsoundness - transitive via lancedb 0.16 -> tantivy 0.22.1.
+    # No 0.12.x patch exists; fix requires upgrading lancedb past 0.16. Tracked in #543.
+    "RUSTSEC-2026-0002",
+    # rustls-webpki 0.101.7 CRL matching bug - transitive via lancedb 0.16 -> aws-smithy
+    # -> hyper-rustls 0.24 -> tokio-rustls 0.24 -> rustls 0.21. Cannot update without
+    # bumping lancedb past 0.16. Tracked in #543.
+    "RUSTSEC-2026-0049",
 ]
