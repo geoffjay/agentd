@@ -9,6 +9,7 @@
 import { useState } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import type { CreateAgentRequest, ToolPolicy } from '@/types/orchestrator'
+import { HighlightedCode } from '@/components/common'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -403,6 +404,17 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                 placeholder="System prompt override…"
                 className={[inputCls, 'resize-none'].join(' ')}
               />
+              {form.system_prompt.trim().length > 0 && (
+                <div className="mt-2">
+                  <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Preview</p>
+                  <HighlightedCode
+                    code={form.system_prompt}
+                    language="markdown"
+                    maxHeight="10rem"
+                    className="border border-gray-200 dark:border-gray-700"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Tool Policy */}
