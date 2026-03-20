@@ -98,6 +98,9 @@ impl AgentStorage {
                 .map(|r| serde_json::to_string(r).unwrap_or_else(|_| "{}".to_string()))),
             additional_dirs: Set(serde_json::to_string(&agent.config.additional_dirs)
                 .unwrap_or_else(|_| "[]".to_string())),
+            rooms: Set(
+                serde_json::to_string(&agent.config.rooms).unwrap_or_else(|_| "[]".to_string())
+            ),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -543,6 +546,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
                 .as_deref()
                 .and_then(|s| serde_json::from_str(s).ok()),
             additional_dirs: serde_json::from_str(&model.additional_dirs).unwrap_or_default(),
+            rooms: serde_json::from_str(&model.rooms).unwrap_or_default(),
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
@@ -611,6 +615,7 @@ mod tests {
                 extra_mounts: None,
                 resource_limits: None,
                 additional_dirs: vec![],
+                rooms: vec![],
             },
         )
     }

@@ -1,0 +1,45 @@
+[package]
+name = "communicate"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "agentd-communicate"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP API server + WebSocket
+axum = { workspace = true, features = ["ws"] }
+tower = "0.5"
+tower-http = { workspace = true, features = ["cors"] }
+futures = "0.3"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+async-trait = "0.1"
+
+# Additional utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { workspace = true }
+directories = "6.0.0"
+agentd-common = { path = "../common" }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+serde_json = { workspace = true }

@@ -47,6 +47,9 @@ pub struct Model {
     /// JSON-serialized `Vec<String>` of additional directory paths.
     /// Maps to Claude Code's `--add-dir` flag.
     pub additional_dirs: String,
+    /// JSON-serialized `Vec<String>` of communicate room names.
+    /// The agent is auto-joined to these rooms when it connects to the orchestrator.
+    pub rooms: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

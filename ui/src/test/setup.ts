@@ -50,6 +50,14 @@ class _StubWebSocket {
 vi.stubGlobal('WebSocket', _StubWebSocket)
 
 // ---------------------------------------------------------------------------
+// scrollIntoView / scrollTo — jsdom does not implement these DOM methods.
+// Provide no-op stubs so components that call them don't throw in tests.
+// ---------------------------------------------------------------------------
+
+window.HTMLElement.prototype.scrollIntoView = vi.fn()
+window.HTMLElement.prototype.scrollTo = vi.fn()
+
+// ---------------------------------------------------------------------------
 // window.matchMedia — jsdom does not implement matchMedia, so we provide a
 // functional stub that defaults to the light colour scheme. Individual tests
 // can override this with vi.fn() if they need to test dark-mode behaviour.

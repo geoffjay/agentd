@@ -666,6 +666,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         }
     }
 

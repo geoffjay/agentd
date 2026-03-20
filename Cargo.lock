@@ -1332,6 +1332,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "colored",
+ "communicate",
  "futures-util",
  "hook",
  "memory",
@@ -1347,6 +1348,7 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tokio-tungstenite 0.26.2",
+ "urlencoding",
  "uuid",
  "wrap",
 ]
@@ -1384,6 +1386,35 @@ checksum = "958c5d6ecf1f214b4c2bbbbf6ab9523a864bd136dcf71a7e8904799acfe1ad47"
 dependencies = [
  "unicode-segmentation",
  "unicode-width 0.2.2",
+]
+
+[[package]]
+name = "communicate"
+version = "0.2.0"
+dependencies = [
+ "agentd-common",
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "directories",
+ "futures",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "reqwest",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -4556,6 +4587,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "communicate",
  "croner",
  "directories",
  "futures",
@@ -4572,6 +4604,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-tungstenite 0.26.2",
  "tower",
  "tower-http",
  "tracing",
@@ -6944,8 +6977,12 @@ checksum = "7a9daff607c6d2bf6c16fd681ccb7eecc83e4e2cdc1ca067ffaadfca5de7f084"
 dependencies = [
  "futures-util",
  "log",
+ "rustls 0.23.35",
+ "rustls-pki-types",
  "tokio",
+ "tokio-rustls 0.26.4",
  "tungstenite 0.26.2",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -7143,6 +7180,8 @@ dependencies = [
  "httparse",
  "log",
  "rand 0.9.2",
+ "rustls 0.23.35",
+ "rustls-pki-types",
  "sha1",
  "thiserror 2.0.17",
  "utf-8",
@@ -7952,6 +7991,7 @@ dependencies = [
  "agentd-common",
  "anyhow",
  "colored",
+ "communicate",
  "memory",
  "notify",
  "orchestrator",

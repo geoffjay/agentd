@@ -37,11 +37,12 @@ pub const SERVICES: &[ServiceInfo] = &[
     ServiceInfo { name: "wrap", binary: "agentd-wrap", port: 7005, extra_env: &[] },
     ServiceInfo { name: "orchestrator", binary: "agentd-orchestrator", port: 7006, extra_env: &[] },
     ServiceInfo { name: "memory", binary: "agentd-memory", port: 7008, extra_env: &[] },
+    ServiceInfo { name: "communicate", binary: "agentd-communicate", port: 7010, extra_env: &[] },
 ];
 
 /// All valid service names.
 pub const SERVICE_NAMES: &[&str] =
-    &["ask", "hook", "monitor", "notify", "wrap", "orchestrator", "memory"];
+    &["ask", "hook", "monitor", "notify", "wrap", "orchestrator", "memory", "communicate"];
 
 /// Look up a service by short name.
 #[cfg(test)]
@@ -94,8 +95,8 @@ mod tests {
 
     #[test]
     fn test_service_info_completeness() {
-        assert_eq!(SERVICES.len(), 7);
-        assert_eq!(SERVICE_NAMES.len(), 7);
+        assert_eq!(SERVICES.len(), 8);
+        assert_eq!(SERVICE_NAMES.len(), 8);
 
         // Every service name should have a corresponding ServiceInfo
         for name in SERVICE_NAMES {

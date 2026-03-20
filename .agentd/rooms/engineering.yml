@@ -1,0 +1,13 @@
+# .agentd/rooms/engineering.yml
+#
+# Engineering coordination room.
+# Created during `agent apply .agentd/` — agents auto-join on first connect.
+name: engineering
+topic: "Engineering team coordination"
+description: "General channel for engineering agents and humans"
+type: group
+participants:
+  - identifier: geoff
+    kind: human
+    role: admin
+    display_name: "Geoff"

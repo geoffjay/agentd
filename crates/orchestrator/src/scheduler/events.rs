@@ -24,6 +24,8 @@ pub enum SystemEvent {
     ContextCleared { agent_id: Uuid },
     /// A workflow dispatch completed (succeeded or failed).
     DispatchCompleted { workflow_id: Uuid, dispatch_id: Uuid, status: DispatchStatus },
+    /// An agent joined a communicate room.
+    AgentJoinedRoom { agent_id: Uuid, room_id: Uuid },
 }
 
 /// A shared broadcast-based event bus for internal system events.
