@@ -142,12 +142,16 @@ impl ConnectionManager {
         // Remove subscriptions
         self.subscriptions.write().await.remove(&conn_id);
 
-        // Remove from connections list
+        // Remove from connections list.
+        // Important: hold a single write-guard for both the retain and the
+        // potential remove so we never try to re-acquire the same lock while
+        // the guard is still alive (which would deadlock on tokio's RwLock).
         if let Some(ref pid) = participant_id {
-            if let Some(conns) = self.connections.write().await.get_mut(pid) {
-                conns.retain(|(id, _)| *id != conn_id);
-                if conns.is_empty() {
-                    self.connections.write().await.remove(pid);
+            let mut conns_guard = self.connections.write().await;
+            if let Some(conn_list) = conns_guard.get_mut(pid) {
+                conn_list.retain(|(id, _)| *id != conn_id);
+                if conn_list.is_empty() {
+                    conns_guard.remove(pid);
                 }
             }
         }
@@ -246,6 +250,7 @@ pub async fn ws_handler(
 }
 
 /// Handles an individual WebSocket connection.
+#[allow(dead_code)]
 async fn handle_socket(socket: WebSocket, state: crate::api::ApiState, params: WsConnectParams) {
     let (mut ws_sender, mut ws_receiver) = socket.split();
 
@@ -409,4 +414,409 @@ async fn handle_socket(socket: WebSocket, state: crate::api::ApiState, params: W
         task.abort();
     }
     state.connection_manager.disconnect(conn_id).await;
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::CommunicateStorage;
+    use crate::types::{
+        AddParticipantRequest, CreateRoomRequest, MessageResponse, MessageStatus, ParticipantKind,
+        ParticipantRole, RoomType,
+    };
+    use chrono::Utc;
+    use tempfile::TempDir;
+    use tokio::sync::mpsc;
+
+    async fn create_test_storage() -> (CommunicateStorage, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let storage = CommunicateStorage::with_path(&db_path).await.unwrap();
+        (storage, temp_dir)
+    }
+
+    fn make_add_participant_req(identifier: &str) -> AddParticipantRequest {
+        AddParticipantRequest {
+            identifier: identifier.to_string(),
+            kind: ParticipantKind::Agent,
+            display_name: format!("{identifier} Display"),
+            role: ParticipantRole::Member,
+        }
+    }
+
+    async fn create_room_with_participant(
+        storage: &CommunicateStorage,
+        room_name: &str,
+        participant_id: &str,
+    ) -> Uuid {
+        let room = storage
+            .create_room(&CreateRoomRequest {
+                name: room_name.to_string(),
+                topic: None,
+                description: None,
+                room_type: RoomType::Group,
+                created_by: "creator".to_string(),
+            })
+            .await
+            .unwrap();
+        storage.add_participant(&room.id, &make_add_participant_req(participant_id)).await.unwrap();
+        room.id
+    }
+
+    // -----------------------------------------------------------------------
+    // Protocol message serde tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_client_message_subscribe_deserialization() {
+        let json = r#"{"type":"subscribe","room_id":"550e8400-e29b-41d4-a716-446655440000"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::Subscribe { room_id } => {
+                assert_eq!(room_id.to_string(), "550e8400-e29b-41d4-a716-446655440000");
+            }
+            _ => panic!("Expected Subscribe, got {:?}", msg),
+        }
+    }
+
+    #[test]
+    fn test_client_message_unsubscribe_deserialization() {
+        let json = r#"{"type":"unsubscribe","room_id":"550e8400-e29b-41d4-a716-446655440000"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert!(matches!(msg, ClientMessage::Unsubscribe { .. }));
+    }
+
+    #[test]
+    fn test_client_message_send_deserialization() {
+        let json = r#"{"type":"send","room_id":"550e8400-e29b-41d4-a716-446655440000","content":"Hello!"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::Send { content, metadata, .. } => {
+                assert_eq!(content, "Hello!");
+                assert!(metadata.is_empty()); // default empty
+            }
+            _ => panic!("Expected Send, got {:?}", msg),
+        }
+    }
+
+    #[test]
+    fn test_client_message_send_with_metadata_deserialization() {
+        let json = r#"{"type":"send","room_id":"550e8400-e29b-41d4-a716-446655440000","content":"Hi","metadata":{"key":"value"}}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::Send { metadata, .. } => {
+                assert_eq!(metadata.get("key").map(|s| s.as_str()), Some("value"));
+            }
+            _ => panic!("Expected Send, got {:?}", msg),
+        }
+    }
+
+    #[test]
+    fn test_client_message_ping_deserialization() {
+        let json = r#"{"type":"ping"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert!(matches!(msg, ClientMessage::Ping));
+    }
+
+    #[test]
+    fn test_client_message_invalid_type_returns_error() {
+        let json = r#"{"type":"invalid_type"}"#;
+        let result = serde_json::from_str::<ClientMessage>(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_server_message_pong_serialization() {
+        let msg = ServerMessage::Pong;
+        let json = serde_json::to_string(&msg).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["type"], "pong");
+    }
+
+    #[test]
+    fn test_server_message_error_serialization() {
+        let msg = ServerMessage::Error { message: "something went wrong".to_string() };
+        let json = serde_json::to_string(&msg).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["type"], "error");
+        assert_eq!(val["message"], "something went wrong");
+    }
+
+    #[test]
+    fn test_server_message_participant_event_joined_serialization() {
+        let msg = ServerMessage::ParticipantEvent {
+            room_id: Uuid::nil(),
+            event: "joined".to_string(),
+            participant: None,
+            identifier: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["type"], "participant_event");
+        assert_eq!(val["event"], "joined");
+    }
+
+    #[test]
+    fn test_server_message_message_serialization() {
+        let room_id = Uuid::new_v4();
+        let msg_response = MessageResponse {
+            id: Uuid::new_v4(),
+            room_id,
+            sender_id: "agent-1".to_string(),
+            sender_name: "Agent One".to_string(),
+            sender_kind: ParticipantKind::Agent,
+            content: "Hello, world!".to_string(),
+            metadata: HashMap::new(),
+            reply_to: None,
+            status: MessageStatus::Sent,
+            created_at: Utc::now(),
+        };
+        let msg = ServerMessage::Message { room_id, message: msg_response };
+        let json = serde_json::to_string(&msg).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(val["type"], "message");
+        assert_eq!(val["message"]["content"], "Hello, world!");
+    }
+
+    // -----------------------------------------------------------------------
+    // ConnectionManager tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_connect_registers_connection() {
+        let manager = ConnectionManager::new();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn_id = manager.connect("agent-1".to_string(), tx).await;
+        assert!(!conn_id.is_nil());
+    }
+
+    #[tokio::test]
+    async fn test_connect_multiple_connections_same_participant_get_unique_ids() {
+        let manager = ConnectionManager::new();
+        let (tx1, _rx1) = mpsc::unbounded_channel();
+        let (tx2, _rx2) = mpsc::unbounded_channel();
+        let conn_id1 = manager.connect("agent-1".to_string(), tx1).await;
+        let conn_id2 = manager.connect("agent-1".to_string(), tx2).await;
+        assert_ne!(conn_id1, conn_id2);
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_removes_connection_participant_mapping() {
+        let manager = ConnectionManager::new();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn_id = manager.connect("agent-1".to_string(), tx).await;
+
+        manager.disconnect(conn_id).await;
+
+        let conn_participants = manager.connection_participants.read().await;
+        assert!(!conn_participants.contains_key(&conn_id));
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_unknown_connection_returns_not_found() {
+        let (storage, _temp) = create_test_storage().await;
+        let manager = ConnectionManager::new();
+        let unknown_conn_id = Uuid::new_v4();
+
+        let result = manager.subscribe(unknown_conn_id, Uuid::new_v4(), &storage).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_participant_not_in_room_returns_forbidden() {
+        let (storage, _temp) = create_test_storage().await;
+        let manager = ConnectionManager::new();
+
+        // Create room but don't add the agent as a participant.
+        let room = storage
+            .create_room(&CreateRoomRequest {
+                name: "test-room".to_string(),
+                topic: None,
+                description: None,
+                room_type: RoomType::Group,
+                created_by: "creator".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn_id = manager.connect("non-participant".to_string(), tx).await;
+
+        let result = manager.subscribe(conn_id, room.id, &storage).await;
+        assert!(result.is_err(), "subscribe should fail when agent is not a room participant");
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_valid_participant_returns_receiver() {
+        let (storage, _temp) = create_test_storage().await;
+        let manager = ConnectionManager::new();
+
+        let room_id = create_room_with_participant(&storage, "test-room", "agent-1").await;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn_id = manager.connect("agent-1".to_string(), tx).await;
+
+        let result = manager.subscribe(conn_id, room_id, &storage).await;
+        assert!(result.is_ok(), "subscribe should succeed for a valid participant");
+    }
+
+    #[tokio::test]
+    async fn test_unsubscribe_removes_room_from_subscriptions() {
+        let (storage, _temp) = create_test_storage().await;
+        let manager = ConnectionManager::new();
+
+        let room_id = create_room_with_participant(&storage, "test-room", "agent-1").await;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn_id = manager.connect("agent-1".to_string(), tx).await;
+        manager.subscribe(conn_id, room_id, &storage).await.unwrap();
+
+        manager.unsubscribe(conn_id, room_id).await;
+
+        let subs = manager.subscriptions.read().await;
+        if let Some(rooms) = subs.get(&conn_id) {
+            assert!(!rooms.contains(&room_id));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_to_room_delivers_event_to_subscriber() {
+        let (storage, _temp) = create_test_storage().await;
+        let manager = ConnectionManager::new();
+
+        let room_id = create_room_with_participant(&storage, "test-room", "agent-1").await;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn_id = manager.connect("agent-1".to_string(), tx).await;
+        let mut rx = manager.subscribe(conn_id, room_id, &storage).await.unwrap();
+
+        manager
+            .broadcast_to_room(
+                room_id,
+                RoomEvent::ParticipantLeft { room_id, identifier: "agent-2".to_string() },
+            )
+            .await;
+
+        let event = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
+            .await
+            .expect("timed out waiting for event")
+            .expect("channel was closed unexpectedly");
+
+        match event {
+            RoomEvent::ParticipantLeft { identifier, .. } => {
+                assert_eq!(identifier, "agent-2");
+            }
+            _ => panic!("Expected ParticipantLeft, got {:?}", event),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_to_room_with_no_subscribers_does_not_panic() {
+        let manager = ConnectionManager::new();
+        let room_id = Uuid::new_v4();
+        // No subscribers registered — broadcast should be a no-op, not a panic.
+        manager
+            .broadcast_to_room(
+                room_id,
+                RoomEvent::ParticipantLeft { room_id, identifier: "agent-1".to_string() },
+            )
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_fan_out_delivers_to_all_subscribers() {
+        let (storage, _temp) = create_test_storage().await;
+        let manager = ConnectionManager::new();
+
+        let room = storage
+            .create_room(&CreateRoomRequest {
+                name: "fanout-room".to_string(),
+                topic: None,
+                description: None,
+                room_type: RoomType::Group,
+                created_by: "creator".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Add two participants and connect both.
+        for agent in ["agent-a", "agent-b"] {
+            storage.add_participant(&room.id, &make_add_participant_req(agent)).await.unwrap();
+        }
+
+        let (tx1, _rx1) = mpsc::unbounded_channel();
+        let conn_id1 = manager.connect("agent-a".to_string(), tx1).await;
+        let mut sub_rx1 = manager.subscribe(conn_id1, room.id, &storage).await.unwrap();
+
+        let (tx2, _rx2) = mpsc::unbounded_channel();
+        let conn_id2 = manager.connect("agent-b".to_string(), tx2).await;
+        let mut sub_rx2 = manager.subscribe(conn_id2, room.id, &storage).await.unwrap();
+
+        manager
+            .broadcast_to_room(
+                room.id,
+                RoomEvent::ParticipantLeft { room_id: room.id, identifier: "agent-c".to_string() },
+            )
+            .await;
+
+        let timeout = std::time::Duration::from_millis(200);
+        let event1 = tokio::time::timeout(timeout, sub_rx1.recv())
+            .await
+            .expect("sub1 timed out")
+            .expect("sub1 channel closed");
+        let event2 = tokio::time::timeout(timeout, sub_rx2.recv())
+            .await
+            .expect("sub2 timed out")
+            .expect("sub2 channel closed");
+
+        assert!(matches!(event1, RoomEvent::ParticipantLeft { .. }));
+        assert!(matches!(event2, RoomEvent::ParticipantLeft { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_removes_all_subscriptions() {
+        let (storage, _temp) = create_test_storage().await;
+        let manager = ConnectionManager::new();
+
+        let room_id = create_room_with_participant(&storage, "test-room", "agent-1").await;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let conn_id = manager.connect("agent-1".to_string(), tx).await;
+        manager.subscribe(conn_id, room_id, &storage).await.unwrap();
+
+        // Disconnect should clean up both subscriptions and the participant mapping.
+        manager.disconnect(conn_id).await;
+
+        let subs = manager.subscriptions.read().await;
+        assert!(!subs.contains_key(&conn_id), "subscriptions should be removed on disconnect");
+
+        let conn_participants = manager.connection_participants.read().await;
+        assert!(
+            !conn_participants.contains_key(&conn_id),
+            "connection_participants should be removed on disconnect"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_room_sender_creates_broadcast_channel() {
+        let manager = ConnectionManager::new();
+        let room_id = Uuid::new_v4();
+        let sender = manager.get_room_sender(room_id).await;
+
+        // Creating a receiver and sending should work without panic.
+        let mut rx = sender.subscribe();
+        let event = RoomEvent::ParticipantLeft { room_id, identifier: "x".to_string() };
+        sender.send(event).unwrap();
+
+        let received = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
+            .await
+            .expect("timed out")
+            .expect("channel closed");
+
+        assert!(matches!(received, RoomEvent::ParticipantLeft { .. }));
+    }
 }

@@ -54,6 +54,34 @@ pub(crate) mod storage;
 pub(crate) mod websocket;
 
 // ---------------------------------------------------------------------------
+// Router builder (public, used by integration tests and cargo xtask)
+// ---------------------------------------------------------------------------
+
+/// Build a fully-configured Axum [`axum::Router`] for the communicate service,
+/// backed by a SQLite database at `db_path`.
+///
+/// This is the same router that the binary uses in production.  It is exposed
+/// as a public function so that integration tests and tooling can spin up an
+/// in-process server without having to reach for `pub(crate)` internals.
+///
+/// # Example
+///
+/// ```no_run
+/// # use std::path::PathBuf;
+/// # async fn example() -> anyhow::Result<()> {
+/// let router = communicate::build_router(&PathBuf::from("/tmp/test.db")).await?;
+/// # Ok(())
+/// # }
+/// ```
+pub async fn build_router(db_path: &std::path::Path) -> anyhow::Result<axum::Router> {
+    use std::sync::Arc;
+    let storage = Arc::new(storage::CommunicateStorage::with_path(db_path).await?);
+    let connection_manager = Arc::new(websocket::ConnectionManager::new());
+    let state = api::ApiState { storage, connection_manager };
+    Ok(api::create_router(state))
+}
+
+// ---------------------------------------------------------------------------
 // Migration helpers (used by cargo xtask)
 // ---------------------------------------------------------------------------
 
