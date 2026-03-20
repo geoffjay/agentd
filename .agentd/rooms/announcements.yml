@@ -1,0 +1,8 @@
+# .agentd/rooms/announcements.yml
+#
+# This is a room for announcements and other important information.
+# Created during `agent apply .agentd/` — agents auto-join on first connect.
+name: announcements
+topic: "General announcements"
+description: "This is a room for announcements and other important information."
+type: group

@@ -9,6 +9,11 @@ shell: /bin/zsh
 worktree: false
 model: claude-opus-4-6
 
+rooms:
+  - engineering
+  - name: announcements
+    role: observer
+
 system_prompt: |
   You are a project planning agent for the agentd project. Your role is to:
 

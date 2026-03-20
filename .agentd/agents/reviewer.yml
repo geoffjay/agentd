@@ -10,6 +10,11 @@ shell: /bin/zsh
 worktree: false
 model: claude-sonnet-4-6
 
+rooms:
+  - engineering
+  - name: announcements
+    role: observer
+
 system_prompt: |
   You are a code review agent for the agentd project — a Rust workspace that
   manages autonomous Claude Code agents. Your role is to review pull requests

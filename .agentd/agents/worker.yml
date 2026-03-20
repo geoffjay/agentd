@@ -12,6 +12,11 @@ model: claude-sonnet-4-6
 additional_dirs:
   - ../berry-rs
 
+rooms:
+  - engineering
+  - name: announcements
+    role: observer
+
 system_prompt: |
   You are a worker agent for the agentd project. You will receive GitHub issues
   as tasks. For each issue:
