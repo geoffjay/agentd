@@ -39,8 +39,14 @@ export interface UseCommunicateSocketOptions {
 // Hook
 // ---------------------------------------------------------------------------
 
-function communicateWsUrl(): string {
-  return serviceConfig.communicateServiceUrl.replace(/^http/, 'ws') + '/ws'
+function communicateWsUrl(participantId: string, displayName: string): string {
+  const base = serviceConfig.communicateServiceUrl.replace(/^http/, 'ws')
+  const params = new URLSearchParams({
+    identifier: participantId,
+    kind: 'human',
+    display_name: displayName,
+  })
+  return `${base}/ws?${params.toString()}`
 }
 
 export function useCommunicateSocket({
@@ -51,7 +57,8 @@ export function useCommunicateSocket({
   onParticipantLeft,
   paused = false,
 }: UseCommunicateSocketOptions) {
-  const wsUrl = communicateWsUrl()
+  // TODO: accept displayName from caller when user profiles are available
+  const wsUrl = communicateWsUrl(participantId, participantId)
   const { messages, connectionState, send } = useWebSocket(wsUrl, { paused })
 
   // Track the last subscribed room to handle unsubscribe/re-subscribe
