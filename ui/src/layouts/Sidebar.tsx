@@ -107,7 +107,7 @@ function NavLink({ item, collapsed, approvalCount = 0, notificationCount = 0, on
           </span>
         )}
         {item.showNotificationBadge && collapsed && notificationCount > 0 && (
-          <span className="absolute -right-1 -top-1">
+          <span className="absolute -right-1 -top-2">
             <NotificationBadge count={notificationCount} />
           </span>
         )}
