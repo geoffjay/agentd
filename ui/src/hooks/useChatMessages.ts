@@ -75,11 +75,11 @@ export function useChatMessages({
       setError(undefined)
 
       try {
-        const result = await communicateClient.getLatestMessages(roomId!, pageSize)
+        const items = await communicateClient.getLatestMessages(roomId!, pageSize)
         if (!cancelled) {
-          setMessages(result.items)
-          setHasMore(result.items.length >= pageSize)
-          setOldestId(result.items[0]?.id)
+          setMessages(items)
+          setHasMore(items.length >= pageSize)
+          setOldestId(items[0]?.id)
         }
       } catch (err) {
         if (!cancelled) {

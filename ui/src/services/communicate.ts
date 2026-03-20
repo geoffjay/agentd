@@ -97,8 +97,8 @@ export class CommunicateClient extends ApiClient {
   // -------------------------------------------------------------------------
 
   /** `GET /rooms/:id/messages/latest` — get N most recent messages (default 50). */
-  getLatestMessages(roomId: string, limit = 50): Promise<PaginatedResponse<ChatMessage>> {
-    return this.get<PaginatedResponse<ChatMessage>>(`/rooms/${roomId}/messages/latest`, { limit })
+  getLatestMessages(roomId: string, count = 50): Promise<ChatMessage[]> {
+    return this.get<ChatMessage[]>(`/rooms/${roomId}/messages/latest`, { count })
   }
 
   /** `GET /rooms/:id/messages` — list messages with pagination. */

@@ -106,7 +106,7 @@ export function CreateRoomDialog({
           role="dialog"
           aria-modal="true"
           aria-labelledby="create-room-title"
-          className="relative z-10 w-full max-w-md rounded-xl bg-gray-800 shadow-xl border border-gray-700"
+          className="relative z-10 rounded-xl bg-gray-800 shadow-xl border border-gray-700"
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-gray-700 px-6 py-4">
