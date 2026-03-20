@@ -298,9 +298,21 @@ pub fn detect_template_kind(path: &Path) -> Result<TemplateKind> {
         // Disambiguate: if it also parses as an agent template, check for
         // room-specific fields to decide.
         if serde_yaml::from_str::<AgentTemplate>(&content).is_ok() {
-            // Room templates typically have `topic`, `participants`, or a
-            // `type` that is a room type. Use the presence of `participants`
-            // or `topic` as the tiebreaker.
+            // Both templates parse successfully, so use room-specific field
+            // names as a heuristic tiebreaker.
+            //
+            // NOTE: this is a raw substring scan and has known limitations:
+            //   - A template whose `prompt_template` or description embeds the
+            //     literal text `participants:` or `topic:` will be misclassified
+            //     as a RoomTemplate.
+            //   - Commented-out lines (e.g. `# topic: overview`) also trigger
+            //     this heuristic.
+            // The path-based detection above (parent dir == "rooms") handles
+            // the common case correctly; this fallback is only reached for
+            // files placed outside the standard directory layout.
+            // If false-positive misclassification becomes an issue, add a
+            // required `kind: room` discriminator field to RoomTemplate that
+            // AgentTemplate and WorkflowTemplate lack.
             if content.contains("participants:") || content.contains("topic:") {
                 return Ok(TemplateKind::Room);
             }

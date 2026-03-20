@@ -793,13 +793,16 @@ impl MessageBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::websocket::AgentConnection;
+    use tokio::sync::mpsc;
 
     fn make_registry() -> ConnectionRegistry {
         ConnectionRegistry::new()
     }
 
     fn make_communicate_client() -> CommunicateClient {
-        CommunicateClient::new("http://localhost:17010")
+        // Use new_no_proxy to avoid macOS SCDynamicStore panic on non-main threads.
+        CommunicateClient::new_no_proxy("http://localhost:17010")
     }
 
     /// Construct a bridge without real storage (for unit tests that do not
@@ -812,6 +815,40 @@ mod tests {
             EventBus::shared(16),
             base_url,
         )
+    }
+
+    /// Construct a bridge using the given registry (shared Arc state).
+    fn make_bridge_with_registry(registry: ConnectionRegistry, base_url: &str) -> MessageBridge {
+        MessageBridge::with_optional_storage(
+            registry,
+            make_communicate_client(),
+            None,
+            EventBus::shared(16),
+            base_url,
+        )
+    }
+
+    /// Build a minimal `MessageResponse` for tests that call `deliver_or_queue`.
+    fn make_test_message(
+        room_id: Uuid,
+        sender_id: &str,
+        sender_name: &str,
+        sender_kind: communicate::types::ParticipantKind,
+        content: &str,
+    ) -> communicate::types::MessageResponse {
+        use communicate::types::MessageStatus;
+        communicate::types::MessageResponse {
+            id: Uuid::new_v4(),
+            room_id,
+            sender_id: sender_id.to_string(),
+            sender_name: sender_name.to_string(),
+            sender_kind,
+            content: content.to_string(),
+            metadata: std::collections::HashMap::new(),
+            reply_to: None,
+            status: MessageStatus::Sent,
+            created_at: chrono::Utc::now(),
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1013,5 +1050,299 @@ mod tests {
 
         let total: usize = bridge.pending_queues.read().await.values().map(|q| q.len()).sum();
         assert_eq!(total, 3, "total queue depth across all agents should be 3");
+    }
+
+    // -----------------------------------------------------------------------
+    // deliver_or_queue — idle agent receives prompt immediately
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_deliver_or_queue_sends_immediately_to_idle_agent() {
+        use communicate::types::ParticipantKind as PK;
+
+        let registry = make_registry();
+
+        // Register an agent (starts Idle).
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let agent_id = Uuid::new_v4();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        let bridge = make_bridge_with_registry(registry, "http://localhost:17010");
+        let room_id = Uuid::new_v4();
+
+        // Seed room info so deliver_or_queue has all needed context.
+        bridge.room_info.write().await.insert(room_id, (RoomType::Group, "unit-room".to_string()));
+
+        let msg = make_test_message(room_id, "human-1", "Alice", PK::Human, "ping");
+        let prompt = "[Room: unit-room] Alice (human):\nping".to_string();
+
+        bridge
+            .deliver_or_queue(agent_id, room_id, "unit-room".to_string(), prompt.clone(), &msg)
+            .await;
+
+        // Agent must receive the prompt via the mpsc channel.
+        let received = rx.try_recv().expect("agent should receive prompt immediately");
+        let parsed: serde_json::Value = serde_json::from_str(received.trim()).unwrap();
+        assert_eq!(parsed["type"], "user");
+        assert!(
+            parsed["message"]["content"].as_str().unwrap().contains("ping"),
+            "content should contain the prompt"
+        );
+
+        // Queue must remain empty — message was delivered, not queued.
+        assert_eq!(
+            bridge.pending_queues.read().await.get(&agent_id).map(|q| q.len()).unwrap_or(0),
+            0
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // deliver_or_queue — busy agent gets message queued
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_deliver_or_queue_enqueues_when_agent_busy() {
+        use communicate::types::ParticipantKind as PK;
+
+        let registry = make_registry();
+        let (tx, _rx) = mpsc::unbounded_channel::<String>();
+        let agent_id = Uuid::new_v4();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        // Claim the agent so it transitions to Busy.
+        let claimed = registry.try_claim_idle(&agent_id).await;
+        assert!(claimed, "agent should start Idle and be claimable");
+
+        let bridge = make_bridge_with_registry(registry, "http://localhost:17010");
+        let room_id = Uuid::new_v4();
+        bridge.room_info.write().await.insert(room_id, (RoomType::Group, "busy-room".to_string()));
+
+        let msg = make_test_message(room_id, "human-1", "Bob", PK::Human, "queued message");
+        bridge
+            .deliver_or_queue(
+                agent_id,
+                room_id,
+                "busy-room".to_string(),
+                "[Room: busy-room] Bob (human):\nqueued message".to_string(),
+                &msg,
+            )
+            .await;
+
+        let queue_len =
+            bridge.pending_queues.read().await.get(&agent_id).map(|q| q.len()).unwrap_or(0);
+        assert_eq!(queue_len, 1, "message should be queued while agent is Busy");
+    }
+
+    // -----------------------------------------------------------------------
+    // deliver_or_queue — queue overflow drops excess messages
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_deliver_or_queue_drops_message_at_max_depth() {
+        use communicate::types::ParticipantKind as PK;
+
+        let registry = make_registry();
+        let (tx, _rx) = mpsc::unbounded_channel::<String>();
+        let agent_id = Uuid::new_v4();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        // Claim so the agent is Busy, forcing subsequent calls to queue.
+        assert!(registry.try_claim_idle(&agent_id).await);
+
+        let bridge = Arc::new(
+            make_bridge_with_registry(registry, "http://localhost:17010").with_max_queue_depth(2),
+        );
+        let room_id = Uuid::new_v4();
+        bridge
+            .room_info
+            .write()
+            .await
+            .insert(room_id, (RoomType::Group, "overflow-room".to_string()));
+
+        // Fill the queue to capacity (2 messages).
+        for i in 0..2usize {
+            let msg =
+                make_test_message(room_id, "human-1", "User", PK::Human, &format!("message {i}"));
+            bridge
+                .deliver_or_queue(
+                    agent_id,
+                    room_id,
+                    "overflow-room".to_string(),
+                    format!("prompt {i}"),
+                    &msg,
+                )
+                .await;
+        }
+        assert_eq!(
+            bridge.pending_queues.read().await.get(&agent_id).map(|q| q.len()).unwrap_or(0),
+            2,
+            "queue should be at max capacity"
+        );
+
+        // One more message should be dropped (queue overflow).
+        let overflow_msg =
+            make_test_message(room_id, "human-1", "User", PK::Human, "overflow message");
+        bridge
+            .deliver_or_queue(
+                agent_id,
+                room_id,
+                "overflow-room".to_string(),
+                "overflow prompt".to_string(),
+                &overflow_msg,
+            )
+            .await;
+
+        // Queue depth must stay at 2 — overflow was dropped, not queued.
+        assert_eq!(
+            bridge.pending_queues.read().await.get(&agent_id).map(|q| q.len()).unwrap_or(0),
+            2,
+            "overflow message should be dropped, keeping queue at max depth"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // drain_queue — delivers pending message to idle agent
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_drain_queue_delivers_pending_to_idle_agent() {
+        let registry = make_registry();
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let agent_id = Uuid::new_v4();
+        registry.register(agent_id, AgentConnection { tx }).await;
+        // Agent starts Idle.
+
+        let bridge = make_bridge_with_registry(registry, "http://localhost:17010");
+        let room_id = Uuid::new_v4();
+
+        // Pre-populate the pending queue directly (simulates messages queued
+        // while the agent was previously Busy).
+        bridge.pending_queues.write().await.entry(agent_id).or_default().push_back(
+            PendingMessage {
+                room_id,
+                room_name: "drain-room".to_string(),
+                sender_name: "Carol".to_string(),
+                sender_kind: "human".to_string(),
+                content: "deferred delivery".to_string(),
+            },
+        );
+
+        // drain_queue should deliver the pending message since the agent is Idle.
+        bridge.drain_queue(agent_id).await;
+
+        // Agent must receive the queued prompt.
+        let received = rx.try_recv().expect("agent should receive the drained message");
+        let parsed: serde_json::Value = serde_json::from_str(received.trim()).unwrap();
+        assert_eq!(parsed["type"], "user");
+        let content = parsed["message"]["content"].as_str().unwrap();
+        assert!(
+            content.contains("deferred delivery"),
+            "drained message content not found: {}",
+            content
+        );
+
+        // Queue must be empty after draining.
+        assert_eq!(
+            bridge.pending_queues.read().await.get(&agent_id).map(|q| q.len()).unwrap_or(0),
+            0,
+            "queue should be empty after drain"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // on_room_message — direct room only delivers to non-sender
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_on_room_message_direct_room_excludes_sender() {
+        use communicate::types::ParticipantKind as PK;
+
+        let registry = make_registry();
+
+        let (tx_a, mut rx_a) = mpsc::unbounded_channel::<String>();
+        let (tx_b, mut rx_b) = mpsc::unbounded_channel::<String>();
+        let agent_a = Uuid::new_v4();
+        let agent_b = Uuid::new_v4();
+        registry.register(agent_a, AgentConnection { tx: tx_a }).await;
+        registry.register(agent_b, AgentConnection { tx: tx_b }).await;
+
+        let bridge = make_bridge_with_registry(registry, "http://localhost:17010");
+        let room_id = Uuid::new_v4();
+
+        bridge.room_info.write().await.insert(room_id, (RoomType::Direct, "dm".to_string()));
+        bridge.room_agents.write().await.insert(room_id, vec![agent_a, agent_b]);
+
+        // Message sent by agent_a (sender_id = agent_a.to_string()).
+        let msg =
+            make_test_message(room_id, &agent_a.to_string(), "Agent A", PK::Agent, "direct from A");
+        bridge.on_room_message(room_id, msg).await;
+
+        // agent_b (recipient) must receive the prompt.
+        assert!(rx_b.try_recv().is_ok(), "agent_b (recipient) must receive the direct message");
+
+        // agent_a (sender) must NOT receive its own message.
+        assert!(
+            rx_a.try_recv().is_err(),
+            "agent_a (sender) must not receive its own direct message"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // on_room_message — group room delivers to all except sender
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_on_room_message_group_room_delivers_to_all_except_sender() {
+        use communicate::types::ParticipantKind as PK;
+
+        let registry = make_registry();
+
+        let (tx_a, mut rx_a) = mpsc::unbounded_channel::<String>();
+        let (tx_b, mut rx_b) = mpsc::unbounded_channel::<String>();
+        let (tx_c, mut rx_c) = mpsc::unbounded_channel::<String>();
+        let agent_a = Uuid::new_v4();
+        let agent_b = Uuid::new_v4();
+        let agent_c = Uuid::new_v4();
+        registry.register(agent_a, AgentConnection { tx: tx_a }).await;
+        registry.register(agent_b, AgentConnection { tx: tx_b }).await;
+        registry.register(agent_c, AgentConnection { tx: tx_c }).await;
+
+        let bridge = make_bridge_with_registry(registry, "http://localhost:17010");
+        let room_id = Uuid::new_v4();
+
+        bridge.room_info.write().await.insert(room_id, (RoomType::Group, "group".to_string()));
+        bridge.room_agents.write().await.insert(room_id, vec![agent_a, agent_b, agent_c]);
+
+        // Human sends a message (not one of the agents).
+        let msg = make_test_message(room_id, "human-1", "Human", PK::Human, "hello group");
+        bridge.on_room_message(room_id, msg).await;
+
+        assert!(rx_a.try_recv().is_ok(), "agent_a must receive group message");
+        assert!(rx_b.try_recv().is_ok(), "agent_b must receive group message");
+        assert!(rx_c.try_recv().is_ok(), "agent_c must receive group message");
+    }
+
+    // -----------------------------------------------------------------------
+    // on_room_message — untracked room is silently ignored
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_on_room_message_ignores_untracked_room() {
+        use communicate::types::ParticipantKind as PK;
+
+        let registry = make_registry();
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let agent_id = Uuid::new_v4();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        let bridge = make_bridge_with_registry(registry, "http://localhost:17010");
+        let unknown_room_id = Uuid::new_v4();
+        // room_info and room_agents are NOT seeded for this room.
+
+        let msg = make_test_message(unknown_room_id, "human-1", "Stranger", PK::Human, "hello?");
+        bridge.on_room_message(unknown_room_id, msg).await;
+
+        // Nothing delivered.
+        assert!(rx.try_recv().is_err(), "messages for untracked rooms must be silently ignored");
     }
 }

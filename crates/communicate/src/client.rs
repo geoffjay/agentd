@@ -101,6 +101,28 @@ impl CommunicateClient {
         Self::new(url)
     }
 
+    /// Create a client with proxy detection disabled.
+    ///
+    /// On macOS, `reqwest::Client::new()` triggers `SCDynamicStore` creation
+    /// for system proxy detection, which panics on non-main threads (e.g.
+    /// inside `tokio::test` workers).  Use this constructor in tests or any
+    /// context where proxy support is not required.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use communicate::client::CommunicateClient;
+    ///
+    /// let client = CommunicateClient::new_no_proxy("http://localhost:17010");
+    /// ```
+    pub fn new_no_proxy(base_url: impl Into<String>) -> Self {
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("Failed to build reqwest client (no-proxy mode)");
+        Self { client, base_url: base_url.into() }
+    }
+
     // -----------------------------------------------------------------------
     // Room operations
     // -----------------------------------------------------------------------
