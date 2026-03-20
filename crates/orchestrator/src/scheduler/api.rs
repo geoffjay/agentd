@@ -123,7 +123,7 @@ async fn create_workflow(
     // Reject trigger types that are not yet implemented.
     if !req.trigger_config.is_implemented() {
         return Err(ApiError::InvalidInput(format!(
-            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests, cron, delay",
+            "Trigger type '{}' is not yet implemented. See documentation for currently supported trigger types.",
             req.trigger_config.trigger_type()
         )));
     }
