@@ -279,6 +279,13 @@ body {
   outline-offset: 2px;
 }
 
+/* Form inputs: no focus outline */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
 /* Remove default outline for elements that manage focus themselves */
 button:focus:not(:focus-visible),
 a:focus:not(:focus-visible),
