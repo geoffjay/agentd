@@ -256,7 +256,7 @@ export function CommunicatePage() {
   }, [])
 
   return (
-    <div className={`fixed inset-0 top-16 flex overflow-hidden transition-all duration-300 ease-in-out ${sidebarOpen ? 'lg:left-60' : 'lg:left-16'}`}>
+    <div className={`fixed inset-0 top-16 p-4 transition-all duration-300 ease-in-out ${sidebarOpen ? 'lg:left-60' : 'lg:left-16'}`}>
       {/* Identity setup modal — dismissible only when editing an existing identity */}
       <HumanIdentitySetup
         open={showIdentitySetup}
@@ -275,133 +275,136 @@ export function CommunicatePage() {
         onClose={() => setShowCreateRoom(false)}
       />
 
-      {/* Room list sidebar */}
-      <aside
-        className="flex w-60 shrink-0 flex-col border-r border-gray-700 bg-gray-800"
-        aria-label="Rooms sidebar"
-      >
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-gray-700 px-4">
-          <h2 className="text-sm font-semibold text-white">Rooms</h2>
-          <div className="flex items-center gap-2">
-            <ConnectionIndicator state={connectionState} />
-            <button
-              type="button"
-              onClick={() => setShowCreateRoom(true)}
-              aria-label="Create room"
-              className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
-            >
-              <Plus size={16} />
-            </button>
-          </div>
-        </div>
-        <RoomList
-          rooms={rooms}
-          selectedRoomId={selectedRoom?.id}
-          loading={roomsLoading}
-          onSelectRoom={handleSelectRoom}
-        />
-        {/* Identity footer */}
-        {identity && (
-          <div className="shrink-0 border-t border-gray-700 px-3 py-2">
-            <button
-              type="button"
-              onClick={() => setShowIdentitySetup(true)}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
-              aria-label="Edit identity"
-            >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white text-[10px] font-bold">
-                {identity.displayName.charAt(0).toUpperCase()}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate font-medium text-gray-300">{identity.displayName}</span>
-                <span className="block truncate text-gray-500">{identity.identifier}</span>
-              </span>
-            </button>
-          </div>
-        )}
-      </aside>
-
-      {/* Main chat area */}
-      <main className="flex flex-1 flex-col overflow-hidden">
-        {selectedRoom ? (
-          <>
-            {/* Room header */}
-            <div className="flex h-12 shrink-0 items-center gap-3 border-b border-gray-700 px-4">
-              <div className="min-w-0 flex-1">
-                <h2 className="truncate text-sm font-semibold text-white">{selectedRoom.name}</h2>
-                {selectedRoom.topic && (
-                  <p className="truncate text-xs text-gray-400">{selectedRoom.topic}</p>
-                )}
-              </div>
+      {/* Rounded container */}
+      <div className="flex h-full overflow-hidden rounded-2xl border border-gray-800">
+        {/* Room list sidebar */}
+        <aside
+          className="flex w-60 shrink-0 flex-col border-r border-gray-800 bg-gray-900"
+          aria-label="Rooms sidebar"
+        >
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-gray-800 px-4">
+            <h2 className="text-sm font-semibold text-white">Rooms</h2>
+            <div className="flex items-center gap-2">
+              <ConnectionIndicator state={connectionState} />
               <button
                 type="button"
-                onClick={() =>
-                  setRightPanel((p) => (p === 'settings' ? 'participants' : 'settings'))
-                }
-                aria-label="Room settings"
-                aria-pressed={rightPanel === 'settings'}
-                className={[
-                  'rounded p-1.5 transition-colors',
-                  rightPanel === 'settings'
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-400 hover:bg-gray-700 hover:text-white',
-                ].join(' ')}
+                onClick={() => setShowCreateRoom(true)}
+                aria-label="Create room"
+                className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
               >
-                <Settings size={16} />
+                <Plus size={16} />
               </button>
             </div>
-
-            {/* Messages */}
-            <ChatMessageView
-              messages={messages}
-              loading={messagesLoading}
-              loadingOlder={loadingOlder}
-              hasMore={hasMore}
-              onLoadOlder={loadOlder}
-            />
-
-            {/* Message input */}
-            {identity && (
-              <MessageInput
-                onSend={handleSendMessage}
-                isParticipant={isParticipant}
-                onJoin={() => void handleJoinRoom()}
-                joiningRoom={joiningRoom}
-              />
-            )}
-          </>
-        ) : (
-          <NoRoomSelected />
-        )}
-      </main>
-
-      {/* Right panel: Participants or Settings */}
-      <aside
-        className="hidden w-56 shrink-0 flex-col border-l border-gray-700 bg-gray-800 lg:flex"
-        aria-label={rightPanel === 'settings' ? 'Room settings' : 'Participants'}
-      >
-        {rightPanel === 'settings' && selectedRoom && identity ? (
-          <RoomSettingsPanel
-            room={selectedRoom}
-            localIdentifier={identity.identifier}
-            onClose={() => setRightPanel('participants')}
-            onRoomDeleted={handleRoomDeleted}
-            onLeft={handleLeft}
-            onRoomUpdated={handleRoomUpdated}
+          </div>
+          <RoomList
+            rooms={rooms}
+            selectedRoomId={selectedRoom?.id}
+            loading={roomsLoading}
+            onSelectRoom={handleSelectRoom}
           />
-        ) : (
-          <>
-            <div className="flex h-12 shrink-0 items-center border-b border-gray-700 px-4">
-              <h2 className="text-sm font-semibold text-white">Participants</h2>
+          {/* Identity footer */}
+          {identity && (
+            <div className="shrink-0 border-t border-gray-800 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setShowIdentitySetup(true)}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+                aria-label="Edit identity"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white text-[10px] font-bold">
+                  {identity.displayName.charAt(0).toUpperCase()}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-gray-300">{identity.displayName}</span>
+                  <span className="block truncate text-gray-500">{identity.identifier}</span>
+                </span>
+              </button>
             </div>
-            <ParticipantPanel
-              roomId={selectedRoom?.id}
-              realtimeParticipants={realtimeParticipants}
-              leftIdentifiers={leftIdentifiers}
+          )}
+        </aside>
+
+        {/* Main chat area */}
+        <main className="flex flex-1 flex-col overflow-hidden bg-gray-950">
+          {selectedRoom ? (
+            <>
+              {/* Room header */}
+              <div className="flex h-12 shrink-0 items-center gap-3 border-b border-gray-800 px-4">
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-sm font-semibold text-white">{selectedRoom.name}</h2>
+                  {selectedRoom.topic && (
+                    <p className="truncate text-xs text-gray-400">{selectedRoom.topic}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRightPanel((p) => (p === 'settings' ? 'participants' : 'settings'))
+                  }
+                  aria-label="Room settings"
+                  aria-pressed={rightPanel === 'settings'}
+                  className={[
+                    'rounded p-1.5 transition-colors',
+                    rightPanel === 'settings'
+                      ? 'bg-gray-700 text-white'
+                      : 'text-gray-400 hover:bg-gray-700 hover:text-white',
+                  ].join(' ')}
+                >
+                  <Settings size={16} />
+                </button>
+              </div>
+
+              {/* Messages */}
+              <ChatMessageView
+                messages={messages}
+                loading={messagesLoading}
+                loadingOlder={loadingOlder}
+                hasMore={hasMore}
+                onLoadOlder={loadOlder}
+              />
+
+              {/* Message input */}
+              {identity && (
+                <MessageInput
+                  onSend={handleSendMessage}
+                  isParticipant={isParticipant}
+                  onJoin={() => void handleJoinRoom()}
+                  joiningRoom={joiningRoom}
+                />
+              )}
+            </>
+          ) : (
+            <NoRoomSelected />
+          )}
+        </main>
+
+        {/* Right panel: Participants or Settings */}
+        <aside
+          className="hidden w-56 shrink-0 flex-col border-l border-gray-800 bg-gray-900 lg:flex"
+          aria-label={rightPanel === 'settings' ? 'Room settings' : 'Participants'}
+        >
+          {rightPanel === 'settings' && selectedRoom && identity ? (
+            <RoomSettingsPanel
+              room={selectedRoom}
+              localIdentifier={identity.identifier}
+              onClose={() => setRightPanel('participants')}
+              onRoomDeleted={handleRoomDeleted}
+              onLeft={handleLeft}
+              onRoomUpdated={handleRoomUpdated}
             />
-          </>
-        )}
-      </aside>
+          ) : (
+            <>
+              <div className="flex h-12 shrink-0 items-center border-b border-gray-800 px-4">
+                <h2 className="text-sm font-semibold text-white">Participants</h2>
+              </div>
+              <ParticipantPanel
+                roomId={selectedRoom?.id}
+                realtimeParticipants={realtimeParticipants}
+                leftIdentifiers={leftIdentifiers}
+              />
+            </>
+          )}
+        </aside>
+      </div>
     </div>
   )
 }
