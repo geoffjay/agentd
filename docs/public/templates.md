@@ -6,27 +6,31 @@ agentd supports declarative YAML templates for defining agents and workflows. Te
 
 ```
 .agentd/
+├── rooms/
+│   └── engineering.yml   # room (created before agents)
 ├── agents/
-│   ├── planner.yml       # planning agent
+│   ├── planner.yml       # planning agent (can reference rooms by name)
 │   └── worker.yml        # worker agent
 └── workflows/
     └── issue-worker.yml  # GitHub issue workflow (references worker agent)
 ```
 
-- **`agents/`** — Agent definitions. Each file creates one agent.
+- **`rooms/`** — Room definitions. Each file creates one room and its initial participants.
+- **`agents/`** — Agent definitions. Each file creates one agent. Agents can list `rooms` to auto-join.
 - **`workflows/`** — Workflow definitions. Each file creates one workflow that references an agent by name.
 
 ## Commands
 
 ### Apply
 
-Create agents and workflows from templates:
+Create rooms, agents, and workflows from templates:
 
 ```bash
-# Apply entire project (agents first, wait for running, then workflows)
+# Apply entire project (rooms first, then agents, then workflows)
 agent apply .agentd/
 
 # Apply a single file
+agent apply .agentd/rooms/engineering.yml
 agent apply .agentd/agents/worker.yml
 agent apply .agentd/workflows/issue-worker.yml
 
@@ -40,16 +44,17 @@ agent apply --wait-timeout 120 .agentd/
 **Apply order for directories:**
 
 1. Parse and validate all templates (fail fast — no partial creates on error)
-2. Create agents from `agents/*.yml`
-3. Wait for all agents to reach `running` status
-4. Create workflows from `workflows/*.yml`, resolving agent name references
-5. Print summary
+2. Create rooms from `rooms/*.yml` (and add their initial participants)
+3. Create agents from `agents/*.yml`, joining them to any listed rooms
+4. Wait for all agents to reach `running` status
+5. Create workflows from `workflows/*.yml`, resolving agent name references
+6. Print summary
 
-If an agent with the same name is already running, it is reused (not duplicated).
+If a room or agent with the same name already exists, it is reused (not duplicated).
 
 ### Teardown
 
-Delete resources in reverse order (workflows first, then agents):
+Delete resources in reverse order (workflows → agents → rooms):
 
 ```bash
 agent teardown .agentd/
@@ -106,6 +111,35 @@ tool_policy:
 | `prompt` | string | none | Initial prompt sent via WebSocket after connection |
 | `system_prompt` | string | none | System prompt for the Claude session |
 | `tool_policy` | object | `allow_all` | Tool use restrictions (see [Tool Policies](#tool-policies)) |
+| `rooms` | list | `[]` | Rooms the agent automatically joins at startup (see [Room Membership](#room-membership)) |
+
+### Room Membership
+
+The `rooms` field lists rooms the agent should automatically join when it starts. Each entry is either a plain room name (defaults to `member` role) or a structured object with an explicit role:
+
+```yaml
+rooms:
+  - engineering                # plain string — member role
+  - name: announcements
+    role: observer             # read-only access
+  - name: ops-channel
+    role: admin
+```
+
+Rooms referenced here must exist before the agent starts. When using `agent apply .agentd/`, rooms listed in `.agentd/rooms/` are created first. If you apply an agent template independently, create the room first:
+
+```bash
+agent communicate create-room --name engineering --created-by cli
+agent apply .agentd/agents/worker.yml
+```
+
+Available roles:
+
+| Role | Can post | Can manage participants |
+|------|----------|-------------------------|
+| `member` | Yes | No |
+| `admin` | Yes | Yes |
+| `observer` | No (read-only) | No |
 
 ### Working Directory Resolution
 
@@ -114,6 +148,65 @@ tool_policy:
 - Absolute paths → used as-is
 
 The same resolution rules apply to each entry in `additional_dirs`. See [Additional Directories](additional-dirs.md) for full details.
+
+---
+
+---
+
+## Room Template Schema
+
+File: `.agentd/rooms/<name>.yml`
+
+```yaml
+# Required
+name: engineering               # Room name (must be unique)
+
+# Optional
+topic: "Engineering coordination"   # Short label shown in listings
+description: |                      # Longer description
+  General channel for engineering agents and humans.
+type: group                         # direct | group (default) | broadcast
+
+# Optional — participants added when the room is first created
+participants:
+  - identifier: alice               # Human username or agent UUID/name
+    kind: human                     # agent (default) | human
+    role: admin                     # member (default) | admin | observer
+    display_name: "Alice"           # Optional; defaults to identifier
+  - identifier: worker
+    kind: agent
+    role: member
+```
+
+### Field Reference
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | **required** | Unique room name |
+| `topic` | string | none | Short label |
+| `description` | string | none | Longer description |
+| `type` | string | `"group"` | `"direct"`, `"group"`, or `"broadcast"` |
+| `participants` | list | `[]` | Initial participants added at creation time |
+
+### Participant fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `identifier` | string | **required** | Agent UUID/name or human username |
+| `kind` | string | `"agent"` | `"agent"` or `"human"` |
+| `role` | string | `"member"` | `"member"`, `"admin"`, or `"observer"` |
+| `display_name` | string | `identifier` | Display name shown in messages |
+
+!!! note "Idempotent creation"
+    If a room with the given name already exists, `agent apply` skips creation entirely — it does not add participants or update the topic/description. To modify an existing room, use the CLI or REST API directly.
+
+### Room types
+
+| Type | Who can post | Use case |
+|------|-------------|----------|
+| `group` | All members | Collaborative agent teams, human-agent coordination |
+| `direct` | Both participants | One-to-one agent ↔ human or agent ↔ agent conversation |
+| `broadcast` | Admins only | Status feeds, announcement channels |
 
 ---
 

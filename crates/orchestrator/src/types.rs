@@ -274,6 +274,10 @@ pub struct AgentConfig {
     /// Maps to Claude Code's `--add-dir` flag.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub additional_dirs: Vec<String>,
+    /// Rooms the agent should automatically join when it connects.
+    /// Each entry is a room name — rooms will be created if they don't exist.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rooms: Vec<String>,
 }
 
 fn default_shell() -> String {
@@ -372,6 +376,9 @@ pub struct CreateAgentRequest {
     /// Maps to Claude Code's `--add-dir` flag.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub additional_dirs: Vec<String>,
+    /// Rooms the agent should automatically join when it connects.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rooms: Vec<String>,
 }
 
 /// Response body for agent endpoints.
@@ -588,6 +595,10 @@ pub struct ResultInfo {
     pub is_error: bool,
     /// Token/cost/timing snapshot parsed from the `result` message, if present.
     pub usage: Option<UsageSnapshot>,
+    /// The result text produced by the agent (the `result` field of the SDK
+    /// `result` message). Empty string when the agent produced no text output.
+    #[serde(default)]
+    pub result_text: String,
 }
 
 /// Request body for POST /agents/{id}/clear-context.
@@ -749,6 +760,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -776,6 +788,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -801,6 +814,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
@@ -832,6 +846,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -861,6 +876,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -902,6 +918,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -934,6 +951,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);
@@ -1047,6 +1065,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("docker_image"));
@@ -1080,6 +1099,7 @@ mod tests {
                 memory_limit_mb: Some(8192),
             }),
             additional_dirs: vec![],
+            rooms: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("custom-image:v1"));
@@ -1123,6 +1143,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec!["/opt/configs".to_string(), "/shared/libs".to_string()],
+            rooms: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("additional_dirs"));
@@ -1152,6 +1173,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         // Empty vec should be omitted from JSON output
@@ -1361,6 +1383,7 @@ mod tests {
             extra_mounts: None,
             resource_limits: None,
             additional_dirs: vec![],
+            rooms: vec![],
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);

@@ -16,6 +16,7 @@ Every service with an HTTP server reads the `AGENTD_PORT` environment variable t
 | `AGENTD_PORT` | agentd-notify | `17004` | `7004` | HTTP listen port |
 | `AGENTD_PORT` | agentd-wrap | `17005` | `7005` | HTTP listen port |
 | `AGENTD_PORT` | agentd-orchestrator | `17006` | `7006` | HTTP/WebSocket listen port |
+| `AGENTD_PORT` | agentd-communicate | `17010` | `7010` | HTTP/WebSocket listen port |
 
 ### Service URLs
 
@@ -27,6 +28,7 @@ These variables tell services and the CLI how to reach other services.
 | `AGENTD_ASK_SERVICE_URL` | agent (CLI) | `http://localhost:7001` | Base URL for the ask service |
 | `AGENTD_WRAP_SERVICE_URL` | agent (CLI) | `http://localhost:7005` | Base URL for the wrap service |
 | `AGENTD_ORCHESTRATOR_SERVICE_URL` | agent (CLI) | `http://localhost:7006` | Base URL for the orchestrator service |
+| `AGENTD_COMMUNICATE_SERVICE_URL` | agent (CLI) | `http://localhost:7010` | Base URL for the communicate service |
 
 !!! note "CLI defaults to production ports"
     The `agent` CLI defaults to **production ports** (7xxx) because it's typically used after installation with `cargo xtask install-user`. When developing, source the `.env` file to use dev ports:
@@ -79,11 +81,13 @@ Used when running services directly with `cargo run`. These are the **hardcoded 
 | agentd-notify | 17004 |
 | agentd-wrap | 17005 |
 | agentd-orchestrator | 17006 |
+| agentd-communicate | 17010 |
 
 ```bash
 # These all use dev ports automatically
 cargo run -p agentd-notify        # → :17004
 cargo run -p agentd-orchestrator  # → :17006
+cargo run -p agentd-communicate   # → :17010
 ```
 
 ### Production Ports (7xxx)
@@ -98,6 +102,7 @@ Used when services are installed as LaunchAgents (macOS) or systemd units (Linux
 | agentd-notify | 7004 |
 | agentd-wrap | 7005 |
 | agentd-orchestrator | 7006 |
+| agentd-communicate | 7010 |
 
 ### Overriding Ports
 
@@ -121,13 +126,14 @@ Services that persist data use SQLite databases stored in platform-specific user
 |---------|--------------|
 | agentd-notify | `notify.db` |
 | agentd-orchestrator | `orchestrator.db` |
+| agentd-communicate | `communicate.db` |
 
 **Paths by platform:**
 
-| Platform | Notify | Orchestrator |
-|----------|--------|--------------|
-| **macOS** | `~/Library/Application Support/agentd-notify/notify.db` | `~/Library/Application Support/agentd-orchestrator/orchestrator.db` |
-| **Linux** | `~/.local/share/agentd-notify/notify.db` | `~/.local/share/agentd-orchestrator/orchestrator.db` |
+| Platform | Notify | Orchestrator | Communicate |
+|----------|--------|--------------|-------------|
+| **macOS** | `~/Library/Application Support/agentd-notify/notify.db` | `~/Library/Application Support/agentd-orchestrator/orchestrator.db` | `~/Library/Application Support/agentd-communicate/communicate.db` |
+| **Linux** | `~/.local/share/agentd-notify/notify.db` | `~/.local/share/agentd-orchestrator/orchestrator.db` | `~/.local/share/agentd-communicate/communicate.db` |
 
 Databases are created automatically on first run. To reset a service's data, stop it and delete the database file.
 
@@ -294,5 +300,6 @@ export AGENTD_MONITOR_SERVICE_URL=http://localhost:17003
 export AGENTD_NOTIFY_SERVICE_URL=http://localhost:17004
 export AGENTD_WRAP_SERVICE_URL=http://localhost:17005
 export AGENTD_ORCHESTRATOR_SERVICE_URL=http://localhost:17006
+export AGENTD_COMMUNICATE_SERVICE_URL=http://localhost:17010
 export RUST_LOG=info
 ```

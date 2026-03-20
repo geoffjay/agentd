@@ -11,4 +11,5 @@ tokio = { version = "1", features = ["full"] }
 memory = { path = "../memory" }
 notify = { path = "../notify" }
 orchestrator = { path = "../orchestrator" }
+communicate = { path = "../communicate" }
 agentd-common = { path = "../common" }
