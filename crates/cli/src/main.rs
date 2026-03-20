@@ -311,8 +311,7 @@ async fn main() -> Result<()> {
             } else {
                 match commands::apply::detect_template_kind(&path)? {
                     commands::apply::TemplateKind::Room => {
-                        commands::apply::apply_room_file(&path, dry_run, cli.json)
-                            .await?;
+                        commands::apply::apply_room_file(&path, dry_run, cli.json).await?;
                     }
                     commands::apply::TemplateKind::Agent => {
                         commands::apply::apply_agent_file(&client, &path, dry_run, cli.json)
