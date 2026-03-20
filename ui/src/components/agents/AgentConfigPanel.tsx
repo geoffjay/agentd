@@ -14,6 +14,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Eye, EyeOff, FolderOpen, Plus, X } from 'lucide-react'
 import type { Agent, ToolPolicy } from '@/types/orchestrator'
+import { HighlightedCode } from '@/components/common'
 
 // ---------------------------------------------------------------------------
 // Tool policy display helper
@@ -84,15 +85,25 @@ function EnvVarsRow({ env }: { env: Record<string, string> }) {
 function SystemPromptRow({ prompt }: { prompt: string }) {
   const [expanded, setExpanded] = useState(false)
   const isLong = prompt.length > 200
-  const display = !expanded && isLong ? `${prompt.slice(0, 200)}…` : prompt
 
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
       <span className="w-36 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
         System Prompt
       </span>
-      <div className="flex flex-col gap-1">
-        <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{display}</p>
+      <div className="flex flex-col gap-1 min-w-0 flex-1">
+        {expanded ? (
+          <HighlightedCode
+            code={prompt}
+            language="markdown"
+            maxHeight="20rem"
+            className="border border-gray-200 dark:border-gray-700"
+          />
+        ) : (
+          <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+            {isLong ? `${prompt.slice(0, 200)}…` : prompt}
+          </p>
+        )}
         {isLong && (
           <button
             type="button"
