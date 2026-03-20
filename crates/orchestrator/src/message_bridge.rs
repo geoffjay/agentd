@@ -52,7 +52,7 @@ use communicate::types::{
 };
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, RwLock};
@@ -73,6 +73,8 @@ const META_SOURCE_KEY: &str = "source";
 const META_SOURCE_VALUE: &str = "agent_response";
 /// Metadata key carrying the originating agent ID on response messages.
 const META_AGENT_ID_KEY: &str = "agent_id";
+/// Maximum number of seen message IDs to retain for deduplication.
+const MAX_SEEN_MESSAGES: usize = 1000;
 /// Initial backoff duration for WebSocket reconnection attempts.
 const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
 /// Maximum backoff duration for WebSocket reconnection attempts.
@@ -168,6 +170,11 @@ pub struct MessageBridge {
 
     /// WS base URL for the communicate service (scheme already converted to ws/wss).
     ws_url: String,
+
+    /// Set of recently seen message IDs for deduplication.
+    /// Prevents the same message from being delivered to agents multiple times
+    /// if the WebSocket delivers duplicate events (e.g. after reconnection).
+    seen_messages: Arc<RwLock<HashSet<Uuid>>>,
 }
 
 impl MessageBridge {
@@ -218,6 +225,7 @@ impl MessageBridge {
             max_queue_depth: DEFAULT_MAX_QUEUE_DEPTH,
             ws_tx: Arc::new(Mutex::new(None)),
             ws_url,
+            seen_messages: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -505,6 +513,27 @@ impl MessageBridge {
     // -----------------------------------------------------------------------
 
     async fn on_room_message(&self, room_id: Uuid, message: communicate::types::MessageResponse) {
+        // Deduplication: skip messages we have already processed.
+        // This guards against duplicate WebSocket deliveries after reconnection.
+        {
+            let mut seen = self.seen_messages.write().await;
+            if !seen.insert(message.id) {
+                debug!(
+                    %room_id,
+                    message_id = %message.id,
+                    "MessageBridge: skipping duplicate message"
+                );
+                return;
+            }
+            // Evict oldest entries when the set grows too large.
+            if seen.len() > MAX_SEEN_MESSAGES {
+                // HashSet doesn't have ordered eviction, so clear and accept
+                // a brief window where very old duplicates could sneak through.
+                seen.clear();
+                seen.insert(message.id);
+            }
+        }
+
         // Echo prevention: skip messages posted by the bridge itself.
         if message.metadata.get(META_SOURCE_KEY).map(|s| s.as_str()) == Some(META_SOURCE_VALUE) {
             debug!(

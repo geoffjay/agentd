@@ -326,7 +326,11 @@ async fn handle_socket(socket: WebSocket, state: crate::api::ApiState, params: W
                                     }
                                 });
 
-                                subscription_tasks.insert(room_id, task);
+                                // Abort any existing subscription task for this room
+                                // to prevent duplicate message delivery on resubscribe.
+                                if let Some(old_task) = subscription_tasks.insert(room_id, task) {
+                                    old_task.abort();
+                                }
                             }
                             Err(e) => {
                                 warn!(%conn_id, %room_id, error = %e, "Subscribe failed");

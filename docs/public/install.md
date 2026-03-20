@@ -222,8 +222,17 @@ and a production port (7xxx) when running as a LaunchAgent:
 | agentd-notify | 17004 | 7004 |
 | agentd-wrap | 17005 | 7005 |
 | agentd-orchestrator | 17006 | 7006 |
+| agentd-memory | — | 7008 |
+| agentd-communicate | 17010 | 7010 |
 
 All ports are configurable via the `AGENTD_PORT` environment variable.
+
+!!! warning "CLI defaults to production ports"
+    The `agent` CLI connects to **production ports (7xxx)** by default. If you're running services with `cargo run` (dev ports), `agent status` and other commands will report connection failures even though services are healthy. Fix this by sourcing the dev environment:
+    ```bash
+    source .env   # sets AGENTD_*_SERVICE_URL vars to dev ports (17xxx)
+    ```
+    See [Configuration Reference](configuration.md#using-the-env-file-for-development) for details.
 
 ### Custom Installation Location
 
@@ -320,11 +329,15 @@ Common issues:
    cargo xtask service-status
    ```
 
-2. Check if port is listening:
+2. Check if port is listening. Installed services use **production ports (7xxx)**:
    ```bash
-   curl http://localhost:17004/health
-   curl http://localhost:17001/health
+   curl http://localhost:7004/health    # notify
+   curl http://localhost:7001/health    # ask
+   curl http://localhost:7006/health    # orchestrator
+   curl http://localhost:7010/health    # communicate
    ```
+
+   If running with `cargo run` (dev), use dev ports (17xxx) instead.
 
 3. Restart services:
    ```bash
