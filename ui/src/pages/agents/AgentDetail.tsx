@@ -32,6 +32,7 @@ import { AgentCommandInput } from '@/components/agents/AgentCommandInput'
 import { AgentPolicyEditor } from '@/components/agents/AgentPolicyEditor'
 import { AgentApprovals } from '@/components/agents/AgentApprovals'
 import { AgentUsagePanel } from '@/components/agents/AgentUsagePanel'
+import { AgentTodosPanel } from '@/components/agents/AgentTodosPanel'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { CardSkeleton } from '@/components/common/LoadingSkeleton'
 import { useAgentDetail } from '@/hooks/useAgentDetail'
@@ -801,6 +802,9 @@ export function AgentDetail() {
               autoClearThreshold={agent.config.auto_clear_threshold}
             />
           )}
+
+          {/* Todos — shown only after the agent has written at least one todo list */}
+          <AgentTodosPanel agentId={agentId} />
 
           {/* Tool policy */}
           <section
