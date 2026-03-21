@@ -9,11 +9,16 @@
 
 import { Search, X } from 'lucide-react'
 import type { AgentStatus } from '@/types/orchestrator'
+import type { AgentRole } from '@/types/agent-roles'
+import { ALL_AGENT_ROLES, ROLE_LABELS } from '@/types/agent-roles'
 
 export interface AgentFiltersProps {
   /** Currently selected status filter; empty string means "All" */
   status: AgentStatus | ''
   onStatusChange: (status: AgentStatus | '') => void
+  /** Currently selected role filter; empty string means "All" */
+  role: AgentRole | ''
+  onRoleChange: (role: AgentRole | '') => void
   /** Search query string */
   search: string
   onSearchChange: (search: string) => void
@@ -34,6 +39,8 @@ const STATUS_OPTIONS: Array<{ label: string; value: AgentStatus | '' }> = [
 export function AgentFilters({
   status,
   onStatusChange,
+  role,
+  onRoleChange,
   search,
   onSearchChange,
   displayCount,
@@ -42,7 +49,7 @@ export function AgentFilters({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       {/* Left: filter controls */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex flex-wrap gap-2 sm:items-center">
         {/* Status dropdown */}
         <select
           aria-label="Filter by status"
@@ -53,6 +60,21 @@ export function AgentFilters({
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Role dropdown */}
+        <select
+          aria-label="Filter by role"
+          value={role}
+          onChange={(e) => onRoleChange(e.target.value as AgentRole | '')}
+          className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        >
+          <option value="">All roles</option>
+          {ALL_AGENT_ROLES.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_LABELS[r]}
             </option>
           ))}
         </select>

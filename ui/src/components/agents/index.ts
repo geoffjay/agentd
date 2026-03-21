@@ -1,5 +1,7 @@
 export { AgentStatusBadge } from './AgentStatusBadge'
 export type { AgentStatusBadgeProps } from './AgentStatusBadge'
+export { AgentRoleBadge } from './AgentRoleBadge'
+export type { AgentRoleBadgeProps } from './AgentRoleBadge'
 export { AgentFilters } from './AgentFilters'
 export type { AgentFiltersProps } from './AgentFilters'
 export { AgentTable } from './AgentTable'

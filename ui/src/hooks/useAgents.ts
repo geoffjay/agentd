@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { orchestratorClient } from '@/services/orchestrator'
 import type { Agent, AgentStatus, AgentUsageStats, CreateAgentRequest } from '@/types/orchestrator'
+import { inferAgentRole } from '@/types/agent-roles'
+import type { AgentRole } from '@/types/agent-roles'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,6 +25,8 @@ export type SortDir = 'asc' | 'desc'
 export interface UseAgentsOptions {
   /** Status filter; undefined = all */
   status?: AgentStatus | ''
+  /** Client-side role filter; empty string = all */
+  role?: AgentRole | ''
   /** Client-side name search string */
   search?: string
   /** Page number (1-based) */
@@ -113,6 +117,7 @@ const DEFAULT_REFRESH_INTERVAL = 10_000
 
 export function useAgents({
   status,
+  role = '',
   search = '',
   page = 1,
   pageSize = DEFAULT_PAGE_SIZE,
@@ -206,8 +211,11 @@ export function useAgents({
   // ---------------------------------------------------------------------------
 
   const filtered = allAgents.filter((agent) => {
-    if (search) {
-      return agent.name.toLowerCase().includes(search.toLowerCase())
+    if (search && !agent.name.toLowerCase().includes(search.toLowerCase())) {
+      return false
+    }
+    if (role && inferAgentRole(agent.name) !== role) {
+      return false
     }
     return true
   })
