@@ -108,6 +108,9 @@ nav:
   - Development:
       - Error Handling & Logging: public/error-handling.md
       - Storage Patterns: storage.md
+  - Planning:
+      - Autonomous Pipeline Architecture: planning/autonomous-pipeline.md
+      - Human Interaction Gates: planning/autonomous-pipeline-gates.md
 
 extra:
   social:
