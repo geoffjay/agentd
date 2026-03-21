@@ -1,9 +1,11 @@
 /**
  * AgentRoleBadge — visual identifier for the functional role of an agent.
  *
- * Each of the ten agent roles (5 original + 5 v0.9.0 expansion) receives a
- * distinct colour drawn from Tailwind's semantic palette and a lucide-react
- * icon chosen to reflect the role's purpose.
+ * Covers all 13 canonical roles across the original workforce and the three
+ * v0.9.0 milestone plans (#17 Ecosystem Expansion, #18 Workforce Expansion,
+ * #19 Specialized Agent Ecosystem). Non-canonical names (researcher, security,
+ * test-writer, release-manager, issue-quality, test) are resolved to their
+ * canonical counterpart via inferAgentRole() before badge rendering.
  *
  * Variants:
  *   'badge'     — coloured pill with icon + text label (default)
@@ -24,23 +26,29 @@
  *   reviewer   → amber    (scrutiny, caution, inspection)
  *   documenter → violet   (knowledge, writing, structure)
  *   designer   → pink     (visual creativity)
+ *   architect  → slate    (blueprints, system structure)
  *   refactor   → teal     (transformation, code cleanliness)
  *   research   → indigo   (deep investigation)
+ *   triage     → orange   (urgency, prioritisation, sorting)
  *   enricher   → sky      (augmentation, expanding context)
  *   tester     → lime     (quality gates, green = pass)
  *   auditor    → rose     (security, vigilance, risk)
+ *   release    → cyan     (shipping, delivery, versioning)
  *   unknown    → gray     (neutral fallback)
  */
 
 import {
   BookOpen,
   Code2,
+  Compass,
   FlaskConical,
   Map,
   Palette,
+  Rocket,
   Search,
   ShieldAlert,
   Sparkles,
+  Tags,
   TestTube2,
   Wrench,
 } from 'lucide-react'
@@ -63,32 +71,41 @@ const BADGE_STYLES: Record<AgentRole, string> = {
     'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400',
   designer:
     'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-400',
+  architect:
+    'bg-slate-100 text-slate-700 dark:bg-slate-700/40 dark:text-slate-300',
   refactor:
     'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400',
   research:
     'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
+  triage:
+    'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
   enricher:
     'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400',
   tester:
     'bg-lime-100 text-lime-800 dark:bg-lime-900/30 dark:text-lime-400',
   auditor:
     'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400',
+  release:
+    'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
   unknown:
     'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 }
 
 const DOT_STYLES: Record<AgentRole, string> = {
-  planner: 'bg-blue-500',
-  worker: 'bg-emerald-500',
-  reviewer: 'bg-amber-500',
+  planner:    'bg-blue-500',
+  worker:     'bg-emerald-500',
+  reviewer:   'bg-amber-500',
   documenter: 'bg-violet-500',
-  designer: 'bg-pink-500',
-  refactor: 'bg-teal-500',
-  research: 'bg-indigo-500',
-  enricher: 'bg-sky-500',
-  tester: 'bg-lime-500',
-  auditor: 'bg-rose-500',
-  unknown: 'bg-gray-400',
+  designer:   'bg-pink-500',
+  architect:  'bg-slate-500',
+  refactor:   'bg-teal-500',
+  research:   'bg-indigo-500',
+  triage:     'bg-orange-500',
+  enricher:   'bg-sky-500',
+  tester:     'bg-lime-500',
+  auditor:    'bg-rose-500',
+  release:    'bg-cyan-500',
+  unknown:    'bg-gray-400',
 }
 
 // ---------------------------------------------------------------------------
@@ -98,17 +115,20 @@ const DOT_STYLES: Record<AgentRole, string> = {
 type IconComponent = React.ComponentType<LucideProps>
 
 const ROLE_ICONS: Record<AgentRole, IconComponent> = {
-  planner: Map,
-  worker: Wrench,
-  reviewer: Search,
+  planner:    Map,
+  worker:     Wrench,
+  reviewer:   Search,
   documenter: BookOpen,
-  designer: Palette,
-  refactor: Code2,
-  research: FlaskConical,
-  enricher: Sparkles,
-  tester: TestTube2,
-  auditor: ShieldAlert,
-  unknown: Wrench,
+  designer:   Palette,
+  architect:  Compass,
+  refactor:   Code2,
+  research:   FlaskConical,
+  triage:     Tags,
+  enricher:   Sparkles,
+  tester:     TestTube2,
+  auditor:    ShieldAlert,
+  release:    Rocket,
+  unknown:    Wrench,
 }
 
 // ---------------------------------------------------------------------------
