@@ -1,14 +1,59 @@
 /**
- * Pipeline types for the v0.10.0 Autonomous Development Pipeline.
+ * Pipeline types for the v0.9.0 Autonomous Development Pipeline.
  *
- * The Conductor agent manages the merge queue and git-spice stack state.
- * These types represent the data shape exposed to the UI; the backend
- * endpoint that produces this data is defined in the v0.10.0 conductor
- * implementation (issues #603 / #604).
+ * The Conductor agent (`.agentd/agents/conductor.yml`, issue #620) manages
+ * the merge queue and git-spice stack state. The label-driven state machine
+ * is defined in issue #640; human approval gates are defined in issue #643.
  *
- * Until the endpoint exists, usePipelineStatus() returns null and the
- * PipelineStatusCard renders its "not yet active" empty state.
+ * These types represent the data shape exposed to the UI. Until the conductor
+ * endpoint exists, usePipelineStatus() returns null and PipelineStatusCard
+ * renders its "not yet active" empty state.
  */
+
+// ---------------------------------------------------------------------------
+// Pipeline stage state machine
+// ---------------------------------------------------------------------------
+
+/**
+ * The 7-stage label-driven pipeline state machine (issue #640).
+ *
+ * Each issue advances through these stages as agents act on it:
+ *   issue-created → triage → enrich → implement → review → merge → document
+ *
+ * The Conductor monitors stage transitions via GitHub label changes.
+ */
+export type PipelineStage =
+  | 'issue-created'
+  | 'triage'
+  | 'enrich'
+  | 'implement'
+  | 'review'
+  | 'merge'
+  | 'document'
+
+export const PIPELINE_STAGE_LABELS: Record<PipelineStage, string> = {
+  'issue-created': 'Issue Created',
+  triage:          'Triage',
+  enrich:          'Enrich',
+  implement:       'Implement',
+  review:          'Review',
+  merge:           'Merge',
+  document:        'Document',
+}
+
+export const PIPELINE_STAGE_ORDER: PipelineStage[] = [
+  'issue-created',
+  'triage',
+  'enrich',
+  'implement',
+  'review',
+  'merge',
+  'document',
+]
+
+// ---------------------------------------------------------------------------
+// Merge queue
+// ---------------------------------------------------------------------------
 
 /** A single PR waiting in the merge queue */
 export interface PipelineQueueItem {
@@ -45,10 +90,13 @@ export interface PipelineStatus {
   conductorLastRunAt: string | null
 }
 
+// ---------------------------------------------------------------------------
+// Human interaction gates
+// ---------------------------------------------------------------------------
+
 /**
- * Human interaction gate definitions.
+ * Human interaction gate definitions (issue #643).
  *
- * Sourced from the v0.10.0 milestone spec (issue #611).
  * Always-human gates are hardcoded in the conductor system prompt and cannot
  * be changed via the UI. Configurable gates default to autonomous but can
  * be flipped per-project in the agent YAML.
