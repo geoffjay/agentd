@@ -1,9 +1,10 @@
 /**
  * AgentRoleBadge — visual identifier for the functional role of an agent.
  *
- * Covers the original five-agent workforce plus the eight new specialized
- * agents from v0.9.0 milestone #19 (Specialized Agent Ecosystem). Variant
- * names from earlier planning iterations (researcher, auditor, test-writer,
+ * Covers the original five-agent workforce, the eight specialized agents from
+ * v0.9.0 milestone #19 (Specialized Agent Ecosystem), and the Conductor agent
+ * introduced in v0.10.0 (Autonomous Development Pipeline). Variant names from
+ * earlier planning iterations (researcher, auditor, test-writer,
  * release-manager, issue-quality, test) are resolved to their canonical
  * counterpart via inferAgentRole() before badge rendering.
  *
@@ -34,6 +35,7 @@
  *   tester     → lime     (quality gates, green = pass)
  *   security   → rose     (security, vigilance, risk)
  *   release    → cyan     (shipping, delivery, versioning)
+ *   conductor  → purple   (orchestration, coordination, pipeline control)
  *   unknown    → gray     (neutral fallback)
  */
 
@@ -50,6 +52,7 @@ import {
   Sparkles,
   Tags,
   TestTube2,
+  Workflow,
   Wrench,
 } from 'lucide-react'
 import type { LucideProps } from 'lucide-react'
@@ -87,6 +90,8 @@ const BADGE_STYLES: Record<AgentRole, string> = {
     'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400',
   release:
     'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
+  conductor:
+    'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
   unknown:
     'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 }
@@ -105,6 +110,7 @@ const DOT_STYLES: Record<AgentRole, string> = {
   tester:     'bg-lime-500',
   security:   'bg-rose-500',
   release:    'bg-cyan-500',
+  conductor:  'bg-purple-500',
   unknown:    'bg-gray-400',
 }
 
@@ -128,6 +134,7 @@ const ROLE_ICONS: Record<AgentRole, IconComponent> = {
   tester:     TestTube2,
   security:   ShieldAlert,
   release:    Rocket,
+  conductor:  Workflow,
   unknown:    Wrench,
 }
 

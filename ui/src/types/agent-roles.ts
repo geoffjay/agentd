@@ -44,6 +44,8 @@ export type AgentRole =
   | 'tester'      // test coverage; aliases: test (#19 YAML name), test-writer (#17)
   | 'security'    // dependency auditing, CVE triage; alias: auditor (#18)
   | 'release'     // changelog, versioning, releases; alias: release-manager (#17)
+  // v0.10.0 Autonomous Development Pipeline
+  | 'conductor'   // pipeline orchestration; merge queue, git-spice restack, escalation
   | 'unknown'
 
 // ---------------------------------------------------------------------------
@@ -54,6 +56,7 @@ const KNOWN_ROLES = new Set<string>([
   'planner', 'worker', 'reviewer', 'documenter', 'designer',
   'architect', 'refactor', 'research', 'triage',
   'enricher', 'tester', 'security', 'release',
+  'conductor',
 ])
 
 /**
@@ -118,6 +121,7 @@ export const ROLE_LABELS: Record<AgentRole, string> = {
   tester:     'Tester',
   security:   'Security',
   release:    'Release',
+  conductor:  'Conductor',
   unknown:    'Unknown',
 }
 
@@ -128,4 +132,5 @@ export const ALL_AGENT_ROLES: Exclude<AgentRole, 'unknown'>[] = [
   // v0.9.0 expansion
   'architect', 'refactor', 'research', 'triage',
   'enricher', 'tester', 'security', 'release',
+  'conductor',
 ]
