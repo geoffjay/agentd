@@ -7,6 +7,7 @@ import { useRef, useState } from 'react'
 import { ServiceConfig } from '@/components/settings/ServiceConfig'
 import { UIPreferences } from '@/components/settings/UIPreferences'
 import { AboutSection } from '@/components/settings/AboutSection'
+import { PipelineGates } from '@/components/settings/PipelineGates'
 import { useSettings } from '@/hooks/useSettings'
 import { resetSettings } from '@/stores/settingsStore'
 import type { Settings } from '@/stores/settingsStore'
@@ -81,6 +82,17 @@ export function SettingsPage() {
       <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">UI Preferences</h2>
         <UIPreferences ui={settings.ui} onSave={updateUI} />
+      </section>
+
+      {/* Pipeline Gates */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <h2 className="mb-1 text-lg font-semibold text-gray-900 dark:text-white">
+          Autonomous Pipeline Gates
+        </h2>
+        <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+          v0.10.0 — defines where human approval is required in the autonomous pipeline.
+        </p>
+        <PipelineGates />
       </section>
 
       {/* About */}

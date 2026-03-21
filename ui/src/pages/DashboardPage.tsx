@@ -12,10 +12,12 @@ import {
 import { AgentSummary } from '@/components/dashboard/AgentSummary'
 import { NotificationSummary } from '@/components/dashboard/NotificationSummary'
 import { ActivityTimeline } from '@/components/dashboard/ActivityTimeline'
+import { PipelineStatusCard } from '@/components/dashboard/PipelineStatusCard'
 import type { ActivityEvent } from '@/components/dashboard/ActivityTimeline'
 import { useServiceHealth } from '@/hooks/useServiceHealth'
 import { useAgentSummary } from '@/hooks/useAgentSummary'
 import { useNotificationSummary } from '@/hooks/useNotificationSummary'
+import { usePipelineStatus } from '@/hooks/usePipelineStatus'
 
 // ---------------------------------------------------------------------------
 // Stub "Coming Soon" card
@@ -48,6 +50,7 @@ export function DashboardPage() {
   const { services, loading: healthLoading, initializing: healthInit, refresh } = useServiceHealth()
   const agentSummary = useAgentSummary()
   const notifSummary = useNotificationSummary()
+  const { status: pipelineStatus, loading: pipelineLoading, error: pipelineError, refetch: pipelineRefetch } = usePipelineStatus()
 
   // Build a synthetic activity feed from available data
   const activityEvents: ActivityEvent[] = useMemo(() => {
@@ -117,12 +120,22 @@ export function DashboardPage() {
         error={agentSummary.error}
       />
 
-      {/* Stub sections */}
+      {/* Pipeline status + monitoring stub */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <PipelineStatusCard
+          status={pipelineStatus}
+          loading={pipelineLoading}
+          error={pipelineError}
+          onRefetch={pipelineRefetch}
+        />
         <ComingSoonCard
           title="Monitoring"
           icon={<BarChart2 size={24} className="text-gray-400" />}
         />
+      </div>
+
+      {/* Remaining stubs */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ComingSoonCard title="Hooks" icon={<Webhook size={24} className="text-gray-400" />} />
       </div>
     </div>
