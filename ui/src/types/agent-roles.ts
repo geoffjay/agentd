@@ -10,17 +10,19 @@
  *
  * Canonical role set
  * ──────────────────
- * Milestone #19 (Specialized Agent Ecosystem) is the authoritative source,
- * confirmed by group analysis. The 8 agent names from #19 are the canonical
+ * Milestone #18 (Consolidated Autonomous Development Pipeline) is the
+ * authoritative source. The planner superseded milestones #17 and #19;
+ * those have been deleted. The 7 new agents from #18 are the canonical
  * identifiers that will appear in .agentd/ YAML files and GitHub labels.
  *
- * Aliases handle variant names from earlier planning iterations (#17, #18):
+ * Aliases handle variant names from earlier planning iterations:
  *   researcher    → research   (#17 used "researcher")
- *   auditor       → security   (#18 used "auditor"; #19 GitHub label is "security")
- *   test-writer   → tester     (#17 used "test-writer"; display label kept as "Tester")
- *   test          → tester     (#19 agent name; display label kept as "Tester" for clarity)
- *   release-mgr   → release    (#17 used "release-manager")
+ *   auditor       → security   (#18 pre-consolidation used "auditor")
+ *   test-writer   → tester     (#17 used "test-writer")
+ *   test          → tester     (#19 agent name; display label kept as "Tester")
  *   issue-quality → enricher   (#19 agent name; TS-friendly canonical kept as "enricher")
+ *   architect     → unknown    (PR #595 closed, never shipped)
+ *   release       → unknown    (dropped from consolidated milestone #18)
  *
  * Note: 'enricher' and 'tester' are kept as canonical TypeScript names (not
  * 'issue-quality' / 'test') because they lack hyphens and produce clearer
@@ -35,17 +37,14 @@ export type AgentRole =
   | 'reviewer'
   | 'documenter'
   | 'designer'
-  // v0.9.0 unified canonical set (milestones #17 + #18 + #19)
-  | 'architect'   // cross-service design review, ADRs (#17, #19)
-  | 'refactor'    // targeted code improvements (#18, #19)
-  | 'research'    // technology investigation (#18, #19; alias: researcher)
-  | 'triage'      // issue labeling and enrichment (#17, #19)
-  | 'enricher'    // issue quality improvement; aliases: issue-quality (#19 YAML name)
-  | 'tester'      // test coverage; aliases: test (#19 YAML name), test-writer (#17)
-  | 'security'    // dependency auditing, CVE triage; alias: auditor (#18)
-  | 'release'     // changelog, versioning, releases; alias: release-manager (#17)
-  // v0.10.0 Autonomous Development Pipeline
+  // v0.9.0 consolidated canonical set (milestone #18)
   | 'conductor'   // pipeline orchestration; merge queue, git-spice restack, escalation
+  | 'triage'      // issue labeling and prioritisation
+  | 'enricher'    // issue quality improvement; alias: issue-quality
+  | 'tester'      // test coverage; aliases: test, test-writer
+  | 'refactor'    // targeted code improvements
+  | 'research'    // technology investigation; alias: researcher
+  | 'security'    // dependency auditing, CVE triage; alias: auditor
   | 'unknown'
 
 // ---------------------------------------------------------------------------
@@ -54,25 +53,26 @@ export type AgentRole =
 
 const KNOWN_ROLES = new Set<string>([
   'planner', 'worker', 'reviewer', 'documenter', 'designer',
-  'architect', 'refactor', 'research', 'triage',
-  'enricher', 'tester', 'security', 'release',
-  'conductor',
+  'conductor', 'triage', 'enricher', 'tester',
+  'refactor', 'research', 'security',
 ])
 
 /**
  * Maps non-canonical names to their canonical AgentRole.
- * Sources: milestone #17 (Ecosystem Expansion), #18 (Workforce Expansion),
- * #19 (Specialized Agent Ecosystem).
+ * Sources: milestone #18 consolidation (supersedes #17 and #19).
  */
 const ROLE_ALIASES: Record<string, AgentRole> = {
-  // #19 YAML agent names that differ from the canonical TS identifier
-  'issue-quality':   'enricher',    // #19 agent is named "issue-quality"
-  test:              'tester',      // #19 agent is named "test"
+  // YAML agent names that differ from the canonical TS identifier
+  'issue-quality':   'enricher',    // #19 agent was named "issue-quality"
+  test:              'tester',      // #19 agent was named "test"
   // Earlier planning iterations
   researcher:        'research',    // #17 used "researcher"
   'test-writer':     'tester',      // #17 used "test-writer"
-  'release-manager': 'release',     // #17 used "release-manager"
-  auditor:           'security',    // #18 used "auditor"
+  'release-manager': 'unknown',     // dropped from consolidated #18
+  auditor:           'security',    // #18 pre-consolidation used "auditor"
+  // Closed/dropped agents
+  architect:         'unknown',     // PR #595 closed, never shipped
+  release:           'unknown',     // dropped from consolidated #18
 }
 
 /**
@@ -87,7 +87,8 @@ const ROLE_ALIASES: Record<string, AgentRole> = {
  *   "issue-quality"     → enricher   (alias)
  *   "test"              → tester     (alias)
  *   "test-writer-agent" → tester     (alias)
- *   "release-manager"   → release    (alias)
+ *   "architect"         → unknown    (dropped)
+ *   "release-manager"   → unknown    (dropped)
  *   "my-custom-bot"     → unknown
  */
 export function inferAgentRole(name: string): AgentRole {
@@ -113,15 +114,13 @@ export const ROLE_LABELS: Record<AgentRole, string> = {
   reviewer:   'Reviewer',
   documenter: 'Documenter',
   designer:   'Designer',
-  architect:  'Architect',
-  refactor:   'Refactor',
-  research:   'Research',
+  conductor:  'Conductor',
   triage:     'Triage',
   enricher:   'Enricher',
   tester:     'Tester',
+  refactor:   'Refactor',
+  research:   'Research',
   security:   'Security',
-  release:    'Release',
-  conductor:  'Conductor',
   unknown:    'Unknown',
 }
 
@@ -129,8 +128,7 @@ export const ROLE_LABELS: Record<AgentRole, string> = {
 export const ALL_AGENT_ROLES: Exclude<AgentRole, 'unknown'>[] = [
   // Original workforce
   'planner', 'worker', 'reviewer', 'documenter', 'designer',
-  // v0.9.0 expansion
-  'architect', 'refactor', 'research', 'triage',
-  'enricher', 'tester', 'security', 'release',
-  'conductor',
+  // v0.9.0 consolidated expansion (milestone #18)
+  'conductor', 'triage', 'enricher', 'tester',
+  'refactor', 'research', 'security',
 ]
