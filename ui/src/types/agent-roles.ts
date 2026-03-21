@@ -10,20 +10,22 @@
  *
  * Canonical role set
  * ──────────────────
- * Derived from the union of three v0.9.0 milestone plans (#17, #18, #19).
- * Where the plans used different names for the same concept, a canonical name
- * was chosen and the others are handled as aliases in inferAgentRole():
+ * Milestone #19 (Specialized Agent Ecosystem) is the authoritative source,
+ * confirmed by group analysis. The 8 agent names from #19 are the canonical
+ * identifiers that will appear in .agentd/ YAML files and GitHub labels.
  *
- *   researcher   → research   (#17 used "researcher", #18/#19 used "research")
- *   security     → auditor    (#17/#19 used "security", #18 used "auditor")
- *   test-writer  → tester     (#17 used "test-writer", #18 used "tester")
- *   test         → tester     (#19 used "test")
- *   release-mgr  → release    (#17 used "release-manager", #19 used "release")
- *   issue-quality→ enricher   (#19 used "issue-quality", #18 used "enricher")
+ * Aliases handle variant names from earlier planning iterations (#17, #18):
+ *   researcher    → research   (#17 used "researcher")
+ *   auditor       → security   (#18 used "auditor"; #19 GitHub label is "security")
+ *   test-writer   → tester     (#17 used "test-writer"; display label kept as "Tester")
+ *   test          → tester     (#19 agent name; display label kept as "Tester" for clarity)
+ *   release-mgr   → release    (#17 used "release-manager")
+ *   issue-quality → enricher   (#19 agent name; TS-friendly canonical kept as "enricher")
  *
- * ⚠ Milestone naming collision: milestones #17, #18, and #19 are all tagged
- * v0.9.0. The UI treats them as a unified set until the backend resolves the
- * version conflict.
+ * Note: 'enricher' and 'tester' are kept as canonical TypeScript names (not
+ * 'issue-quality' / 'test') because they lack hyphens and produce clearer
+ * badge labels. The YAML agent names 'issue-quality' and 'test' resolve to
+ * them via inferAgentRole().
  */
 
 export type AgentRole =
@@ -38,10 +40,10 @@ export type AgentRole =
   | 'refactor'    // targeted code improvements (#18, #19)
   | 'research'    // technology investigation (#18, #19; alias: researcher)
   | 'triage'      // issue labeling and enrichment (#17, #19)
-  | 'enricher'    // issue quality improvement (#18; alias: issue-quality)
-  | 'tester'      // test coverage (#18; aliases: test-writer, test)
-  | 'auditor'     // security/dependency auditing (#18; alias: security)
-  | 'release'     // changelog, versioning, releases (#17, #19; alias: release-manager)
+  | 'enricher'    // issue quality improvement; aliases: issue-quality (#19 YAML name)
+  | 'tester'      // test coverage; aliases: test (#19 YAML name), test-writer (#17)
+  | 'security'    // dependency auditing, CVE triage; alias: auditor (#18)
+  | 'release'     // changelog, versioning, releases; alias: release-manager (#17)
   | 'unknown'
 
 // ---------------------------------------------------------------------------
@@ -51,7 +53,7 @@ export type AgentRole =
 const KNOWN_ROLES = new Set<string>([
   'planner', 'worker', 'reviewer', 'documenter', 'designer',
   'architect', 'refactor', 'research', 'triage',
-  'enricher', 'tester', 'auditor', 'release',
+  'enricher', 'tester', 'security', 'release',
 ])
 
 /**
@@ -60,15 +62,14 @@ const KNOWN_ROLES = new Set<string>([
  * #19 (Specialized Agent Ecosystem).
  */
 const ROLE_ALIASES: Record<string, AgentRole> = {
-  // #17 uses longer, explicit names
-  researcher:        'research',
-  'test-writer':     'tester',
-  'release-manager': 'release',
-  // #17 and #19 use "security" for what #18 calls "auditor"
-  security:          'auditor',
-  // #19 uses terse single-word forms
-  test:              'tester',
-  'issue-quality':   'enricher',
+  // #19 YAML agent names that differ from the canonical TS identifier
+  'issue-quality':   'enricher',    // #19 agent is named "issue-quality"
+  test:              'tester',      // #19 agent is named "test"
+  // Earlier planning iterations
+  researcher:        'research',    // #17 used "researcher"
+  'test-writer':     'tester',      // #17 used "test-writer"
+  'release-manager': 'release',     // #17 used "release-manager"
+  auditor:           'security',    // #18 used "auditor"
 }
 
 /**
@@ -79,7 +80,9 @@ const ROLE_ALIASES: Record<string, AgentRole> = {
  *   "refactor-agent"    → refactor
  *   "tester-agent-1"    → tester
  *   "researcher"        → research   (alias)
- *   "security-agent"    → auditor    (alias)
+ *   "auditor-agent"     → security   (alias)
+ *   "issue-quality"     → enricher   (alias)
+ *   "test"              → tester     (alias)
  *   "test-writer-agent" → tester     (alias)
  *   "release-manager"   → release    (alias)
  *   "my-custom-bot"     → unknown
@@ -113,7 +116,7 @@ export const ROLE_LABELS: Record<AgentRole, string> = {
   triage:     'Triage',
   enricher:   'Enricher',
   tester:     'Tester',
-  auditor:    'Auditor',
+  security:   'Security',
   release:    'Release',
   unknown:    'Unknown',
 }
@@ -124,5 +127,5 @@ export const ALL_AGENT_ROLES: Exclude<AgentRole, 'unknown'>[] = [
   'planner', 'worker', 'reviewer', 'documenter', 'designer',
   // v0.9.0 expansion
   'architect', 'refactor', 'research', 'triage',
-  'enricher', 'tester', 'auditor', 'release',
+  'enricher', 'tester', 'security', 'release',
 ]

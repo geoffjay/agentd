@@ -1,11 +1,11 @@
 /**
  * AgentRoleBadge — visual identifier for the functional role of an agent.
  *
- * Covers all 13 canonical roles across the original workforce and the three
- * v0.9.0 milestone plans (#17 Ecosystem Expansion, #18 Workforce Expansion,
- * #19 Specialized Agent Ecosystem). Non-canonical names (researcher, security,
- * test-writer, release-manager, issue-quality, test) are resolved to their
- * canonical counterpart via inferAgentRole() before badge rendering.
+ * Covers the original five-agent workforce plus the eight new specialized
+ * agents from v0.9.0 milestone #19 (Specialized Agent Ecosystem). Variant
+ * names from earlier planning iterations (researcher, auditor, test-writer,
+ * release-manager, issue-quality, test) are resolved to their canonical
+ * counterpart via inferAgentRole() before badge rendering.
  *
  * Variants:
  *   'badge'     — coloured pill with icon + text label (default)
@@ -32,7 +32,7 @@
  *   triage     → orange   (urgency, prioritisation, sorting)
  *   enricher   → sky      (augmentation, expanding context)
  *   tester     → lime     (quality gates, green = pass)
- *   auditor    → rose     (security, vigilance, risk)
+ *   security   → rose     (security, vigilance, risk)
  *   release    → cyan     (shipping, delivery, versioning)
  *   unknown    → gray     (neutral fallback)
  */
@@ -83,7 +83,7 @@ const BADGE_STYLES: Record<AgentRole, string> = {
     'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-400',
   tester:
     'bg-lime-100 text-lime-800 dark:bg-lime-900/30 dark:text-lime-400',
-  auditor:
+  security:
     'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400',
   release:
     'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
@@ -103,7 +103,7 @@ const DOT_STYLES: Record<AgentRole, string> = {
   triage:     'bg-orange-500',
   enricher:   'bg-sky-500',
   tester:     'bg-lime-500',
-  auditor:    'bg-rose-500',
+  security:   'bg-rose-500',
   release:    'bg-cyan-500',
   unknown:    'bg-gray-400',
 }
@@ -126,7 +126,7 @@ const ROLE_ICONS: Record<AgentRole, IconComponent> = {
   triage:     Tags,
   enricher:   Sparkles,
   tester:     TestTube2,
-  auditor:    ShieldAlert,
+  security:   ShieldAlert,
   release:    Rocket,
   unknown:    Wrench,
 }
