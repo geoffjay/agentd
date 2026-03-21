@@ -2,7 +2,7 @@
  * AgentList — main agents list page.
  *
  * Composes:
- * - AgentFilters (status dropdown + name search)
+ * - AgentFilters (status dropdown + role dropdown + name search)
  * - AgentTable (sortable, paginated, bulk-selectable)
  * - Pagination
  * - CreateAgentDialog (slide-over)
@@ -20,6 +20,8 @@ import { Pagination } from '@/components/common/Pagination'
 import { CreateAgentDialog } from './CreateAgentDialog'
 import { useAgents } from '@/hooks/useAgents'
 import type { AgentStatus } from '@/types/orchestrator'
+import type { AgentRole } from '@/types/agent-roles'
+import { ALL_AGENT_ROLES } from '@/types/agent-roles'
 import type { SortDir, SortField } from '@/hooks/useAgents'
 
 // ---------------------------------------------------------------------------
@@ -29,6 +31,12 @@ import type { SortDir, SortField } from '@/hooks/useAgents'
 function toStatus(raw: string | null): AgentStatus | '' {
   const valid: AgentStatus[] = ['Running', 'Pending', 'Stopped', 'Failed']
   return valid.includes(raw as AgentStatus) ? (raw as AgentStatus) : ''
+}
+
+function toRole(raw: string | null): AgentRole | '' {
+  return ALL_AGENT_ROLES.includes(raw as Exclude<AgentRole, 'unknown'>)
+    ? (raw as AgentRole)
+    : ''
 }
 
 function toPage(raw: string | null, fallback = 1): number {
@@ -60,6 +68,7 @@ export function AgentList() {
 
   // Derive filter/sort/page state from URL params
   const status = toStatus(searchParams.get('status'))
+  const role = toRole(searchParams.get('role'))
   const search = searchParams.get('q') ?? ''
   const page = toPage(searchParams.get('page'))
   const sortBy = toSortField(searchParams.get('sort'))
@@ -85,6 +94,7 @@ export function AgentList() {
     usageMap,
   } = useAgents({
     status,
+    role,
     search,
     page,
     pageSize: PAGE_SIZE,
@@ -96,7 +106,7 @@ export function AgentList() {
   // Clear selection whenever the list data changes
   useEffect(() => {
     setSelectedIds([])
-  }, [status, search, page, sortBy, sortDir])
+  }, [status, role, search, page, sortBy, sortDir])
 
   // ---------------------------------------------------------------------------
   // URL update helpers
@@ -124,6 +134,10 @@ export function AgentList() {
 
   function handleStatusChange(newStatus: AgentStatus | '') {
     setParam({ status: newStatus, page: null })
+  }
+
+  function handleRoleChange(newRole: AgentRole | '') {
+    setParam({ role: newRole, page: null })
   }
 
   function handleSearchChange(newSearch: string) {
@@ -203,6 +217,8 @@ export function AgentList() {
       <AgentFilters
         status={status}
         onStatusChange={handleStatusChange}
+        role={role}
+        onRoleChange={handleRoleChange}
         search={search}
         onSearchChange={handleSearchChange}
         displayCount={agents.length}

@@ -13,6 +13,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpDown, ChevronDown, ChevronUp, Eye, Trash2 } from 'lucide-react'
 import { AgentStatusBadge } from './AgentStatusBadge'
+import { AgentRoleBadge } from './AgentRoleBadge'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { ListItemSkeleton } from '@/components/common/LoadingSkeleton'
 import type { Agent, AgentUsageStats } from '@/types/orchestrator'
@@ -78,7 +79,7 @@ function SortHeader({ field, label, currentSort, currentDir, onSort }: SortHeade
 function EmptyState() {
   return (
     <tr>
-      <td colSpan={10} className="py-12 text-center">
+      <td colSpan={11} className="py-12 text-center">
         <p className="text-sm text-gray-500 dark:text-gray-400">No agents found.</p>
         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
           Create your first agent using the button above.
@@ -169,6 +170,11 @@ function AgentRow({ agent, selected, onSelect, onDelete, usage }: AgentRowProps)
 
       {/* Name */}
       <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{agent.name}</td>
+
+      {/* Role */}
+      <td className="px-4 py-3">
+        <AgentRoleBadge role={agent.name} />
+      </td>
 
       {/* Status */}
       <td className="px-4 py-3">
@@ -342,6 +348,9 @@ export function AgentTable({
                   onSort={onSort}
                 />
               </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+                Role
+              </th>
               <th className="px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400">
                 <SortHeader
                   field="status"
@@ -402,7 +411,7 @@ export function AgentTable({
           <tbody className="divide-y divide-gray-100 bg-white dark:divide-gray-700 dark:bg-gray-900">
             {loading ? (
               <tr>
-                <td colSpan={10} className="p-4">
+                <td colSpan={11} className="p-4">
                   <ListItemSkeleton rows={5} />
                 </td>
               </tr>
