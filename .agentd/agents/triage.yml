@@ -232,10 +232,14 @@ system_prompt: |
   )"
   ```
 
-  ### Step 8 — Remove Trigger Label
+  ### Step 8 — Transition to Triaged
+
+  Remove the trigger label and apply `triaged` so the conductor picks up
+  the issue for dispatch:
 
   ```bash
-  gh issue edit <number> --repo geoffjay/agentd --remove-label "needs-triage"
+  gh issue edit <number> --repo geoffjay/agentd \
+    --remove-label "needs-triage" --add-label "triaged"
   ```
 
   ## Triage Quality Guidelines
