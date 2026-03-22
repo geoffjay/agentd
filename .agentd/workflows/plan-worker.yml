@@ -62,7 +62,7 @@ prompt_template: |
     hard requirement and larger plans will require more issues
   - If a planning task has already been broken down into phases these phases should have an
     associated epic issue created for them, with each epic broken down into multiple issues
-  - Create relationships between issues as needed using blocked by, blocks, and aprent issues
+  - Create relationships between issues as needed using blocked by, blocks, and parent issues
   - Use gh issue-ext to add relationships and dependencies
 
   For each proposed issue, create it using:
@@ -74,7 +74,21 @@ prompt_template: |
   After adding the issue to the project board, assign the necessary relationships and dependencies.
   Skip this if the issue-ext extension is not available in the gh CLI:
     gh issue-ext sub add <parent> <child>         # parent/child relationship
-    gh issue-ext blocking add <blocked> <blocker> # blocking relationship
+    gh issue-ext blocking add <blocked> <blocker> # blocking relationship (use for git-spice stack ordering)
+
+  Dependency ordering for git-spice stacking:
+  When issues have sequential dependencies (B requires output from A), use blocking
+  relationships so worker agents know to stack B's branch on top of A's branch:
+    gh issue-ext blocking add <issue-B> <issue-A>   # A must merge before B
+
+  Include a "## Stack Base" section in each issue body specifying where to branch from:
+  - "Stack on: feature/autonomous-pipeline" for milestone work
+  - "Blocked by: #NNN" when this issue depends on another
+  - "Parallel: no ordering constraint" when issues can be implemented independently
+
+  Parallel issues (no shared file conflicts) can all branch from the same base and
+  be submitted as independent PRs — no ordering constraint needed. Only use blocking
+  relationships when there is a genuine sequential dependency.
 
   After the plan is complete:
 

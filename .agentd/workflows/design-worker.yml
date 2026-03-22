@@ -34,22 +34,27 @@ prompt_template: |
   3. Review results to maintain consistency with prior design work.
 
   Instructions:
-  1. Read the issue carefully to understand what design work is needed
-  2. Check the current state of ui/design/ .pen files and ui/src/ components
-  3. If the task involves new UI, create or update .pen designs using the Pencil
+  1. Sync with upstream at the start of the session:
+     git-spice repo sync
+  2. Determine stack base — check for blocked-by relationships:
+     gh issue view {{source_id}} --repo geoffjay/agentd --json body,labels
+     If blocked by another open issue, check out that branch first.
+     Otherwise: git checkout feature/autonomous-pipeline
+  3. Create a stacked branch:
+     git-spice branch create design/issue-{{source_id}} -m "design: <brief description>"
+  4. Read the issue carefully to understand what design work is needed
+  5. Check the current state of ui/design/ .pen files and ui/src/ components
+  6. If the task involves new UI, create or update .pen designs using the Pencil
      MCP tools (get_editor_state, open_document, batch_design, get_screenshot)
-  4. If the task involves design tokens, update tokens in the .pen file and
+  7. If the task involves design tokens, update tokens in the .pen file and
      document the corresponding CSS custom property changes needed in ui/src/index.css
-  5. If the task involves a design-to-code sync audit, compare .pen files against
+  8. If the task involves a design-to-code sync audit, compare .pen files against
      implemented components and report discrepancies
-  6. Create a feature branch from main: git checkout -b design/issue-{{source_id}}
-  7. Commit your changes: git commit with a "design: ..." message referencing #{{source_id}}
-  8. Push and create a pull request:
-     gh pr create --repo geoffjay/agentd \
-       --title "design: <short description>" \
-       --body "Closes #{{source_id}}" \
-       --label design
-  9. Store any design decisions or findings for future reference:
-     agent memory remember "<what you decided>" --created-by designer --type information --tags designer,issue-{{source_id}} --visibility public
-  10. Move the issue to In Progress on the project board:
+  9. Commit with a design: message referencing the issue:
+     git-spice commit create -m "design: <description> (closes #{{source_id}})"
+  10. Submit the branch as a PR (creates or updates — idempotent):
+      git-spice branch submit --fill --no-prompt --label review-agent
+  11. Store any design decisions or findings for future reference:
+      agent memory remember "<what you decided>" --created-by designer --type information --tags designer,issue-{{source_id}} --visibility public
+  12. Move the issue to In Progress on the project board:
       gh issue edit {{source_id}} --repo geoffjay/agentd --add-project "https://github.com/users/geoffjay/projects/5"

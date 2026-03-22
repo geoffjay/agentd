@@ -34,18 +34,23 @@ prompt_template: |
   3. Review results to understand prior documentation decisions and known gaps.
 
   Instructions:
-  1. Read the issue carefully to understand what documentation is needed
-  2. Check the current state of docs/ and the relevant source code in crates/
-  3. Write or update the documentation to address the issue
-  4. Update mkdocs.yml nav if you added new pages
-  5. Create a feature branch from main: git checkout -b docs/issue-{{source_id}}
-  6. Commit your changes: git commit with a "docs: ..." message referencing #{{source_id}}
-  7. Push and create a pull request:
-     gh pr create --repo geoffjay/agentd \
-       --title "docs: <short description>" \
-       --body "Closes #{{source_id}}" \
-       --label documentation
-  8. Store any documentation decisions or discovered gaps for future reference:
-     agent memory remember "<what you learned>" --created-by documenter --type information --tags documenter,issue-{{source_id}} --visibility public
-  9. Move the issue to In Progress on the project board:
-     gh issue edit {{source_id}} --repo geoffjay/agentd --add-project "https://github.com/users/geoffjay/projects/5"
+  1. Sync with upstream at the start of the session:
+     git-spice repo sync
+  2. Determine stack base — check for blocked-by relationships:
+     gh issue view {{source_id}} --repo geoffjay/agentd --json body,labels
+     If blocked by another open issue, check out that branch first.
+     Otherwise: git checkout feature/autonomous-pipeline
+  3. Create a stacked branch:
+     git-spice branch create docs/issue-{{source_id}} -m "docs: <brief description>"
+  4. Read the issue carefully to understand what documentation is needed
+  5. Check the current state of docs/ and the relevant source code in crates/
+  6. Write or update the documentation to address the issue
+  7. Update mkdocs.yml nav if you added new pages
+  8. Commit with a docs: message referencing the issue:
+     git-spice commit create -m "docs: <description> (closes #{{source_id}})"
+  9. Submit the branch as a PR (creates or updates — idempotent):
+     git-spice branch submit --fill --no-prompt --label review-agent
+  10. Store any documentation decisions or discovered gaps for future reference:
+      agent memory remember "<what you learned>" --created-by documenter --type information --tags documenter,issue-{{source_id}} --visibility public
+  11. Move the issue to In Progress on the project board:
+      gh issue edit {{source_id}} --repo geoffjay/agentd --add-project "https://github.com/users/geoffjay/projects/5"
