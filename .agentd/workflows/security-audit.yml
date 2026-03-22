@@ -1,0 +1,101 @@
+# Security audit workflow — weekly scheduled security scan.
+#
+# Runs every Sunday at 00:00 UTC. The security agent performs a full audit:
+# cargo audit, secret scanning, anti-pattern detection, and Cargo.lock review.
+# Findings are filed as GitHub issues with severity labels.
+#
+# Usage:
+#   agent apply .agentd/workflows/security-audit.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: security-audit
+agent: security
+
+source:
+  type: cron
+  expression: "0 0 * * 0"
+
+enabled: true
+
+prompt_template: |
+  You are running in scheduled audit mode — perform a full security review of
+  the agentd workspace and file GitHub issues for any findings. Do NOT implement
+  fixes in this run.
+
+  Step 0 — Gather context from memory:
+  1. Check what was found in the last audit:
+     agent memory search "security audit findings" --as-actor security --limit 5 --json
+  2. Check for already-open security issues to avoid duplicates:
+     gh issue list --repo geoffjay/agentd --label security --state open \
+       --json number,title | jq '.[].title'
+
+  Audit Instructions:
+
+  1. Confirm the workspace root:
+     ls crates/
+
+  2. Run cargo audit and capture the full output:
+     cargo audit --json 2>/dev/null || cargo audit
+
+  3. Scan for hardcoded secrets and credentials:
+     grep -rn "password\|secret\|api_key\|token\s*=\s*\"" crates/ \
+       --include="*.rs" --include="*.toml" -i | grep -v test | grep -v "#"
+     grep -rn "BEGIN.*PRIVATE KEY\|AWS_SECRET\|sk-[a-zA-Z0-9]" crates/ \
+       --include="*.rs" --include="*.toml" --include="*.env*"
+
+  4. Check for unsafe anti-patterns:
+     grep -rn "unsafe {" crates/ --include="*.rs" | grep -v test
+     grep -rn "unwrap()\|expect(" crates/ --include="*.rs" \
+       | grep -v "test\|#\[" | head -30
+     grep -rn "std::mem::transmute\|from_raw_parts" crates/ --include="*.rs"
+
+  5. Review Cargo.lock for known-vulnerable dependency versions:
+     cargo audit --json 2>/dev/null | jq '.vulnerabilities.list[] | {id, package: .package.name, version: .package.version, title: .advisory.title, severity: .advisory.severity}'
+
+  6. For each finding worth filing, verify it is:
+     - A real security concern (not a false positive)
+     - Not already tracked in an open issue
+     - Reproducible with the commands above
+
+  7. Create a GitHub issue for each valid finding:
+
+     gh issue create --repo geoffjay/agentd \
+       --title "security: <concise description>" \
+       --label "security" \
+       --label "severity:<critical|high|medium|low>" \
+       --body "..."
+
+     Issue body must include:
+     - Severity classification (Critical / High / Medium / Low)
+     - Overview (1-2 sentences)
+     - Evidence (command output or file path + line number)
+     - Recommended Fix
+     - Affected Files
+     - Acceptance Criteria checklist
+
+     Add each issue to the project board:
+     gh project item-add 5 --owner geoffjay --url <issue-url>
+
+  8. Post a summary to the security room:
+     agent communicate message send security \
+       "🔒 Weekly security audit complete. Found <N> issue(s). Filed: <#NNN, ...>. Audit date: $(date -u '+%Y-%m-%d')."
+
+  9. If any CRITICAL or HIGH severity findings were found, also notify engineering:
+     agent communicate message send engineering \
+       "⚠️ Security audit found <N> HIGH/CRITICAL issue(s). See: <#NNN, ...>. Immediate attention recommended."
+
+  10. Store the audit state:
+      agent memory remember "Security audit complete on $(date +%Y-%m-%d). Findings: <summary>. Issues filed: <numbers>." \
+        --created-by security --type information \
+        --tags security,audit --visibility public
+
+  Constraints:
+  - File at most 10 issues per run
+  - Skip findings already covered by an open issue
+  - Do NOT apply the "security-agent" label — that triggers on-demand runs
+  - Do NOT implement any fixes — audit and report only
+  - Severity guide:
+      Critical — remote code execution, credential exposure in repo
+      High     — unsafe memory, panics in request handlers, known CVE
+      Medium   — unwrap in non-test code, missing input validation
+      Low      — informational, best-practice deviations

@@ -1,0 +1,95 @@
+# Security worker workflow — on-demand security audit via label trigger.
+#
+# Triggered when an issue has the "security-agent" label applied. The security
+# agent reads the issue description and performs a targeted security audit or
+# investigation as described.
+#
+# Usage:
+#   agent apply .agentd/workflows/security-worker.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: security-worker
+agent: security
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - security-agent
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  You have been assigned a security investigation task.
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Step 0 — Gather context from memory:
+  Before starting, search shared memory for relevant context:
+  1. Search for prior security work in the affected area:
+     agent memory search "{{title}}" --as-actor security --limit 5 --json
+  2. Search for known patterns or past audit findings:
+     agent memory search "security issue {{source_id}}" --as-actor security --limit 3 --json
+  3. Review results and incorporate relevant context into your investigation.
+
+  Instructions:
+
+  1. Read the issue body carefully — it describes the security concern, affected
+     files or dependencies, and the expected outcome.
+
+  2. Investigate the reported concern:
+     a. If it's a dependency vulnerability (RUSTSEC):
+        cargo audit --json 2>/dev/null | jq '.vulnerabilities.list[]'
+        cargo tree -i <package-name>   # find what depends on it
+     b. If it's a code pattern issue:
+        grep -rn "<pattern>" crates/ --include="*.rs" | grep -v test
+     c. If it's a secret/credential exposure:
+        grep -rn "<pattern>" . --include="*.rs" --include="*.toml" --include="*.yml"
+
+  3. Assess severity:
+     - Critical — remote code execution, credential exposure in repo
+     - High     — unsafe memory, panics in request handlers, known CVE in direct dep
+     - Medium   — unwrap in non-test code, missing input validation, indirect CVE
+     - Low      — informational, best-practice deviations
+
+  4. If the issue describes a fix to implement:
+     a. Create a branch:
+        git-spice repo sync
+        git checkout feature/autonomous-pipeline
+        git-spice branch create security/issue-{{source_id}} \
+          -m "security: <brief description>"
+     b. Implement the fix (dependency update, unsafe code removal, etc.)
+     c. Verify the fix:
+        cargo audit
+        cargo build
+        cargo test
+        cargo clippy -- -D warnings
+     d. Commit and submit PR:
+        git-spice commit create \
+          -m "security(<crate>): <description> (closes #{{source_id}})"
+        git-spice branch submit --fill --no-prompt --label review-agent
+
+  5. If the issue is an investigation only (no fix to implement):
+     - Document findings as a comment on the issue
+     - Create follow-up issues for any fixes needed
+     - Apply appropriate severity labels to follow-up issues
+
+  6. Post a summary to the security room:
+     agent communicate message send security \
+       "🔒 Security investigation of issue #{{source_id}} complete. <Summary of findings and actions taken>."
+
+  7. Store what was found:
+     agent memory remember "Security issue #{{source_id}}: <what was found and how it was addressed>" \
+       --created-by security --type information \
+       --tags security,issue-{{source_id}} --visibility public
+
+  8. Remove the trigger label:
+     gh issue edit {{source_id}} --repo geoffjay/agentd --remove-label "security-agent"
