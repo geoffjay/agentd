@@ -1,0 +1,106 @@
+# Test worker workflow — dispatches test coverage tasks to the tester agent.
+#
+# Triggered when an issue has the "test-agent" label applied. The tester agent
+# reads the issue description, analyzes coverage gaps for the specified crate
+# or module, writes tests following project conventions, and submits a PR.
+#
+# SCOPE CONSTRAINT: The tester agent may ONLY modify test files, test fixtures,
+# and CI configuration. It must NOT modify production code.
+#
+# Usage:
+#   agent apply .agentd/workflows/test-worker.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: test-worker
+agent: tester
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - test-agent
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  You have been assigned a test coverage task.
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Step 0 — Gather context from memory:
+  Before starting, search shared memory for relevant context:
+  1. Search for prior test work in the affected area:
+     agent memory search "{{title}}" --as-actor tester --limit 5 --json
+  2. Search for known test patterns or gotchas:
+     agent memory search "tester issue {{source_id}}" --as-actor tester --limit 3 --json
+  3. Review results and follow established patterns rather than inventing new ones.
+
+  ## CRITICAL SCOPE CONSTRAINT
+
+  You may ONLY modify:
+  - `#[cfg(test)]` modules within existing source files
+  - Files in `crates/<crate>/tests/` directories
+  - Test fixture files and test helper utilities
+  - `.github/workflows/` CI configuration (e.g., coverage reporting)
+
+  You must NOT modify production code. If writing a test reveals a bug, file a
+  separate GitHub issue and leave the production code unchanged.
+
+  Instructions:
+
+  1. Read the issue body carefully — it specifies the target crate or module,
+     the type of tests needed, and any particular coverage gaps to address.
+
+  2. Identify the target crate and analyze coverage gaps:
+     a. List the crate's source files:
+        ls crates/<target>/src/
+     b. Find public functions without test coverage:
+        grep -rn "pub fn\|pub async fn" crates/<target>/src/ --include="*.rs" | grep -v test
+     c. Count existing test lines vs source lines:
+        find crates/<target>/src -name "*.rs" | xargs grep -l "#\[cfg(test)\]"
+        find crates/<target>/tests -name "*.rs" 2>/dev/null
+
+  3. Read ALL existing tests in the target crate before writing any new ones:
+     grep -rn "#\[cfg(test)\]" crates/<target>/src/ -l
+     ls crates/<target>/tests/ 2>/dev/null
+     # Read each test file to understand patterns, helpers, and what is already covered
+
+  4. Read the production source code for the functions you will test:
+     cat crates/<target>/src/<file>.rs
+
+  5. Write tests following the project conventions (see your system prompt for
+     patterns — inline unit tests, integration tests with build_test_app, HTTP
+     tests with tower::ServiceExt::oneshot, WebSocket tests with TcpListener).
+
+     Test writing priorities:
+     - Unit: pure functions, error paths, edge cases, type conversions
+     - Integration: API endpoints, error responses (4xx), boundary conditions
+
+  6. Run the tests to verify they pass:
+     cargo test -p <crate-name>
+     cargo test  # ensure no regressions across workspace
+
+  7. Create a branch and submit a PR:
+     git-spice repo sync
+     git checkout feature/autonomous-pipeline
+     git-spice branch create test/issue-{{source_id}} \
+       -m "test(<crate>): <brief description>"
+     git-spice commit create \
+       -m "test(<crate>): <description> (closes #{{source_id}})"
+     git-spice branch submit --fill --no-prompt --label review-agent
+
+  8. Store what was implemented:
+     agent memory remember "<what was tested and any patterns discovered>" \
+       --created-by tester --type information \
+       --tags tester,issue-{{source_id}} --visibility public
+
+  9. Remove the trigger label:
+     gh issue edit {{source_id}} --repo geoffjay/agentd --remove-label "test-agent"
