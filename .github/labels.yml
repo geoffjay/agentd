@@ -55,7 +55,7 @@
   color: "5319e7"
 
 - name: frontend
-  description: Frontend application code
+  description: React/TypeScript UI code in the frontend application
   color: "1D76DB"
 
 - name: plan
@@ -79,7 +79,7 @@
   color: "ee0701"
 
 - name: ui
-  description: User interface and frontend
+  description: Visual design, styling, and component layout (not application logic)
   color: "1D76DB"
 
 # ── Pipeline state labels ─────────────────────────────────────────────────────
