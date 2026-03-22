@@ -12,6 +12,33 @@ model: claude-sonnet-4-6
 additional_dirs:
   - ../berry-rs
 
+# Tool policies — enforce human approval gates.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  # Block modification of agent YAML files — always human
+  - pattern: "* .agentd/agents/*"
+    mode: deny
+
+  # Block modification of orchestrator core — always human
+  - pattern: "* crates/orchestrator/src/*"
+    mode: deny
+
+  # Block force pushes — always human
+  - pattern: "git push --force*"
+    mode: deny
+
+  # Block direct deletion of issues or milestones — always human
+  - pattern: "gh issue delete *"
+    mode: deny
+
+  # Ask before adding new Cargo dependencies
+  - pattern: "cargo add *"
+    mode: ask
+
+  # Block closing issues labeled 'security' without ask
+  - pattern: "gh issue close *"
+    mode: ask
+
 rooms:
   - engineering
   - name: announcements
