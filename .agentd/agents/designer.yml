@@ -11,6 +11,7 @@ worktree: true
 model: claude-sonnet-4-6
 
 rooms:
+  - engineering
   - name: announcements
     role: observer
 

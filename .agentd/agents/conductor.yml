@@ -15,7 +15,8 @@ model: claude-sonnet-4-6
 
 rooms:
   - engineering
-  - operations
+  - name: operations
+    role: admin
   - name: announcements
     role: observer
 
