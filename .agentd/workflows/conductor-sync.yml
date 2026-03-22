@@ -1,0 +1,266 @@
+# Conductor sync workflow — pipeline orchestration heartbeat.
+#
+# Runs every 5 minutes. Dispatches the conductor agent to check pipeline
+# state, drive issue/PR state transitions, orchestrate merges in stack
+# order, detect stale work, and post status digests.
+#
+# A manual trigger is also available via the "conductor-sync" label on any
+# issue; see .agentd/workflows/conductor-sync-manual.yml for that trigger.
+#
+# Usage:
+#   agent apply .agentd/workflows/conductor-sync.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: conductor-sync
+agent: conductor
+
+source:
+  type: cron
+  expression: "*/5 * * * *"
+
+enabled: true
+
+prompt_template: |
+  You are running a scheduled pipeline sync. Orchestrate all pending state
+  transitions, merge eligible PRs in stack order, and post a status digest
+  if any changes occurred.
+
+  Step 0 — Gather context from memory:
+  Before acting, retrieve recent pipeline state:
+  1. Search for recent pipeline decisions and escalations:
+     agent memory search "pipeline state merge queue" --as-actor conductor --limit 5 --json
+  2. Search for known blockers or escalations:
+     agent memory search "conductor escalation" --as-actor conductor --tags conductor --limit 3 --json
+  3. Review the results to avoid repeating actions already taken this cycle.
+
+  ## Step 1 — Sync Repository State
+
+  Synchronise git-spice with the remote. This detects merged PRs, cleans up
+  deleted branches, and rebases any stacked dependents that need updating.
+
+  ```bash
+  git-spice repo sync
+  git-spice log short
+  ```
+
+  If `git-spice repo sync` reports a rebase conflict, escalate immediately
+  (see Conflict Escalation in your system prompt) and stop this run.
+
+  ## Step 2 — Triage New Issues
+
+  Find open issues that have no type, area, or status labels (i.e., freshly
+  filed issues that haven't been triaged yet):
+
+  ```bash
+  gh issue list --repo geoffjay/agentd --state open \
+    --json number,title,labels \
+    --jq '[.[] | select(.labels | length == 0)]'
+  ```
+
+  For each unlabelled issue, apply `needs-triage` so the triage-worker
+  workflow picks it up:
+
+  ```bash
+  gh issue edit <number> --repo geoffjay/agentd --add-label "needs-triage"
+  ```
+
+  ## Step 3 — Dispatch Triaged Issues
+
+  Find issues labelled `triaged` that do not yet have an agent dispatch label
+  (`agent`, `plan-agent`, `docs-agent`, `work-agent`, `enrich-agent`, etc.):
+
+  ```bash
+  gh issue list --repo geoffjay/agentd --label triaged --state open \
+    --json number,title,labels \
+    --jq '[.[] | select(
+      ([.labels[] | select(.name | IN(
+        "agent","plan-agent","docs-agent","work-agent",
+        "enrich-agent","test-agent","refactor-agent",
+        "research-agent","security-agent"
+      ))] | length == 0)
+    )]'
+  ```
+
+  For each ready-to-dispatch issue, apply the `agent` label to hand it off
+  to the issue-worker workflow:
+
+  ```bash
+  gh issue edit <number> --repo geoffjay/agentd --add-label "agent"
+  ```
+
+  Only dispatch issues that are well-scoped (have acceptance criteria or are
+  `complexity:small`/`complexity:medium`). Hold `complexity:large` issues
+  unless they have a `plan` label indicating they have been broken down.
+
+  ## Step 4 — Check In-Review PRs
+
+  Find open PRs with the `review-agent` label that have been waiting for
+  more than 30 minutes without a review. Filter by `updatedAt` to enforce
+  the threshold, and check memory before posting to avoid nudging the same
+  PR on every 5-minute cycle:
+
+  ```bash
+  gh pr list --repo geoffjay/agentd --label review-agent \
+    --json number,title,updatedAt,reviews,labels \
+    --jq '[.[] | select(
+      (.reviews | length == 0) and
+      ((.updatedAt | fromdateiso8601) < (now - 1800))
+    )]'
+  ```
+
+  Before posting, search memory for a prior nudge on this PR:
+  ```bash
+  agent memory search "nudge PR #<number>" --as-actor conductor --limit 1 --json
+  ```
+  Skip the nudge if one was recorded within the past hour.
+
+  For PRs with no review activity beyond the threshold, post a nudge to
+  the engineering room and record it in memory:
+
+  ```bash
+  agent communicate message send engineering \
+    "👀 PR #<number> (<title>) has been awaiting review for >30 min. No reviewer activity yet."
+  ```
+
+  ## Step 5 — Promote Approved PRs to Merge-Ready
+
+  Find PRs that have been approved by the reviewer but do not yet have the
+  `merge-ready` label:
+
+  ```bash
+  gh pr list --repo geoffjay/agentd --state open \
+    --json number,title,labels,reviews \
+    --jq '[.[] | select(
+      (.reviews | map(select(.state == "APPROVED")) | length > 0) and
+      (.labels | map(.name) | contains(["merge-ready"]) | not) and
+      (.labels | map(.name) | contains(["needs-rework"]) | not) and
+      (.labels | map(.name) | contains(["needs-restack"]) | not)
+    )]'
+  ```
+
+  For each approved PR without blockers, apply `merge-ready`:
+
+  ```bash
+  gh pr edit <number> --repo geoffjay/agentd --add-label "merge-ready"
+  ```
+
+  ## Step 6 — Merge Eligible PRs
+
+  Find PRs with `merge-ready` that meet all merge criteria:
+  1. Has `merge-ready` label
+  2. At least one approving review
+  3. All CI checks pass (statusCheckRollup: all SUCCESS or SKIPPED)
+  4. No open change-request reviews
+  5. No `needs-restack` or `needs-rework` label
+
+  ```bash
+  gh pr list --repo geoffjay/agentd --label merge-ready \
+    --json number,title,baseRefName,headRefName,reviews,statusCheckRollup,labels
+  ```
+
+  Merge bottom-of-stack first (base branch is `main` or
+  `feature/autonomous-pipeline` or an already-merged branch). Use
+  `git-spice log long --json` to determine stack order.
+
+  For each eligible PR (in stack order):
+
+  ```bash
+  gh pr merge <number> --repo geoffjay/agentd --squash --delete-branch
+
+  # Sync git-spice to rebase dependents
+  git-spice repo sync
+
+  # If the merged PR had stacked children, resubmit them
+  git-spice stack submit --fill --no-prompt
+
+  agent communicate message send operations \
+    "✅ Merged PR #<number>: <title>. Restacking dependents."
+  ```
+
+  ## Step 7 — Re-Dispatch Needs-Rework PRs
+
+  Find PRs where the reviewer requested changes (`needs-rework` label) and
+  the label has been applied for at least 15 minutes (giving the worker time
+  to be assigned before the conductor re-dispatches):
+
+  ```bash
+  gh pr list --repo geoffjay/agentd --label needs-rework \
+    --json number,title,headRefName,updatedAt,comments \
+    --jq '[.[] | select(
+      (.updatedAt | fromdateiso8601) < (now - 900)
+    )]'
+  ```
+
+  For each `needs-rework` PR past the threshold, find the linked issue and
+  re-apply the `agent` label so the issue-worker re-dispatches the worker
+  with the review feedback:
+
+  ```bash
+  # Find the linked issue number from the PR body or branch name
+  gh pr view <pr-number> --repo geoffjay/agentd --json body,headRefName
+
+  # Re-dispatch: remove needs-rework from PR, re-apply agent to issue
+  gh pr edit <pr-number> --repo geoffjay/agentd --remove-label "needs-rework"
+  gh issue edit <issue-number> --repo geoffjay/agentd --add-label "agent"
+  ```
+
+  ## Step 8 — Detect Stale Items
+
+  Flag issues and PRs with no activity for 3 or more days:
+
+  ```bash
+  # Stale open PRs (>3 days, no update)
+  gh pr list --repo geoffjay/agentd --state open \
+    --json number,title,updatedAt,labels \
+    --jq '[.[] | select((.updatedAt | fromdateiso8601) < (now - 259200))]'
+
+  # Stale issues with agent label but no linked PR (>3 days)
+  gh issue list --repo geoffjay/agentd --label agent --state open \
+    --json number,title,updatedAt \
+    --jq '[.[] | select((.updatedAt | fromdateiso8601) < (now - 259200))]'
+  ```
+
+  For each stale item, post once to the operations room (check memory to
+  avoid repeated notifications):
+
+  ```bash
+  agent communicate message send operations \
+    "⏰ Stale: <PR/Issue> #<number> (<title>) — no activity for >3 days. Labels: <labels>."
+  ```
+
+  ## Step 9 — Post Status Digest
+
+  If any state transitions occurred during this run (issues triaged,
+  dispatched, PRs merged, stale items flagged), post a digest:
+
+  ```bash
+  MERGE_QUEUE=$(gh pr list --repo geoffjay/agentd --label merge-ready \
+    --json number | jq length)
+  IN_REVIEW=$(gh pr list --repo geoffjay/agentd --label review-agent \
+    --json number | jq length)
+  NEEDS_REWORK=$(gh pr list --repo geoffjay/agentd --label needs-rework \
+    --json number | jq length)
+  NEEDS_TRIAGE=$(gh issue list --repo geoffjay/agentd --label needs-triage \
+    --state open --json number | jq length)
+  ACTIVE=$(git branch -r | grep -v HEAD | wc -l | tr -d ' ')
+
+  agent communicate message send operations "📊 Pipeline sync $(date -u '+%H:%M UTC'):
+  • Needs triage:  ${NEEDS_TRIAGE} issue(s)
+  • Merge queue:   ${MERGE_QUEUE} PR(s) ready
+  • In review:     ${IN_REVIEW} PR(s) awaiting reviewer
+  • Needs rework:  ${NEEDS_REWORK} PR(s) with requested changes
+  • Active branches: ${ACTIVE}
+  • Transitions this run: <summary of what changed>"
+  ```
+
+  Skip the digest if nothing changed and the last digest was posted within
+  the past 30 minutes (check memory).
+
+  ## Step 10 — Store Run State
+
+  ```bash
+  agent memory remember "Conductor sync at $(date -u '+%Y-%m-%d %H:%M UTC'). \
+  Transitions: <what changed>. Pipeline health: <ok|degraded|blocked>." \
+    --created-by conductor --type information \
+    --tags conductor,pipeline --visibility public
+  ```
