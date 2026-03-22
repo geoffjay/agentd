@@ -1,0 +1,246 @@
+# Merge worker workflow — merge orchestration for approved pull requests.
+#
+# Triggered when a PR receives the "merge-ready" label. The conductor agent
+# verifies CI, checks stack position (bottom-up only), merges the PR, restacks
+# dependents, and escalates any conflicts.
+#
+# Usage:
+#   agent apply .agentd/workflows/merge-worker.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: merge-worker
+agent: conductor
+
+source:
+  type: github_pull_requests
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - merge-ready
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  You have been dispatched to merge a pull request.
+
+  PR #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Step 0 — Gather context from memory:
+  Before acting, check for recent merge decisions or known blockers:
+  1. Search for pipeline state and any active escalations:
+     agent memory search "pipeline state merge queue" --as-actor conductor --limit 5 --json
+  2. Search for known restack conflicts on this or related branches:
+     agent memory search "restack conflict" --as-actor conductor --limit 3 --json
+  3. Review results — do not re-merge a PR that was already processed this cycle.
+
+  ## Step 1 — Verify CI Passes
+
+  Fetch the PR's current check state:
+
+  ```bash
+  gh pr view {{source_id}} --repo geoffjay/agentd \
+    --json statusCheckRollup,reviews,labels,baseRefName,headRefName
+  ```
+
+  Handle each CI state differently:
+
+  **If any check is `PENDING`** — CI is still running. Defer without touching
+  labels; the 60 s poll cycle will retry once checks complete:
+
+  ```bash
+  agent communicate message send operations \
+    "⏳ PR #{{source_id}} ({{title}}) has merge-ready but CI is still \
+  running. Will retry when checks complete."
+  ```
+
+  Stop this run (leave `merge-ready` in place).
+
+  **If any check is `FAILURE` or `ERROR`** — CI has failed. Remove
+  `merge-ready` so the PR leaves the merge queue, and alert operations.
+  Do NOT apply `needs-rework` — that label signals reviewer change requests,
+  not CI failures, and would mislead the worker into looking for review
+  comments:
+
+  ```bash
+  gh pr edit {{source_id}} --repo geoffjay/agentd --remove-label "merge-ready"
+  agent communicate message send operations \
+    "❌ PR #{{source_id}} ({{title}}) CI failed — removed merge-ready. \
+  Fix the failing checks and re-apply merge-ready to re-queue."
+  ```
+
+  Stop this run.
+
+  ## Step 2 — Verify Approval
+
+  Confirm the PR has at least one approving review and no outstanding
+  change requests. Use the most recent review per author to match GitHub's
+  actual merge eligibility logic (a later approval supersedes an earlier
+  change request from the same reviewer):
+
+  ```bash
+  gh pr view {{source_id}} --repo geoffjay/agentd \
+    --json reviews \
+    --jq '
+      .reviews
+      | group_by(.author.login)
+      | map(sort_by(.submittedAt) | last)
+      | {
+          approved:          map(select(.state == "APPROVED"))          | length,
+          changes_requested: map(select(.state == "CHANGES_REQUESTED")) | length
+        }
+    '
+  ```
+
+  Proceed only if `approved >= 1` and `changes_requested == 0`.
+
+  If the PR lacks approval or has outstanding change requests, remove
+  `merge-ready`, post to operations, and stop:
+
+  ```bash
+  gh pr edit {{source_id}} --repo geoffjay/agentd --remove-label "merge-ready"
+  agent communicate message send operations \
+    "⚠️ PR #{{source_id}} ({{title}}) has merge-ready but lacks approval \
+  or has outstanding change requests. Removed label — review required."
+  ```
+
+  ## Step 3 — Check Stack Position (Bottom-Up Ordering)
+
+  Determine where this PR sits in the branch stack:
+
+  ```bash
+  git-spice log short
+  ```
+
+  A PR may only be merged if its base branch is one of:
+  - `main`
+  - `feature/autonomous-pipeline`
+  - A branch that has already been merged (no longer exists remotely)
+
+  If this PR's base branch is another open PR branch (i.e., a parent in the
+  stack has not yet merged), do NOT merge. Post to operations and stop:
+
+  ```bash
+  BASE_REF=$(gh pr view {{source_id}} --repo geoffjay/agentd \
+    --json baseRefName --jq '.baseRefName')
+  echo "Base branch: $BASE_REF"
+
+  # Check whether the base branch still exists remotely.
+  # Output 0 → merged/deleted, safe to proceed.
+  # Output 1 → still open, must merge the parent first.
+  git ls-remote --heads origin "$BASE_REF" | wc -l
+  ```
+
+  If the parent is not yet merged:
+
+  ```bash
+  agent communicate message send operations \
+    "📚 PR #{{source_id}} ({{title}}) cannot merge yet — its base branch \
+  is still open. Merge the parent PR first, then this one will be eligible."
+  ```
+
+  Stop this run without removing `merge-ready`.
+
+  ## Step 4 — Merge the PR
+
+  All checks passed. Merge with squash and delete the branch:
+
+  ```bash
+  gh pr merge {{source_id}} --repo geoffjay/agentd --squash --delete-branch
+  ```
+
+  Confirm success:
+
+  ```bash
+  gh pr view {{source_id}} --repo geoffjay/agentd --json state,mergedAt \
+    --jq '"State: \(.state), merged at: \(.mergedAt)"'
+  ```
+
+  If the merge fails (e.g., conflicts surfaced at merge time), escalate:
+
+  ```bash
+  gh pr edit {{source_id}} --repo geoffjay/agentd --add-label "needs-restack"
+  agent communicate message send engineering \
+    "❌ Merge failed for PR #{{source_id}} ({{title}}). \
+  Conflict at merge time — human intervention required. \
+  Applied needs-restack label."
+  ```
+
+  Stop this run.
+
+  ## Step 5 — Sync and Restack Dependents
+
+  After a successful merge, sync git-spice to detect the merged branch and
+  rebase any stacked dependents:
+
+  ```bash
+  git-spice repo sync
+  git-spice log short
+  ```
+
+  If `git-spice repo sync` reports a rebase conflict between dependent
+  branches, escalate and stop:
+
+  ```bash
+  git-spice rebase abort 2>/dev/null || true
+
+  # Identify the conflicting branches
+  git-spice log short
+
+  agent communicate message send engineering \
+    "⚠️ Rebase conflict after merging PR #{{source_id}} ({{title}}). \
+  Dependent branch has conflicts that cannot be resolved automatically. \
+  Affected branches: <list from gs log short>. \
+  Human intervention required before the dependent PR can merge."
+
+  # Apply needs-restack to the conflicting dependent PRs
+  # gh pr edit <dependent-pr-number> --repo geoffjay/agentd --add-label "needs-restack"
+  ```
+
+  If the restack succeeds, resubmit any updated stacked PRs so their diffs
+  reflect the new base:
+
+  ```bash
+  git-spice stack submit --fill --no-prompt
+  ```
+
+  Note: `git-spice stack submit` resubmits from the conductor's current
+  working-directory branch, which may include branches beyond the direct
+  dependents of the just-merged PR. This is acceptable for now — all
+  resubmitted PRs will simply have their diffs refreshed against their
+  (unchanged) base. When the conductor's full session context is formalised,
+  this can be scoped to `git-spice upstack submit` from the merged branch.
+
+  ## Step 6 — Announce and Clean Up
+
+  Post a merge confirmation to the operations room:
+
+  ```bash
+  agent communicate message send operations \
+    "✅ Merged PR #{{source_id}}: {{title}}. \
+  Restacked and resubmitted dependent PRs."
+  ```
+
+  The `merge-ready` label is automatically removed when the PR closes. If
+  for any reason it persists, remove it explicitly:
+
+  ```bash
+  gh pr view {{source_id}} --repo geoffjay/agentd --json state \
+    --jq '.state' | grep -q "MERGED" || \
+    gh pr edit {{source_id}} --repo geoffjay/agentd --remove-label "merge-ready"
+  ```
+
+  ## Step 7 — Store Run State
+
+  ```bash
+  agent memory remember "Merged PR #{{source_id}} ({{title}}) at \
+  $(date -u '+%Y-%m-%d %H:%M UTC'). Restacked dependents." \
+    --created-by conductor --type information \
+    --tags conductor,pipeline,merge --visibility public
+  ```
