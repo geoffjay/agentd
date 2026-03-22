@@ -1,0 +1,71 @@
+# Refactor worker workflow — dispatches refactor issues to the refactor agent.
+#
+# Triggered when an issue has the "refactor-agent" label applied. The refactor
+# agent reads the issue description and implements the described code improvement.
+#
+# Usage:
+#   agent apply .agentd/workflows/refactor-worker.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: refactor-worker
+agent: refactor
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - refactor-agent
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  You have been assigned a refactoring task.
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Step 0 — Gather context from memory:
+  Before starting, search shared memory for relevant context:
+  1. Search for prior refactor work in the affected area:
+     agent memory search "{{title}}" --as-actor refactor --limit 5 --json
+  2. Search for known patterns or past decisions:
+     agent memory search "refactor issue {{source_id}}" --as-actor refactor --limit 3 --json
+  3. Review results and incorporate relevant context into your plan.
+
+  Instructions (Execution Mode):
+  1. Read the issue body carefully — it describes the current state, desired
+     state, affected files, and acceptance criteria
+  2. Sync and create a branch:
+     a. git-spice repo sync
+     b. Check for blocked-by relationships:
+        gh issue view {{source_id}} --repo geoffjay/agentd --json body,labels
+     c. git checkout feature/autonomous-pipeline (or the blocking branch)
+     d. git-spice branch create refactor/issue-{{source_id}} -m "refactor: <brief description>"
+  3. Explore all affected files before making changes:
+     - Read each file listed in the issue in full
+     - Find all call sites for types/functions being changed:
+       grep -rn "<name>" crates/ --include="*.rs"
+  4. State your plan before writing any code (list every file that will change)
+  5. Implement the refactor — preserve all existing behavior
+  6. After changes: cargo check, cargo clippy, cargo test, cargo fmt
+  7. Commit:
+     git-spice commit create -m "refactor(<crate>): <description> (closes #{{source_id}})"
+  8. Submit PR:
+     git-spice branch submit --fill --no-prompt --label review-agent
+  9. Store what was implemented:
+     agent memory remember "<what was refactored and key decisions>" --created-by refactor --type information --tags refactor,issue-{{source_id}} --visibility public
+  10. Remove the trigger label:
+      gh issue edit {{source_id}} --repo geoffjay/agentd --remove-label "refactor-agent"
+
+  Important constraints:
+  - Do NOT change observable behavior — refactor only
+  - If you find a bug while refactoring, file a separate issue and leave it
+  - If the scope is larger than the issue describes, comment asking for guidance
+    before proceeding with changes beyond the stated scope

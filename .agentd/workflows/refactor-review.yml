@@ -1,0 +1,103 @@
+# Refactor review workflow — periodic codebase scan for refactor opportunities.
+#
+# Runs on a weekly cron schedule. The refactor agent scans one crate per run,
+# identifies improvement opportunities, and files GitHub issues for the findings.
+# Issues are NOT implemented here — they are queued for the refactor-worker workflow.
+#
+# Schedule: every Monday at 09:00 UTC
+#
+# Usage:
+#   agent apply .agentd/workflows/refactor-review.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: refactor-review
+agent: refactor
+
+source:
+  type: cron
+  expression: "0 9 * * 1"
+
+enabled: true
+
+prompt_template: |
+  You are running in Review Mode — scan the codebase for refactor opportunities
+  and file GitHub issues for your findings. Do NOT implement any changes.
+
+  Step 0 — Gather context from memory:
+  1. Determine which crate to review this run:
+     agent memory search "refactor review last crate" --as-actor refactor --limit 3 --json
+     Rotate through crates in order: common, orchestrator, notify, ask, wrap,
+     communicate, memory, cli. Pick the next one after the last reviewed.
+     If no memory exists, start with: common
+  2. Search for prior findings in the target crate:
+     agent memory search "refactor review <target-crate>" --as-actor refactor --limit 5 --json
+  3. Check for existing open refactor issues to avoid duplicates:
+     gh issue list --repo geoffjay/agentd --label refactor --state open \
+       --json number,title | jq '.[].title'
+
+  Review Instructions:
+
+  1. Check out the codebase and confirm the target crate exists:
+     ls crates/
+
+  2. Scan for refactor opportunities in crates/<target-crate>/src/:
+
+     a. Duplication — similar functions, repeated error handling, duplicate types:
+        grep -rn "pub fn\|pub async fn" crates/<crate>/src/ --include="*.rs" | grep -v test
+        grep -rn "^pub struct\|^pub enum" crates/<crate>/src/ --include="*.rs"
+
+     b. Complexity — large functions, deep nesting, large files:
+        find crates/<crate>/src -name "*.rs" | xargs wc -l | sort -rn | head -10
+        grep -rn "^\s\{16,\}" crates/<crate>/src/ --include="*.rs" | head -20
+
+     c. Missing abstractions — excessive clones, raw string errors, inconsistent Results:
+        grep -rn "\.clone()" crates/<crate>/src/ --include="*.rs" | head -20
+        grep -rn 'anyhow::anyhow!("' crates/<crate>/src/ --include="*.rs" | head -20
+
+     d. Design pattern opportunities — structs with many fields (builder), large match
+        blocks on enums (strategy/dispatch), repeated impl methods (trait extraction):
+        grep -rn "^pub struct" crates/<crate>/src/ --include="*.rs" -A 10 | head -60
+        grep -rn "^impl " crates/<crate>/src/ --include="*.rs"
+
+     e. Cross-crate duplication — types or functions that appear in multiple crates
+        and could move to crates/common:
+        grep -rn "^pub struct\|^pub enum\|^pub trait" crates/ --include="*.rs" | \
+          grep -v "common\|test" | sort | uniq -d -f1 | head -20
+
+  3. For each finding worth filing, verify it is:
+     - Clearly beneficial (not just stylistic preference)
+     - Achievable without changing external behavior
+     - Not already tracked in an open issue (check the list from Step 0)
+
+  4. Create a GitHub issue for each valid finding (aim for 2-5 issues per run):
+
+     gh issue create --repo geoffjay/agentd \
+       --title "refactor(<crate>): <concise description>" \
+       --label "refactor" \
+       --body "..."
+
+     Issue body must include:
+     - Overview (1-2 sentences)
+     - Current State with file paths and code snippet
+     - Desired State with proposed improvement
+     - Affected Files list
+     - Acceptance Criteria checklist
+
+     Add each issue to the project board:
+     gh project item-add 5 --owner geoffjay --url <issue-url>
+
+  5. Post a summary to the engineering room:
+     agent communicate message send engineering \
+       "🔧 Weekly refactor review of \`crates/<crate>\` complete. Found <N> opportunities. Issues filed: <#NNN, ...>."
+
+  6. Store the review state so the next run picks up the next crate:
+     agent memory remember "Refactor review of crates/<crate> complete on $(date +%Y-%m-%d). Issues filed: <numbers>. Next crate: <next-in-rotation>." \
+       --created-by refactor --type information \
+       --tags refactor,review,<crate> --visibility public
+
+  Constraints:
+  - File at most 5 issues per run to avoid overwhelming the backlog
+  - Skip findings that are already covered by an open issue
+  - Do NOT apply the "refactor-agent" label — that is applied manually or by the
+    conductor when a refactor issue is ready for implementation
+  - Do NOT implement any changes in this run — review only
