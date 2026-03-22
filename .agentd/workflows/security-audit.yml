@@ -38,19 +38,28 @@ prompt_template: |
      cargo audit --json 2>/dev/null || cargo audit
 
   3. Scan for hardcoded secrets and credentials:
+     # .rs files — filter // line comments; do NOT filter # (those are Rust attributes)
      grep -rn "password\|secret\|api_key\|token\s*=\s*\"" crates/ \
-       --include="*.rs" --include="*.toml" -i | grep -v test | grep -v "#"
+       --include="*.rs" -i | grep -v "^\s*//" | grep -v test
+     # .toml files — # is the correct comment marker for TOML
+     grep -rn "password\|secret\|api_key\|token\s*=\s*\"" crates/ \
+       --include="*.toml" -i | grep -v "#" | grep -v test
      grep -rn "BEGIN.*PRIVATE KEY\|AWS_SECRET\|sk-[a-zA-Z0-9]" crates/ \
        --include="*.rs" --include="*.toml" --include="*.env*"
 
   4. Check for unsafe anti-patterns:
      grep -rn "unsafe {" crates/ --include="*.rs" | grep -v test
+     # First count total matches so truncation is visible, then sample up to 50
      grep -rn "unwrap()\|expect(" crates/ --include="*.rs" \
-       | grep -v "test\|#\[" | head -30
+       | grep -v "test\|#\[" | wc -l
+     grep -rn "unwrap()\|expect(" crates/ --include="*.rs" \
+       | grep -v "test\|#\[" | head -50
      grep -rn "std::mem::transmute\|from_raw_parts" crates/ --include="*.rs"
 
-  5. Review Cargo.lock for known-vulnerable dependency versions:
-     cargo audit --json 2>/dev/null | jq '.vulnerabilities.list[] | {id, package: .package.name, version: .package.version, title: .advisory.title, severity: .advisory.severity}'
+  5. Review Cargo.lock for known-vulnerable dependency versions using the JSON
+     output already captured in Step 2 (do not re-run cargo audit):
+     # Parse the JSON output from Step 2 with jq:
+     jq '.vulnerabilities.list[] | {id, package: .package.name, version: .package.version, title: .advisory.title, severity: .advisory.severity}'
 
   6. For each finding worth filing, verify it is:
      - A real security concern (not a false positive)
