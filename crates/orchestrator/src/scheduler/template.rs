@@ -7,13 +7,18 @@ use crate::scheduler::types::Task;
 /// by schedule-based triggers. Which metadata variables are present depends
 /// on the trigger type:
 ///
-/// | Variable          | Trigger types          | Description                        |
-/// |-------------------|------------------------|------------------------------------|
-/// | `fire_time`       | cron                   | RFC 3339 timestamp of the firing   |
-/// | `cron_expression` | cron                   | The cron expression that fired     |
-/// | `trigger_type`    | cron, delay            | The trigger type name              |
-/// | `run_at`          | delay                  | The scheduled run-at datetime      |
-/// | `workflow_id`     | delay                  | The workflow UUID                  |
+/// | Variable             | Trigger types          | Description                                    |
+/// |----------------------|------------------------|------------------------------------------------|
+/// | `fire_time`          | cron                   | RFC 3339 timestamp of the firing               |
+/// | `cron_expression`    | cron                   | The cron expression that fired                 |
+/// | `trigger_type`       | cron, delay            | The trigger type name                          |
+/// | `run_at`             | delay                  | The scheduled run-at datetime                  |
+/// | `workflow_id`        | delay                  | The workflow UUID                              |
+/// | `source_workflow_id` | dispatch_result        | UUID of the workflow whose dispatch completed  |
+/// | `dispatch_id`        | dispatch_result        | UUID of the completed dispatch record          |
+/// | `status`             | dispatch_result        | Completion status (`completed` or `failed`)    |
+/// | `timestamp`          | dispatch_result        | RFC 3339 timestamp of the completion event     |
+/// | `original_source_id` | dispatch_result        | Source ID from the parent dispatch (if any)    |
 pub const KNOWN_VARIABLES: &[&str] = &[
     // Top-level task fields
     "title",
@@ -29,6 +34,12 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "trigger_type",
     "run_at",
     "workflow_id",
+    // Metadata-backed (dispatch_result triggers)
+    "source_workflow_id",
+    "dispatch_id",
+    "status",
+    "timestamp",
+    "original_source_id",
 ];
 
 /// Validate a prompt template, returning any warnings or errors.
@@ -318,6 +329,53 @@ mod tests {
         let warnings = validate_template("{{fire_time}} {{totally_fake}}");
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("totally_fake"));
+    }
+
+    // ── dispatch_result trigger variable tests ───────────────────────
+
+    #[test]
+    fn test_validate_dispatch_result_variables_accepted() {
+        let template = "{{source_workflow_id}} {{dispatch_id}} {{status}} {{timestamp}} {{original_source_id}}";
+        let warnings = validate_template(template);
+        assert!(warnings.is_empty(), "Expected no warnings, got: {:?}", warnings);
+    }
+
+    #[test]
+    fn test_render_dispatch_result_variables() {
+        let mut task = sample_task();
+        task.metadata.insert("source_workflow_id".to_string(), "wf-uuid-123".to_string());
+        task.metadata.insert("dispatch_id".to_string(), "dispatch-uuid-456".to_string());
+        task.metadata.insert("status".to_string(), "completed".to_string());
+        task.metadata.insert("timestamp".to_string(), "2025-06-01T10:00:00Z".to_string());
+        task.metadata.insert("original_source_id".to_string(), "42".to_string());
+
+        let template = "Workflow {{source_workflow_id}} dispatch {{dispatch_id}} finished with status {{status}} at {{timestamp}}. Original issue: {{original_source_id}}";
+        let result = render_template(template, &task);
+        assert_eq!(
+            result,
+            "Workflow wf-uuid-123 dispatch dispatch-uuid-456 finished with status completed at 2025-06-01T10:00:00Z. Original issue: 42"
+        );
+    }
+
+    #[test]
+    fn test_render_dispatch_result_without_original_source_id() {
+        // When original_source_id is absent (source_id was None in the event),
+        // the placeholder is preserved as-is.
+        let mut task = sample_task();
+        task.metadata.insert("source_workflow_id".to_string(), "wf-uuid-123".to_string());
+        task.metadata.insert("status".to_string(), "failed".to_string());
+
+        let result = render_template("Status: {{status}}, Origin: {{original_source_id}}", &task);
+        assert_eq!(result, "Status: failed, Origin: {{original_source_id}}");
+    }
+
+    #[test]
+    fn test_validate_all_variables_including_dispatch_result() {
+        let template = "{{title}} {{body}} {{url}} {{labels}} {{assignee}} {{source_id}} {{metadata}} \
+                        {{fire_time}} {{cron_expression}} {{trigger_type}} {{run_at}} {{workflow_id}} \
+                        {{source_workflow_id}} {{dispatch_id}} {{status}} {{timestamp}} {{original_source_id}}";
+        let warnings = validate_template(template);
+        assert!(warnings.is_empty(), "Expected no warnings, got: {:?}", warnings);
     }
 
     #[test]
