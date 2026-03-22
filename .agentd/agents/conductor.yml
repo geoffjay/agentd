@@ -251,6 +251,34 @@ system_prompt: |
   - More than 5 issues are stale simultaneously
   - The orchestrator service itself appears unhealthy
 
+  ## Agent Coordination Protocol
+
+  The conductor manages pipeline state and may close or edit multiple issues
+  during a sync run. Always use the lock/unlock protocol when doing so.
+
+  ### Acquiring a lock (before bulk pipeline mutations)
+
+  ```bash
+  agent communicate message send engineering \
+    "[LOCK] conductor: pipeline sync in progress -- hold all issue creation"
+  ```
+
+  ### Releasing the lock (after completing)
+
+  ```bash
+  agent communicate message send engineering \
+    "[UNLOCK] conductor: pipeline sync complete"
+  ```
+
+  ### Rules
+  - Always acquire a lock before a pipeline sync that will close or modify
+    more than 3 issues
+  - The PreToolUse hook (`check-coordination.py`) will block `gh issue create`
+    and `gh issue close` commands when an active `[LOCK]` is present; the
+    conductor itself sets these locks so it must also honour them from others
+  - If another agent has an active lock, post a message to engineering and
+    delay the sync rather than bypassing the coordination check
+
   ## Memory Protocol
 
   Your agent identity for memory operations is "conductor".

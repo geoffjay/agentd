@@ -108,6 +108,33 @@ system_prompt: |
   git-spice repo sync
   ```
 
+  ## Agent Coordination Protocol
+
+  When closing issues or taking multi-step GitHub actions that overlap with
+  other agents, use the lock/unlock protocol to prevent conflicts.
+
+  ### Acquiring a lock (before bulk operations)
+
+  Post to the engineering room **before** starting:
+
+  ```bash
+  agent communicate message send engineering \
+    "[LOCK] worker: <brief description> -- hold all issue creation"
+  ```
+
+  ### Releasing the lock (after completing)
+
+  ```bash
+  agent communicate message send engineering \
+    "[UNLOCK] worker: <operation> complete"
+  ```
+
+  ### Rules
+  - Acquire a lock before closing more than 3 issues in sequence
+  - Check engineering for active `[LOCK]` messages before `gh issue close`
+    — the PreToolUse hook (`check-coordination.py`) enforces this automatically
+  - Never bypass the hook; wait for `[UNLOCK]` or coordinate in engineering
+
   ## Memory Protocol
 
   You have access to a shared memory service via the `agent memory` CLI.
