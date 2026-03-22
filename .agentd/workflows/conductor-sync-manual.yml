@@ -1,0 +1,145 @@
+# Conductor sync manual workflow — label-triggered pipeline orchestration.
+#
+# Triggered when the "conductor-sync" label is applied to any open issue.
+# Runs a focused pipeline sync (Steps 1-7 below) when manually triggered.
+# Omits the in-review nudge and stale-item scan from the cron workflow —
+# those lower-priority checks run automatically on the 5-minute heartbeat.
+#
+# After processing the conductor removes the label from the triggering issue.
+#
+# Usage:
+#   agent apply .agentd/workflows/conductor-sync-manual.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: conductor-sync-manual
+agent: conductor
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - conductor-sync
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  You have been manually triggered via the conductor-sync label on issue
+  #{{source_id}} ({{title}}).
+
+  Run a focused pipeline sync covering the seven steps below. The in-review
+  nudge (Step 4) and stale-item scan (Step 8) from the cron workflow are
+  intentionally omitted here — they run automatically on the 5-minute heartbeat.
+
+  Step 0 — Gather context from memory:
+  1. Check recent pipeline state and any pending escalations:
+     agent memory search "pipeline state merge queue" --as-actor conductor --limit 5 --json
+  2. Check for known blockers:
+     agent memory search "conductor escalation" --as-actor conductor --limit 3 --json
+
+  ## Step 1 — Sync Repository State
+
+  ```bash
+  git-spice repo sync
+  git-spice log short
+  ```
+
+  If a rebase conflict is detected, escalate immediately (post to engineering
+  room) and stop this run.
+
+  ## Step 2 — Triage New Issues
+
+  Find and label unlabelled open issues with `needs-triage`:
+
+  ```bash
+  gh issue list --repo geoffjay/agentd --state open \
+    --json number,title,labels \
+    --jq '[.[] | select(.labels | length == 0)]'
+  ```
+
+  ## Step 3 — Dispatch Triaged Issues
+
+  Find `triaged` issues without an agent dispatch label and apply `agent`:
+
+  ```bash
+  gh issue list --repo geoffjay/agentd --label triaged --state open \
+    --json number,title,labels \
+    --jq '[.[] | select(
+      ([.labels[] | select(.name | IN(
+        "agent","plan-agent","docs-agent","work-agent",
+        "enrich-agent","test-agent","refactor-agent",
+        "research-agent","security-agent"
+      ))] | length == 0)
+    )]'
+  ```
+
+  ## Step 4 — Promote Approved PRs to Merge-Ready
+
+  Apply `merge-ready` to approved PRs that lack it:
+
+  ```bash
+  gh pr list --repo geoffjay/agentd --state open \
+    --json number,title,labels,reviews \
+    --jq '[.[] | select(
+      (.reviews | map(select(.state == "APPROVED")) | length > 0) and
+      (.labels | map(.name) | contains(["merge-ready"]) | not) and
+      (.labels | map(.name) | contains(["needs-rework"]) | not) and
+      (.labels | map(.name) | contains(["needs-restack"]) | not)
+    )]'
+  ```
+
+  ## Step 5 — Merge Eligible PRs
+
+  Merge `merge-ready` PRs that pass all criteria (approved, CI green, no
+  blockers), bottom of stack first:
+
+  ```bash
+  gh pr list --repo geoffjay/agentd --label merge-ready \
+    --json number,title,baseRefName,headRefName,reviews,statusCheckRollup,labels
+  ```
+
+  For each eligible PR: `gh pr merge <number> --repo geoffjay/agentd --squash --delete-branch`
+  then `git-spice repo sync` and `git-spice stack submit --fill --no-prompt`.
+
+  ## Step 6 — Re-Dispatch Needs-Rework PRs
+
+  Re-apply `agent` to issues linked to `needs-rework` PRs:
+
+  ```bash
+  gh pr list --repo geoffjay/agentd --label needs-rework \
+    --json number,title,headRefName,updatedAt
+  ```
+
+  ## Step 7 — Post Status Digest
+
+  ```bash
+  MERGE_QUEUE=$(gh pr list --repo geoffjay/agentd --label merge-ready \
+    --json number | jq length)
+  IN_REVIEW=$(gh pr list --repo geoffjay/agentd --label review-agent \
+    --json number | jq length)
+  NEEDS_REWORK=$(gh pr list --repo geoffjay/agentd --label needs-rework \
+    --json number | jq length)
+  NEEDS_TRIAGE=$(gh issue list --repo geoffjay/agentd --label needs-triage \
+    --state open --json number | jq length)
+
+  agent communicate message send operations "📊 Manual pipeline sync (triggered by #{{source_id}}) $(date -u '+%H:%M UTC'):
+  • Needs triage:  ${NEEDS_TRIAGE} issue(s)
+  • Merge queue:   ${MERGE_QUEUE} PR(s) ready
+  • In review:     ${IN_REVIEW} PR(s) awaiting reviewer
+  • Needs rework:  ${NEEDS_REWORK} PR(s) with requested changes
+  • Transitions this run: <summary of what changed>"
+  ```
+
+  ## Step 8 — Remove Trigger Label and Store State
+
+  ```bash
+  gh issue edit {{source_id}} --repo geoffjay/agentd \
+    --remove-label "conductor-sync"
+
+  agent memory remember "Manual conductor sync at $(date -u '+%Y-%m-%d %H:%M UTC') \
+  (triggered by #{{source_id}}). Transitions: <what changed>." \
+    --created-by conductor --type information \
+    --tags conductor,pipeline --visibility public
+  ```
