@@ -1,0 +1,32 @@
+# .agentd/rooms/operations.yml
+#
+# Operations room for pipeline status digests, merge results, conflict
+# escalations, and stale work alerts posted by the conductor agent.
+# Created during `agent apply .agentd/` — agents auto-join on first connect.
+name: operations
+topic: "Pipeline operations and status"
+description: "Conductor posts pipeline status digests, merge results, conflict escalations, and stale work alerts."
+type: group
+participants:
+  - identifier: conductor
+    kind: agent
+    role: admin
+  - identifier: worker
+    kind: agent
+    role: observer
+  - identifier: reviewer
+    kind: agent
+    role: observer
+  - identifier: planner
+    kind: agent
+    role: observer
+  - identifier: documenter
+    kind: agent
+    role: observer
+  - identifier: designer
+    kind: agent
+    role: observer
+  - identifier: geoff
+    kind: human
+    role: admin
+    display_name: "Geoff"
