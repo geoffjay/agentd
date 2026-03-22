@@ -38,11 +38,27 @@ prompt_template: |
 
   Instructions:
   1. Move the issue to "In Progress" by assigning it using the status field
-  2. Create a feature branch from the main branch: git checkout -b issue-{{source_id}}
-  3. Implement the changes described in the issue
-  4. Run tests to verify: cargo test
-  5. Commit with a descriptive message referencing the issue
-  6. Push and create a PR: gh pr create --repo geoffjay/agentd --title "{{title}}" --body "Closes #{{source_id}}"
-  7. Store any significant findings or decisions made during implementation:
+  2. Sync with upstream and determine stack base:
+     a. git-spice repo sync
+     b. Check if this issue has 'blocked-by' relationships:
+        gh issue view {{source_id}} --repo geoffjay/agentd --json body,labels
+     c. If blocked by another open issue, check out that branch first.
+        Otherwise: git checkout feature/autonomous-pipeline
+  3. Create a stacked branch:
+     git-spice branch create issue-{{source_id}} -m "feat: <brief description>"
+  4. Implement the changes described in the issue
+  5. Run tests to verify: cargo test
+  6. Ensure cargo fmt and cargo clippy pass for Rust changes
+  7. Commit with a descriptive message referencing the issue:
+     git-spice commit create -m "feat: <description> (closes #{{source_id}})"
+  8. Submit the branch as a PR (creates or updates — idempotent):
+     git-spice branch submit --fill --no-prompt --label review-agent
+  9. Store any significant findings or decisions made during implementation:
      agent memory remember "<what you learned>" --created-by worker --type information --tags worker,issue-{{source_id}} --visibility public
-  8. Close the issue: gh issue close {{source_id}} --repo geoffjay/agentd
+  10. Close the issue: gh issue close {{source_id}} --repo geoffjay/agentd
+
+  Handling needs-rework (reviewer requested changes):
+  If this issue's PR has the "needs-rework" label, the reviewer found issues.
+  Fetch the review comments, address the feedback, then:
+     git-spice commit amend -m "feat: <description> (address review feedback)"
+     git-spice branch submit --fill --no-prompt --label review-agent

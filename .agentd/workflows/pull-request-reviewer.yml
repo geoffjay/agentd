@@ -42,16 +42,34 @@ prompt_template: |
   3. Review results to inform your review — look for recurring issues or past decisions.
 
   Instructions:
-  1. Fetch the full diff: gh pr diff {{source_id}} --repo geoffjay/agentd
-  2. Read the diff carefully, noting each changed file and the nature of the changes
-  3. For any files where you need more context, read the full file
-  4. Check that the changes match what the PR description claims
-  5. Evaluate against your review criteria (correctness, safety, consistency, tests, scope)
-  6. Submit your review:
-     - Approve if the changes are good
-     - Comment if you have non-blocking suggestions
-     - Request changes if there are issues that need to be fixed
-  7. If you found a recurring pattern or notable issue worth tracking, store it:
+  1. Check the stack position of this PR before reviewing:
+     git-spice log short
+     This shows where the branch sits in the stack and whether it has a parent PR
+     that should be reviewed first.
+  2. Fetch the full diff: gh pr diff {{source_id}} --repo geoffjay/agentd
+  3. Read the diff carefully, noting each changed file and the nature of the changes
+  4. For any files where you need more context, read the full file
+  5. Check that the changes match what the PR description claims
+  6. Note any stack impact in your review: if this is a stacked PR, mention whether
+     approval of the parent branch would affect this branch
+  7. Evaluate against your review criteria (correctness, safety, consistency, tests, scope)
+  8. Submit your review and apply the appropriate label transition:
+     - If approved — approve and add merge-queue label:
+         gh pr review {{source_id}} --repo geoffjay/agentd --approve --body "..."
+         gh pr edit {{source_id}} --repo geoffjay/agentd --add-label "merge-queue"
+     - If non-blocking suggestions — comment only (no label change):
+         gh pr review {{source_id}} --repo geoffjay/agentd --comment --body "..."
+     - If changes required — request changes and add needs-rework label:
+         gh pr review {{source_id}} --repo geoffjay/agentd --request-changes --body "..."
+         gh pr edit {{source_id}} --repo geoffjay/agentd --add-label "needs-rework"
+     - If branch needs rebasing on its parent — add needs-restack label:
+         gh pr edit {{source_id}} --repo geoffjay/agentd --add-label "needs-restack"
+  9. If you found a recurring pattern or notable issue worth tracking, store it:
      agent memory remember "<finding>" --created-by reviewer --type information --tags reviewer,pr-{{source_id}} --visibility public
-  8. Remove the "review-agent" label after review:
-     gh pr edit {{source_id}} --repo geoffjay/agentd --remove-label review-agent
+  10. Remove the "review-agent" label after review:
+      gh pr edit {{source_id}} --repo geoffjay/agentd --remove-label review-agent
+
+  Label reference:
+  - merge-queue   — PR approved; triggers conductor to merge
+  - needs-rework  — changes requested; worker must address feedback and resubmit
+  - needs-restack — branch is behind its parent; worker must run git-spice upstack restack
