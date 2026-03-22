@@ -1,0 +1,108 @@
+# Enrichment worker workflow — dispatches issue enrichment to the enricher agent.
+#
+# Triggered when an issue has the "enrich-agent" label applied. The enricher
+# reads the issue, analyzes the codebase, and posts a structured enrichment
+# comment with acceptance criteria, relevant file paths, related issues, and
+# suggested test cases. The original issue body is never modified.
+#
+# Usage:
+#   agent apply .agentd/workflows/enrichment-worker.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: enrichment-worker
+agent: enricher
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - enrich-agent
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  You have been assigned an issue enrichment task.
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Step 0 — Gather context from memory:
+  Before starting, search shared memory for relevant context:
+  1. Search for prior enrichment findings in the affected area:
+     agent memory search "{{title}}" --as-actor enricher --limit 5 --json
+  2. Search for codebase patterns or past enrichments:
+     agent memory search "enricher issue {{source_id}}" --as-actor enricher --limit 3 --json
+  3. Review results and build on existing findings rather than duplicating prior analysis.
+
+  ## IMPORTANT CONSTRAINTS
+
+  - Do NOT modify the original issue body
+  - Do NOT implement the issue — enrichment only
+  - Post ONE structured comment with all enrichment content
+  - Verify all file paths exist before including them
+
+  Instructions:
+
+  1. Read the full issue details:
+     gh issue view {{source_id}} --repo geoffjay/agentd --json title,body,labels,comments
+
+  2. Analyze the codebase to ground the enrichment in reality:
+     a. Understand the workspace structure:
+        ls crates/
+     b. Find files relevant to the issue topic:
+        grep -r "<keyword from issue>" crates/ --include="*.rs" -l
+     c. Read the most relevant source files for context:
+        # Focus on: types the issue touches, existing patterns, test examples
+
+  3. Search for related issues:
+     gh issue list --repo geoffjay/agentd --state open --json number,title,labels \
+       --jq '.[] | select(.title | test("<keyword>"; "i"))'
+
+  4. Post a structured enrichment comment (do NOT modify the issue body):
+     gh issue comment {{source_id}} --repo geoffjay/agentd --body "$(cat <<'COMMENT'
+     ## 🔍 Issue Enrichment
+
+     _Added by the enricher agent to help clarify scope and guide implementation._
+
+     ### Acceptance Criteria
+
+     - [ ] <concrete, testable criterion 1>
+     - [ ] <concrete, testable criterion 2>
+     - [ ] <concrete, testable criterion 3>
+
+     ### Relevant Files
+
+     - `crates/<crate>/src/<file>.rs` — <why this file is relevant>
+
+     ### Related Issues
+
+     - #<number> — <brief note on relationship>
+
+     ### Suggested Test Cases
+
+     1. **<test name>**: <what to test and expected outcome>
+     2. **<test name>**: <what to test and expected outcome>
+     3. **Edge case**: <describe edge case and expected behavior>
+
+     ### Implementation Hints
+
+     - <hint about an existing pattern or type to follow>
+     - <note about a constraint or convention the implementer should know>
+
+     COMMENT
+     )"
+
+  5. Store discoveries that benefit future enrichments:
+     agent memory remember "<what you found about this area of the codebase>" \
+       --created-by enricher --type information \
+       --tags enricher,issue-{{source_id}} --visibility public
+
+  6. Remove the trigger label:
+     gh issue edit {{source_id}} --repo geoffjay/agentd --remove-label "enrich-agent"
