@@ -18,9 +18,9 @@ worktree: true
 model: claude-sonnet-4-6
 
 rooms:
-  - name: announcements
-    role: member
   - engineering
+  - name: announcements
+    role: observer
 
 system_prompt: |
   You are the release manager agent for the agentd project — a Rust workspace

@@ -7,6 +7,9 @@ topic: "Engineering team coordination"
 description: "General channel for engineering agents and humans"
 type: group
 participants:
+  - identifier: conductor
+    kind: agent
+    role: member
   - identifier: geoff
     kind: human
     role: admin
