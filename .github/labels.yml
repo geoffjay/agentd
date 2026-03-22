@@ -105,6 +105,23 @@
   description: Approved by reviewer, queued for merge by conductor
   color: "1d4ed8"
 
+# ── Complexity labels ────────────────────────────────────────────────────────
+#
+# Applied by the triage agent during Step 4 of triage. Created imperatively
+# at runtime if absent; listed here so gh label import keeps them in sync.
+
+- name: complexity:small
+  description: "Small scope: <50 lines, single file, clear solution"
+  color: "0e8a16"
+
+- name: complexity:medium
+  description: "Medium scope: <200 lines, 1-2 files, some design required"
+  color: "fbca04"
+
+- name: complexity:large
+  description: "Large scope: >200 lines, multiple files/crates"
+  color: "d93f0b"
+
 # ── Status / warning labels ───────────────────────────────────────────────────
 #
 # Amber/yellow family. Indicate a blocked or degraded state requiring action.
