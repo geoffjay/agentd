@@ -13,6 +13,23 @@ shell: /bin/zsh
 worktree: false
 model: claude-sonnet-4-6
 
+# File-path scoping: conductor manages the pipeline via GitHub API and
+# git-spice commands only. It must not modify any source or config files.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  mode: deny_list
+  tools:
+    - "Write(crates/**)"
+    - "Edit(crates/**)"
+    - "Write(ui/**)"
+    - "Edit(ui/**)"
+    - "Write(docs/**)"
+    - "Edit(docs/**)"
+    - "Write(.agentd/**)"
+    - "Edit(.agentd/**)"
+    - "Write(CLAUDE.md)"
+    - "Edit(CLAUDE.md)"
+
 rooms:
   - engineering
   - name: operations

@@ -10,6 +10,21 @@ shell: /bin/zsh
 worktree: true
 model: claude-sonnet-4-6
 
+# File-path scoping: designer may only write under ui/.
+# Writes to Rust sources, docs, and agent config are denied.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  mode: deny_list
+  tools:
+    - "Write(crates/**)"
+    - "Edit(crates/**)"
+    - "Write(docs/**)"
+    - "Edit(docs/**)"
+    - "Write(.agentd/**)"
+    - "Edit(.agentd/**)"
+    - "Write(CLAUDE.md)"
+    - "Edit(CLAUDE.md)"
+
 rooms:
   - engineering
   - name: announcements

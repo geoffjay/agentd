@@ -145,18 +145,29 @@ impl ToolPolicy {
 
 /// Match a tool entry against a tool name and its input.
 ///
-/// Supports two forms:
+/// Supports three forms:
 /// - `"Bash"` — plain name match, ignores input.
 /// - `"Bash(cargo *)"` — matches only when the tool is `Bash` and its
 ///   `command` input field satisfies the glob-style pattern.
+/// - `"Write(docs/**)"` — matches only when the tool is `Write` (or any
+///   file tool with a `file_path` input field) and the path satisfies
+///   the glob-style pattern. Supports `*` (single segment) and `**`
+///   (any number of segments).
 fn match_tool(pattern: &str, tool_name: &str, input: Option<&serde_json::Value>) -> bool {
     if pattern == tool_name {
         return true;
     }
     if let Some((tool, cmd_pattern)) = parse_tool_pattern(pattern) {
         if tool == tool_name {
+            // For Bash, match against the 'command' field.
             if let Some(cmd) = input.and_then(|v| v.get("command")).and_then(|v| v.as_str()) {
                 return match_command_pattern(cmd_pattern, cmd);
+            }
+            // For file tools (Write, Edit, Read, MultiEdit, NotebookEdit),
+            // match against the 'file_path' field using glob path patterns.
+            if let Some(file_path) = input.and_then(|v| v.get("file_path")).and_then(|v| v.as_str())
+            {
+                return match_path_pattern(cmd_pattern, file_path);
             }
         }
     }
@@ -204,6 +215,93 @@ fn match_command_pattern(pattern: &str, command: &str) -> bool {
     }
 
     cmd == pattern
+}
+
+/// Match a file path against a glob-style pattern.
+///
+/// Supported forms:
+/// - `"*"` — matches any single path segment.
+/// - `"**"` — matches zero or more path segments (recursive).
+/// - `"docs/**"` — matches all files recursively under `docs/`.
+/// - `"crates/**/*.rs"` — matches any `.rs` file at any depth under `crates/`.
+/// - `"*.rs"` — matches any `.rs` file in the current directory.
+/// - `"exact/path.rs"` — exact match.
+///
+/// `*` within a segment matches any sequence of characters that does not
+/// contain `/`.  `**` as a full segment matches zero or more `/`-separated
+/// segments.
+fn match_path_pattern(pattern: &str, path: &str) -> bool {
+    let pat_parts: Vec<&str> = pattern.split('/').collect();
+    let path_parts: Vec<&str> = path.split('/').collect();
+    match_path_segments(&pat_parts, &path_parts)
+}
+
+/// Recursive helper for [`match_path_pattern`].
+fn match_path_segments(pat: &[&str], path: &[&str]) -> bool {
+    match (pat, path) {
+        // Both exhausted — full match.
+        ([], []) => true,
+        // Pattern exhausted but path still has segments — no match.
+        ([], _) => false,
+        // Only `**` left — matches any (including empty) remaining path.
+        (["**"], _) => true,
+        // `**` in the middle: try consuming 0..=path.len() segments.
+        (["**", rest_pat @ ..], _) => {
+            for skip in 0..=path.len() {
+                if match_path_segments(rest_pat, &path[skip..]) {
+                    return true;
+                }
+            }
+            false
+        }
+        // Path exhausted but non-`**` pattern remains — no match.
+        (_, []) => false,
+        // Normal segment: match one segment and recurse.
+        ([p, rest_pat @ ..], [s, rest_path @ ..]) => {
+            match_path_segment(p, s) && match_path_segments(rest_pat, rest_path)
+        }
+    }
+}
+
+/// Match a single path segment against a pattern that may contain `*`.
+///
+/// `*` matches any sequence of characters (excluding `/`) within one segment.
+fn match_path_segment(pattern: &str, segment: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    if !pattern.contains('*') {
+        return pattern == segment;
+    }
+    // Split on `*` and verify each literal piece appears in order.
+    let parts: Vec<&str> = pattern.split('*').collect();
+    let mut pos = 0usize;
+    for (i, part) in parts.iter().enumerate() {
+        if i == 0 {
+            // First piece must match the start of the segment.
+            if !segment.starts_with(part) {
+                return false;
+            }
+            pos = part.len();
+        } else if i == parts.len() - 1 {
+            // Last piece must match the end of the remaining segment.
+            if !segment[pos..].ends_with(part) {
+                return false;
+            }
+            // Ensure the trailing piece does not overlap with pos.
+            let needed = part.len();
+            if segment[pos..].len() < needed {
+                return false;
+            }
+        } else {
+            // Middle pieces must appear in order.
+            match segment[pos..].find(part) {
+                Some(found) => pos += found + part.len(),
+                None => return false,
+            }
+        }
+    }
+    true
 }
 
 /// Configuration for spawning an agent.
@@ -1340,6 +1438,145 @@ mod tests {
         assert!(policy.evaluate("Bash", Some(&make_input("rm -rf /"))));
         assert!(policy.evaluate("Read", None));
         assert!(!policy.evaluate("Write", None));
+    }
+
+    // -- file-path pattern matching tests --
+
+    fn make_file_input(path: &str) -> serde_json::Value {
+        serde_json::json!({"file_path": path})
+    }
+
+    #[test]
+    fn test_match_path_pattern_exact() {
+        assert!(match_path_pattern("mkdocs.yml", "mkdocs.yml"));
+        assert!(!match_path_pattern("mkdocs.yml", "docs/mkdocs.yml"));
+        assert!(!match_path_pattern("mkdocs.yml", "other.yml"));
+    }
+
+    #[test]
+    fn test_match_path_pattern_single_star_segment() {
+        assert!(match_path_pattern("*.rs", "lib.rs"));
+        assert!(match_path_pattern("*.rs", "main.rs"));
+        assert!(!match_path_pattern("*.rs", "src/lib.rs"));
+        assert!(match_path_pattern("*_test.rs", "foo_test.rs"));
+        assert!(!match_path_pattern("*_test.rs", "foo.rs"));
+    }
+
+    #[test]
+    fn test_match_path_pattern_double_star_suffix() {
+        assert!(match_path_pattern("docs/**", "docs/foo.md"));
+        assert!(match_path_pattern("docs/**", "docs/public/bar.md"));
+        assert!(match_path_pattern("docs/**", "docs/a/b/c.md"));
+        // ** matches zero additional segments too (i.e. docs/ itself)
+        assert!(match_path_pattern("docs/**", "docs/"));
+        assert!(!match_path_pattern("docs/**", "ui/foo.md"));
+        assert!(!match_path_pattern("docs/**", "DOCS/foo.md"));
+    }
+
+    #[test]
+    fn test_match_path_pattern_double_star_with_extension() {
+        assert!(match_path_pattern("crates/**/*.rs", "crates/orchestrator/src/lib.rs"));
+        assert!(match_path_pattern("crates/**/*.rs", "crates/common/src/types.rs"));
+        assert!(match_path_pattern("crates/**/*.rs", "crates/cli/src/main.rs"));
+        assert!(!match_path_pattern("crates/**/*.rs", "crates/orchestrator/Cargo.toml"));
+        assert!(!match_path_pattern("crates/**/*.rs", "docs/foo.rs"));
+    }
+
+    #[test]
+    fn test_match_path_pattern_ui_scope() {
+        assert!(match_path_pattern("ui/**", "ui/src/App.tsx"));
+        assert!(match_path_pattern("ui/**", "ui/public/index.html"));
+        assert!(!match_path_pattern("ui/**", "crates/common/src/lib.rs"));
+    }
+
+    #[test]
+    fn test_match_path_pattern_agentd_scope() {
+        assert!(match_path_pattern(".agentd/**", ".agentd/agents/worker.yml"));
+        assert!(match_path_pattern(".agentd/**", ".agentd/workflows/merge-worker.yml"));
+        assert!(!match_path_pattern(".agentd/**", "docs/foo.md"));
+    }
+
+    #[test]
+    fn test_match_path_pattern_double_star_zero_segments() {
+        // "**" alone matches any path including single-segment paths
+        assert!(match_path_pattern("**", "foo.rs"));
+        assert!(match_path_pattern("**", "crates/lib.rs"));
+        assert!(match_path_pattern("**", "a/b/c/d.txt"));
+    }
+
+    #[test]
+    fn test_tool_policy_deny_list_with_file_path_pattern() {
+        // Documenter: deny writes to Rust source files
+        let policy = ToolPolicy::DenyList {
+            tools: vec!["Write(crates/**/*.rs)".to_string(), "Edit(crates/**/*.rs)".to_string()],
+        };
+
+        // Writing to docs is allowed
+        assert!(policy.evaluate("Write", Some(&make_file_input("docs/foo.md"))));
+        assert!(policy.evaluate("Edit", Some(&make_file_input("docs/public/bar.md"))));
+
+        // Writing to Rust source is denied
+        assert!(!policy.evaluate("Write", Some(&make_file_input("crates/orchestrator/src/lib.rs"))));
+        assert!(!policy.evaluate("Edit", Some(&make_file_input("crates/common/src/types.rs"))));
+
+        // Bash is unaffected
+        assert!(policy.evaluate("Bash", Some(&make_input("cargo test"))));
+    }
+
+    #[test]
+    fn test_tool_policy_deny_list_with_ui_scope() {
+        // Designer: only allow writes under ui/
+        let policy = ToolPolicy::DenyList {
+            tools: vec![
+                "Write(crates/**)".to_string(),
+                "Edit(crates/**)".to_string(),
+                "Write(.agentd/**)".to_string(),
+                "Edit(.agentd/**)".to_string(),
+            ],
+        };
+
+        // ui/ writes are allowed
+        assert!(policy.evaluate("Write", Some(&make_file_input("ui/src/App.tsx"))));
+
+        // crates/ writes are denied
+        assert!(!policy.evaluate("Write", Some(&make_file_input("crates/orchestrator/src/lib.rs"))));
+
+        // .agentd/ writes are denied
+        assert!(!policy.evaluate("Edit", Some(&make_file_input(".agentd/agents/worker.yml"))));
+    }
+
+    #[test]
+    fn test_tool_policy_allow_list_with_file_path_pattern() {
+        // Tester: only allow writes to test files
+        let policy = ToolPolicy::AllowList {
+            tools: vec![
+                "Read".to_string(),
+                "Bash".to_string(),
+                "Grep".to_string(),
+                "Glob".to_string(),
+                "Write(crates/*/tests/**)".to_string(),
+                "Edit(crates/*/tests/**)".to_string(),
+                "Write(.github/workflows/**)".to_string(),
+                "Edit(.github/workflows/**)".to_string(),
+            ],
+        };
+
+        // Writing to integration test directory is allowed
+        assert!(policy
+            .evaluate("Write", Some(&make_file_input("crates/orchestrator/tests/integration.rs"))));
+        assert!(policy.evaluate("Edit", Some(&make_file_input("crates/cli/tests/e2e.rs"))));
+
+        // Writing to CI config is allowed
+        assert!(policy.evaluate("Write", Some(&make_file_input(".github/workflows/ci.yml"))));
+
+        // Writing to production source is denied
+        assert!(!policy.evaluate("Write", Some(&make_file_input("crates/orchestrator/src/lib.rs"))));
+        assert!(!policy.evaluate("Edit", Some(&make_file_input("crates/common/src/types.rs"))));
+
+        // Read/Bash/Grep allowed without file_path
+        assert!(policy.evaluate("Read", None));
+        assert!(policy.evaluate("Bash", None));
+        assert!(policy.evaluate("Grep", None));
     }
 
     #[test]
