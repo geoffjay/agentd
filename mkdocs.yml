@@ -98,6 +98,7 @@ nav:
       - Wrap: public/services/wrap.md
       - Communicate: public/services/communicate.md
   - Agents:
+      - Contributor Onboarding: public/agents/onboarding.md
       - Research Agent: public/agents/research.md
   - Workflows:
       - Trigger Reference: public/trigger-reference.md
