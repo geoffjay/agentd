@@ -56,6 +56,19 @@ pub fn clamp_limit(limit: Option<usize>) -> usize {
     limit.unwrap_or(DEFAULT_PAGE_LIMIT).clamp(1, MAX_PAGE_LIMIT)
 }
 
+/// Service status value indicating all systems are operational.
+///
+/// Used by [`HealthResponse::ok`] and [`HealthResponse::is_healthy`].
+/// Exposed as `pub` so downstream crates (CLI, integration tests) can
+/// reference the constant rather than comparing against a bare `"ok"` literal.
+pub const STATUS_OK: &str = "ok";
+
+/// Service status value indicating the service is running but degraded.
+///
+/// Used by [`HealthResponse::degraded`].
+/// Exposed as `pub` for the same reason as [`STATUS_OK`].
+pub const STATUS_DEGRADED: &str = "degraded";
+
 /// Standard health check response returned by all agentd services.
 ///
 /// Provides a uniform schema for health endpoints, with service-specific
@@ -96,7 +109,7 @@ impl HealthResponse {
     /// ```
     pub fn ok(service: &str, version: &str) -> Self {
         Self {
-            status: "ok".to_string(),
+            status: STATUS_OK.to_string(),
             service: service.to_string(),
             version: version.to_string(),
             details: HashMap::new(),
@@ -120,7 +133,7 @@ impl HealthResponse {
     /// ```
     pub fn degraded(service: &str, version: &str, reason: &str) -> Self {
         Self {
-            status: "degraded".to_string(),
+            status: STATUS_DEGRADED.to_string(),
             service: service.to_string(),
             version: version.to_string(),
             details: HashMap::new(),
@@ -142,7 +155,7 @@ impl HealthResponse {
     /// assert!(!HealthResponse::degraded("svc", "1.0", "db down").is_healthy());
     /// ```
     pub fn is_healthy(&self) -> bool {
-        self.status == "ok"
+        self.status == STATUS_OK
     }
 
     /// Add a service-specific detail to the response.
