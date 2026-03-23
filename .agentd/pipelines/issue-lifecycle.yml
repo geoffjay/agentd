@@ -1,0 +1,39 @@
+# Issue lifecycle pipeline.
+#
+# Declares the end-to-end automation chain for the autonomous development
+# pipeline: triage → enrich → implement → review → merge.
+#
+# Running `agent apply .agentd/` will auto-wire the `source_workflow_id` on
+# the chain workflows and enable them — no manual patching required.
+#
+# Stage fields:
+#   name     — human-readable stage label (for display/diagnostics)
+#   workflow — name of the workflow YAML applied from .agentd/workflows/
+#   after    — (optional) name of the upstream workflow whose completion
+#              triggers this stage via the dispatch_result mechanism;
+#              when set, `agent apply` patches source_workflow_id and
+#              sets enabled: true automatically
+
+name: issue-lifecycle
+description: "End-to-end issue automation: triage → enrich → implement → review → merge"
+
+stages:
+  - name: triage
+    workflow: triage-worker
+
+  - name: enrich-chain
+    workflow: triage-enrich-chain
+    after: triage-worker
+
+  - name: enrich
+    workflow: enrichment-worker
+
+  - name: implement
+    workflow: issue-worker
+
+  - name: review
+    workflow: pull-request-reviewer
+
+  - name: merge-chain
+    workflow: review-merge-chain
+    after: pull-request-reviewer

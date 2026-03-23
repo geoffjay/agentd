@@ -266,11 +266,41 @@ fn default_state() -> String {
     "open".to_string()
 }
 
+/// YAML pipeline template (`.agentd/pipelines/<name>.yml`).
+///
+/// Declares the stage-to-stage chain relationships for the autonomous pipeline.
+/// At apply-time, `after` references are resolved to workflow UUIDs and the
+/// corresponding `dispatch_result` chain workflows are patched and enabled.
+#[derive(Debug, Deserialize)]
+pub struct PipelineTemplate {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub stages: Vec<PipelineStage>,
+}
+
+/// A single stage in a pipeline definition.
+#[derive(Debug, Deserialize)]
+pub struct PipelineStage {
+    pub name: String,
+    /// Name of the workflow this stage uses.
+    pub workflow: String,
+    /// Name of the upstream workflow whose completion triggers this stage.
+    ///
+    /// When set, `apply_directory` will:
+    ///   1. Look up `after`'s UUID from the workflows created in Phase 4.
+    ///   2. Patch this stage's workflow's `source_workflow_id` to that UUID.
+    ///   3. Enable the workflow.
+    #[serde(default)]
+    pub after: Option<String>,
+}
+
 /// Detected template type for a single YAML file.
 pub enum TemplateKind {
     Agent,
     Workflow,
     Room,
+    Pipeline,
 }
 
 /// Determine whether a YAML file is an agent or workflow template.
@@ -290,6 +320,9 @@ pub fn detect_template_kind(path: &Path) -> Result<TemplateKind> {
         }
         if parent == "rooms" {
             return Ok(TemplateKind::Room);
+        }
+        if parent == "pipelines" {
+            return Ok(TemplateKind::Pipeline);
         }
     }
 
@@ -452,6 +485,50 @@ fn parse_room_template(path: &Path) -> Result<RoomTemplate> {
         .with_context(|| format!("Failed to parse room template: {}", path.display()))
 }
 
+/// Parse and validate a pipeline template YAML file.
+pub fn parse_pipeline_template(path: &Path) -> Result<PipelineTemplate> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read pipeline template: {}", path.display()))?;
+    let tmpl: PipelineTemplate = serde_yaml::from_str(&content)
+        .with_context(|| format!("Failed to parse pipeline template: {}", path.display()))?;
+
+    if tmpl.name.is_empty() {
+        bail!("Pipeline template '{}' has an empty name", path.display());
+    }
+    if tmpl.stages.is_empty() {
+        bail!("Pipeline '{}' has no stages defined", tmpl.name);
+    }
+
+    // Check for duplicate stage names and validate `after` fields.
+    let mut seen_stages = std::collections::HashSet::new();
+    for stage in &tmpl.stages {
+        if !seen_stages.insert(&stage.name) {
+            bail!("Pipeline '{}' has duplicate stage name '{}'", tmpl.name, stage.name);
+        }
+        if let Some(ref after) = stage.after {
+            if after.is_empty() {
+                bail!("Pipeline '{}' stage '{}' has an empty 'after' field", tmpl.name, stage.name);
+            }
+        }
+    }
+
+    // Check for trivial self-reference.
+    for stage in &tmpl.stages {
+        if let Some(ref after) = stage.after {
+            if after == &stage.workflow {
+                bail!(
+                    "Pipeline '{}' stage '{}' references itself in 'after' (workflow: '{}')",
+                    tmpl.name,
+                    stage.name,
+                    stage.workflow
+                );
+            }
+        }
+    }
+
+    Ok(tmpl)
+}
+
 fn resolve_prompt(tmpl: &WorkflowTemplate, yaml_path: &Path) -> Result<String> {
     if let Some(ref t) = tmpl.prompt_template {
         return Ok(t.clone());
@@ -583,7 +660,7 @@ pub async fn apply_workflow_file(
     path: &Path,
     dry_run: bool,
     json: bool,
-) -> Result<()> {
+) -> Result<Uuid> {
     let tmpl = parse_workflow_template(path)?;
     let prompt = resolve_prompt(&tmpl, path)?;
 
@@ -613,7 +690,7 @@ pub async fn apply_workflow_file(
         if !json {
             println!("    {} (agent '{}' → {})", "valid".green(), tmpl.agent, agent.id);
         }
-        return Ok(());
+        return Ok(Uuid::nil());
     }
 
     let trigger_config = match tmpl.source {
@@ -651,7 +728,7 @@ pub async fn apply_workflow_file(
         println!("    {} (ID: {})", "created".green(), workflow.id.to_string().bright_black());
     }
 
-    Ok(())
+    Ok(workflow.id)
 }
 
 // ── Apply: room from template ─────────────────────────────────────────
@@ -868,10 +945,12 @@ pub async fn apply_directory(
     let rooms_dir = dir.join("rooms");
     let agents_dir = dir.join("agents");
     let workflows_dir = dir.join("workflows");
+    let pipelines_dir = dir.join("pipelines");
 
     let room_files = collect_yaml_files(&rooms_dir)?;
     let agent_files = collect_yaml_files(&agents_dir)?;
     let workflow_files = collect_yaml_files(&workflows_dir)?;
+    let pipeline_files = collect_yaml_files(&pipelines_dir)?;
 
     // Also check for loose YAML files in the directory itself (single-type dirs)
     let loose_files = collect_yaml_files(dir)?;
@@ -880,10 +959,11 @@ pub async fn apply_directory(
     if room_files.is_empty()
         && agent_files.is_empty()
         && workflow_files.is_empty()
+        && pipeline_files.is_empty()
         && loose_files.is_empty()
     {
         bail!(
-            "No YAML templates found in '{}'. Expected rooms/, agents/, and/or workflows/ subdirectories.",
+            "No YAML templates found in '{}'. Expected rooms/, agents/, workflows/, and/or pipelines/ subdirectories.",
             dir.display()
         );
     }
@@ -924,6 +1004,21 @@ pub async fn apply_directory(
         workflow_templates.push((path.clone(), tmpl));
     }
 
+    let mut pipeline_templates = Vec::new();
+    for path in &pipeline_files {
+        let tmpl = parse_pipeline_template(path)
+            .with_context(|| format!("Validation failed for {}", path.display()))?;
+        if !json {
+            println!(
+                "  {} pipeline '{}' ({} stage(s))",
+                "ok".green(),
+                tmpl.name,
+                tmpl.stages.len()
+            );
+        }
+        pipeline_templates.push((path.clone(), tmpl));
+    }
+
     // If no subdirectories, detect each loose file's type and parse accordingly
     if !has_subdirs && !loose_files.is_empty() {
         for path in &loose_files {
@@ -958,6 +1053,18 @@ pub async fn apply_directory(
                     }
                     workflow_templates.push((path.clone(), tmpl));
                 }
+                TemplateKind::Pipeline => {
+                    // Pipeline files in loose mode are skipped — they require directory context
+                    // to resolve workflow name→UUID references. Warn the user.
+                    if !json {
+                        eprintln!(
+                            "  {} pipeline file '{}' skipped — pipeline wiring requires \
+                             a full directory apply (e.g. `agent apply .agentd/`)",
+                            "Warning:".yellow(),
+                            path.display()
+                        );
+                    }
+                }
             }
         }
     }
@@ -970,17 +1077,30 @@ pub async fn apply_directory(
                 "rooms": room_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
                 "agents": agent_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
                 "workflows": workflow_templates.iter().map(|(_, t)| &t.name).collect::<Vec<_>>(),
+                "pipelines": pipeline_templates.iter().map(|(_, t)| {
+                    serde_json::json!({
+                        "name": t.name,
+                        "stages": t.stages.iter().map(|s| {
+                            let mut m = serde_json::json!({"name": &s.name, "workflow": &s.workflow});
+                            if let Some(ref after) = s.after {
+                                m["after"] = serde_json::Value::String(after.clone());
+                            }
+                            m
+                        }).collect::<Vec<_>>()
+                    })
+                }).collect::<Vec<_>>(),
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         } else {
-            // Room/agent/workflow names are already printed during Phase 0 validation above.
+            // Room/agent/workflow/pipeline names are already printed during Phase 0 validation above.
             println!();
             println!(
-                "{} {} room(s), {} agent(s), {} workflow(s)",
+                "{} {} room(s), {} agent(s), {} workflow(s), {} pipeline(s)",
                 "Dry run passed:".yellow(),
                 room_templates.len(),
                 agent_templates.len(),
-                workflow_templates.len()
+                workflow_templates.len(),
+                pipeline_templates.len(),
             );
         }
         return Ok(());
@@ -1024,14 +1144,88 @@ pub async fn apply_directory(
         }
     }
 
-    // Phase 4: Create workflows
+    // Phase 4: Create workflows (collect name→UUID for pipeline wiring)
+    let mut workflow_uuids: HashMap<String, Uuid> = HashMap::new();
     if !workflow_templates.is_empty() {
         if !json {
             println!();
             println!("{}", "Creating workflows...".blue().bold());
         }
-        for (path, _) in &workflow_templates {
-            apply_workflow_file(client, path, false, json).await?;
+        for (path, tmpl) in &workflow_templates {
+            let id = apply_workflow_file(client, path, false, json).await?;
+            workflow_uuids.insert(tmpl.name.clone(), id);
+        }
+    }
+
+    // Phase 5: Wire pipeline chains (resolve name→UUID, patch dispatch_result workflows, enable them)
+    if !pipeline_templates.is_empty() {
+        if !json {
+            println!();
+            println!("{}", "Wiring pipelines...".blue().bold());
+        }
+        for (_, pipeline) in &pipeline_templates {
+            if !json {
+                println!("  {} pipeline '{}'", "Wiring".cyan(), pipeline.name);
+            }
+            for stage in &pipeline.stages {
+                let Some(ref after_name) = stage.after else {
+                    continue;
+                };
+
+                // Resolve the upstream workflow UUID
+                let upstream_id = workflow_uuids.get(after_name).copied().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Pipeline '{}' stage '{}': upstream workflow '{}' not found. \
+                         Make sure it is defined in workflows/ and was applied successfully.",
+                        pipeline.name,
+                        stage.name,
+                        after_name
+                    )
+                })?;
+
+                // Resolve the chain workflow UUID
+                let chain_id = workflow_uuids.get(&stage.workflow).copied().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Pipeline '{}' stage '{}': chain workflow '{}' not found. \
+                         Make sure it is defined in workflows/ and was applied successfully.",
+                        pipeline.name,
+                        stage.name,
+                        stage.workflow
+                    )
+                })?;
+
+                // Patch source_workflow_id and enable the chain workflow
+                let request = orchestrator::scheduler::types::UpdateWorkflowRequest {
+                    name: None,
+                    prompt_template: None,
+                    poll_interval_secs: None,
+                    enabled: Some(true),
+                    tool_policy: None,
+                    trigger_config: Some(
+                        orchestrator::scheduler::types::TriggerConfig::DispatchResult {
+                            source_workflow_id: Some(upstream_id),
+                            status: Some(orchestrator::scheduler::types::DispatchStatus::Completed),
+                        },
+                    ),
+                };
+
+                client.update_workflow(&chain_id, &request).await.with_context(|| {
+                    format!(
+                        "Failed to wire pipeline '{}' stage '{}' (chain workflow '{}')",
+                        pipeline.name, stage.name, stage.workflow
+                    )
+                })?;
+
+                if !json {
+                    println!(
+                        "    {} '{}' → '{}' (source: {})",
+                        "Wired".green(),
+                        after_name,
+                        stage.workflow,
+                        upstream_id.to_string().bright_black()
+                    );
+                }
+            }
         }
     }
 
@@ -1041,10 +1235,11 @@ pub async fn apply_directory(
         println!(
             "{}",
             format!(
-                "Applied {} room(s), {} agent(s), and {} workflow(s)",
+                "Applied {} room(s), {} agent(s), {} workflow(s), and {} pipeline(s)",
                 room_templates.len(),
                 agent_templates.len(),
-                workflow_templates.len()
+                workflow_templates.len(),
+                pipeline_templates.len(),
             )
             .green()
             .bold()
@@ -1821,5 +2016,113 @@ tool_policy:
         assert_eq!(tmpl.env.get("API_KEY"), Some(&"abc123".to_string()));
         assert_eq!(tmpl.env.get("BASE_URL"), Some(&"https://api.example.com".to_string()));
         assert_eq!(tmpl.tool_policy, ToolPolicy::AllowAll);
+    }
+}
+
+#[cfg(test)]
+mod pipeline_tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn write_pipeline(yaml: &str) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "{yaml}").unwrap();
+        f
+    }
+
+    #[test]
+    fn test_parse_valid_pipeline() {
+        let yaml = r#"
+name: test-pipeline
+description: "A test pipeline"
+stages:
+  - name: triage
+    workflow: triage-worker
+  - name: enrich-chain
+    workflow: triage-enrich-chain
+    after: triage-worker
+"#;
+        let f = write_pipeline(yaml);
+        let result = parse_pipeline_template(f.path());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
+        let tmpl = result.unwrap();
+        assert_eq!(tmpl.name, "test-pipeline");
+        assert_eq!(tmpl.stages.len(), 2);
+        assert_eq!(tmpl.stages[1].after.as_deref(), Some("triage-worker"));
+    }
+
+    #[test]
+    fn test_parse_empty_name_fails() {
+        let yaml = r#"
+name: ""
+stages:
+  - name: triage
+    workflow: triage-worker
+"#;
+        let f = write_pipeline(yaml);
+        let result = parse_pipeline_template(f.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("empty name"));
+    }
+
+    #[test]
+    fn test_parse_no_stages_fails() {
+        let yaml = r#"
+name: empty-pipeline
+stages: []
+"#;
+        let f = write_pipeline(yaml);
+        let result = parse_pipeline_template(f.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("no stages"));
+    }
+
+    #[test]
+    fn test_parse_duplicate_stage_fails() {
+        let yaml = r#"
+name: dup-pipeline
+stages:
+  - name: triage
+    workflow: triage-worker
+  - name: triage
+    workflow: other-worker
+"#;
+        let f = write_pipeline(yaml);
+        let result = parse_pipeline_template(f.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("duplicate stage name"));
+    }
+
+    #[test]
+    fn test_parse_self_reference_fails() {
+        let yaml = r#"
+name: self-ref-pipeline
+stages:
+  - name: triage
+    workflow: triage-worker
+    after: triage-worker
+"#;
+        let f = write_pipeline(yaml);
+        let result = parse_pipeline_template(f.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("references itself"));
+    }
+
+    #[test]
+    fn test_parse_empty_after_fails() {
+        let yaml = r#"
+name: empty-after-pipeline
+stages:
+  - name: triage
+    workflow: triage-worker
+  - name: enrich
+    workflow: enrich-worker
+    after: ""
+"#;
+        let f = write_pipeline(yaml);
+        let result = parse_pipeline_template(f.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("empty 'after' field"));
     }
 }

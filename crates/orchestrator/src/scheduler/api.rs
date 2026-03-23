@@ -208,6 +208,9 @@ async fn update_workflow(
     if let Some(policy) = req.tool_policy {
         workflow.tool_policy = policy;
     }
+    if let Some(tc) = req.trigger_config {
+        workflow.trigger_config = tc;
+    }
     workflow.updated_at = Utc::now();
 
     state.scheduler.storage().update_workflow(&workflow).await?;
