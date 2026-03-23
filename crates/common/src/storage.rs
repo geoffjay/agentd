@@ -38,19 +38,34 @@ use std::path::{Path, PathBuf};
 /// // macOS: ~/Library/Application Support/agentd-notify/notify.db
 /// // Linux: ~/.local/share/agentd-notify/notify.db
 /// ```
-pub fn get_db_path(project_name: &str, db_filename: &str) -> Result<PathBuf> {
-    let data_dir = match std::env::var("AGENTD_ENV").as_deref() {
-        Ok("development" | "dev") => PathBuf::from("tmp"),
-        Ok("test") => PathBuf::from("tmp/test"),
+/// Resolve the data directory for a project based on the `AGENTD_ENV`
+/// environment variable.
+///
+/// | `AGENTD_ENV` value | Resolved path |
+/// |---|---|
+/// | `development` or `dev` | `tmp/` |
+/// | `test` | `tmp/test/` |
+/// | *(absent or any other value)* | XDG data dir for `project_name` |
+///
+/// Extracting this logic into its own function makes it independently
+/// testable: callers can set `AGENTD_ENV` and verify the result without
+/// triggering directory creation or database connection setup.
+fn resolve_data_dir(project_name: &str) -> Result<PathBuf> {
+    match std::env::var("AGENTD_ENV").as_deref() {
+        Ok("development" | "dev") => Ok(PathBuf::from("tmp")),
+        Ok("test") => Ok(PathBuf::from("tmp/test")),
         _ => {
-            let proj_dirs = ProjectDirs::from("", "", project_name)
-                .ok_or_else(|| anyhow::anyhow!("Failed to determine project directories"))?;
-            proj_dirs.data_dir().to_path_buf()
+            let proj_dirs = ProjectDirs::from("", "", project_name).ok_or_else(|| {
+                anyhow::anyhow!("Failed to determine project directories for '{}'", project_name)
+            })?;
+            Ok(proj_dirs.data_dir().to_path_buf())
         }
-    };
+    }
+}
 
+pub fn get_db_path(project_name: &str, db_filename: &str) -> Result<PathBuf> {
+    let data_dir = resolve_data_dir(project_name)?;
     std::fs::create_dir_all(&data_dir)?;
-
     Ok(data_dir.join(db_filename))
 }
 
@@ -123,6 +138,51 @@ pub async fn migration_status<M: sea_orm_migration::MigratorTrait>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -------------------------------------------------------------------------
+    // resolve_data_dir tests
+    // -------------------------------------------------------------------------
+    // All AGENTD_ENV variants are exercised in a single test to prevent
+    // data races between parallel test threads that share the process
+    // environment.
+
+    #[test]
+    fn test_resolve_data_dir_development() {
+        std::env::set_var("AGENTD_ENV", "development");
+        let dir = resolve_data_dir("agentd-test-common").unwrap();
+        assert_eq!(dir, PathBuf::from("tmp"));
+        std::env::remove_var("AGENTD_ENV");
+    }
+
+    #[test]
+    fn test_resolve_data_dir_dev_shorthand() {
+        std::env::set_var("AGENTD_ENV", "dev");
+        let dir = resolve_data_dir("agentd-test-common").unwrap();
+        assert_eq!(dir, PathBuf::from("tmp"));
+        std::env::remove_var("AGENTD_ENV");
+    }
+
+    #[test]
+    fn test_resolve_data_dir_test() {
+        std::env::set_var("AGENTD_ENV", "test");
+        let dir = resolve_data_dir("agentd-test-common").unwrap();
+        assert_eq!(dir, PathBuf::from("tmp/test"));
+        std::env::remove_var("AGENTD_ENV");
+    }
+
+    #[test]
+    fn test_resolve_data_dir_production_contains_project_name() {
+        std::env::remove_var("AGENTD_ENV");
+        let dir = resolve_data_dir("agentd-test-common").unwrap();
+        assert!(
+            dir.to_string_lossy().contains("agentd-test-common"),
+            "production data dir should contain the project name"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // get_db_path tests (existing, kept for regression coverage)
+    // -------------------------------------------------------------------------
 
     #[test]
     fn test_get_db_path_respects_agentd_env() {
