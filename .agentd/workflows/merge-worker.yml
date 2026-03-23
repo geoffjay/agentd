@@ -34,10 +34,13 @@ prompt_template: |
   1. agent memory search "merge queue conductor" --as-actor conductor --limit 3 --json
   2. Review results for known blockers or recent decisions.
 
-  Step 1 — Session start: sync git-spice and load pipeline state.
+  Step 1 — Session start: load current pipeline state (read-only).
 
   ```bash
-  git-spice repo sync
+  # Read-only overview — do NOT run git-spice repo sync here.
+  # Syncing before CI/approval checks creates a pre-gate failure surface
+  # (a lingering rebase conflict could abort the workflow before any checks run).
+  # git-spice repo sync is scoped to Step 8, after a successful merge.
   git-spice log short
   ```
 
@@ -78,7 +81,18 @@ prompt_template: |
   ```
 
   - If `PENDING` → stop here, leave merge-ready intact, check again next run
-  - If `FAILED` → remove merge-ready, comment on the PR, notify operations
+  - If `FAILED` → remove merge-ready, comment on the PR, notify operations:
+
+  ```bash
+  gh pr edit {{source_id}} --repo geoffjay/agentd --remove-label "merge-ready"
+  gh pr comment {{source_id}} --repo geoffjay/agentd \
+    --body "❌ CI checks failed. Removed \`merge-ready\` label. Fix the failing checks and re-apply \`merge-ready\` to re-queue."
+  agent communicate message send operations \
+    "❌ PR #{{source_id}} ({{title}}) CI failed — removed merge-ready. Fix failing checks and re-apply merge-ready to re-queue."
+  ```
+
+  Stop this run.
+
   - If `PASSED` → continue
 
   Step 4 — Verify approval and no change requests.
@@ -113,10 +127,20 @@ prompt_template: |
   ```bash
   BASE=$(gh pr view {{source_id}} --repo geoffjay/agentd --json baseRefName --jq '.baseRefName')
   if [[ "$BASE" != "main" && "$BASE" != "feature/autonomous-pipeline" ]]; then
-    # Check the base branch's own PR is already merged
-    gh pr list --repo geoffjay/agentd --head "$BASE" --state merged \
-      --json number,title | jq '.'
-    # If no merged PR found for $BASE, stop and merge the base PR first
+    # Check whether the base branch still exists remotely.
+    # Output 0 → branch gone (merged/deleted), safe to proceed.
+    # Output 1 → branch still open, parent PR must merge first.
+    # Note: using git ls-remote rather than `gh pr list --state merged` because
+    # the latter only finds bases that had a PR; a directly-pushed branch would
+    # return empty and incorrectly block the merge.
+    BASE_EXISTS=$(git ls-remote --heads origin "$BASE" | wc -l | tr -d ' ')
+    echo "Base branch '$BASE' remote refs: $BASE_EXISTS"
+    if [[ "$BASE_EXISTS" -gt 0 ]]; then
+      echo "Base branch still open — merge the parent PR for '$BASE' first."
+      agent communicate message send operations \
+        "📚 PR #{{source_id}} ({{title}}) cannot merge yet — base branch '$BASE' is still open. Merge the parent PR first."
+      # Stop this run; leave merge-ready intact for retry after parent merges.
+    fi
   fi
   ```
 
@@ -137,8 +161,17 @@ prompt_template: |
   ```bash
   git-spice repo sync
 
-  # Re-submit any dependent PRs with updated base refs
-  git-spice stack submit --fill --no-prompt
+  # Resubmit only the branches stacked on top of the just-merged PR.
+  # We check out the base of the merged PR first so that
+  # `git-spice upstack submit` targets the correct upstack set.
+  # NOTE: `git-spice stack submit` resubmits from the conductor's current
+  # working-directory branch and may include branches beyond the direct
+  # dependents of the just-merged PR. Use `upstack submit` from the merged
+  # base to scope it correctly. When the conductor's full session context is
+  # formalised this can be revisited.
+  BASE=$(gh pr view {{source_id}} --repo geoffjay/agentd --json baseRefName --jq '.baseRefName')
+  git checkout "$BASE"
+  git-spice upstack submit --fill --no-prompt
   ```
 
   If `git-spice repo sync` fails with a conflict:

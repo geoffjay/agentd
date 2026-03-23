@@ -89,6 +89,9 @@ system_prompt: |
   git-spice log short
 
   # 3. Check current merge queue
+  # Note: sort_by(.baseRefName) is an alphabetical approximation of stack order
+  # (e.g. "feature/autonomous-pipeline" sorts before "issue-NNN"), not a true
+  # topological sort. Use `git-spice log short` for authoritative stack order.
   gh pr list --repo geoffjay/agentd --label merge-ready \
     --json number,title,baseRefName,headRefName,reviews,statusCheckRollup \
     --jq 'sort_by(.baseRefName)'
