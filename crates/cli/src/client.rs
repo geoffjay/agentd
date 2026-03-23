@@ -95,7 +95,14 @@ impl ApiClient {
     ///
     /// * `base_url` - The base URL for all requests (e.g., "http://localhost:7004")
     pub fn new(base_url: String) -> Self {
-        Self { client: reqwest::Client::new(), base_url }
+        // Use no_proxy() to skip macOS system proxy detection via
+        // hyper-util → system-configuration, which panics in sandboxed
+        // environments where SCDynamicStoreCreate() returns NULL.
+        // The CLI only ever talks to localhost services, so proxy
+        // settings are irrelevant.
+        let client =
+            reqwest::Client::builder().no_proxy().build().expect("Failed to build HTTP client");
+        Self { client, base_url }
     }
 
     /// Make a GET request and deserialize the JSON response.
@@ -329,40 +336,24 @@ impl ApiClient {
 mod tests {
     use super::*;
 
-    /// Construct an `ApiClient`, gracefully handling the macOS
-    /// `system-configuration` TLS initialisation panic that occurs when
-    /// `reqwest::Client::new()` is called from a non-main test thread.
-    ///
-    /// The side-effect of the (possibly panicking) TLS initialisation is
-    /// still observed by subsequent tests in the same process, allowing
-    /// mockito-based tests to bind sockets correctly.
-    fn try_new_client(url: &str) -> Option<ApiClient> {
-        std::panic::catch_unwind(|| ApiClient::new(url.to_string())).ok()
-    }
-
     #[test]
     fn test_client_creation() {
-        match try_new_client("http://localhost:7004") {
-            Some(client) => assert_eq!(client.base_url, "http://localhost:7004"),
-            None => {} // macOS TLS init panic — acceptable in test threads
-        }
+        let client = ApiClient::new("http://localhost:7004".to_string());
+        assert_eq!(client.base_url, "http://localhost:7004");
     }
 
     #[test]
     fn test_client_clone() {
-        if let Some(client1) = try_new_client("http://localhost:7004") {
-            let client2 = client1.clone();
-            assert_eq!(client1.base_url, client2.base_url);
-        }
+        let client1 = ApiClient::new("http://localhost:7004".to_string());
+        let client2 = client1.clone();
+        assert_eq!(client1.base_url, client2.base_url);
     }
 
     #[test]
     fn test_client_with_different_base_urls() {
-        if let (Some(c1), Some(c2)) =
-            (try_new_client("http://localhost:7004"), try_new_client("http://localhost:7001"))
-        {
-            assert_eq!(c1.base_url, "http://localhost:7004");
-            assert_eq!(c2.base_url, "http://localhost:7001");
-        }
+        let c1 = ApiClient::new("http://localhost:7004".to_string());
+        let c2 = ApiClient::new("http://localhost:7001".to_string());
+        assert_eq!(c1.base_url, "http://localhost:7004");
+        assert_eq!(c2.base_url, "http://localhost:7001");
     }
 }
