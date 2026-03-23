@@ -191,6 +191,21 @@ pub trait ExecutionBackend: Send + Sync {
         Ok(None)
     }
 
+    /// Returns the output stream for a PTY-backed session, if available.
+    ///
+    /// Only [`PtyBackend`](crate::pty::PtyBackend) implements this; all other
+    /// backends return `None` by default.
+    ///
+    /// The returned [`PtyOutputStream`](crate::pty_stream::PtyOutputStream)
+    /// provides a ring-buffer history replay and a live broadcast receiver
+    /// for streaming terminal output to callers.
+    async fn session_output_stream(
+        &self,
+        _session_name: &str,
+    ) -> anyhow::Result<Option<crate::pty_stream::PtyOutputStream>> {
+        Ok(None)
+    }
+
     /// Stops all sessions managed by this backend.
     ///
     /// Used during graceful shutdown to clean up all running sessions.
