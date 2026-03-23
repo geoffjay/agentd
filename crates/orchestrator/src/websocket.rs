@@ -1,4 +1,5 @@
 use crate::approvals::ApprovalRegistry;
+use crate::manager::AgentManager;
 use crate::scheduler::events::{EventBus, SystemEvent};
 use crate::types::{ActivityState, ApprovalDecision, ResultInfo, ToolPolicy, UsageSnapshot};
 use axum::{
@@ -10,6 +11,7 @@ use axum::{
 };
 use chrono::Utc;
 use futures::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -833,6 +835,163 @@ async fn handle_stream_socket(
     info!(filter = %label, "Stream WebSocket connection ended");
 }
 
+// ---------------------------------------------------------------------------
+// Terminal relay WebSocket  (GET /terminal/{agent_id})
+// ---------------------------------------------------------------------------
+
+/// Control message sent from a terminal client to the server.
+///
+/// Binary frames are forwarded as-is to the PTY stdin.
+/// Text frames are parsed as JSON control messages (e.g., resize).
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum TerminalControlMessage {
+    /// Resize the PTY to the given dimensions.
+    Resize { cols: u16, rows: u16 },
+}
+
+/// State passed to the terminal WebSocket handler.
+///
+/// Carries the `AgentManager` so the handler can resolve agent → session
+/// and obtain the `PtyOutputStream`.
+#[derive(Clone)]
+pub struct TerminalRelayState {
+    pub manager: Arc<AgentManager>,
+}
+
+/// Maximum byte length accepted for a single binary stdin frame forwarded to
+/// the PTY. Frames larger than this are dropped with a warning. This prevents
+/// a misbehaving client from holding the PTY writer mutex for an arbitrarily
+/// long write.
+const MAX_STDIN_FRAME_BYTES: usize = 64 * 1024; // 64 KiB
+
+/// Axum handler for the PTY terminal relay at `GET /terminal/{agent_id}`.
+///
+/// Upgrades the connection to a binary WebSocket relay:
+/// - **Server → Client**: raw PTY output bytes as binary frames
+/// - **Client → Server**: binary frames forwarded to PTY stdin;
+///   text frames parsed as JSON control messages (e.g. `{"type":"resize","cols":120,"rows":40}`)
+///
+/// Returns `404 Not Found` when the agent does not exist or the backend does
+/// not support PTY streaming.
+/// Returns `500 Internal Server Error` when the PTY stream lookup fails.
+pub async fn ws_terminal_handler(
+    Path(agent_id): Path<Uuid>,
+    ws: WebSocketUpgrade,
+    State(state): State<TerminalRelayState>,
+) -> impl IntoResponse {
+    info!(%agent_id, "Terminal WebSocket upgrade request");
+    // Resolve the PTY stream before upgrading so HTTP-level clients receive a
+    // proper status code (404/500) rather than a WebSocket-framed error message.
+    match state.manager.get_agent_pty_stream(&agent_id).await {
+        Ok(None) => {
+            warn!(%agent_id, "Terminal relay: no PTY stream available");
+            axum::http::StatusCode::NOT_FOUND.into_response()
+        }
+        Err(e) => {
+            error!(%agent_id, %e, "Terminal relay: failed to get PTY stream");
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+        Ok(Some(stream)) => ws
+            .on_upgrade(move |socket| {
+                handle_terminal_socket(socket, agent_id, stream, state.manager)
+            })
+            .into_response(),
+    }
+}
+
+async fn handle_terminal_socket(
+    socket: WebSocket,
+    agent_id: Uuid,
+    stream: wrap::pty_stream::PtyOutputStream,
+    manager: Arc<AgentManager>,
+) {
+    let (mut ws_sender, mut ws_receiver) = socket.split();
+
+    // Subscribe before sending history to avoid a race between replay and live.
+    let (history, mut pty_rx) = stream.subscribe();
+    info!(%agent_id, history_chunks = history.len(), "Terminal relay connected");
+
+    // Send history buffer as individual binary frames.
+    for chunk in history {
+        if ws_sender.send(Message::Binary(chunk)).await.is_err() {
+            return;
+        }
+    }
+
+    // Spawn a task that forwards live PTY output → WebSocket binary frames.
+    let send_task = tokio::spawn(async move {
+        loop {
+            match pty_rx.recv().await {
+                Ok(chunk) => {
+                    if ws_sender.send(Message::Binary(chunk)).await.is_err() {
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    warn!(%agent_id, skipped = n, "Terminal relay lagged, skipped PTY chunks");
+                    // Continue — we already lost these bytes; keep forwarding.
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    info!(%agent_id, "PTY broadcast channel closed, terminal relay ending");
+                    break;
+                }
+            }
+        }
+    });
+
+    // Main loop: handle incoming client frames.
+    loop {
+        match ws_receiver.next().await {
+            None => break, // client closed the connection cleanly
+            Some(Err(e)) => {
+                warn!(%agent_id, %e, "Terminal relay: receive error");
+                break;
+            }
+            Some(Ok(msg)) => match msg {
+                Message::Binary(data) => {
+                    // Raw keyboard input — forward to PTY stdin.
+                    if data.len() > MAX_STDIN_FRAME_BYTES {
+                        warn!(
+                            %agent_id,
+                            bytes = data.len(),
+                            limit = MAX_STDIN_FRAME_BYTES,
+                            "Terminal relay: oversized stdin frame dropped"
+                        );
+                    } else if let Err(e) = stream.write_input(&data) {
+                        warn!(%agent_id, %e, "Terminal relay: failed to write input to PTY");
+                    }
+                }
+                Message::Text(text) => {
+                    // JSON control message — parse and dispatch.
+                    match serde_json::from_str::<TerminalControlMessage>(&text) {
+                        Ok(TerminalControlMessage::Resize { cols, rows }) => {
+                            debug!(%agent_id, cols, rows, "Terminal resize request");
+                            if let Err(e) = manager.resize_agent_pty(&agent_id, cols, rows).await {
+                                warn!(%agent_id, %e, "Terminal relay: resize failed");
+                            }
+                        }
+                        Err(e) => {
+                            warn!(%agent_id, %e, text = %text, "Terminal relay: unrecognised control message");
+                        }
+                    }
+                }
+                Message::Close(_) => {
+                    info!(%agent_id, "Terminal client disconnected");
+                    break;
+                }
+                Message::Ping(_) => {} // auto-pong by axum
+                _ => {}
+            },
+        }
+    }
+
+    send_task.abort();
+    // Wait for the send task to exit so its ws_sender is dropped before we return.
+    let _ = send_task.await;
+    info!(%agent_id, "Terminal WebSocket connection ended");
+}
+
 async fn send_raw(
     agent_id: &Uuid,
     msg: &Value,
@@ -1202,5 +1361,52 @@ mod tests {
             }
         }
         assert!(found, "Expected agent:activity_changed (busy) event on stream");
+    }
+
+    // -----------------------------------------------------------------------
+    // Terminal control message parsing tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_terminal_resize_message_deserialises() {
+        let json = r#"{"type":"resize","cols":120,"rows":40}"#;
+        let msg: TerminalControlMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            TerminalControlMessage::Resize { cols, rows } => {
+                assert_eq!(cols, 120);
+                assert_eq!(rows, 40);
+            }
+        }
+    }
+
+    #[test]
+    fn test_terminal_resize_message_serialises() {
+        let msg = TerminalControlMessage::Resize { cols: 80, rows: 24 };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"resize""#));
+        assert!(json.contains(r#""cols":80"#));
+        assert!(json.contains(r#""rows":24"#));
+    }
+
+    #[test]
+    fn test_terminal_unknown_message_type_errors() {
+        let json = r#"{"type":"unknown_action","data":"foo"}"#;
+        let result = serde_json::from_str::<TerminalControlMessage>(json);
+        assert!(result.is_err(), "Unknown type should fail to deserialise");
+    }
+
+    #[test]
+    fn test_terminal_resize_missing_fields_errors() {
+        // Missing `rows` — should fail.
+        let json = r#"{"type":"resize","cols":80}"#;
+        let result = serde_json::from_str::<TerminalControlMessage>(json);
+        assert!(result.is_err(), "Resize missing rows should fail");
+    }
+
+    #[test]
+    fn test_terminal_relay_state_is_clone() {
+        // Verifies the TerminalRelayState can be cloned (required by axum State).
+        fn assert_clone<T: Clone>() {}
+        assert_clone::<TerminalRelayState>();
     }
 }

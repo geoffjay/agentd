@@ -189,6 +189,20 @@ impl ExecutionBackend for PtyBackend {
         &self.prefix
     }
 
+    async fn resize_session(&self, session_name: &str, cols: u16, rows: u16) -> Result<()> {
+        let sessions = self.sessions.read().await;
+        if let Some(session) = sessions.get(session_name) {
+            let master = session
+                .master
+                .lock()
+                .map_err(|_| anyhow!("PTY master lock poisoned for '{}'", session_name))?;
+            master
+                .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+                .with_context(|| format!("Failed to resize PTY session '{}'", session_name))?;
+        }
+        Ok(())
+    }
+
     async fn session_output_stream(&self, session_name: &str) -> Result<Option<PtyOutputStream>> {
         let sessions = self.sessions.read().await;
         Ok(sessions.get(session_name).map(|s| s.stream.clone()))
@@ -362,5 +376,42 @@ mod tests {
         backend.shutdown_all_sessions().await.unwrap();
         let sessions = backend.list_sessions().await.unwrap();
         assert!(sessions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resize_session_noop_for_missing() {
+        // Resizing a session that doesn't exist should return Ok(()) silently.
+        let backend = PtyBackend::new("test");
+        let result = backend.resize_session("nonexistent", 120, 40).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn session_output_stream_none_for_missing() {
+        let backend = PtyBackend::new("test");
+        let stream = backend.session_output_stream("nonexistent").await.unwrap();
+        assert!(stream.is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PTY support (not available in sandbox/CI)"]
+    async fn resize_session_ok_for_live_session() {
+        let backend = PtyBackend::new("test");
+        let config = test_config("resize-session");
+        backend.create_session(&config).await.unwrap();
+        let result = backend.resize_session("resize-session", 120, 40).await;
+        assert!(result.is_ok(), "resize should succeed: {result:?}");
+        backend.kill_session("resize-session").await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires PTY support (not available in sandbox/CI)"]
+    async fn session_output_stream_some_for_live_session() {
+        let backend = PtyBackend::new("test");
+        let config = test_config("stream-session");
+        backend.create_session(&config).await.unwrap();
+        let stream = backend.session_output_stream("stream-session").await.unwrap();
+        assert!(stream.is_some(), "should return PtyOutputStream for live PTY session");
+        backend.kill_session("stream-session").await.unwrap();
     }
 }

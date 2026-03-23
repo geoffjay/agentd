@@ -191,6 +191,25 @@ pub trait ExecutionBackend: Send + Sync {
         Ok(None)
     }
 
+    /// Resize the PTY terminal dimensions for a session.
+    ///
+    /// Only PTY-backed sessions support resize; all other backends no-op by
+    /// default. Callers should handle the no-op gracefully.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_name` — Name of the session to resize
+    /// * `cols` — New terminal width in columns
+    /// * `rows` — New terminal height in rows
+    async fn resize_session(
+        &self,
+        _session_name: &str,
+        _cols: u16,
+        _rows: u16,
+    ) -> anyhow::Result<()> {
+        Ok(()) // no-op for non-PTY backends
+    }
+
     /// Returns the output stream for a PTY-backed session, if available.
     ///
     /// Only [`PtyBackend`](crate::pty::PtyBackend) implements this; all other

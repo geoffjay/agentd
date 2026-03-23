@@ -3,7 +3,8 @@ use crate::scheduler::api::{webhook_routes, workflow_routes, WorkflowState};
 use crate::scheduler::Scheduler;
 use crate::types::*;
 use crate::websocket::{
-    ws_handler, ws_stream_agent_handler, ws_stream_all_handler, ConnectionRegistry,
+    ws_handler, ws_stream_agent_handler, ws_stream_all_handler, ws_terminal_handler,
+    ConnectionRegistry, TerminalRelayState,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -43,6 +44,11 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/stream/{agent_id}", get(ws_stream_agent_handler))
         .with_state(state.registry.clone());
 
+    // PTY terminal relay WebSocket — binary frames of raw terminal I/O.
+    let ws_terminal_routes = Router::new()
+        .route("/terminal/{agent_id}", get(ws_terminal_handler))
+        .with_state(TerminalRelayState { manager: state.manager.clone() });
+
     let wf_state =
         WorkflowState { scheduler: state.scheduler.clone(), manager: state.manager.clone() };
     let wf_routes = workflow_routes(wf_state.clone());
@@ -72,7 +78,12 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/debug/agents", get(debug_agents))
         .with_state(state);
 
-    api_routes.merge(ws_agent_routes).merge(ws_stream_routes).merge(wf_routes).merge(wh_routes)
+    api_routes
+        .merge(ws_agent_routes)
+        .merge(ws_stream_routes)
+        .merge(ws_terminal_routes)
+        .merge(wf_routes)
+        .merge(wh_routes)
 }
 
 #[derive(Deserialize)]

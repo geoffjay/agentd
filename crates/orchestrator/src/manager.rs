@@ -479,6 +479,50 @@ impl AgentManager {
         }
     }
 
+    /// Return the PTY output stream for an agent's session, if the backend
+    /// supports it.
+    ///
+    /// Returns `Ok(None)` when the agent does not have a session or when the
+    /// backend does not support PTY streaming (e.g., tmux or Docker backends).
+    /// Returns `Ok(Some(stream))` for PTY-backed sessions.
+    pub async fn get_agent_pty_stream(
+        &self,
+        agent_id: &Uuid,
+    ) -> anyhow::Result<Option<wrap::pty_stream::PtyOutputStream>> {
+        let agent =
+            self.storage.get(agent_id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+
+        let session_name = match agent.session_id {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        self.backend.session_output_stream(&session_name).await
+    }
+
+    /// Resize the PTY terminal for an agent's session.
+    ///
+    /// No-ops silently for backends that do not support resize (tmux/Docker).
+    /// Returns `Ok(())` when the agent has no active session.
+    pub async fn resize_agent_pty(
+        &self,
+        agent_id: &Uuid,
+        cols: u16,
+        rows: u16,
+    ) -> anyhow::Result<()> {
+        let agent = match self.storage.get(agent_id).await? {
+            Some(a) => a,
+            None => return Ok(()),
+        };
+
+        let session_name = match agent.session_id {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+
+        self.backend.resize_session(&session_name, cols, rows).await
+    }
+
     /// Restart a running agent: kill the current session and re-launch Claude.
     ///
     /// Preserves the agent's ID, name, and config. The prompt is NOT re-sent
