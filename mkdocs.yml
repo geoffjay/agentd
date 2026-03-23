@@ -108,7 +108,11 @@ nav:
       - Manual Triggers: public/manual-trigger.md
       - Migration (source_config → trigger_config): public/migration-trigger.md
   - Pipeline:
+      - Architecture Overview: public/pipeline/index.md
       - State Machine: public/pipeline-state-machine.md
+      - Conductor Behavior: public/pipeline/conductor.md
+      - Troubleshooting: public/pipeline/troubleshooting.md
+      - Human Approval Gates: planning/autonomous-pipeline-gates.md
   - Development:
       - Error Handling & Logging: public/error-handling.md
       - Storage Patterns: storage.md
