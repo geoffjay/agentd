@@ -212,11 +212,22 @@ async fn send_message(
         )));
     }
 
-    state
-        .registry
-        .send_user_message(&id, &req.content)
-        .await
-        .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+    if agent.config.interactive {
+        // Interactive mode: Claude reads from PTY stdin, not the WebSocket.
+        // Inject the prompt as raw bytes so it appears as if the user typed it.
+        state
+            .manager
+            .inject_pty_prompt(&id, &req.content)
+            .await
+            .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+    } else {
+        // SDK mode: deliver via the orchestrator WebSocket protocol.
+        state
+            .registry
+            .send_user_message(&id, &req.content)
+            .await
+            .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+    }
 
     Ok(Json(serde_json::json!({ "status": "sent", "agent_id": id })))
 }

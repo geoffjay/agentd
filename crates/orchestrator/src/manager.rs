@@ -14,6 +14,7 @@ use wrap::backend::ExecutionBackend;
 /// Uses an [`ExecutionBackend`] trait object to interact with the underlying
 /// session manager (tmux, Docker, etc.), making the orchestrator
 /// backend-agnostic.
+#[derive(Clone)]
 pub struct AgentManager {
     storage: Arc<AgentStorage>,
     backend: Arc<dyn ExecutionBackend>,
@@ -110,33 +111,56 @@ impl AgentManager {
             "Agent spawned"
         );
 
-        // If there's an initial prompt, send it via WebSocket once the agent
-        // connects (poll briefly since the tmux/claude process needs a moment).
+        // If there's an initial prompt, deliver it via the appropriate channel.
+        //
+        // Interactive mode: Claude reads from PTY stdin, not the WebSocket.
+        //   Write the prompt directly to PTY stdin. A brief delay lets the
+        //   shell and Claude process start before input arrives.
+        //
+        // SDK mode: Claude connects back to the orchestrator WebSocket.
+        //   Poll until the agent connects, then send via WebSocket.
         if let Some(ref prompt) = agent.config.prompt {
-            let registry = self.registry.clone();
-            let agent_id = agent.id;
             let prompt = prompt.clone();
-            tokio::spawn(async move {
-                for attempt in 1..=30 {
+            let agent_id = agent.id;
+
+            if agent.config.interactive {
+                // Interactive mode — inject via PTY stdin.
+                let manager = self.clone();
+                tokio::spawn(async move {
+                    // Give the shell and Claude a moment to start.
                     tokio::time::sleep(Duration::from_secs(2)).await;
-                    if registry.is_connected(&agent_id).await {
-                        match registry.send_user_message(&agent_id, &prompt).await {
-                            Ok(_) => {
-                                info!(%agent_id, "Initial prompt sent via WebSocket");
-                                return;
-                            }
-                            Err(e) => {
-                                warn!(%agent_id, %e, "Failed to send initial prompt");
-                                return;
-                            }
+                    match manager.inject_pty_prompt(&agent_id, &prompt).await {
+                        Ok(_) => info!(%agent_id, "Initial prompt injected via PTY stdin"),
+                        Err(e) => {
+                            warn!(%agent_id, %e, "Failed to inject initial prompt via PTY stdin")
                         }
                     }
-                    if attempt % 5 == 0 {
-                        info!(%agent_id, attempt, "Waiting for agent to connect...");
+                });
+            } else {
+                // SDK mode — wait for the agent to connect, then send via WebSocket.
+                let registry = self.registry.clone();
+                tokio::spawn(async move {
+                    for attempt in 1..=30 {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        if registry.is_connected(&agent_id).await {
+                            match registry.send_user_message(&agent_id, &prompt).await {
+                                Ok(_) => {
+                                    info!(%agent_id, "Initial prompt sent via WebSocket");
+                                    return;
+                                }
+                                Err(e) => {
+                                    warn!(%agent_id, %e, "Failed to send initial prompt");
+                                    return;
+                                }
+                            }
+                        }
+                        if attempt % 5 == 0 {
+                            info!(%agent_id, attempt, "Waiting for agent to connect...");
+                        }
                     }
-                }
-                warn!(%agent_id, "Agent never connected, initial prompt not sent");
-            });
+                    warn!(%agent_id, "Agent never connected, initial prompt not sent");
+                });
+            }
         }
 
         Ok(agent)
@@ -498,6 +522,38 @@ impl AgentManager {
         };
 
         self.backend.session_output_stream(&session_name).await
+    }
+
+    /// Inject a prompt into an interactive-mode agent by writing text to PTY
+    /// stdin, exactly as if the user had typed it in the terminal.
+    ///
+    /// This is the programmatic prompt path for agents launched with
+    /// `config.interactive = true`. In interactive mode Claude reads from PTY
+    /// stdin, not from a WebSocket connection, so `send_user_message` cannot
+    /// be used.
+    ///
+    /// A newline is appended automatically so Claude receives the prompt as a
+    /// complete input line.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The agent is not found or has no active session.
+    /// - The backend does not expose a PTY stream (tmux / Docker backends).
+    /// - The PTY writer has been closed (session already exited).
+    pub async fn inject_pty_prompt(&self, agent_id: &Uuid, prompt: &str) -> anyhow::Result<()> {
+        let stream = self.get_agent_pty_stream(agent_id).await?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Agent {} has no PTY stream; inject_pty_prompt requires a PTY backend",
+                agent_id
+            )
+        })?;
+
+        // Append a newline so Claude receives a complete input line.
+        let mut input = prompt.as_bytes().to_vec();
+        input.push(b'\n');
+        stream.write_input(&input)?;
+        Ok(())
     }
 
     /// Resize the PTY terminal for an agent's session.
@@ -934,5 +990,179 @@ mod tests {
     #[test]
     fn test_shell_escape_value_empty() {
         assert_eq!(shell_escape_value(""), "''");
+    }
+
+    // -----------------------------------------------------------------------
+    // inject_pty_prompt tests
+    // -----------------------------------------------------------------------
+
+    use crate::storage::AgentStorage;
+    use crate::types::{Agent, AgentStatus};
+    use crate::websocket::ConnectionRegistry;
+    use async_trait::async_trait;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+    use tempfile::TempDir;
+    use wrap::backend::{ExecutionBackend, SessionConfig, SessionHealth};
+    use wrap::pty_stream::{PtyOutputStream, DEFAULT_CHANNEL_CAPACITY, DEFAULT_HISTORY_BYTES};
+
+    // A writer that captures bytes into a shared Vec for inspection.
+    struct CapturingWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for CapturingWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // Mock backend that returns a PtyOutputStream for any session.
+    struct MockPtyBackend {
+        stream: PtyOutputStream,
+    }
+
+    impl MockPtyBackend {
+        fn new(captured: Arc<Mutex<Vec<u8>>>) -> Self {
+            let writer = Box::new(CapturingWriter(captured));
+            Self {
+                stream: PtyOutputStream::new(
+                    DEFAULT_CHANNEL_CAPACITY,
+                    DEFAULT_HISTORY_BYTES,
+                    writer,
+                ),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ExecutionBackend for MockPtyBackend {
+        async fn create_session(&self, _config: &SessionConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn launch_agent(&self, _config: &SessionConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn session_exists(&self, _session_name: &str) -> anyhow::Result<bool> {
+            Ok(true)
+        }
+        async fn kill_session(&self, _session_name: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn send_command(&self, _session_name: &str, _command: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn list_sessions(&self) -> anyhow::Result<Vec<String>> {
+            Ok(vec![])
+        }
+        fn prefix(&self) -> &str {
+            "mock"
+        }
+        async fn session_health(&self, _session_name: &str) -> anyhow::Result<SessionHealth> {
+            Ok(SessionHealth::Healthy)
+        }
+        async fn session_output_stream(
+            &self,
+            _session_name: &str,
+        ) -> anyhow::Result<Option<PtyOutputStream>> {
+            Ok(Some(self.stream.clone()))
+        }
+    }
+
+    // Mock backend with no PTY support (default session_output_stream → None).
+    struct MockNoPtyBackend;
+
+    #[async_trait]
+    impl ExecutionBackend for MockNoPtyBackend {
+        async fn create_session(&self, _config: &SessionConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn launch_agent(&self, _config: &SessionConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn session_exists(&self, _session_name: &str) -> anyhow::Result<bool> {
+            Ok(true)
+        }
+        async fn kill_session(&self, _session_name: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn send_command(&self, _session_name: &str, _command: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn list_sessions(&self) -> anyhow::Result<Vec<String>> {
+            Ok(vec![])
+        }
+        fn prefix(&self) -> &str {
+            "no-pty"
+        }
+    }
+
+    async fn make_manager_with_agent(
+        backend: Arc<dyn ExecutionBackend>,
+        interactive: bool,
+    ) -> (AgentManager, Agent, TempDir) {
+        let temp = TempDir::new().unwrap();
+        let db_path = temp.path().join("test.db");
+        let storage = Arc::new(AgentStorage::with_path(&db_path).await.unwrap());
+        let registry = ConnectionRegistry::new();
+        let manager =
+            AgentManager::new(storage.clone(), backend, registry, "ws://localhost".into());
+
+        let mut agent =
+            Agent::new("test-agent".into(), AgentConfig { interactive, ..base_config() });
+        agent.status = AgentStatus::Running;
+        agent.session_id = Some("mock-session-1".into());
+        storage.add(&agent).await.unwrap();
+        (manager, agent, temp)
+    }
+
+    #[tokio::test]
+    async fn inject_pty_prompt_writes_text_and_newline() {
+        let captured = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let backend = Arc::new(MockPtyBackend::new(captured.clone()));
+        let (manager, agent, _temp) = make_manager_with_agent(backend, /*interactive=*/ true).await;
+
+        manager.inject_pty_prompt(&agent.id, "hello world").await.unwrap();
+
+        let written = captured.lock().unwrap().clone();
+        assert_eq!(written, b"hello world\n");
+    }
+
+    #[tokio::test]
+    async fn inject_pty_prompt_appends_newline_to_multi_line_input() {
+        let captured = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let backend = Arc::new(MockPtyBackend::new(captured.clone()));
+        let (manager, agent, _temp) = make_manager_with_agent(backend, /*interactive=*/ true).await;
+
+        manager.inject_pty_prompt(&agent.id, "line one\nline two").await.unwrap();
+
+        let written = captured.lock().unwrap().clone();
+        // A trailing newline is appended; the embedded newline is preserved.
+        assert_eq!(written, b"line one\nline two\n");
+    }
+
+    #[tokio::test]
+    async fn inject_pty_prompt_errors_when_no_pty_stream() {
+        let backend = Arc::new(MockNoPtyBackend);
+        let (manager, agent, _temp) = make_manager_with_agent(backend, /*interactive=*/ true).await;
+
+        let result = manager.inject_pty_prompt(&agent.id, "hello").await;
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("no PTY stream"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn inject_pty_prompt_errors_when_agent_not_found() {
+        let backend = Arc::new(MockPtyBackend::new(Arc::new(Mutex::new(vec![]))));
+        let (manager, _agent, _temp) =
+            make_manager_with_agent(backend, /*interactive=*/ true).await;
+
+        let unknown_id = uuid::Uuid::new_v4();
+        let result = manager.inject_pty_prompt(&unknown_id, "hello").await;
+        assert!(result.is_err());
     }
 }
