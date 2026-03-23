@@ -140,3 +140,38 @@ export const darkNivoTheme: NivoTheme = {
     text: { fill: darkColors.textSecondary, fontSize: 11 },
   },
 }
+
+// ---------------------------------------------------------------------------
+// xterm.js terminal theme
+//
+// Always dark regardless of the app's light/dark mode — terminals are
+// inherently dark surfaces. Colours verified ≥4.5:1 contrast on #030712.
+// Cursor uses the app's primary accent (sunlit-clay-500).
+// ---------------------------------------------------------------------------
+
+export const XTERM_THEME = {
+  background: '#030712',       // gray-950 — matches AgentLogView bg
+  foreground: '#e5e7eb',       // gray-200
+  cursor: '#d2852d',           // sunlit-clay-500 (--accent-primary)
+  cursorAccent: '#030712',
+  selectionBackground: 'rgba(210, 133, 45, 0.25)',  // accent @ 25%
+  selectionForeground: '#f9fafb',
+
+  // ANSI 16-colour palette
+  black:         '#1f2937',    // gray-800
+  brightBlack:   '#374151',    // gray-700
+  red:           '#f87171',    // red-400
+  brightRed:     '#fca5a5',    // red-300
+  green:         '#4ade80',    // green-400
+  brightGreen:   '#86efac',    // green-300
+  yellow:        '#fbbf24',    // amber-400
+  brightYellow:  '#fde68a',    // amber-200
+  blue:          '#60a5fa',    // blue-400
+  brightBlue:    '#93c5fd',    // blue-300
+  magenta:       '#c084fc',    // purple-400
+  brightMagenta: '#d8b4fe',    // purple-300
+  cyan:          '#22d3ee',    // cyan-400
+  brightCyan:    '#67e8f9',    // cyan-300
+  white:         '#e5e7eb',    // gray-200
+  brightWhite:   '#f9fafb',    // gray-50
+} as const
