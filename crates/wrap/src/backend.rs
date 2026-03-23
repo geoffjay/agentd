@@ -241,7 +241,7 @@ impl TmuxBackend {
 }
 
 /// Build the shell command string for launching an agent CLI.
-fn build_agent_command(config: &SessionConfig) -> anyhow::Result<String> {
+pub(crate) fn build_agent_command(config: &SessionConfig) -> anyhow::Result<String> {
     match config.agent_type.as_str() {
         "claude-code" => Ok("claude".to_string()),
         "crush" => Ok("crush".to_string()),
