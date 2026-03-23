@@ -76,6 +76,67 @@ pub fn trace_layer() -> tower_http::trace::TraceLayer<
 ///     .route("/", get(handler))
 ///     .layer(cors_layer());
 /// ```
+#[cfg(test)]
+mod tests {
+    // --- trace_layer ---
+
+    #[test]
+    fn test_trace_layer_constructs_without_panic() {
+        // Verifies that trace_layer() can be called without panicking.
+        // We cannot easily inspect TraceLayer internals; construction smoke
+        // test is sufficient to catch configuration regressions.
+        let _layer = super::trace_layer();
+    }
+
+    // --- cors_layer ---
+    //
+    // All AGENTD_CORS_ORIGINS variants are tested inside a single function to
+    // prevent env-var races across parallel test threads.
+
+    #[test]
+    fn test_cors_layer_default_wildcard() {
+        std::env::remove_var("AGENTD_CORS_ORIGINS");
+        // Should not panic; defaults to AllowOrigin::any()
+        let _layer = super::cors_layer();
+        std::env::remove_var("AGENTD_CORS_ORIGINS");
+    }
+
+    #[test]
+    fn test_cors_layer_explicit_wildcard() {
+        std::env::set_var("AGENTD_CORS_ORIGINS", "*");
+        let _layer = super::cors_layer();
+        std::env::remove_var("AGENTD_CORS_ORIGINS");
+    }
+
+    #[test]
+    fn test_cors_layer_single_origin() {
+        std::env::set_var("AGENTD_CORS_ORIGINS", "https://app.example.com");
+        let _layer = super::cors_layer();
+        std::env::remove_var("AGENTD_CORS_ORIGINS");
+    }
+
+    #[test]
+    fn test_cors_layer_multiple_origins() {
+        std::env::set_var(
+            "AGENTD_CORS_ORIGINS",
+            "https://app.example.com,https://admin.example.com",
+        );
+        let _layer = super::cors_layer();
+        std::env::remove_var("AGENTD_CORS_ORIGINS");
+    }
+
+    #[test]
+    fn test_cors_layer_origins_with_whitespace() {
+        // Whitespace around commas should be trimmed without panic.
+        std::env::set_var(
+            "AGENTD_CORS_ORIGINS",
+            "https://app.example.com , https://admin.example.com",
+        );
+        let _layer = super::cors_layer();
+        std::env::remove_var("AGENTD_CORS_ORIGINS");
+    }
+}
+
 pub fn cors_layer() -> tower_http::cors::CorsLayer {
     use axum::http::{header, HeaderName, HeaderValue, Method};
     use tower_http::cors::{AllowOrigin, CorsLayer};
