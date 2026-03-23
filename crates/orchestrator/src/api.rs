@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
+use wrap::types::{BackendInfo, BackendType};
 
 #[derive(Clone)]
 pub struct ApiState {
@@ -31,6 +32,8 @@ pub struct ApiState {
     pub registry: ConnectionRegistry,
     pub scheduler: Arc<Scheduler>,
     pub communicate: CommunicateClient,
+    /// The active execution backend type — used for capability reporting.
+    pub backend_type: BackendType,
 }
 
 pub fn create_router(state: ApiState) -> Router {
@@ -56,6 +59,7 @@ pub fn create_router(state: ApiState) -> Router {
 
     let api_routes = Router::new()
         .route("/health", get(health_check))
+        .route("/info", get(backend_info))
         .route("/agents", get(list_agents).post(create_agent))
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
         .route("/agents/{id}/message", post(send_message))
@@ -100,6 +104,20 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
         HealthResponse::ok("agentd-orchestrator", env!("CARGO_PKG_VERSION"))
             .with_detail("agents_active", serde_json::json!(active)),
     )
+}
+
+/// `GET /info` — active backend type and capabilities.
+///
+/// Returns information about the execution backend currently in use, including
+/// its capabilities. Clients (UI, CLI) can use this to discover which features
+/// are available (e.g., PTY streaming, health checks).
+async fn backend_info(State(state): State<ApiState>) -> impl IntoResponse {
+    let caps = state.backend_type.capabilities();
+    Json(BackendInfo {
+        backend_type: state.backend_type,
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        capabilities: caps,
+    })
 }
 
 async fn list_agents(

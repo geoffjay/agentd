@@ -7,7 +7,7 @@
 
 import { ApiClient } from './base'
 import { serviceConfig } from './config'
-import type { HealthResponse, PaginatedResponse } from '@/types/common'
+import type { BackendInfo, HealthResponse, PaginatedResponse } from '@/types/common'
 import type {
   AddDirRequest,
   AddDirResponse,
@@ -37,6 +37,11 @@ export class OrchestratorClient extends ApiClient {
 
   getHealth(): Promise<HealthResponse> {
     return this.get<HealthResponse>('/health')
+  }
+
+  /** `GET /info` — active backend type and capabilities. */
+  getInfo(): Promise<BackendInfo> {
+    return this.get<BackendInfo>('/info')
   }
 
   // -------------------------------------------------------------------------
