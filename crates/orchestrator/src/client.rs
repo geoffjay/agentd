@@ -71,6 +71,22 @@ impl OrchestratorClient {
         Self { client: reqwest::Client::new(), base_url: base_url.into() }
     }
 
+    /// Create a client using the `AGENTD_ORCHESTRATOR_SERVICE_URL` environment
+    /// variable, falling back to `http://localhost:7006`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orchestrator::client::OrchestratorClient;
+    ///
+    /// let client = OrchestratorClient::from_env();
+    /// ```
+    pub fn from_env() -> Self {
+        let url = std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
+            .unwrap_or_else(|_| "http://localhost:7006".to_string());
+        Self::new(url)
+    }
+
     // -- Agent operations --
 
     /// Check the health of the orchestrator service.
@@ -98,6 +114,32 @@ impl OrchestratorClient {
     /// Get a specific agent by ID.
     pub async fn get_agent(&self, id: &Uuid) -> Result<AgentResponse> {
         self.get(&format!("/agents/{}", id)).await
+    }
+
+    /// Find an agent by name, returning `None` if no agent with that name exists.
+    ///
+    /// Fetches a paginated list of all agents and searches client-side because
+    /// the orchestrator API does not expose a dedicated name-lookup endpoint.
+    /// Agent names are unique within the orchestrator, so at most one result is
+    /// returned.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use orchestrator::client::OrchestratorClient;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let client = OrchestratorClient::new("http://localhost:7006");
+    /// if let Some(agent) = client.get_agent_by_name("conductor").await? {
+    ///     println!("conductor UUID = {}", agent.id);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn get_agent_by_name(&self, name: &str) -> Result<Option<AgentResponse>> {
+        // Fetch a large page to avoid missing agents in busy systems.
+        // A future improvement could add a server-side ?name= filter.
+        let resp: PaginatedResponse<AgentResponse> = self.get("/agents?limit=500&offset=0").await?;
+        Ok(resp.items.into_iter().find(|a| a.name == name))
     }
 
     /// Terminate and remove an agent by ID.

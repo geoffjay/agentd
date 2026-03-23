@@ -521,3 +521,112 @@ async fn test_websocket_unsubscribe_stops_delivery() {
 
     sink.close().await.unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// PATCH /rooms/{id}/participants/{identifier} — update participant identifier
+// ---------------------------------------------------------------------------
+
+/// Helper: send a PATCH request to update a participant's identifier.
+async fn patch_participant_identifier(
+    app: &Router,
+    room_id: &str,
+    old_identifier: &str,
+    new_identifier: &str,
+) -> (StatusCode, serde_json::Value) {
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/rooms/{room_id}/participants/{old_identifier}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&json!({ "new_identifier": new_identifier })).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body = body_json(resp.into_body()).await;
+    (status, body)
+}
+
+#[tokio::test]
+async fn test_patch_participant_identifier_success() {
+    let (app, _temp) = build_test_app().await;
+    let room_id = create_room(&app, "patch-id-room").await;
+
+    // Seed a name-based participant (simulating `agentd apply`).
+    add_participant(&app, &room_id, "conductor").await;
+
+    let uuid_str = uuid::Uuid::new_v4().to_string();
+    let (status, body) = patch_participant_identifier(&app, &room_id, "conductor", &uuid_str).await;
+
+    assert_eq!(status, StatusCode::OK, "successful rename should return 200");
+    assert_eq!(body["identifier"], uuid_str, "identifier should be updated to UUID");
+    assert_eq!(body["display_name"], "conductor", "display_name should be unchanged");
+
+    // Old identifier should be gone.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/rooms/{room_id}/participants/conductor"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND, "name-based entry should be gone");
+
+    // New UUID-based identifier should exist.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/rooms/{room_id}/participants/{uuid_str}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "uuid-based entry should now exist");
+}
+
+#[tokio::test]
+async fn test_patch_participant_identifier_not_found() {
+    let (app, _temp) = build_test_app().await;
+    let room_id = create_room(&app, "patch-id-404-room").await;
+
+    let (status, _) = patch_participant_identifier(&app, &room_id, "nonexistent", "new-id").await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "missing participant should return 404");
+}
+
+#[tokio::test]
+async fn test_patch_participant_identifier_conflict() {
+    let (app, _temp) = build_test_app().await;
+    let room_id = create_room(&app, "patch-id-conflict-room").await;
+
+    let uuid_str = uuid::Uuid::new_v4().to_string();
+    // Add both the name-based and UUID-based entries (the duplicate state).
+    add_participant(&app, &room_id, "conductor").await;
+    add_participant(&app, &room_id, &uuid_str).await;
+
+    // Trying to rename "conductor" → uuid_str should fail with 409
+    // because the UUID identifier is already taken.
+    let (status, _) = patch_participant_identifier(&app, &room_id, "conductor", &uuid_str).await;
+    assert_eq!(status, StatusCode::CONFLICT, "duplicate new_identifier should return 409");
+}
+
+#[tokio::test]
+async fn test_patch_participant_identifier_empty_new_identifier() {
+    let (app, _temp) = build_test_app().await;
+    let room_id = create_room(&app, "patch-id-empty-room").await;
+    add_participant(&app, &room_id, "conductor").await;
+
+    let (status, _) = patch_participant_identifier(&app, &room_id, "conductor", "   ").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "blank new_identifier should return 400");
+}

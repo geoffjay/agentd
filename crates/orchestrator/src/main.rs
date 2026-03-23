@@ -12,6 +12,7 @@ mod websocket;
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
 use communicate::client::CommunicateClient;
+use communicate::error::CommunicateError;
 use communicate::types::{
     AddParticipantRequest, CreateRoomRequest, ParticipantKind, ParticipantRole, RoomType,
 };
@@ -387,10 +388,43 @@ async fn shutdown_signal() {
     info!("Shutdown signal received");
 }
 
+/// Returns the identifiers of stale name-based participant entries that should
+/// be removed before an agent joins with its UUID.
+///
+/// A participant is considered stale when:
+/// - Its `kind` is `Agent` (human participants legitimately use non-UUID names), and
+/// - Its `identifier` equals the agent's name string.
+///
+/// This is extracted as a pure function so it can be unit-tested without a live
+/// communicate service.
+fn stale_name_based_identifiers<'a>(
+    participants: &'a [communicate::types::ParticipantResponse],
+    agent_name: &str,
+) -> Vec<&'a str> {
+    participants
+        .iter()
+        .filter(|p| p.kind == ParticipantKind::Agent && p.identifier == agent_name)
+        .map(|p| p.identifier.as_str())
+        .collect()
+}
+
 /// Look up a room by name via the communicate service, creating it if it doesn't
 /// exist, then add the agent as a participant.
 ///
 /// Returns the room UUID on success. Treat duplicate-participant errors as success.
+///
+/// # Duplicate reconciliation
+///
+/// Room templates applied via `agentd apply` add participants using the agent
+/// **name** as the identifier (e.g. `"conductor"`), because the agent UUID is
+/// not yet known at apply time.  When the agent later connects, the orchestrator
+/// uses the **UUID** as the canonical identifier.  Both inserts succeed (they
+/// are different strings), producing a duplicate row.
+///
+/// To prevent this, after finding/creating the room this function lists the
+/// current participants and removes any entry whose identifier is *not* a valid
+/// UUID but equals the agent's name — i.e., the stale name-based row left by
+/// `agentd apply`.  Human participants (kind `human`) are never touched.
 async fn join_or_create_room(
     client: &CommunicateClient,
     agent_id: &Uuid,
@@ -413,8 +447,61 @@ async fn join_or_create_room(
         }
     };
 
-    // Add the agent as a participant — treat 409 Conflict as success
-    // (the agent is already a member).
+    // Reconcile: remove stale name-based participant entries for this agent.
+    //
+    // `agentd apply` seeds rooms with participants identified by agent *name*
+    // (e.g. "conductor") because the UUID is not yet known.  On first connect
+    // the orchestrator adds the agent by UUID, creating a duplicate unless we
+    // clean up the name-based row first.
+    //
+    // We only remove entries that:
+    //   1. Have kind == Agent (human entries use non-UUID names legitimately), and
+    //   2. Have an identifier equal to the agent's name (not a UUID).
+    //
+    // Failures here are non-fatal: the agent can still join; we just log and
+    // continue so as not to block agent startup.
+    match client.list_participants(room.id, 500, 0).await {
+        Ok(participants) => {
+            for identifier in stale_name_based_identifiers(&participants, agent_name) {
+                match client.remove_participant(room.id, identifier).await {
+                    Ok(_) => {
+                        info!(
+                            room_name,
+                            agent_name,
+                            identifier,
+                            "Removed stale name-based participant entry; \
+                             agent will rejoin with UUID identifier"
+                        );
+                    }
+                    Err(CommunicateError::NotFound) => {
+                        // Already removed by a concurrent call — ignore.
+                    }
+                    Err(e) => {
+                        warn!(
+                            room_name,
+                            agent_name,
+                            identifier,
+                            err = ?e,
+                            "Failed to remove stale name-based participant; \
+                             duplicate may persist until next reconciliation"
+                        );
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            warn!(
+                room_name,
+                agent_name,
+                err = ?e,
+                "Could not list participants for duplicate reconciliation; \
+                 skipping cleanup"
+            );
+        }
+    }
+
+    // Add the agent as a participant using its UUID — treat 409 Conflict as
+    // success (the agent was already a member from a previous session).
     let identifier = agent_id.to_string();
     match client
         .add_participant(
@@ -428,7 +515,79 @@ async fn join_or_create_room(
         )
         .await
     {
-        Ok(_) | Err(communicate::error::CommunicateError::Conflict) => Ok(room.id),
+        Ok(_) | Err(CommunicateError::Conflict) => Ok(room.id),
         Err(e) => Err(e.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use communicate::types::{ParticipantKind, ParticipantResponse, ParticipantRole};
+    use uuid::Uuid;
+
+    fn make_participant(identifier: &str, kind: ParticipantKind) -> ParticipantResponse {
+        ParticipantResponse {
+            id: Uuid::new_v4(),
+            room_id: Uuid::new_v4(),
+            identifier: identifier.to_string(),
+            kind,
+            display_name: identifier.to_string(),
+            role: ParticipantRole::Member,
+            joined_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn stale_name_based_identifiers_returns_matching_agent_entry() {
+        let uuid_str = Uuid::new_v4().to_string();
+        let participants = vec![
+            make_participant("conductor", ParticipantKind::Agent), // stale name-based
+            make_participant(&uuid_str, ParticipantKind::Agent),   // canonical UUID entry
+            make_participant("geoff", ParticipantKind::Human),     // human — never touched
+        ];
+        let stale = stale_name_based_identifiers(&participants, "conductor");
+        assert_eq!(stale, vec!["conductor"]);
+    }
+
+    #[test]
+    fn stale_name_based_identifiers_empty_when_no_match() {
+        let uuid_str = Uuid::new_v4().to_string();
+        let participants = vec![
+            make_participant(&uuid_str, ParticipantKind::Agent),
+            make_participant("geoff", ParticipantKind::Human),
+        ];
+        // No name-based entry for "conductor".
+        let stale = stale_name_based_identifiers(&participants, "conductor");
+        assert!(stale.is_empty());
+    }
+
+    #[test]
+    fn stale_name_based_identifiers_ignores_human_with_same_name() {
+        // Edge case: a human participant whose username happens to equal the
+        // agent name.  Human entries must never be removed.
+        let participants = vec![make_participant("conductor", ParticipantKind::Human)];
+        let stale = stale_name_based_identifiers(&participants, "conductor");
+        assert!(stale.is_empty(), "human entries should never be flagged as stale");
+    }
+
+    #[test]
+    fn stale_name_based_identifiers_empty_room() {
+        let stale = stale_name_based_identifiers(&[], "conductor");
+        assert!(stale.is_empty());
+    }
+
+    #[test]
+    fn stale_name_based_identifiers_concurrent_removal_guard() {
+        // Verify that returning multiple stale entries (degenerate: duplicate
+        // name rows) doesn't panic — the caller removes them one by one,
+        // treating 404 (already removed) as success.
+        let participants = vec![
+            make_participant("conductor", ParticipantKind::Agent),
+            make_participant("conductor", ParticipantKind::Agent),
+        ];
+        let stale = stale_name_based_identifiers(&participants, "conductor");
+        assert_eq!(stale.len(), 2);
     }
 }
