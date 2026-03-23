@@ -8016,6 +8016,7 @@ dependencies = [
  "async-trait",
  "axum",
  "bollard",
+ "bytes",
  "chrono",
  "metrics",
  "metrics-exporter-prometheus",

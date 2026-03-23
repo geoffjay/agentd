@@ -18,15 +18,15 @@
 use crate::backend::{
     build_agent_command, ExecutionBackend, SessionConfig, SessionExitInfo, SessionHealth,
 };
+use crate::pty_stream::{PtyOutputStream, DEFAULT_CHANNEL_CAPACITY, DEFAULT_HISTORY_BYTES};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 /// Grace period given to a session after Ctrl-C before a hard kill is issued.
 const KILL_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_millis(200);
@@ -34,12 +34,12 @@ const KILL_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_millis(
 /// An active PTY session.
 #[allow(dead_code)]
 struct PtySession {
-    /// The PTY master — used to write commands/signals.
-    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
+    /// The PTY master — retained so the PTY pair stays alive.
+    master: Arc<std::sync::Mutex<Box<dyn MasterPty + Send>>>,
     /// The child process running in the PTY.
-    child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
-    /// Writer for sending data to the PTY.
-    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    child: Arc<tokio::sync::Mutex<Box<dyn Child + Send + Sync>>>,
+    /// Combined output stream and input writer for this session.
+    stream: PtyOutputStream,
     /// Working directory at session creation.
     working_dir: PathBuf,
     /// Original session config.
@@ -75,7 +75,7 @@ impl ExecutionBackend for PtyBackend {
         let config_clone = config.clone();
 
         // Use spawn_blocking for the synchronous PTY API
-        let (master, child, writer) = tokio::task::spawn_blocking(move || {
+        let (master, child, writer, reader) = tokio::task::spawn_blocking(move || {
             let pty_system = native_pty_system();
             let pair = pty_system
                 .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
@@ -87,16 +87,21 @@ impl ExecutionBackend for PtyBackend {
 
             let child = pair.slave.spawn_command(cmd).context("Failed to spawn shell in PTY")?;
             let writer = pair.master.take_writer().context("Failed to get PTY writer")?;
+            let reader = pair.master.try_clone_reader().context("Failed to clone PTY reader")?;
 
-            Ok::<_, anyhow::Error>((pair.master, child, writer))
+            Ok::<_, anyhow::Error>((pair.master, child, writer, reader))
         })
         .await
         .context("spawn_blocking panicked")??;
 
+        let stream = PtyOutputStream::new(DEFAULT_CHANNEL_CAPACITY, DEFAULT_HISTORY_BYTES, writer);
+        // Spawn the background reader task (moves a clone of the stream)
+        stream.clone().spawn_reader(reader);
+
         let session = PtySession {
-            master: Arc::new(Mutex::new(master)),
-            child: Arc::new(Mutex::new(child)),
-            writer: Arc::new(Mutex::new(writer)),
+            master: Arc::new(std::sync::Mutex::new(master)),
+            child: Arc::new(tokio::sync::Mutex::new(child)),
+            stream,
             working_dir: PathBuf::from(&config_clone.working_dir),
             config: config_clone,
             created_at: Instant::now(),
@@ -132,15 +137,13 @@ impl ExecutionBackend for PtyBackend {
     }
 
     async fn kill_session(&self, session_name: &str) -> Result<()> {
-        // Phase 1: Send Ctrl-C gracefully
+        // Phase 1: Send Ctrl-C gracefully via the output stream's writer
         {
             let sessions = self.sessions.read().await;
             let Some(session) = sessions.get(session_name) else {
                 return Ok(());
             };
-            let mut writer = session.writer.lock().await;
-            let _ = writer.write_all(&[0x03]); // ETX = Ctrl-C
-            let _ = writer.flush();
+            let _ = session.stream.write_input(&[0x03]); // ETX = Ctrl-C
         } // Lock released here
 
         // Give the process a moment to exit gracefully
@@ -164,12 +167,11 @@ impl ExecutionBackend for PtyBackend {
             .get(session_name)
             .ok_or_else(|| anyhow!("Session '{}' not found", session_name))?;
 
-        let mut writer = session.writer.lock().await;
         let line = format!("{}\n", command);
-        writer
-            .write_all(line.as_bytes())
+        session
+            .stream
+            .write_input(line.as_bytes())
             .with_context(|| format!("Failed to write command to session '{}'", session_name))?;
-        writer.flush().context("Failed to flush PTY writer")?;
         Ok(())
     }
 
@@ -185,6 +187,11 @@ impl ExecutionBackend for PtyBackend {
 
     fn prefix(&self) -> &str {
         &self.prefix
+    }
+
+    async fn session_output_stream(&self, session_name: &str) -> Result<Option<PtyOutputStream>> {
+        let sessions = self.sessions.read().await;
+        Ok(sessions.get(session_name).map(|s| s.stream.clone()))
     }
 
     async fn session_health(&self, session_name: &str) -> Result<SessionHealth> {

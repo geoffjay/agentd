@@ -33,6 +33,7 @@ pub mod backend;
 pub mod client;
 pub mod docker;
 pub mod pty;
+pub mod pty_stream;
 pub mod tmux;
 pub mod types;
 
@@ -40,6 +41,7 @@ pub use backend::{ExecutionBackend, SessionConfig, SessionExitInfo, SessionHealt
 pub use client::WrapClient;
 pub use docker::{DockerBackend, NetworkPolicy};
 pub use pty::PtyBackend;
+pub use pty_stream::PtyOutputStream;
 pub use types::{
     HealthResponse, KillSessionResponse, LaunchRequest, LaunchResponse, SessionInfo,
     SessionListResponse, TmuxLayout,
