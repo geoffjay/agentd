@@ -83,7 +83,9 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started: public/getting-started.md
-  - Configuration: public/configuration.md
+  - Configuration:
+      - Reference: public/configuration.md
+      - Execution Backends: public/configuration/backends.md
   - Installation: public/install.md
   - Tool Policies: public/tool-policies.md
   - Templates: public/templates.md

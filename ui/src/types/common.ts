@@ -17,6 +17,17 @@ export interface HealthResponse {
   status: string
 }
 
+/** Execution backend type */
+export type BackendType = 'tmux' | 'docker' | 'pty'
+
+/** Information about the active execution backend and its capabilities */
+export interface BackendInfo {
+  backend_type: BackendType
+  version: string
+  /** Capability strings, e.g. "terminal", "interactive", "health-check" */
+  capabilities: string[]
+}
+
 /** Typed API error thrown by all client methods */
 export class ApiError extends Error {
   readonly status: number

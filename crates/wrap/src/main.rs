@@ -58,7 +58,8 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting agentd-wrap service...");
 
     // --- Select execution backend ---
-    let backend_type = BackendType::from_env();
+    // Unrecognised AGENTD_BACKEND values cause an immediate startup failure.
+    let backend_type = BackendType::from_env_strict()?;
     info!("Using execution backend: {}", backend_type);
 
     let exec_backend: Arc<dyn ExecutionBackend> = match &backend_type {

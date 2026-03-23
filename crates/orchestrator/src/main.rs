@@ -32,6 +32,8 @@ use uuid::Uuid;
 use websocket::ConnectionRegistry;
 use wrap::backend::{ExecutionBackend, TmuxBackend};
 use wrap::docker::DockerBackend;
+use wrap::pty::PtyBackend;
+use wrap::types::BackendType;
 
 fn init_metrics() -> PrometheusHandle {
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
@@ -63,14 +65,16 @@ async fn main() -> anyhow::Result<()> {
     let ws_base_url = format!("ws://127.0.0.1:{}", port);
 
     // Execution backend — selected via AGENTD_BACKEND env var.
-    // Valid values: "tmux" (default), "docker".
-    let backend_mode = env::var("AGENTD_BACKEND").unwrap_or_else(|_| "tmux".to_string());
-    let backend: Arc<dyn ExecutionBackend> = match backend_mode.as_str() {
-        "tmux" => {
+    // Valid values: "tmux" (default), "docker", "pty".
+    // Unrecognised values cause an immediate startup failure.
+    let backend_type = BackendType::from_env_strict()?;
+    info!("Using execution backend: {}", backend_type);
+    let backend: Arc<dyn ExecutionBackend> = match &backend_type {
+        BackendType::Tmux => {
             info!("Using tmux execution backend");
             Arc::new(TmuxBackend::new("agentd-orch"))
         }
-        "docker" => {
+        BackendType::Docker => {
             let image = env::var("AGENTD_DOCKER_IMAGE")
                 .unwrap_or_else(|_| wrap::docker::DEFAULT_IMAGE.to_string());
             info!(image = %image, "Using Docker execution backend");
@@ -92,8 +96,9 @@ async fn main() -> anyhow::Result<()> {
 
             Arc::new(docker_backend)
         }
-        other => {
-            anyhow::bail!("Unknown AGENTD_BACKEND value '{}'. Valid options: tmux, docker", other);
+        BackendType::Pty => {
+            info!("Using PTY execution backend");
+            Arc::new(PtyBackend::new("agentd-orch"))
         }
     };
 
@@ -335,6 +340,7 @@ async fn main() -> anyhow::Result<()> {
         registry,
         scheduler: scheduler.clone(),
         communicate: communicate.clone(),
+        backend_type,
     };
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);

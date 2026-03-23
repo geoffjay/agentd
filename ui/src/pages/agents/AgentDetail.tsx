@@ -42,6 +42,7 @@ import { useAgentUsage } from '@/hooks/useAgentUsage'
 import { useToast } from '@/hooks/useToast'
 import { orchestratorClient } from '@/services/orchestrator'
 import type { SessionUsage, SetModelRequest, ToolPolicy } from '@/types/orchestrator'
+import type { BackendInfo } from '@/types/common'
 
 // ---------------------------------------------------------------------------
 // Model selector constants
@@ -589,6 +590,23 @@ export function AgentDetail() {
   const [policyEditing, setPolicyEditing] = useState(false)
   const [copied, setCopied] = useState(false)
   const [activeTab, setActiveTab] = useState<'logs' | 'terminal'>('logs')
+  // Backend capability detection — populated on mount; null means loading.
+  const [backendInfo, setBackendInfo] = useState<BackendInfo | null>(null)
+
+  // Fetch backend capabilities once on mount so the UI can show/hide features.
+  useEffect(() => {
+    orchestratorClient
+      .getInfo()
+      .then(setBackendInfo)
+      .catch(() => {
+        // If the /info endpoint is unavailable (older orchestrator), assume
+        // a tmux backend without PTY streaming capability.
+        setBackendInfo({ backend_type: 'tmux', version: 'unknown', capabilities: [] })
+      })
+  }, [])
+
+  // Derived: whether the active backend supports PTY terminal streaming.
+  const ptyAvailable = backendInfo?.capabilities.includes('terminal') ?? false
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -769,7 +787,7 @@ export function AgentDetail() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Log / Terminal view (takes 2/3 width on large screens) */}
         <div className="flex flex-col gap-3 lg:col-span-2">
-          {/* Tab switcher */}
+          {/* Tab switcher — Terminal tab only shown when backend supports PTY streaming */}
           <div
             role="tablist"
             aria-label="Agent output view"
@@ -791,22 +809,24 @@ export function AgentDetail() {
             >
               Logs
             </button>
-            <button
-              role="tab"
-              type="button"
-              aria-selected={activeTab === 'terminal'}
-              aria-controls="tab-panel-terminal"
-              id="tab-terminal"
-              onClick={() => setActiveTab('terminal')}
-              className={[
-                'flex-1 rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
-                activeTab === 'terminal'
-                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
-                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
-              ].join(' ')}
-            >
-              Terminal
-            </button>
+            {ptyAvailable && (
+              <button
+                role="tab"
+                type="button"
+                aria-selected={activeTab === 'terminal'}
+                aria-controls="tab-panel-terminal"
+                id="tab-terminal"
+                onClick={() => setActiveTab('terminal')}
+                className={[
+                  'flex-1 rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
+                  activeTab === 'terminal'
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+                ].join(' ')}
+              >
+                Terminal
+              </button>
+            )}
           </div>
 
           {/* Tab panels */}
@@ -820,19 +840,21 @@ export function AgentDetail() {
             >
               <AgentLogView lines={lines} status={streamStatus} onClear={clearLog} />
             </div>
-            <div
-              role="tabpanel"
-              id="tab-panel-terminal"
-              aria-labelledby="tab-terminal"
-              hidden={activeTab !== 'terminal'}
-              className="h-full"
-            >
-              {/* Mount AgentTerminal only when the Terminal tab is active to
-                  avoid an unnecessary WebSocket connection while viewing Logs */}
-              {activeTab === 'terminal' && (
-                <AgentTerminal agentId={agentId} readOnly={true} />
-              )}
-            </div>
+            {ptyAvailable && (
+              <div
+                role="tabpanel"
+                id="tab-panel-terminal"
+                aria-labelledby="tab-terminal"
+                hidden={activeTab !== 'terminal'}
+                className="h-full"
+              >
+                {/* Mount AgentTerminal only when the Terminal tab is active to
+                    avoid an unnecessary WebSocket connection while viewing Logs */}
+                {activeTab === 'terminal' && (
+                  <AgentTerminal agentId={agentId} readOnly={true} />
+                )}
+              </div>
+            )}
           </div>
 
           {/* Command input */}

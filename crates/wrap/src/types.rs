@@ -45,6 +45,30 @@ impl BackendType {
         }
     }
 
+    /// Read the backend type from `AGENTD_BACKEND`, returning an error for
+    /// unrecognised values.
+    ///
+    /// Unlike [`from_env`](Self::from_env), this method rejects unknown values
+    /// instead of silently falling back to `Tmux`. Use this in service entry
+    /// points where an invalid configuration should abort startup.
+    ///
+    /// Returns [`BackendType::Tmux`] when `AGENTD_BACKEND` is unset.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `AGENTD_BACKEND` is set to an unrecognised value.
+    pub fn from_env_strict() -> anyhow::Result<Self> {
+        match std::env::var("AGENTD_BACKEND").as_deref() {
+            Ok("tmux") | Err(_) => Ok(BackendType::Tmux),
+            Ok("docker") => Ok(BackendType::Docker),
+            Ok("pty") => Ok(BackendType::Pty),
+            Ok(other) => anyhow::bail!(
+                "Unknown AGENTD_BACKEND value '{}'. Valid options: tmux, docker, pty",
+                other
+            ),
+        }
+    }
+
     /// Returns the capabilities exposed by this backend.
     pub fn capabilities(&self) -> Vec<String> {
         match self {
@@ -317,5 +341,72 @@ mod tests {
 
         let deserialized: KillSessionResponse = serde_json::from_str(&json).unwrap();
         assert!(deserialized.success);
+    }
+
+    // -----------------------------------------------------------------------
+    // BackendType::from_env_strict
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn from_env_strict_unset_returns_tmux() {
+        // Remove any inherited env var so the test is deterministic.
+        std::env::remove_var("AGENTD_BACKEND");
+        let bt = BackendType::from_env_strict().unwrap();
+        assert_eq!(bt, BackendType::Tmux);
+    }
+
+    #[test]
+    fn from_env_strict_tmux_explicit() {
+        std::env::set_var("AGENTD_BACKEND", "tmux");
+        let bt = BackendType::from_env_strict().unwrap();
+        assert_eq!(bt, BackendType::Tmux);
+        std::env::remove_var("AGENTD_BACKEND");
+    }
+
+    #[test]
+    fn from_env_strict_docker() {
+        std::env::set_var("AGENTD_BACKEND", "docker");
+        let bt = BackendType::from_env_strict().unwrap();
+        assert_eq!(bt, BackendType::Docker);
+        std::env::remove_var("AGENTD_BACKEND");
+    }
+
+    #[test]
+    fn from_env_strict_pty() {
+        std::env::set_var("AGENTD_BACKEND", "pty");
+        let bt = BackendType::from_env_strict().unwrap();
+        assert_eq!(bt, BackendType::Pty);
+        std::env::remove_var("AGENTD_BACKEND");
+    }
+
+    #[test]
+    fn from_env_strict_unknown_errors() {
+        std::env::set_var("AGENTD_BACKEND", "kubernetes");
+        let result = BackendType::from_env_strict();
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("kubernetes"), "error should name the bad value: {msg}");
+        assert!(msg.contains("tmux"), "error should list valid options: {msg}");
+        std::env::remove_var("AGENTD_BACKEND");
+    }
+
+    #[test]
+    fn pty_has_no_health_check_capability() {
+        assert!(
+            !BackendType::Pty.capabilities().contains(&"health-check".to_string()),
+            "PTY backend must not advertise health-check capability"
+        );
+    }
+
+    #[test]
+    fn pty_has_terminal_and_interactive_capabilities() {
+        let caps = BackendType::Pty.capabilities();
+        assert!(caps.contains(&"terminal".to_string()));
+        assert!(caps.contains(&"interactive".to_string()));
+    }
+
+    #[test]
+    fn docker_has_health_check_capability() {
+        assert!(BackendType::Docker.capabilities().contains(&"health-check".to_string()));
     }
 }
