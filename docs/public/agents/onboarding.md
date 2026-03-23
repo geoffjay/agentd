@@ -56,9 +56,10 @@ agent teardown .agentd/
 │   ├── security.yml        # Security auditing
 │   └── architect.yml       # Architecture review
 └── workflows/
-    ├── issue-worker.yml    # Dispatches on work-agent label
-    ├── plan-worker.yml     # Dispatches on plan-agent label
-    ├── pull-request-reviewer.yml
+    ├── issue-worker.yml                   # Dispatches on work-agent label
+    ├── plan-worker.yml                    # Dispatches on plan-agent label
+    ├── pull-request-reviewer.yml          # Polls PRs with review-agent label
+    ├── webhook-pull-request-reviewer.yml  # Webhook-triggered PR review
     ├── docs-worker.yml
     ├── research-worker.yml
     ├── enrichment-worker.yml
@@ -372,7 +373,8 @@ dispatch it to the corresponding agent. **The agent removes the label when it fi
 | `refactor-agent` | `refactor-worker` | refactor agent | Issue |
 | `research-agent` | `research-worker` | research agent | Issue |
 | `security-agent` | `security-worker` | security agent | Issue |
-| `review-agent` | `pull-request-reviewer` | reviewer | Pull request |
+| `review-agent` | `pull-request-reviewer` | reviewer | Pull request (polling) |
+| `review-agent` | `webhook-pull-request-reviewer` | reviewer | Pull request (webhook) |
 | `conductor-sync` | conductor sync | conductor | Manual trigger |
 
 !!! tip "Re-triggering an agent"

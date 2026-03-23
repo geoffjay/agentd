@@ -78,7 +78,8 @@ dispatch the matching agent. The agent removes the label when done.
 | Label | Workflow | Agent | Trigger target |
 |-------|----------|-------|---------------|
 | `work-agent` | issue-worker | worker | Issue |
-| `review-agent` | pull-request-reviewer | reviewer | Pull request |
+| `review-agent` | pull-request-reviewer | reviewer | Pull request (polling) |
+| `review-agent` | webhook-pull-request-reviewer | reviewer | Pull request (webhook) |
 | `plan-agent` | plan-worker | planner | Issue |
 | `docs-agent` | docs-worker | documenter | Issue / PR |
 | `enrich-agent` | enrichment-worker | enricher | Issue |

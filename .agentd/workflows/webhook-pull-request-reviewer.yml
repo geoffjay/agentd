@@ -1,0 +1,203 @@
+# Webhook-triggered PR reviewer workflow — fires immediately on GitHub webhook events.
+#
+# Unlike the polling-based pull-request-reviewer, this workflow is triggered in
+# real time when GitHub delivers a webhook event. The recommended setup is to
+# configure a GitHub repository webhook that sends `pull_request` events to this
+# workflow's endpoint. Whenever the `review-agent` label is applied to a PR,
+# GitHub delivers a `pull_request` / `labeled` event and the reviewer agent
+# begins immediately — no polling delay.
+#
+# GitHub webhook setup (one-time, per repository):
+#
+#   1. Deploy this workflow and note its UUID:
+#        agent apply .agentd/workflows/webhook-pull-request-reviewer.yml
+#        agent orchestrator list-workflows | grep webhook-pull-request-reviewer
+#
+#   2. In your GitHub repo → Settings → Webhooks → Add webhook:
+#        Payload URL:   https://<your-agentd-host>/webhooks/<WORKFLOW_UUID>
+#        Content type:  application/json
+#        Secret:        <same value as `secret` below>
+#        Events:        Select "Pull requests"
+#
+#   3. To test immediately without GitHub:
+#        curl -s -X POST http://127.0.0.1:17006/webhooks/<WORKFLOW_UUID> \
+#          -H "Content-Type: application/json" \
+#          -H "X-GitHub-Event: pull_request" \
+#          -H "X-GitHub-Delivery: test-$(date +%s)" \
+#          -d '{"action":"labeled","number":123,"pull_request":{"title":"Test PR","body":"Test body","html_url":"https://github.com/geoffjay/agentd/pull/123","labels":[{"name":"review-agent"}]}}'
+#
+# Worktree considerations:
+#   The reviewer agent checks out the PR branch in an isolated git worktree so
+#   the review does not disturb the main working tree. The worktree is created
+#   at /tmp/agentd-review-<pr_number> and cleaned up after the review completes.
+#
+# Memory integration:
+#   The reviewer stores review findings in shared memory so patterns can be
+#   detected across multiple PRs over time. Each run also queries memory to
+#   incorporate past decisions and known recurring issues.
+#
+# IMPORTANT: This workflow ships as `enabled: false`. Set `enabled: true` only
+# after configuring the GitHub webhook and (optionally) setting a shared secret
+# to protect the endpoint from unauthenticated deliveries.
+#
+# Usage:
+#   agent apply .agentd/workflows/webhook-pull-request-reviewer.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: webhook-pull-request-reviewer
+agent: reviewer
+
+source:
+  type: webhook
+  # secret: ""  # Set to a random string and configure the same value in GitHub
+                 # webhook settings to enable HMAC-SHA256 signature verification.
+                 # If omitted, all incoming requests are accepted without
+                 # verification (not recommended for production).
+
+enabled: false
+
+prompt_template: |
+  A GitHub pull_request webhook event was received. Review the pull request
+  if it has the `review-agent` label; otherwise skip it.
+
+  Webhook delivery context:
+  - Event:       {{github_event}}
+  - Action:      {{action}}
+  - Delivery ID: {{delivery_id}}
+  - Received at: {{timestamp}}
+  - PR number:   {{pr_number}}
+  - PR title:    {{title}}
+  - PR URL:      {{url}}
+  - Labels:      {{labels}}
+
+  Step 0 — Guard: only review when labeled `review-agent`
+
+  If `{{action}}` is not `labeled` or `{{labels}}` does not contain
+  `review-agent`, stop here — output "Skipping: event action is {{action}},
+  labels are {{labels}}" and do nothing else.
+
+  Step 1 — Gather context from memory
+
+  Before reviewing, query shared memory for relevant context:
+
+  ```bash
+  agent memory search "{{title}}" --as-actor reviewer --limit 5 --json
+  agent memory search "review findings" --as-actor reviewer --tags reviewer --limit 5 --json
+  ```
+
+  Review the results and factor known recurring issues or past decisions into
+  your evaluation.
+
+  Step 2 — Check the stack position of this PR
+
+  ```bash
+  git-spice log short
+  ```
+
+  This shows where the branch sits in the stack and whether it has a parent PR
+  that should be reviewed first. If the parent PR has not yet been reviewed and
+  merged, note the dependency in your review comment.
+
+  Step 3 — Create an isolated worktree for the review
+
+  Check out the PR branch in a temporary worktree so the review does not
+  disturb the main working tree:
+
+  ```bash
+  REVIEW_DIR="/tmp/agentd-review-{{pr_number}}"
+  gh pr checkout {{pr_number}} --repo geoffjay/agentd --worktree "$REVIEW_DIR" || \
+    git worktree add "$REVIEW_DIR" "origin/$(gh pr view {{pr_number}} --repo geoffjay/agentd --json headRefName --jq '.headRefName')"
+  ```
+
+  All file reads and test runs during the review should be performed from
+  `$REVIEW_DIR` to ensure isolation.
+
+  Step 4 — Fetch the full diff
+
+  ```bash
+  gh pr diff {{pr_number}} --repo geoffjay/agentd
+  ```
+
+  Read the diff carefully, noting each changed file and the nature of the changes.
+
+  Step 5 — Review the changes
+
+  Evaluate the diff against the following criteria:
+
+  a. **Correctness** — Does the code do what the PR description claims?
+  b. **Safety** — Are there security issues, data races, or panic paths?
+  c. **Consistency** — Does the code follow existing patterns in the crate?
+  d. **Tests** — Are new code paths covered by tests? Do existing tests pass?
+  e. **Scope** — Is the change focused on the stated issue without unrelated edits?
+
+  For any files where you need more context, read them from the worktree:
+
+  ```bash
+  cat "$REVIEW_DIR/<path/to/file>"
+  ```
+
+  To run the test suite in the isolated worktree:
+
+  ```bash
+  cd "$REVIEW_DIR" && cargo test 2>&1 | tail -30
+  ```
+
+  Step 6 — Note any stack impact
+
+  If this is a stacked PR, mention in your review whether approval of the parent
+  branch would affect this branch (e.g., merge conflicts, dependent changes).
+
+  Step 7 — Submit the review
+
+  Apply the appropriate label transition:
+
+  - **Approved** — approve and add `merge-queue` label:
+      ```bash
+      gh pr review {{pr_number}} --repo geoffjay/agentd --approve --body "..."
+      gh pr edit {{pr_number}} --repo geoffjay/agentd --add-label "merge-queue"
+      ```
+
+  - **Non-blocking suggestions** — comment only (no label change):
+      ```bash
+      gh pr review {{pr_number}} --repo geoffjay/agentd --comment --body "..."
+      ```
+
+  - **Changes required** — request changes and add `needs-rework` label:
+      ```bash
+      gh pr review {{pr_number}} --repo geoffjay/agentd --request-changes --body "..."
+      gh pr edit {{pr_number}} --repo geoffjay/agentd --add-label "needs-rework"
+      ```
+
+  - **Branch needs rebasing on its parent** — add `needs-restack` label:
+      ```bash
+      gh pr edit {{pr_number}} --repo geoffjay/agentd --add-label "needs-restack"
+      ```
+
+  Step 8 — Remove the `review-agent` label
+
+  ```bash
+  gh pr edit {{pr_number}} --repo geoffjay/agentd --remove-label review-agent
+  ```
+
+  Step 9 — Store findings in memory
+
+  If you found a recurring pattern or notable issue worth tracking across PRs:
+
+  ```bash
+  agent memory remember "<finding>" \
+    --created-by reviewer \
+    --type information \
+    --tags reviewer,pr-{{pr_number}} \
+    --visibility public
+  ```
+
+  Step 10 — Clean up the worktree
+
+  ```bash
+  git worktree remove "$REVIEW_DIR" --force 2>/dev/null || rm -rf "$REVIEW_DIR"
+  ```
+
+  Label reference:
+  - merge-queue   — PR approved; triggers conductor to merge
+  - needs-rework  — changes requested; worker must address feedback and resubmit
+  - needs-restack — branch is behind its parent; worker must run git-spice upstack restack
