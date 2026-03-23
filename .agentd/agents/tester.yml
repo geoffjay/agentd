@@ -18,6 +18,21 @@ shell: /bin/zsh
 worktree: false
 model: claude-sonnet-4-6
 
+# File-path scoping: tester may only write to test directories and CI config.
+# Writes to production source files are denied at the tool-policy level.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  mode: allow_list
+  tools:
+    - Read
+    - Bash
+    - Grep
+    - Glob
+    - "Write(crates/*/tests/**)"
+    - "Edit(crates/*/tests/**)"
+    - "Write(.github/workflows/**)"
+    - "Edit(.github/workflows/**)"
+
 rooms:
   - engineering
   - name: announcements

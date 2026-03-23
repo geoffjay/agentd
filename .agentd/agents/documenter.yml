@@ -10,6 +10,17 @@ shell: /bin/zsh
 worktree: true
 model: claude-sonnet-4-6
 
+# File-path scoping: documenter may only write to docs/ and mkdocs.yml.
+# Writes to Rust source files are denied at the tool-policy level.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  mode: deny_list
+  tools:
+    - "Write(crates/**/*.rs)"
+    - "Edit(crates/**/*.rs)"
+    - "Write(.agentd/**)"
+    - "Edit(.agentd/**)"
+
 rooms:
   - engineering
   - name: announcements

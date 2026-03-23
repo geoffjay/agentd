@@ -14,6 +14,21 @@ shell: /bin/zsh
 worktree: false
 model: claude-sonnet-4-6
 
+# File-path scoping: security agent is read-only for code; it creates issues
+# and posts reports but must not modify source files or agent configuration.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  mode: deny_list
+  tools:
+    - "Write(crates/**)"
+    - "Edit(crates/**)"
+    - "Write(ui/**)"
+    - "Edit(ui/**)"
+    - "Write(.agentd/**)"
+    - "Edit(.agentd/**)"
+    - "Write(docs/**)"
+    - "Edit(docs/**)"
+
 rooms:
   - engineering
   - name: security

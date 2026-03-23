@@ -16,6 +16,21 @@ shell: /bin/zsh
 worktree: false
 model: claude-sonnet-4-6
 
+# File-path scoping: refactor agent may modify Rust source files but must not
+# touch agent configuration, UI, or docs.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  mode: deny_list
+  tools:
+    - "Write(.agentd/**)"
+    - "Edit(.agentd/**)"
+    - "Write(ui/**)"
+    - "Edit(ui/**)"
+    - "Write(docs/**)"
+    - "Edit(docs/**)"
+    - "Write(CLAUDE.md)"
+    - "Edit(CLAUDE.md)"
+
 rooms:
   - engineering
   - name: announcements
