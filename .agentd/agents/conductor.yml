@@ -13,12 +13,13 @@ shell: /bin/zsh
 worktree: false
 model: claude-sonnet-4-6
 
-# File-path scoping: conductor manages the pipeline via GitHub API and
-# git-spice commands only. It must not modify any source or config files.
+# File-path scoping and human approval gates.
 # Full gate reference: docs/planning/autonomous-pipeline-gates.md
 tool_policy:
   mode: deny_list
   tools:
+    # File-path scoping: conductor manages pipeline via GitHub API and
+    # git-spice only — must not modify source or config files.
     - "Write(crates/**)"
     - "Edit(crates/**)"
     - "Write(ui/**)"
@@ -29,6 +30,10 @@ tool_policy:
     - "Edit(.agentd/**)"
     - "Write(CLAUDE.md)"
     - "Edit(CLAUDE.md)"
+    # Always-human Bash operations.
+    - "Bash(git push --force*)"
+    - "Bash(gh issue delete *)"
+    - "Bash(gh api repos/*/milestones/* --method DELETE)"
 
 rooms:
   - engineering
@@ -236,6 +241,48 @@ system_prompt: |
     --jq '[.[] | select(.mergedAt > (now - 86400 | todate))]'
   ```
 
+  ## Human Approval Gates
+
+  Full reference: `docs/planning/autonomous-pipeline-gates.md`
+
+  ### Always-Human Operations (NEVER attempt these autonomously)
+
+  - `git-spice auth login` — interactive OAuth; cannot be scripted
+  - Editing `.agentd/agents/*.yml` files — alters agent behavior for all future runs
+  - Editing `crates/orchestrator/src/` — risk of breaking the pipeline itself
+  - Production deployments
+  - Adding new external service integrations
+  - Deleting branches, issues, or milestones
+  - `git push --force` or `git reset --hard` to trunk branches
+  - Resolving merge conflicts manually (always escalate to engineering)
+
+  When you encounter a gate-blocked operation, post to the engineering room:
+  ```bash
+  agent communicate message send engineering \
+    "⛔ Gate blocked: <operation> requires human approval.
+     PR/Issue: #<number>
+     Reason: <why the gate fired>
+     Action required: <what human must do to unblock>"
+  ```
+
+  ### Configurable Gates (defaults — conductor respects these)
+
+  | Gate | Default |
+  |---|---|
+  | PR auto-merge (approved + CI green) | allow |
+  | Issue auto-close after merge | allow |
+  | Label changes | allow |
+  | New Cargo dependency additions | ask — escalate to engineering |
+
+  ### Temporary Override
+
+  Check the PR body for an `OVERRIDE:` line before escalating a configurable gate:
+  ```bash
+  gh pr view <number> --repo geoffjay/agentd --json body \
+    --jq '.body | match("OVERRIDE: (.+)") | .captures[0].string'
+  ```
+  If an override is present, log it to the operations room and proceed.
+
   ## Escalation Rules
 
   Escalate to the engineering room (post a message) when:
@@ -244,6 +291,7 @@ system_prompt: |
   - A PR has been in `needs-rework` for >3 days without worker activity
   - The merge queue is blocked (no PR can merge due to conflicts or CI failure)
   - An agent has not responded to a dispatched issue for >6 hours
+  - A human approval gate is triggered (always escalate; never bypass)
 
   Notify humans directly (post to engineering with @geoff mention) when:
   - A security advisory (RUSTSEC) is detected in the dependency tree

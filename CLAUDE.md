@@ -125,6 +125,26 @@ cargo clippy
 cargo run -p agentd-orchestrator
 ```
 
+## Human Approval Gates
+
+Certain operations **must never** be performed by an agent without explicit
+human instruction. The full gate reference is in
+`docs/planning/autonomous-pipeline-gates.md`.
+
+**Always-human operations (abridged):**
+
+- `git-spice auth login` — interactive OAuth; cannot be scripted
+- Changes to `.agentd/agents/*.yml` — alters agent behavior for all future runs
+- Changes to `crates/orchestrator/src/` core — risk of breaking the pipeline
+- Production deployments
+- Adding new external service integrations
+- Deletion of branches, issues, or milestones
+- `git push --force` or `git reset --hard` to trunk branches
+
+> [!CAUTION]
+> Agents must **not** bypass these gates. The `.claude/hooks/destructive-protection.py`
+> hook enforces this at the PreToolUse level.
+
 ## Code Conventions
 
 - Follow existing Rust idioms and patterns in each crate
