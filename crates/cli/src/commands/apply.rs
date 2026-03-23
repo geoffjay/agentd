@@ -30,7 +30,7 @@ use communicate::types::{
     AddParticipantRequest, CreateRoomRequest, ParticipantKind, ParticipantRole, RoomType,
 };
 use orchestrator::client::OrchestratorClient;
-use orchestrator::scheduler::types::{CreateWorkflowRequest, TriggerConfig};
+use orchestrator::scheduler::types::{CreateWorkflowRequest, DispatchStatus, TriggerConfig};
 use orchestrator::types::{AgentResponse, AgentStatus, CreateAgentRequest, ToolPolicy};
 use uuid::Uuid;
 
@@ -245,6 +245,15 @@ pub enum SourceTemplate {
     },
     Delay {
         run_at: String,
+    },
+    AgentLifecycle {
+        event: String,
+    },
+    DispatchResult {
+        #[serde(default)]
+        source_workflow_id: Option<Uuid>,
+        #[serde(default)]
+        status: Option<DispatchStatus>,
     },
     Webhook {
         #[serde(default)]
@@ -616,6 +625,10 @@ pub async fn apply_workflow_file(
         }
         SourceTemplate::Cron { expression } => TriggerConfig::Cron { expression },
         SourceTemplate::Delay { run_at } => TriggerConfig::Delay { run_at },
+        SourceTemplate::AgentLifecycle { event } => TriggerConfig::AgentLifecycle { event },
+        SourceTemplate::DispatchResult { source_workflow_id, status } => {
+            TriggerConfig::DispatchResult { source_workflow_id, status }
+        }
         SourceTemplate::Webhook { secret } => TriggerConfig::Webhook { secret },
         SourceTemplate::Manual {} => TriggerConfig::Manual {},
     };

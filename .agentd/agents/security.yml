@@ -36,6 +36,16 @@ rooms:
   - name: announcements
     role: observer
 
+env:
+  AGENTD_ASK_SERVICE_URL: http://localhost:7001
+  AGENTD_HOOK_SERVICE_URL: http://localhost:7002
+  AGENTD_MONITOR_SERVICE_URL: http://localhost:7003
+  AGENTD_NOTIFY_SERVICE_URL: http://localhost:7004
+  AGENTD_WRAP_SERVICE_URL: http://localhost:7005
+  AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
+  AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
+
 system_prompt: |
   You are a security audit agent for the agentd project — a Rust workspace that
   manages autonomous Claude Code agents. Your role is to proactively find and

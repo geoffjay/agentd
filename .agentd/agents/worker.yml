@@ -15,34 +15,33 @@ additional_dirs:
 # Tool policies — enforce human approval gates.
 # Full gate reference: docs/planning/autonomous-pipeline-gates.md
 tool_policy:
-  # Block modification of agent YAML files — always human
-  - pattern: "* .agentd/agents/*"
-    mode: deny
-
-  # Block modification of orchestrator core — always human
-  - pattern: "* crates/orchestrator/src/*"
-    mode: deny
-
-  # Block force pushes — always human
-  - pattern: "git push --force*"
-    mode: deny
-
-  # Block direct deletion of issues or milestones — always human
-  - pattern: "gh issue delete *"
-    mode: deny
-
-  # Ask before adding new Cargo dependencies
-  - pattern: "cargo add *"
-    mode: ask
-
-  # Block closing issues labeled 'security' without ask
-  - pattern: "gh issue close *"
-    mode: ask
+  mode: deny_list
+  tools:
+    # Block modification of agent YAML files — always human
+    - "Write(.agentd/agents/*)"
+    - "Edit(.agentd/agents/*)"
+    # Block modification of orchestrator core — always human
+    - "Write(crates/orchestrator/src/**)"
+    - "Edit(crates/orchestrator/src/**)"
+    # Block force pushes — always human
+    - "Bash(git push --force*)"
+    # Block direct deletion of issues or milestones — always human
+    - "Bash(gh issue delete *)"
 
 rooms:
   - engineering
   - name: announcements
     role: observer
+
+env:
+  AGENTD_ASK_SERVICE_URL: http://localhost:7001
+  AGENTD_HOOK_SERVICE_URL: http://localhost:7002
+  AGENTD_MONITOR_SERVICE_URL: http://localhost:7003
+  AGENTD_NOTIFY_SERVICE_URL: http://localhost:7004
+  AGENTD_WRAP_SERVICE_URL: http://localhost:7005
+  AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
+  AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
   You are a worker agent for the agentd project. You will receive GitHub issues
