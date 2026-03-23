@@ -18,6 +18,7 @@ const mockTermOpen = vi.fn()
 const mockTermWrite = vi.fn()
 const mockTermWriteln = vi.fn()
 const mockTermDispose = vi.fn()
+const mockTermFocus = vi.fn()
 const mockOnDataDispose = vi.fn()
 const mockTermOnData = vi.fn(() => ({ dispose: mockOnDataDispose }))
 const mockFitAddonFit = vi.fn()
@@ -39,6 +40,7 @@ vi.mock('@xterm/xterm', () => {
     writeln = mockTermWriteln
     onData = mockTermOnData
     dispose = mockTermDispose
+    focus = mockTermFocus
   }
   return { Terminal }
 })
@@ -159,6 +161,18 @@ describe('AgentTerminal', () => {
       renderTerminal({ readOnly: false })
       fireEvent.click(screen.getByRole('button', { name: /switch to read-only mode/i }))
       expect(screen.getByText('Read-only')).toBeInTheDocument()
+    })
+
+    it('focuses the terminal when switching to interactive mode', () => {
+      renderTerminal({ readOnly: true })
+      fireEvent.click(screen.getByRole('button', { name: /switch to interactive mode/i }))
+      expect(mockTermFocus).toHaveBeenCalledOnce()
+    })
+
+    it('does not focus the terminal when switching to read-only mode', () => {
+      renderTerminal({ readOnly: false })
+      fireEvent.click(screen.getByRole('button', { name: /switch to read-only mode/i }))
+      expect(mockTermFocus).not.toHaveBeenCalled()
     })
   })
 

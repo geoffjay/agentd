@@ -207,6 +207,13 @@ export function AgentTerminal({ agentId, readOnly = true }: AgentTerminalProps) 
     // Sync xterm stdin option — disableStdin hides the cursor in read-only mode
     if (termRef.current) {
       termRef.current.options.disableStdin = !interactive
+      // Auto-focus the terminal when switching to interactive mode so the user
+      // can type immediately without having to click inside the terminal canvas.
+      // Without this, focus stays on the toolbar button after the toggle click
+      // and keystrokes never reach xterm's onData handler.
+      if (interactive) {
+        termRef.current.focus()
+      }
     }
   }, [interactive])
 
