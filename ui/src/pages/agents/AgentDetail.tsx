@@ -28,6 +28,7 @@ import {
 import { AgentStatusBadge } from '@/components/agents/AgentStatusBadge'
 import { AgentConfigPanel } from '@/components/agents/AgentConfigPanel'
 import { AgentLogView } from '@/components/agents/AgentLogView'
+import { AgentTerminal } from '@/components/agents/AgentTerminal'
 import { AgentCommandInput } from '@/components/agents/AgentCommandInput'
 import { AgentPolicyEditor } from '@/components/agents/AgentPolicyEditor'
 import { AgentApprovals } from '@/components/agents/AgentApprovals'
@@ -587,6 +588,7 @@ export function AgentDetail() {
   const [showAddDirDialog, setShowAddDirDialog] = useState(false)
   const [policyEditing, setPolicyEditing] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [activeTab, setActiveTab] = useState<'logs' | 'terminal'>('logs')
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -765,10 +767,72 @@ export function AgentDetail() {
 
       {/* ── Main content + sidebar ───────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Log view (takes 2/3 width on large screens) */}
+        {/* Log / Terminal view (takes 2/3 width on large screens) */}
         <div className="flex flex-col gap-3 lg:col-span-2">
+          {/* Tab switcher */}
+          <div
+            role="tablist"
+            aria-label="Agent output view"
+            className="flex gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <button
+              role="tab"
+              type="button"
+              aria-selected={activeTab === 'logs'}
+              aria-controls="tab-panel-logs"
+              id="tab-logs"
+              onClick={() => setActiveTab('logs')}
+              className={[
+                'flex-1 rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
+                activeTab === 'logs'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+              ].join(' ')}
+            >
+              Logs
+            </button>
+            <button
+              role="tab"
+              type="button"
+              aria-selected={activeTab === 'terminal'}
+              aria-controls="tab-panel-terminal"
+              id="tab-terminal"
+              onClick={() => setActiveTab('terminal')}
+              className={[
+                'flex-1 rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
+                activeTab === 'terminal'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+              ].join(' ')}
+            >
+              Terminal
+            </button>
+          </div>
+
+          {/* Tab panels */}
           <div className="h-[480px]">
-            <AgentLogView lines={lines} status={streamStatus} onClear={clearLog} />
+            <div
+              role="tabpanel"
+              id="tab-panel-logs"
+              aria-labelledby="tab-logs"
+              hidden={activeTab !== 'logs'}
+              className="h-full"
+            >
+              <AgentLogView lines={lines} status={streamStatus} onClear={clearLog} />
+            </div>
+            <div
+              role="tabpanel"
+              id="tab-panel-terminal"
+              aria-labelledby="tab-terminal"
+              hidden={activeTab !== 'terminal'}
+              className="h-full"
+            >
+              {/* Mount AgentTerminal only when the Terminal tab is active to
+                  avoid an unnecessary WebSocket connection while viewing Logs */}
+              {activeTab === 'terminal' && (
+                <AgentTerminal agentId={agentId} readOnly={true} />
+              )}
+            </div>
           </div>
 
           {/* Command input */}
