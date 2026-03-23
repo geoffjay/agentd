@@ -1,0 +1,81 @@
+# Triage → Enrich chain workflow.
+#
+# Triggered when any workflow dispatch completes successfully. The conductor
+# reads `{{original_source_id}}` (the GitHub issue number from the parent
+# dispatch) and applies the `enrich-agent` label so the enrichment-worker
+# picks it up next.
+#
+# Chaining setup:
+#
+#   1. Deploy triage-worker and this workflow via `agent apply`.
+#   2. After deployment, look up the triage-worker workflow UUID:
+#        agent orchestrator list-workflows | grep triage-worker
+#   3. Optionally scope this workflow to only react to triage completions by
+#      patching the source_workflow_id via the API:
+#        curl -s -X PATCH http://127.0.0.1:17006/workflows/<THIS_WORKFLOW_ID> \
+#          -H "Content-Type: application/json" \
+#          -d '{"source": {"source_workflow_id": "<TRIAGE_WORKER_UUID>"}}'
+#
+# Without a source_workflow_id filter this workflow fires on *every* successful
+# dispatch. In a multi-pipeline deployment you should set source_workflow_id to
+# the triage-worker UUID so the chain is tightly scoped.
+#
+# IMPORTANT: This workflow ships as `enabled: false` to prevent feedback loops.
+# Without source_workflow_id set, enabling it would cause the chain to fire on
+# every dispatch completion in the system — including its own — which would
+# re-apply `enrich-agent` indefinitely. Always complete step 3 above before
+# setting `enabled: true`.
+#
+# Usage:
+#   agent apply .agentd/workflows/triage-enrich-chain.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+#   # Then patch source_workflow_id and set enabled: true via the API
+
+name: triage-enrich-chain
+agent: conductor
+
+source:
+  type: dispatch_result
+  # source_workflow_id: "<TRIAGE_WORKER_UUID>"  # uncomment and fill in after deployment
+  status: completed
+
+poll_interval: 60
+enabled: false
+
+prompt_template: |
+  A workflow dispatch has completed and you need to advance the issue to the
+  enrichment stage.
+
+  Dispatch context:
+  - Source workflow: {{source_workflow_id}}
+  - Dispatch ID:     {{dispatch_id}}
+  - Status:          {{status}}
+  - Completed at:    {{timestamp}}
+  - Original issue:  {{original_source_id}}
+
+  Step 1 — Verify the issue still needs enrichment:
+
+  ```bash
+  gh issue view {{original_source_id}} --repo geoffjay/agentd \
+    --json number,title,labels,state \
+    --jq '{number: .number, title: .title, state: .state, labels: [.labels[].name]}'
+  ```
+
+  If the issue is closed, already has `enrich-agent`, or already has a
+  downstream agent label (`agent`, `work-agent`), stop here — no action needed.
+  Note: the presence of `triaged` is the signal that enrichment is appropriate,
+  not a reason to stop.
+
+  Step 2 — Apply the `enrich-agent` label to trigger enrichment:
+
+  ```bash
+  gh issue edit {{original_source_id}} --repo geoffjay/agentd \
+    --add-label "enrich-agent"
+  ```
+
+  Step 3 — Announce in the engineering room:
+
+  ```bash
+  agent communicate message send engineering \
+    "🔗 Chain triggered: issue #{{original_source_id}} advancing from triage → enrich (dispatch {{dispatch_id}})."
+  ```

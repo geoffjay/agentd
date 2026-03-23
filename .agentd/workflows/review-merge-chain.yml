@@ -1,0 +1,103 @@
+# Review → Merge chain workflow.
+#
+# Triggered when any workflow dispatch completes successfully. The conductor
+# reads `{{original_source_id}}` (the GitHub PR number from the parent
+# dispatch) and checks whether the PR is ready to merge. If it is approved
+# and CI is passing it applies the `merge-ready` label.
+#
+# Chaining setup:
+#
+#   1. Deploy pull-request-reviewer and this workflow via `agent apply`.
+#   2. After deployment, look up the pull-request-reviewer workflow UUID:
+#        agent orchestrator list-workflows | grep pull-request-reviewer
+#   3. Optionally scope this workflow to only react to reviewer completions by
+#      patching the source_workflow_id via the API:
+#        curl -s -X PATCH http://127.0.0.1:17006/workflows/<THIS_WORKFLOW_ID> \
+#          -H "Content-Type: application/json" \
+#          -d '{"source": {"source_workflow_id": "<REVIEWER_WORKFLOW_UUID>"}}'
+#
+# Without a source_workflow_id filter this workflow fires on *every* successful
+# dispatch. In a multi-pipeline deployment set source_workflow_id to the
+# pull-request-reviewer UUID so the chain is tightly scoped.
+#
+# IMPORTANT: This workflow ships as `enabled: false` to prevent noisy firing.
+# Without source_workflow_id set, enabling it would cause the chain to check
+# the GitHub API on every dispatch completion in the system, regardless of
+# source. Always complete step 3 above before setting `enabled: true`.
+#
+# Usage:
+#   agent apply .agentd/workflows/review-merge-chain.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+#   # Then patch source_workflow_id and set enabled: true via the API
+
+name: review-merge-chain
+agent: conductor
+
+source:
+  type: dispatch_result
+  # source_workflow_id: "<REVIEWER_WORKFLOW_UUID>"  # uncomment and fill in after deployment
+  status: completed
+
+poll_interval: 60
+enabled: false
+
+prompt_template: |
+  A workflow dispatch has completed and you need to check whether the pull
+  request is ready to merge.
+
+  Dispatch context:
+  - Source workflow: {{source_workflow_id}}
+  - Dispatch ID:     {{dispatch_id}}
+  - Status:          {{status}}
+  - Completed at:    {{timestamp}}
+  - Original PR:     {{original_source_id}}
+
+  Step 1 — Fetch the PR's current state:
+
+  ```bash
+  gh pr view {{original_source_id}} --repo geoffjay/agentd \
+    --json number,title,state,labels,reviews,statusCheckRollup,baseRefName \
+    --jq '{
+      number: .number,
+      title: .title,
+      state: .state,
+      labels: [.labels[].name],
+      base: .baseRefName,
+      ci_states: [.statusCheckRollup[]?.state] | unique,
+      approved: ([.reviews[] | select(.state == "APPROVED")] | length),
+      changes_requested: ([.reviews[] | select(.state == "CHANGES_REQUESTED")] | length)
+    }'
+  ```
+
+  Step 2 — Evaluate merge readiness:
+
+  The PR is **NOT** ready if any of the following are true:
+  - The PR is already merged or closed
+  - It already has `merge-ready` or `merge-queue` label
+  - It has `needs-rework` or `needs-restack` label
+  - CI has any FAILURE or ERROR states
+  - `changes_requested` > 0
+  - `approved` == 0
+
+  If any of those conditions apply, stop here — no action needed.
+
+  Step 3 — If ready, apply the `merge-ready` label:
+
+  ```bash
+  gh pr edit {{original_source_id}} --repo geoffjay/agentd \
+    --add-label "merge-ready"
+  ```
+
+  Step 4 — Announce in the operations room:
+
+  ```bash
+  agent communicate message send operations \
+    "🔗 Chain triggered: PR #{{original_source_id}} advancing to merge-ready after review (dispatch {{dispatch_id}})."
+  ```
+
+  If the PR is not ready, announce why:
+
+  ```bash
+  agent communicate message send operations \
+    "🔗 Chain triggered: PR #{{original_source_id}} not yet merge-ready — <reason>."
+  ```

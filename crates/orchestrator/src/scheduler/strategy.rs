@@ -462,7 +462,7 @@ impl EventStrategy {
                     source_workflow_id: filter_wf,
                     status: filter_status,
                 },
-                SystemEvent::DispatchCompleted { workflow_id, dispatch_id, status },
+                SystemEvent::DispatchCompleted { workflow_id, dispatch_id, status, source_id },
             ) => {
                 // Filter by source workflow ID if configured.
                 if let Some(expected_wf) = filter_wf {
@@ -476,7 +476,12 @@ impl EventStrategy {
                         return None;
                     }
                 }
-                Some(self.build_dispatch_task(workflow_id, dispatch_id, status))
+                Some(self.build_dispatch_task(
+                    workflow_id,
+                    dispatch_id,
+                    status,
+                    source_id.as_deref(),
+                ))
             }
 
             _ => None,
@@ -503,11 +508,16 @@ impl EventStrategy {
     }
 
     /// Build a task for a dispatch completion event.
+    ///
+    /// `original_source_id` is forwarded from the [`SystemEvent::DispatchCompleted`] event
+    /// so that chained workflows can reference the originating GitHub issue or PR number
+    /// via `{{original_source_id}}` in their prompt templates.
     fn build_dispatch_task(
         &self,
         workflow_id: &Uuid,
         dispatch_id: &Uuid,
         status: &DispatchStatus,
+        original_source_id: Option<&str>,
     ) -> Task {
         let timestamp = Utc::now().to_rfc3339();
         let mut metadata = HashMap::new();
@@ -515,6 +525,9 @@ impl EventStrategy {
         metadata.insert("dispatch_id".to_string(), dispatch_id.to_string());
         metadata.insert("status".to_string(), status.to_string());
         metadata.insert("timestamp".to_string(), timestamp.clone());
+        if let Some(sid) = original_source_id {
+            metadata.insert("original_source_id".to_string(), sid.to_string());
+        }
 
         Task {
             source_id: format!("event:dispatch:{}:{}", dispatch_id, timestamp),
@@ -1201,6 +1214,7 @@ mod tests {
             workflow_id,
             dispatch_id,
             status: DispatchStatus::Completed,
+            source_id: Some("101".to_string()),
         });
 
         let result = strategy.next_tasks(&rx).await.unwrap();
@@ -1210,6 +1224,7 @@ mod tests {
         assert_eq!(result[0].metadata.get("source_workflow_id"), Some(&workflow_id.to_string()));
         assert_eq!(result[0].metadata.get("dispatch_id"), Some(&dispatch_id.to_string()));
         assert_eq!(result[0].metadata.get("status"), Some(&"completed".to_string()));
+        assert_eq!(result[0].metadata.get("original_source_id"), Some(&"101".to_string()));
     }
 
     #[tokio::test]
@@ -1227,6 +1242,7 @@ mod tests {
             workflow_id: other_wf,
             dispatch_id: Uuid::new_v4(),
             status: DispatchStatus::Completed,
+            source_id: None,
         });
         // Publish for correct workflow — should match.
         let expected_dispatch = Uuid::new_v4();
@@ -1234,6 +1250,7 @@ mod tests {
             workflow_id: target_wf,
             dispatch_id: expected_dispatch,
             status: DispatchStatus::Failed,
+            source_id: None,
         });
 
         let result = strategy.next_tasks(&rx).await.unwrap();
@@ -1257,6 +1274,7 @@ mod tests {
             workflow_id,
             dispatch_id: Uuid::new_v4(),
             status: DispatchStatus::Completed,
+            source_id: None,
         });
         // Publish a Failed event — should match.
         let expected_dispatch = Uuid::new_v4();
@@ -1264,6 +1282,7 @@ mod tests {
             workflow_id,
             dispatch_id: expected_dispatch,
             status: DispatchStatus::Failed,
+            source_id: None,
         });
 
         let result = strategy.next_tasks(&rx).await.unwrap();
@@ -1283,6 +1302,7 @@ mod tests {
             workflow_id: Uuid::new_v4(),
             dispatch_id: Uuid::new_v4(),
             status: DispatchStatus::Completed,
+            source_id: None,
         });
 
         let result = strategy.next_tasks(&rx).await.unwrap();
@@ -1407,12 +1427,72 @@ mod tests {
         let strategy = EventStrategy::new(bus, filter);
         let wf_id = Uuid::new_v4();
         let dispatch_id = Uuid::new_v4();
-        let task = strategy.build_dispatch_task(&wf_id, &dispatch_id, &DispatchStatus::Completed);
+        let task =
+            strategy.build_dispatch_task(&wf_id, &dispatch_id, &DispatchStatus::Completed, None);
 
         assert!(task.source_id.starts_with("event:dispatch:"));
         assert!(task.source_id.contains(&dispatch_id.to_string()));
         assert!(task.title.contains(&dispatch_id.to_string()));
         assert!(task.title.contains("completed"));
+        // Without source_id, original_source_id should not appear in metadata.
+        assert!(!task.metadata.contains_key("original_source_id"));
+    }
+
+    #[test]
+    fn event_filter_dispatch_task_with_original_source_id() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::DispatchResult { source_workflow_id: None, status: None };
+        let strategy = EventStrategy::new(bus, filter);
+        let wf_id = Uuid::new_v4();
+        let dispatch_id = Uuid::new_v4();
+        let task = strategy.build_dispatch_task(
+            &wf_id,
+            &dispatch_id,
+            &DispatchStatus::Completed,
+            Some("99"),
+        );
+
+        assert_eq!(task.metadata.get("original_source_id"), Some(&"99".to_string()));
+        assert_eq!(task.metadata.get("source_workflow_id"), Some(&wf_id.to_string()));
+        assert_eq!(task.metadata.get("status"), Some(&"completed".to_string()));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_dispatch_result_propagates_original_source_id() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::DispatchResult { source_workflow_id: None, status: None };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        bus.publish(SystemEvent::DispatchCompleted {
+            workflow_id: Uuid::new_v4(),
+            dispatch_id: Uuid::new_v4(),
+            status: DispatchStatus::Completed,
+            source_id: Some("77".to_string()),
+        });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].metadata.get("original_source_id"), Some(&"77".to_string()));
+    }
+
+    #[tokio::test]
+    async fn event_strategy_dispatch_result_no_original_source_id_when_none() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::DispatchResult { source_workflow_id: None, status: None };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        bus.publish(SystemEvent::DispatchCompleted {
+            workflow_id: Uuid::new_v4(),
+            dispatch_id: Uuid::new_v4(),
+            status: DispatchStatus::Completed,
+            source_id: None,
+        });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(!result[0].metadata.contains_key("original_source_id"));
     }
 
     // ── WebhookStrategy tests ─────────────────────────────────────────

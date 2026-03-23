@@ -161,9 +161,9 @@ impl Scheduler {
                 continue;
             }
 
-            let dispatch_id = {
+            let (dispatch_id, source_id) = {
                 let busy = running.busy.lock().await;
-                busy.active_dispatch_id
+                (busy.active_dispatch_id, busy.active_source_id.clone())
             };
             if let Some(dispatch_id) = dispatch_id {
                 notify_complete(&running.busy, &self.storage, is_error).await;
@@ -176,6 +176,7 @@ impl Scheduler {
                         workflow_id: running.workflow_id,
                         dispatch_id,
                         status,
+                        source_id,
                     });
                 }
 
@@ -356,6 +357,7 @@ impl Scheduler {
             if let Some(running) = runners.get(workflow_id) {
                 let mut busy = running.busy.lock().await;
                 busy.active_dispatch_id = Some(record.id);
+                busy.active_source_id = Some(task.source_id.clone());
             }
         }
 
