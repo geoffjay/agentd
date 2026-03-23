@@ -83,7 +83,14 @@ impl WrapClient {
     /// let client = WrapClient::new("http://localhost:7005");
     /// ```
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self { client: reqwest::Client::new(), base_url: base_url.into() }
+        // Use no_proxy() to skip macOS system proxy detection via
+        // hyper-util → system-configuration, which panics in sandboxed
+        // environments where SCDynamicStoreCreate() returns NULL.
+        // The wrap service only talks to local services; proxy settings
+        // are irrelevant here.
+        let client =
+            reqwest::Client::builder().no_proxy().build().expect("Failed to build HTTP client");
+        Self { client, base_url: base_url.into() }
     }
 
     /// Launch an agent in a tmux session.
