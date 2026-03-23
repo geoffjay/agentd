@@ -62,3 +62,4 @@ communicate = { path = "../communicate" }
 
 [dev-dependencies]
 tempfile = "3.14"
+tower = { version = "0.5", features = ["util"] }
