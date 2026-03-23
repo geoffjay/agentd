@@ -144,6 +144,56 @@ describe('AgentTerminal', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // PTY mode badge
+  // ---------------------------------------------------------------------------
+
+  describe('PTY mode badge', () => {
+    it('shows "PTY · Interactive" badge when agentInteractive=true', () => {
+      renderTerminal({ agentInteractive: true })
+      expect(screen.getByLabelText(/pty interactive mode/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/pty interactive mode/i)).toHaveTextContent('PTY · Interactive')
+    })
+
+    it('shows "PTY · SDK" badge when agentInteractive=false', () => {
+      renderTerminal({ agentInteractive: false })
+      expect(screen.getByLabelText(/pty sdk mode/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/pty sdk mode/i)).toHaveTextContent('PTY · SDK')
+    })
+
+    it('shows "PTY · SDK" badge by default (agentInteractive omitted)', () => {
+      renderTerminal()
+      expect(screen.getByLabelText(/pty sdk mode/i)).toBeInTheDocument()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // SDK-mode info banner
+  // ---------------------------------------------------------------------------
+
+  describe('SDK-mode info banner', () => {
+    it('shows the info banner by default for SDK-mode agents', () => {
+      renderTerminal({ agentInteractive: false })
+      expect(screen.getByRole('note', { name: /sdk mode info/i })).toBeInTheDocument()
+    })
+
+    it('shows the info banner by default when agentInteractive is omitted', () => {
+      renderTerminal()
+      expect(screen.getByRole('note', { name: /sdk mode info/i })).toBeInTheDocument()
+    })
+
+    it('dismisses the info banner when the × button is clicked', () => {
+      renderTerminal({ agentInteractive: false })
+      fireEvent.click(screen.getByRole('button', { name: /dismiss sdk mode info/i }))
+      expect(screen.queryByRole('note', { name: /sdk mode info/i })).toBeNull()
+    })
+
+    it('does not show the info banner for interactive-mode agents', () => {
+      renderTerminal({ agentInteractive: true })
+      expect(screen.queryByRole('note', { name: /sdk mode info/i })).toBeNull()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // Toolbar — interactive toggle (agentInteractive=true only)
   // ---------------------------------------------------------------------------
 
