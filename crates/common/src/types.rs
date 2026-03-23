@@ -103,6 +103,48 @@ impl HealthResponse {
         }
     }
 
+    /// Create a "degraded" health response for a service.
+    ///
+    /// Use this when the service is running but one or more dependencies are
+    /// unavailable or returning errors.  The `reason` should briefly describe
+    /// what is degraded (e.g., `"database unreachable"`).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use agentd_common::types::HealthResponse;
+    ///
+    /// let resp = HealthResponse::degraded("agentd-notify", "0.2.0", "database unreachable");
+    /// assert_eq!(resp.status, "degraded");
+    /// assert!(!resp.is_healthy());
+    /// ```
+    pub fn degraded(service: &str, version: &str, reason: &str) -> Self {
+        Self {
+            status: "degraded".to_string(),
+            service: service.to_string(),
+            version: version.to_string(),
+            details: HashMap::new(),
+        }
+        .with_detail("reason", serde_json::Value::String(reason.to_string()))
+    }
+
+    /// Returns `true` if the service status is `"ok"`.
+    ///
+    /// Convenience predicate for callers that need to branch on health without
+    /// comparing strings directly.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use agentd_common::types::HealthResponse;
+    ///
+    /// assert!(HealthResponse::ok("svc", "1.0").is_healthy());
+    /// assert!(!HealthResponse::degraded("svc", "1.0", "db down").is_healthy());
+    /// ```
+    pub fn is_healthy(&self) -> bool {
+        self.status == "ok"
+    }
+
     /// Add a service-specific detail to the response.
     pub fn with_detail(mut self, key: &str, value: serde_json::Value) -> Self {
         self.details.insert(key.to_string(), value);
@@ -176,5 +218,42 @@ mod tests {
         let resp = HealthResponse::ok("svc", "1.0").with_detail("count", serde_json::json!(42));
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"count\":42"));
+    }
+
+    #[test]
+    fn test_health_response_is_healthy_ok() {
+        let resp = HealthResponse::ok("agentd-test", "1.0.0");
+        assert!(resp.is_healthy());
+    }
+
+    #[test]
+    fn test_health_response_is_healthy_degraded() {
+        let resp = HealthResponse::degraded("agentd-test", "1.0.0", "db down");
+        assert!(!resp.is_healthy());
+    }
+
+    #[test]
+    fn test_health_response_degraded_status() {
+        let resp = HealthResponse::degraded("agentd-test", "1.0.0", "cache unavailable");
+        assert_eq!(resp.status, "degraded");
+        assert_eq!(resp.service, "agentd-test");
+        assert_eq!(resp.version, "1.0.0");
+    }
+
+    #[test]
+    fn test_health_response_degraded_includes_reason() {
+        let resp = HealthResponse::degraded("agentd-test", "1.0.0", "redis timeout");
+        assert_eq!(resp.details["reason"], serde_json::json!("redis timeout"));
+    }
+
+    #[test]
+    fn test_health_response_degraded_serde() {
+        let resp = HealthResponse::degraded("svc", "1.0", "db down");
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"degraded\""));
+        assert!(json.contains("\"db down\""));
+        let deserialized: HealthResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.status, "degraded");
+        assert!(!deserialized.is_healthy());
     }
 }
