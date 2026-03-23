@@ -851,7 +851,11 @@ export function AgentDetail() {
                 {/* Mount AgentTerminal only when the Terminal tab is active to
                     avoid an unnecessary WebSocket connection while viewing Logs */}
                 {activeTab === 'terminal' && (
-                  <AgentTerminal agentId={agentId} readOnly={true} />
+                  <AgentTerminal
+                    agentId={agentId}
+                    agentInteractive={agent.config.interactive}
+                    readOnly={true}
+                  />
                 )}
               </div>
             )}

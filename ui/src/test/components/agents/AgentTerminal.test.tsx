@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 
 // ---------------------------------------------------------------------------
 // Shared mock function references — kept outside vi.mock so tests can inspect
@@ -69,6 +69,18 @@ vi.mock('@xterm/addon-search', () => {
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 
 // ---------------------------------------------------------------------------
+// Mock the orchestrator client — used by SDK-mode message compose
+// ---------------------------------------------------------------------------
+
+const mockSendMessage = vi.fn()
+
+vi.mock('@/services/orchestrator', () => ({
+  orchestratorClient: {
+    sendMessage: (...args: unknown[]) => mockSendMessage(...args),
+  },
+}))
+
+// ---------------------------------------------------------------------------
 // Mock ResizeObserver — not available in jsdom
 // ---------------------------------------------------------------------------
 
@@ -102,6 +114,7 @@ function renderTerminal(props: Partial<Parameters<typeof AgentTerminal>[0]> = {}
 describe('AgentTerminal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSendMessage.mockResolvedValue({ status: 'sent', agent_id: AGENT_ID })
   })
 
   it('renders the terminal container with aria-label', () => {
@@ -131,12 +144,12 @@ describe('AgentTerminal', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Toolbar — interactive toggle
+  // Toolbar — interactive toggle (agentInteractive=true only)
   // ---------------------------------------------------------------------------
 
-  describe('interactive mode toggle', () => {
+  describe('interactive mode toggle (agentInteractive=true)', () => {
     it('renders a "Read-only" toggle button when readOnly=true (default)', () => {
-      renderTerminal({ readOnly: true })
+      renderTerminal({ agentInteractive: true, readOnly: true })
       expect(
         screen.getByRole('button', { name: /switch to interactive mode/i }),
       ).toBeInTheDocument()
@@ -144,7 +157,7 @@ describe('AgentTerminal', () => {
     })
 
     it('renders an "Interactive" toggle button when readOnly=false', () => {
-      renderTerminal({ readOnly: false })
+      renderTerminal({ agentInteractive: true, readOnly: false })
       expect(
         screen.getByRole('button', { name: /switch to read-only mode/i }),
       ).toBeInTheDocument()
@@ -152,27 +165,186 @@ describe('AgentTerminal', () => {
     })
 
     it('toggles from read-only to interactive on button click', () => {
-      renderTerminal({ readOnly: true })
+      renderTerminal({ agentInteractive: true, readOnly: true })
       fireEvent.click(screen.getByRole('button', { name: /switch to interactive mode/i }))
       expect(screen.getByText('Interactive')).toBeInTheDocument()
     })
 
     it('toggles from interactive to read-only on button click', () => {
-      renderTerminal({ readOnly: false })
+      renderTerminal({ agentInteractive: true, readOnly: false })
       fireEvent.click(screen.getByRole('button', { name: /switch to read-only mode/i }))
       expect(screen.getByText('Read-only')).toBeInTheDocument()
     })
 
     it('focuses the terminal when switching to interactive mode', () => {
-      renderTerminal({ readOnly: true })
+      renderTerminal({ agentInteractive: true, readOnly: true })
       fireEvent.click(screen.getByRole('button', { name: /switch to interactive mode/i }))
       expect(mockTermFocus).toHaveBeenCalledOnce()
     })
 
     it('does not focus the terminal when switching to read-only mode', () => {
-      renderTerminal({ readOnly: false })
+      renderTerminal({ agentInteractive: true, readOnly: false })
       fireEvent.click(screen.getByRole('button', { name: /switch to read-only mode/i }))
       expect(mockTermFocus).not.toHaveBeenCalled()
+    })
+
+    it('does not render the SDK compose input', () => {
+      renderTerminal({ agentInteractive: true })
+      expect(screen.queryByRole('textbox', { name: /send message to agent/i })).toBeNull()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Toolbar — SDK-mode compose input (agentInteractive=false, default)
+  // ---------------------------------------------------------------------------
+
+  describe('SDK-mode compose input (agentInteractive=false)', () => {
+    it('shows a message input instead of the interactive toggle', () => {
+      renderTerminal({ agentInteractive: false })
+      expect(
+        screen.getByRole('textbox', { name: /send message to agent/i }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('Read-only')).toBeNull()
+      expect(screen.queryByText('Interactive')).toBeNull()
+    })
+
+    it('shows the SDK compose input by default (agentInteractive omitted)', () => {
+      renderTerminal()
+      expect(
+        screen.getByRole('textbox', { name: /send message to agent/i }),
+      ).toBeInTheDocument()
+    })
+
+    it('send button is disabled when input is empty', () => {
+      renderTerminal({ agentInteractive: false })
+      expect(screen.getByRole('button', { name: /send message to agent/i })).toBeDisabled()
+    })
+
+    it('send button is enabled when input has text', () => {
+      renderTerminal({ agentInteractive: false })
+      fireEvent.change(screen.getByRole('textbox', { name: /send message to agent/i }), {
+        target: { value: 'hello' },
+      })
+      // Button is still disabled because status is 'connecting', not 'connected'
+      expect(screen.getByRole('button', { name: /send message to agent/i })).toBeDisabled()
+    })
+
+    it('does not render the interactive PTY toggle', () => {
+      renderTerminal({ agentInteractive: false })
+      expect(
+        screen.queryByRole('button', { name: /switch to interactive mode/i }),
+      ).toBeNull()
+      expect(
+        screen.queryByRole('button', { name: /switch to read-only mode/i }),
+      ).toBeNull()
+    })
+
+    it('calls orchestratorClient.sendMessage when form is submitted via Enter', async () => {
+      // Simulate a connected WebSocket so the input is enabled
+      class ConnectedWS {
+        static CONNECTING = 0
+        static OPEN = 1
+        static CLOSING = 2
+        static CLOSED = 3
+        readonly CONNECTING = 0
+        readonly OPEN = 1
+        readonly CLOSING = 2
+        readonly CLOSED = 3
+        readyState = WebSocket.OPEN
+        binaryType = 'blob'
+        onopen: ((e: Event) => void) | null = null
+        onclose: ((e: CloseEvent) => void) | null = null
+        onerror: ((e: Event) => void) | null = null
+        onmessage: ((e: MessageEvent) => void) | null = null
+        constructor() {
+          // Fire onopen asynchronously
+          setTimeout(() => this.onopen?.(new Event('open')), 0)
+        }
+        send() {}
+        close() {}
+        addEventListener() {}
+        removeEventListener() {}
+        dispatchEvent() { return true }
+      }
+
+      vi.stubGlobal('WebSocket', ConnectedWS)
+
+      renderTerminal({ agentInteractive: false })
+
+      // Wait for onopen to fire and status to become 'connected'
+      await waitFor(() =>
+        expect(screen.getByLabelText(/terminal connected/i)).toBeInTheDocument(),
+      )
+
+      const input = screen.getByRole('textbox', { name: /send message to agent/i })
+      fireEvent.change(input, { target: { value: 'hello world' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      await waitFor(() =>
+        expect(mockSendMessage).toHaveBeenCalledWith(AGENT_ID, 'hello world'),
+      )
+    })
+
+    it('clears the input after a successful send', async () => {
+      class ConnectedWS {
+        static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3
+        readonly CONNECTING = 0; readonly OPEN = 1; readonly CLOSING = 2; readonly CLOSED = 3
+        readyState = WebSocket.OPEN
+        binaryType = 'blob'
+        onopen: ((e: Event) => void) | null = null
+        onclose: ((e: CloseEvent) => void) | null = null
+        onerror: ((e: Event) => void) | null = null
+        onmessage: ((e: MessageEvent) => void) | null = null
+        constructor() { setTimeout(() => this.onopen?.(new Event('open')), 0) }
+        send() {}; close() {}; addEventListener() {}; removeEventListener() {}
+        dispatchEvent() { return true }
+      }
+
+      vi.stubGlobal('WebSocket', ConnectedWS)
+      renderTerminal({ agentInteractive: false })
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(/terminal connected/i)).toBeInTheDocument(),
+      )
+
+      const input = screen.getByRole('textbox', { name: /send message to agent/i })
+      fireEvent.change(input, { target: { value: 'test prompt' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      await waitFor(() => expect(input).toHaveValue(''))
+    })
+
+    it('shows an error banner when sendMessage fails', async () => {
+      mockSendMessage.mockRejectedValueOnce(new Error('Connection refused'))
+
+      class ConnectedWS {
+        static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3
+        readonly CONNECTING = 0; readonly OPEN = 1; readonly CLOSING = 2; readonly CLOSED = 3
+        readyState = WebSocket.OPEN
+        binaryType = 'blob'
+        onopen: ((e: Event) => void) | null = null
+        onclose: ((e: CloseEvent) => void) | null = null
+        onerror: ((e: Event) => void) | null = null
+        onmessage: ((e: MessageEvent) => void) | null = null
+        constructor() { setTimeout(() => this.onopen?.(new Event('open')), 0) }
+        send() {}; close() {}; addEventListener() {}; removeEventListener() {}
+        dispatchEvent() { return true }
+      }
+
+      vi.stubGlobal('WebSocket', ConnectedWS)
+      renderTerminal({ agentInteractive: false })
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(/terminal connected/i)).toBeInTheDocument(),
+      )
+
+      const input = screen.getByRole('textbox', { name: /send message to agent/i })
+      fireEvent.change(input, { target: { value: 'oops' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent('Connection refused'),
+      )
     })
   })
 

@@ -5,7 +5,12 @@
  * - Full ANSI color/cursor support via xterm.js
  * - Binary WebSocket frames for PTY output; JSON text frames for resize/control
  * - Auto-resize to container via FitAddon + ResizeObserver
- * - Read-only mode (default) with opt-in interactive mode toggle
+ * - Mode-aware input routing:
+ *   - Interactive-mode agents (agentInteractive=true): read-only / interactive
+ *     toggle forwards keystrokes directly to PTY stdin as binary frames.
+ *   - SDK-mode agents (agentInteractive=false, default): terminal is always
+ *     read-only; a compact compose input in the toolbar sends messages via
+ *     POST /agents/{id}/message so they reach Claude over the SDK WebSocket.
  * - Exponential backoff reconnection (matches WebSocketManager behaviour)
  * - Graceful fallback when the backend does not support PTY streaming
  * - Web links addon (clickable URLs in output)
@@ -26,12 +31,14 @@ import {
   KeyboardOff,
   Loader2,
   Search,
+  Send,
   TerminalSquare,
   Wifi,
   WifiOff,
   X,
 } from 'lucide-react'
 import { serviceConfig } from '@/services/config'
+import { orchestratorClient } from '@/services/orchestrator'
 
 // ---------------------------------------------------------------------------
 // Terminal WebSocket URL
@@ -168,9 +175,22 @@ function UnavailableFallback({ onRetry }: { onRetry: () => void }) {
 export interface AgentTerminalProps {
   agentId: string
   /**
-   * When true (default) keyboard input is not forwarded to the PTY — the
-   * terminal displays output only. The user can toggle interactive mode at
-   * runtime via the toolbar button.
+   * Whether the agent was launched in interactive mode (`config.interactive=true`,
+   * no `--sdk-url`). Controls how keyboard input is routed:
+   *
+   * - `true`  — PTY stdin path: keystrokes are forwarded as binary WebSocket
+   *             frames to `/terminal/{agentId}`. An Interactive/Read-only toggle
+   *             in the toolbar lets the user enable or disable input forwarding.
+   * - `false` (default, SDK mode) — the terminal is always read-only. A compact
+   *             compose input in the toolbar sends messages via
+   *             `POST /agents/{agentId}/message` so they reach Claude over the
+   *             SDK WebSocket protocol.
+   */
+  agentInteractive?: boolean
+  /**
+   * When `agentInteractive=true`: controls whether the Interactive toggle starts
+   * in the on position (false) or off position (true, default).
+   * When `agentInteractive=false` (SDK mode): ignored — xterm is always read-only.
    */
   readOnly?: boolean
 }
@@ -179,7 +199,11 @@ export interface AgentTerminalProps {
 // AgentTerminal
 // ---------------------------------------------------------------------------
 
-export function AgentTerminal({ agentId, readOnly = true }: AgentTerminalProps) {
+export function AgentTerminal({
+  agentId,
+  agentInteractive = false,
+  readOnly = true,
+}: AgentTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   // xterm.js refs
@@ -194,28 +218,66 @@ export function AgentTerminal({ agentId, readOnly = true }: AgentTerminalProps) 
   const consecutiveFailuresRef = useRef(0)
   const intentionalCloseRef = useRef(false)
 
-  // UI state
-  const [status, setStatus] = useState<TerminalStatus>('connecting')
+  // Stable ref for agentInteractive so the onData closure can read it.
+  // In practice this won't change after mount, but the ref keeps the closure
+  // honest without re-running the init effect.
+  const agentInteractiveRef = useRef(agentInteractive)
+  useEffect(() => {
+    agentInteractiveRef.current = agentInteractive
+  }, [agentInteractive])
+
+  // UI state — interactive toggle (only meaningful when agentInteractive=true)
   const [interactive, setInteractive] = useState<boolean>(!readOnly)
+  const [status, setStatus] = useState<TerminalStatus>('connecting')
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+
+  // SDK-mode compose state (only used when agentInteractive=false)
+  const [sdkMessage, setSdkMessage] = useState('')
+  const [sdkSending, setSdkSending] = useState(false)
+  const [sdkError, setSdkError] = useState<string | undefined>()
 
   // Keep a ref in sync with interactive state so the onData closure can read it
   const interactiveRef = useRef(!readOnly)
   useEffect(() => {
     interactiveRef.current = interactive
-    // Sync xterm stdin option — disableStdin hides the cursor in read-only mode
-    if (termRef.current) {
+    // Only sync xterm stdin and focus for interactive-mode agents.
+    // In SDK mode xterm is permanently read-only; the compose input handles input.
+    if (agentInteractive && termRef.current) {
       termRef.current.options.disableStdin = !interactive
       // Auto-focus the terminal when switching to interactive mode so the user
       // can type immediately without having to click inside the terminal canvas.
-      // Without this, focus stays on the toolbar button after the toggle click
-      // and keystrokes never reach xterm's onData handler.
       if (interactive) {
         termRef.current.focus()
       }
     }
-  }, [interactive])
+  }, [interactive, agentInteractive])
+
+  // ---------------------------------------------------------------------------
+  // SDK-mode: send message via POST /agents/{id}/message
+  // ---------------------------------------------------------------------------
+
+  const handleSdkSend = useCallback(async () => {
+    const msg = sdkMessage.trim()
+    if (!msg || sdkSending || status !== 'connected') return
+    setSdkSending(true)
+    setSdkError(undefined)
+    try {
+      await orchestratorClient.sendMessage(agentId, msg)
+      setSdkMessage('')
+    } catch (err) {
+      setSdkError(err instanceof Error ? err.message : 'Failed to send message')
+    } finally {
+      setSdkSending(false)
+    }
+  }, [agentId, sdkMessage, sdkSending, status])
+
+  function handleSdkKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      void handleSdkSend()
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Initialise xterm.js terminal (mount only)
@@ -233,8 +295,9 @@ export function AgentTerminal({ agentId, readOnly = true }: AgentTerminalProps) 
       cursorBlink: true,
       cursorStyle: 'block',
       scrollback: 5_000,
-      // Start in read-only mode by default; toggled reactively via interactiveRef
-      disableStdin: readOnly,
+      // SDK-mode agents: terminal is always read-only (input goes via compose box).
+      // Interactive-mode agents: follow the readOnly prop.
+      disableStdin: agentInteractive ? readOnly : true,
       // Allow the terminal to receive focus for copy/paste
       allowProposedApi: false,
     })
@@ -257,8 +320,11 @@ export function AgentTerminal({ agentId, readOnly = true }: AgentTerminalProps) 
     fitAddonRef.current = fitAddon
     searchAddonRef.current = searchAddon
 
-    // Forward keyboard input → PTY stdin (only when interactive)
+    // Forward keyboard input → PTY stdin (interactive-mode agents only).
+    // SDK-mode agents have disableStdin=true so onData never fires, but we
+    // guard on agentInteractiveRef anyway as a belt-and-suspenders check.
     const disposeOnData = term.onData((data) => {
+      if (!agentInteractiveRef.current) return
       if (interactiveRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(new TextEncoder().encode(data))
       }
@@ -497,27 +563,67 @@ export function AgentTerminal({ agentId, readOnly = true }: AgentTerminalProps) 
             Search
           </button>
 
-          {/* Interactive mode toggle */}
-          <button
-            type="button"
-            aria-label={interactive ? 'Switch to read-only mode' : 'Switch to interactive mode'}
-            onClick={() => setInteractive((v) => !v)}
-            title={
-              interactive
-                ? 'Interactive: keyboard input is forwarded to the PTY'
-                : 'Read-only: keyboard input is not forwarded'
-            }
-            className={interactive ? toolbarBtnActiveCls : toolbarBtnCls}
-          >
-            {interactive ? (
-              <Keyboard size={12} aria-hidden="true" />
-            ) : (
-              <KeyboardOff size={12} aria-hidden="true" />
-            )}
-            {interactive ? 'Interactive' : 'Read-only'}
-          </button>
+          {agentInteractive ? (
+            /* Interactive-mode: PTY stdin toggle */
+            <button
+              type="button"
+              aria-label={interactive ? 'Switch to read-only mode' : 'Switch to interactive mode'}
+              onClick={() => setInteractive((v) => !v)}
+              title={
+                interactive
+                  ? 'Interactive: keyboard input is forwarded to the PTY'
+                  : 'Read-only: keyboard input is not forwarded'
+              }
+              className={interactive ? toolbarBtnActiveCls : toolbarBtnCls}
+            >
+              {interactive ? (
+                <Keyboard size={12} aria-hidden="true" />
+              ) : (
+                <KeyboardOff size={12} aria-hidden="true" />
+              )}
+              {interactive ? 'Interactive' : 'Read-only'}
+            </button>
+          ) : (
+            /* SDK-mode: compact compose input — sends via POST /agents/{id}/message */
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                aria-label="Send message to agent"
+                value={sdkMessage}
+                onChange={(e) => setSdkMessage(e.target.value)}
+                onKeyDown={handleSdkKeyDown}
+                placeholder="Message agent…"
+                disabled={sdkSending || status !== 'connected'}
+                className="w-48 rounded border border-gray-600 bg-gray-800 px-2 py-0.5 font-mono text-xs text-gray-200 placeholder-gray-600 focus:border-gray-400 focus:outline-none disabled:opacity-50"
+              />
+              <button
+                type="button"
+                aria-label="Send message to agent"
+                onClick={() => void handleSdkSend()}
+                disabled={!sdkMessage.trim() || sdkSending || status !== 'connected'}
+                className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-40"
+                title="Send message (Enter)"
+              >
+                {sdkSending ? (
+                  <Loader2 size={12} aria-hidden="true" className="animate-spin" />
+                ) : (
+                  <Send size={12} aria-hidden="true" />
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* SDK-mode error banner */}
+      {!agentInteractive && sdkError && (
+        <div
+          role="alert"
+          className="border-b border-red-800 bg-red-950 px-3 py-1 text-xs text-red-400"
+        >
+          {sdkError}
+        </div>
+      )}
 
       {/* Search bar */}
       {searchOpen && (
