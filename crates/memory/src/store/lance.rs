@@ -41,7 +41,7 @@
 
 use std::sync::Arc;
 
-use arrow_array::{types::Float32Type, ArrayRef, RecordBatch, RecordBatchIterator, StringArray};
+use arrow_array::{types::Float32Type, ArrayRef, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use async_trait::async_trait;
 use chrono::Utc;
@@ -348,11 +348,10 @@ impl VectorStore for LanceStore {
         })?;
 
         let batch = self.memory_to_batch(&memory, embedding)?;
-        let schema = batch.schema();
 
         let table = self.open_table().await?;
         table
-            .add(RecordBatchIterator::new(vec![Ok(batch)], schema))
+            .add(vec![batch])
             .execute()
             .await
             .map_err(|e| StoreError::QueryFailed(format!("Failed to insert memory: {}", e)))?;
