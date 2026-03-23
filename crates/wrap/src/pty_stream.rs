@@ -27,7 +27,7 @@
 //!
 //! # fn make_writer() -> Box<dyn Write + Send> { unimplemented!() }
 //! # fn make_reader() -> Box<dyn std::io::Read + Send + 'static> { unimplemented!() }
-//! # tokio_test::block_on(async {
+//! # async fn example() {
 //! let stream = PtyOutputStream::new(
 //!     DEFAULT_CHANNEL_CAPACITY,
 //!     DEFAULT_HISTORY_BYTES,
@@ -42,7 +42,7 @@
 //!
 //! // Send terminal input
 //! stream.write_input(b"echo hello\n").unwrap();
-//! # });
+//! # }
 //! ```
 
 use bytes::Bytes;

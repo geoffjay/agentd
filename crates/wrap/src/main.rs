@@ -1,134 +1,106 @@
 //! agentd-wrap service entry point.
 //!
-//! This is the main executable for the wrap service. It provides a REST API
-//! for launching and managing agent sessions in tmux environments.
+//! Provides a REST API for launching and managing agent sessions. The active
+//! execution backend is selected via the `AGENTD_BACKEND` environment variable:
 //!
-//! # Features
-//!
-//! - REST API on `http://127.0.0.1:17005` (dev) or port from AGENTD_PORT env var
-//! - Tmux session management for agent workflows
-//! - Support for multiple agent types (claude-code, opencode, gemini)
-//! - Structured logging with tracing
-//! - Graceful shutdown support
+//! | Value    | Backend                 |
+//! |----------|-------------------------|
+//! | `tmux`   | tmux sessions (default) |
+//! | `docker` | Docker containers       |
+//! | `pty`    | In-process PTY          |
 //!
 //! # Running the Service
 //!
 //! ```bash
-//! # Run with default INFO logging
-//! cargo run -p agentd-wrap
+//! # PTY backend on default port
+//! AGENTD_BACKEND=pty cargo run -p agentd-wrap
 //!
-//! # Run with DEBUG logging
-//! RUST_LOG=debug cargo run -p agentd-wrap
-//!
-//! # Run on a different port
+//! # tmux backend on a custom port
 //! AGENTD_PORT=8080 cargo run -p agentd-wrap
 //! ```
 //!
 //! # Environment Variables
 //!
-//! - `RUST_LOG` - Controls logging level (e.g., `debug`, `info`, `warn`, `error`)
-//!   Defaults to `info` if not set.
-//! - `AGENTD_PORT` - Port to listen on. Defaults to `17005` for development.
-//!
-//! # API Endpoints
-//!
-//! Once running, the service exposes the following endpoints:
-//!
-//! - `GET /health` - Health check
-//! - `POST /launch` - Launch an agent session in tmux
-//!
-//! # Examples
-//!
-//! ```bash
-//! # Start the service
-//! cargo run -p agentd-wrap
-//!
-//! # In another terminal, test the API
-//! curl http://localhost:17005/health
-//!
-//! # Launch a session
-//! curl -X POST http://localhost:17005/launch \
-//!   -H "Content-Type: application/json" \
-//!   -d '{
-//!     "project_name": "my-project",
-//!     "project_path": "/path/to/project",
-//!     "agent_type": "claude-code",
-//!     "model_provider": "anthropic",
-//!     "model_name": "claude-sonnet-4.5"
-//!   }'
-//! ```
+//! - `RUST_LOG`        — Logging level (default: `info`)
+//! - `AGENTD_PORT`     — Listen port (default: `17005`)
+//! - `AGENTD_BACKEND`  — Execution backend: `tmux` | `docker` | `pty` (default: `tmux`)
 
-mod api;
-mod tmux;
-mod types;
+// Import from the library target — avoids re-declaring modules in the binary and
+// triggering dead-code warnings on items that are only used by the library.
+use wrap::{
+    api::{create_router, AppState},
+    backend::{ExecutionBackend, TmuxBackend},
+    docker::{DockerBackend, DEFAULT_IMAGE},
+    pty::PtyBackend,
+    types::BackendType,
+};
 
-use api::create_router;
 use axum::{extract::State, response::IntoResponse, routing::get};
 use metrics_exporter_prometheus::PrometheusHandle;
-use std::env;
+use std::{env, sync::Arc};
 use tracing::info;
 
-/// Initialize Prometheus metrics recorder and return a handle for rendering.
 fn init_metrics() -> PrometheusHandle {
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
     let handle = builder.install_recorder().expect("failed to install metrics recorder");
-
-    // Register service metadata gauge
     metrics::gauge!("service_info", "version" => env!("CARGO_PKG_VERSION"), "service" => "wrap")
         .set(1.0);
-
     handle
 }
 
-/// GET /metrics — render Prometheus text format.
 async fn metrics_handler(State(handle): State<PrometheusHandle>) -> impl IntoResponse {
     handle.render()
 }
 
-/// Main entry point for the agentd-wrap service.
-///
-/// This function performs the following initialization steps:
-/// 1. Sets up structured logging with tracing
-/// 2. Creates and configures the Axum HTTP router
-/// 3. Starts the HTTP server on the configured port
-///
-/// # Returns
-///
-/// Returns `Ok(())` on successful shutdown, or an error if initialization
-/// or server startup fails.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Unable to bind to the network address
-/// - The HTTP server encounters a fatal error
-///
-/// # Panics
-///
-/// Does not panic under normal operation.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     agentd_common::server::init_tracing();
-
     info!("Starting agentd-wrap service...");
 
-    // Initialize Prometheus metrics
-    let metrics_handle = init_metrics();
+    // --- Select execution backend ---
+    let backend_type = BackendType::from_env();
+    info!("Using execution backend: {}", backend_type);
 
-    // Create API router with metrics endpoint and tracing middleware
+    let exec_backend: Arc<dyn ExecutionBackend> = match &backend_type {
+        BackendType::Pty => {
+            info!("Initialising PTY backend");
+            Arc::new(PtyBackend::new("agentd"))
+        }
+        BackendType::Docker => {
+            info!("Initialising Docker backend");
+            // Fail loudly — an explicit AGENTD_BACKEND=docker request must not
+            // silently degrade to a tmux backend (no container isolation, no
+            // network policies). Fix the Docker configuration and restart.
+            let b = DockerBackend::new("agentd", DEFAULT_IMAGE).map_err(|e| {
+                anyhow::anyhow!(
+                    "AGENTD_BACKEND=docker requested but Docker initialisation failed: {e}\n\
+                     Fix the Docker configuration and restart the service."
+                )
+            })?;
+            Arc::new(b)
+        }
+        BackendType::Tmux => {
+            info!("Initialising tmux backend");
+            Arc::new(TmuxBackend::new("agentd"))
+        }
+    };
+
+    let state = AppState { backend: exec_backend, backend_type };
+
+    // --- Build router ---
+    let metrics_handle = init_metrics();
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
-    let app = create_router().merge(metrics_router).layer(agentd_common::server::trace_layer());
+    let app =
+        create_router(state).merge(metrics_router).layer(agentd_common::server::trace_layer());
 
-    // Bind to address (use AGENTD_PORT env var, default 17005 for dev)
+    // --- Bind and serve ---
     let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17005".to_string());
     let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Wrap API server listening on http://{}", addr);
 
-    // Start the HTTP server
     axum::serve(listener, app).await?;
-
     Ok(())
 }
