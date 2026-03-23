@@ -160,9 +160,11 @@ export interface AgentTerminalProps {
   active: boolean
   /** Callback to switch back to the Logs tab (used in unavailable state) */
   onViewLogs: () => void
+  /** Optional: notified when the terminal connection status changes */
+  onStatusChange?: (status: TerminalStatus) => void
 }
 
-export function AgentTerminal({ agentId, active, onViewLogs }: AgentTerminalProps) {
+export function AgentTerminal({ agentId, active, onViewLogs, onStatusChange }: AgentTerminalProps) {
   const { status, containerRef, interactive, setInteractive, activate } =
     useAgentTerminal(agentId)
 
@@ -172,6 +174,11 @@ export function AgentTerminal({ agentId, active, onViewLogs }: AgentTerminalProp
       activate()
     }
   }, [active, activate])
+
+  // Notify parent of status changes (e.g. to show PTY unavailable badge)
+  useEffect(() => {
+    onStatusChange?.(status)
+  }, [status, onStatusChange])
 
   return (
     <div
