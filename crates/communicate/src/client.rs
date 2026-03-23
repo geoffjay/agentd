@@ -39,7 +39,7 @@
 use crate::error::CommunicateError;
 use crate::types::{
     AddParticipantRequest, CreateMessageRequest, CreateRoomRequest, MessageResponse,
-    PaginatedResponse, ParticipantResponse, RoomResponse,
+    PaginatedResponse, ParticipantResponse, RoomResponse, UpdateParticipantIdentifierRequest,
 };
 use agentd_common::types::HealthResponse;
 use anyhow::{Context, Result};
@@ -226,6 +226,29 @@ impl CommunicateClient {
         self.delete_or_not_found(&format!("/rooms/{room_id}/participants/{identifier}")).await
     }
 
+    /// `PATCH /rooms/{room_id}/participants/{identifier}` — rename a
+    /// participant's identifier in-place.
+    ///
+    /// Used during reconciliation to migrate a name-based participant entry
+    /// (e.g. `"conductor"`, created by `agentd apply` before the agent UUID
+    /// was known) to the agent's canonical UUID identifier.
+    ///
+    /// Returns [`CommunicateError::NotFound`] if the participant does not exist,
+    /// or [`CommunicateError::Conflict`] if `new_identifier` is already taken
+    /// in the same room.
+    pub async fn update_participant_identifier(
+        &self,
+        room_id: Uuid,
+        old_identifier: &str,
+        new_identifier: &str,
+    ) -> std::result::Result<ParticipantResponse, CommunicateError> {
+        self.patch_or_conflict(
+            &format!("/rooms/{room_id}/participants/{old_identifier}"),
+            &UpdateParticipantIdentifierRequest { new_identifier: new_identifier.to_string() },
+        )
+        .await
+    }
+
     /// `GET /participants/{identifier}/rooms` — list all rooms for a
     /// participant, fetching up to 500 results.
     pub async fn get_rooms_for_participant(&self, identifier: &str) -> Result<Vec<RoomResponse>> {
@@ -325,6 +348,43 @@ impl CommunicateClient {
             .json()
             .await
             .context("Failed to deserialize POST response")
+            .map_err(CommunicateError::Other)
+    }
+
+    /// PATCH that maps HTTP 409 Conflict to [`CommunicateError::Conflict`],
+    /// HTTP 404 Not Found to [`CommunicateError::NotFound`], and all other
+    /// non-2xx responses to [`CommunicateError::Other`].
+    async fn patch_or_conflict<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> std::result::Result<T, CommunicateError> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .patch(&url)
+            .json(body)
+            .send()
+            .await
+            .context(format!("Failed to PATCH {url}"))
+            .map_err(CommunicateError::Other)?;
+
+        match response.status() {
+            reqwest::StatusCode::CONFLICT => return Err(CommunicateError::Conflict),
+            reqwest::StatusCode::NOT_FOUND => return Err(CommunicateError::NotFound),
+            s if !s.is_success() => {
+                let body = response.text().await.unwrap_or_default();
+                return Err(CommunicateError::Other(anyhow::anyhow!(
+                    "PATCH {url} failed with status {s}: {body}"
+                )));
+            }
+            _ => {}
+        }
+
+        response
+            .json()
+            .await
+            .context("Failed to deserialize PATCH response")
             .map_err(CommunicateError::Other)
     }
 
