@@ -12,6 +12,7 @@
 //! - `POST /rooms/{id}/participants` — add a participant to a room (201 Created)
 //! - `GET /rooms/{id}/participants/{identifier}` — get a specific participant
 //! - `PUT /rooms/{id}/participants/{identifier}` — update participant role
+//! - `PATCH /rooms/{id}/participants/{identifier}` — update participant identifier (reconciliation)
 //! - `DELETE /rooms/{id}/participants/{identifier}` — remove participant from room
 //! - `GET /participants/{identifier}/rooms` — list all rooms for a participant
 //! - `POST /rooms/{id}/messages` — send a message to a room (201 Created)
@@ -33,8 +34,8 @@ use uuid::Uuid;
 use crate::storage::CommunicateStorage;
 use crate::types::{
     AddParticipantRequest, CreateMessageRequest, CreateRoomRequest, MessageResponse,
-    PaginatedResponse, ParticipantResponse, RoomResponse, RoomType, UpdateParticipantRoleRequest,
-    UpdateRoomRequest,
+    PaginatedResponse, ParticipantResponse, RoomResponse, RoomType,
+    UpdateParticipantIdentifierRequest, UpdateParticipantRoleRequest, UpdateRoomRequest,
 };
 use crate::websocket::{ws_handler, ConnectionManager, RoomEvent};
 
@@ -52,7 +53,10 @@ pub fn create_router(state: ApiState) -> Router {
     let participant_nested =
         Router::new().route("/", get(list_participants).post(add_participant)).route(
             "/{identifier}",
-            get(get_participant).put(update_participant_role).delete(remove_participant),
+            get(get_participant)
+                .put(update_participant_role)
+                .patch(update_participant_identifier)
+                .delete(remove_participant),
         );
 
     let messages_nested = Router::new()
@@ -263,6 +267,31 @@ async fn update_participant_role(
     let participant = state
         .storage
         .update_participant_role(&id, &identifier, req.role)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(ParticipantResponse::from(participant)))
+}
+
+/// `PATCH /rooms/{id}/participants/{identifier}` — update a participant's identifier.
+///
+/// Renames the participant's identifier in-place, preserving all other fields
+/// (role, display name, joined_at).  Used during reconciliation to migrate
+/// name-based entries (created by `agentd apply`) to UUID-based entries
+/// (used by the orchestrator auto-join path).
+///
+/// Returns 404 if the participant does not exist, 409 if `new_identifier` is
+/// already taken in the same room.
+async fn update_participant_identifier(
+    State(state): State<ApiState>,
+    Path((id, identifier)): Path<(Uuid, String)>,
+    Json(req): Json<UpdateParticipantIdentifierRequest>,
+) -> Result<Json<ParticipantResponse>, ApiError> {
+    if req.new_identifier.trim().is_empty() {
+        return Err(ApiError::InvalidInput("new_identifier must not be empty".to_string()));
+    }
+    let participant = state
+        .storage
+        .update_participant_identifier(&id, &identifier, &req.new_identifier)
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(Json(ParticipantResponse::from(participant)))

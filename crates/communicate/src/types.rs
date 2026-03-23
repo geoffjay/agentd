@@ -298,6 +298,18 @@ pub struct UpdateParticipantRoleRequest {
     pub role: ParticipantRole,
 }
 
+/// Request body for updating a participant's identifier within a room.
+///
+/// Used for migration/reconciliation: renames a name-based participant entry
+/// (e.g. `"conductor"`) to the agent's canonical UUID identifier so that both
+/// the `agentd apply` path and the orchestrator auto-join path converge on the
+/// same identifier.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateParticipantIdentifierRequest {
+    /// The new identifier to assign to this participant.
+    pub new_identifier: String,
+}
+
 /// Request body for posting a message to a room.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateMessageRequest {

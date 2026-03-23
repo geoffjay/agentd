@@ -2,4 +2,12 @@
 ignore = [
     # Marvin Attack in `rsa` crate - transitive dep via sqlx-mysql, which we don't use
     "RUSTSEC-2023-0071",
+
+    # CRLs not considered authorative by Distribution Point (rustls-webpki 0.101.7)
+    # Transitive dep chain: lancedb 0.16 -> aws-smithy-http-client 1.1.10
+    #   -> rustls 0.21.12 -> rustls-webpki 0.101.7
+    # The fix (>=0.103.10) requires the 0.103.x semver series; upgrading requires
+    # aws-smithy-http-client to adopt rustls 0.22+, which is blocked by lancedb 0.16.
+    # Track: upgrade lancedb to a release that uses rustls 0.22+.
+    "RUSTSEC-2026-0049",
 ]

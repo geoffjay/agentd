@@ -1,0 +1,5 @@
+# git-spice state is stored in refs/spice/data — treat as binary to avoid merge conflicts
+refs/spice/data -merge
+
+# Default line endings
+* text=auto

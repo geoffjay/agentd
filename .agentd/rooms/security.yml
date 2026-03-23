@@ -1,0 +1,20 @@
+# .agentd/rooms/security.yml
+#
+# Security room for audit findings, RUSTSEC advisories, and vulnerability
+# reports posted by the security agent.
+# Created during `agent apply .agentd/` — agents auto-join on first connect.
+name: security
+topic: "Security audits and vulnerability reports"
+description: "Security agent posts audit findings, RUSTSEC advisories, and vulnerability reports."
+type: group
+participants:
+  - identifier: security
+    kind: agent
+    role: admin
+  - identifier: reviewer
+    kind: agent
+    role: member
+  - identifier: geoff
+    kind: human
+    role: admin
+    display_name: "Geoff"

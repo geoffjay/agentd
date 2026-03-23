@@ -368,6 +368,72 @@ impl CommunicateStorage {
         Ok(result.rows_affected > 0)
     }
 
+    /// Updates a participant's identifier in-place.
+    ///
+    /// Used during reconciliation to rename a name-based participant entry
+    /// (e.g. `"conductor"`) to the agent's canonical UUID identifier, avoiding
+    /// the need to delete-and-reinsert and preserving the original `joined_at`
+    /// timestamp.
+    ///
+    /// Returns `None` if no participant with `old_identifier` exists in the room.
+    /// Returns `ApiError::Conflict` if `new_identifier` is already taken in the
+    /// same room.
+    pub async fn update_participant_identifier(
+        &self,
+        room_id: &Uuid,
+        old_identifier: &str,
+        new_identifier: &str,
+    ) -> Result<Option<Participant>, ApiError> {
+        use sea_orm::IntoActiveModel;
+
+        // Prevent replacing with an identifier that already exists.
+        let conflict = entity::participant::Entity::find()
+            .filter(entity::participant::Column::RoomId.eq(room_id.to_string()))
+            .filter(entity::participant::Column::Identifier.eq(new_identifier))
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        if conflict.is_some() {
+            return Err(ApiError::Conflict(format!(
+                "participant '{}' already exists in room '{}'",
+                new_identifier, room_id
+            )));
+        }
+
+        let row = entity::participant::Entity::find()
+            .filter(entity::participant::Column::RoomId.eq(room_id.to_string()))
+            .filter(entity::participant::Column::Identifier.eq(old_identifier))
+            .one(&self.db)
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?;
+
+        let row = match row {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        let mut active = row.into_active_model();
+        active.identifier = Set(new_identifier.to_string());
+
+        // Map a unique-constraint violation from the UPDATE to ApiError::Conflict.
+        // The up-front SELECT guards against the common case, but a concurrent
+        // INSERT of new_identifier between the SELECT and UPDATE could slip
+        // through.  Without this mapping such a race would surface as a 500.
+        let updated = match active.update(&self.db).await {
+            Ok(m) => m,
+            Err(e) if is_unique_constraint_violation(&e) => {
+                return Err(ApiError::Conflict(format!(
+                    "participant '{}' already exists in room '{}'",
+                    new_identifier, room_id
+                )));
+            }
+            Err(e) => return Err(ApiError::Internal(e.into())),
+        };
+        let participant = model_to_participant(updated).map_err(ApiError::Internal)?;
+        Ok(Some(participant))
+    }
+
     /// Updates a participant's role within a room.
     ///
     /// Returns `None` if the participant is not found.
@@ -660,6 +726,22 @@ impl CommunicateStorage {
 }
 
 // ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/// Returns `true` if the SeaORM error is a SQLite UNIQUE constraint violation.
+///
+/// Used to map a race-condition UPDATE failure (where a concurrent INSERT
+/// slips in between the pre-flight SELECT and the UPDATE) to `ApiError::Conflict`
+/// rather than `ApiError::Internal`.
+fn is_unique_constraint_violation(err: &sea_orm::DbErr) -> bool {
+    // SeaORM surfaces SQLite errors as a string containing the SQLite
+    // error message.  The canonical SQLite message for a UNIQUE constraint
+    // failure is "UNIQUE constraint failed: <table>.<column>".
+    err.to_string().contains("UNIQUE constraint failed")
+}
+
+// ---------------------------------------------------------------------------
 // Model conversion helpers
 // ---------------------------------------------------------------------------
 
@@ -910,5 +992,74 @@ mod tests {
             storage.list_participants_in_room(&room.id, 10, 0).await.unwrap();
         assert_eq!(total, 0);
         assert!(participants.is_empty());
+    }
+
+    // ---- update_participant_identifier tests --------------------------------
+
+    fn make_agent_participant_req(identifier: &str) -> AddParticipantRequest {
+        AddParticipantRequest {
+            identifier: identifier.to_string(),
+            kind: ParticipantKind::Agent,
+            display_name: identifier.to_string(),
+            role: ParticipantRole::Member,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_participant_identifier_renames_entry() {
+        let (storage, _temp) = create_test_storage().await;
+        let room = storage.create_room(&make_create_req("test-room")).await.unwrap();
+
+        // Add a name-based participant (simulating `agentd apply`).
+        storage.add_participant(&room.id, &make_agent_participant_req("conductor")).await.unwrap();
+
+        let uuid_str = uuid::Uuid::new_v4().to_string();
+        let updated = storage
+            .update_participant_identifier(&room.id, "conductor", &uuid_str)
+            .await
+            .unwrap()
+            .expect("participant should exist");
+
+        assert_eq!(updated.identifier, uuid_str);
+        assert_eq!(updated.display_name, "conductor");
+        assert_eq!(updated.kind, ParticipantKind::Agent);
+
+        // The old name-based entry should be gone.
+        let old = storage.get_participant(&room.id, "conductor").await.unwrap();
+        assert!(old.is_none(), "name-based entry should have been removed");
+
+        // The new UUID-based entry should exist.
+        let new = storage.get_participant(&room.id, &uuid_str).await.unwrap();
+        assert!(new.is_some(), "uuid-based entry should now exist");
+    }
+
+    #[tokio::test]
+    async fn test_update_participant_identifier_not_found() {
+        let (storage, _temp) = create_test_storage().await;
+        let room = storage.create_room(&make_create_req("test-room")).await.unwrap();
+
+        let result =
+            storage.update_participant_identifier(&room.id, "nonexistent", "new-id").await.unwrap();
+        assert!(result.is_none(), "should return None for missing participant");
+    }
+
+    #[tokio::test]
+    async fn test_update_participant_identifier_conflict() {
+        let (storage, _temp) = create_test_storage().await;
+        let room = storage.create_room(&make_create_req("test-room")).await.unwrap();
+
+        let uuid_str = uuid::Uuid::new_v4().to_string();
+        // Add both the name-based and UUID-based entries (simulating the duplicate
+        // state that this fix is designed to repair).
+        storage.add_participant(&room.id, &make_agent_participant_req("conductor")).await.unwrap();
+        storage.add_participant(&room.id, &make_agent_participant_req(&uuid_str)).await.unwrap();
+
+        // Attempting to rename "conductor" → uuid should fail with Conflict
+        // because the UUID identifier already exists.
+        let result = storage.update_participant_identifier(&room.id, "conductor", &uuid_str).await;
+        assert!(
+            matches!(result, Err(ApiError::Conflict(_))),
+            "expected Conflict when new_identifier already exists"
+        );
     }
 }

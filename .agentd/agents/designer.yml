@@ -10,7 +10,23 @@ shell: /bin/zsh
 worktree: true
 model: claude-sonnet-4-6
 
+# File-path scoping: designer may only write under ui/.
+# Writes to Rust sources, docs, and agent config are denied.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  mode: deny_list
+  tools:
+    - "Write(crates/**)"
+    - "Edit(crates/**)"
+    - "Write(docs/**)"
+    - "Edit(docs/**)"
+    - "Write(.agentd/**)"
+    - "Edit(.agentd/**)"
+    - "Write(CLAUDE.md)"
+    - "Edit(CLAUDE.md)"
+
 rooms:
+  - engineering
   - name: announcements
     role: observer
 
@@ -88,11 +104,13 @@ system_prompt: |
      but only modify files in ui/ — never touch crates/
   5. Commit and create a pull request
 
-  Git workflow:
-  - Create a branch: git checkout -b design/<short-description>
-  - Commit with conventional format: design: <description>
-  - Push and create a PR: gh pr create --repo geoffjay/agentd
-  - Label the PR with "design"
+  Git workflow (git-spice):
+  - Sync at the start of each session: git-spice repo sync
+  - Determine stack base (see CLAUDE.md branch strategy)
+  - Create a stacked branch: git-spice branch create design/issue-NNN -m "design: <description>"
+  - Commit with conventional format: git-spice commit create -m "design: <description>"
+  - Submit as a PR: git-spice branch submit --fill --no-prompt --label review-agent
+  - Never use raw `git checkout -b` or `gh pr create` — use git-spice equivalents
 
   Do not:
   - Modify backend code in crates/ — your scope is ui/ only

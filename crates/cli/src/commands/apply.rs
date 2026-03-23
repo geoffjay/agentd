@@ -32,6 +32,7 @@ use communicate::types::{
 use orchestrator::client::OrchestratorClient;
 use orchestrator::scheduler::types::{CreateWorkflowRequest, TriggerConfig};
 use orchestrator::types::{AgentResponse, AgentStatus, CreateAgentRequest, ToolPolicy};
+use uuid::Uuid;
 
 // ── YAML template types ──────────────────────────────────────────────
 
@@ -535,7 +536,8 @@ pub async fn apply_room_file(path: &Path, dry_run: bool, json: bool) -> Result<(
     }
 
     let communicate = CommunicateClient::from_env();
-    apply_room(&communicate, &tmpl, false, json).await
+    let orchestrator = OrchestratorClient::from_env();
+    apply_room(&communicate, Some(&orchestrator), &tmpl, false, json).await
 }
 
 // ── Apply: single agent file ─────────────────────────────────────────
@@ -645,8 +647,18 @@ pub async fn apply_workflow_file(
 ///
 /// If the room already exists the creation is skipped; participants listed
 /// in the template that are not yet members are added idempotently.
+///
+/// When `orchestrator` is `Some`, agent participants whose `identifier` field
+/// contains an agent **name** (not a UUID) are resolved to their UUID before
+/// being added.  This prevents the name/UUID duplicate that would otherwise
+/// appear when the same agent later connects and the orchestrator registers it
+/// with its UUID.  If resolution fails (agent not yet registered, or
+/// orchestrator unavailable), the name is used as a fallback with a warning.
+///
+/// Human participants are always added using their original identifier string.
 async fn apply_room(
     communicate: &CommunicateClient,
+    orchestrator: Option<&OrchestratorClient>,
     tmpl: &RoomTemplate,
     dry_run: bool,
     json: bool,
@@ -751,15 +763,70 @@ async fn apply_room(
         })?;
         let display_name = p.display_name.clone().unwrap_or_else(|| p.identifier.clone());
 
+        // For agent participants, try to resolve the name to a UUID so that
+        // the stored identifier matches what the orchestrator uses when the
+        // agent connects.  This prevents duplicate participant rows caused by
+        // the name/UUID mismatch described in issue #707.
+        //
+        // Resolution is best-effort: if the orchestrator is unreachable or the
+        // agent hasn't been registered yet, we fall back to the raw name.
+        // The orchestrator's join_or_create_room() will reconcile any remaining
+        // name-based duplicates when the agent first connects.
+        let identifier =
+            if kind == ParticipantKind::Agent && Uuid::parse_str(&p.identifier).is_err() {
+                match orchestrator {
+                    Some(orch) => match orch.get_agent_by_name(&p.identifier).await {
+                        Ok(Some(agent)) => {
+                            if !json {
+                                println!(
+                                    "    {} agent '{}' → UUID {}",
+                                    "Resolved".cyan(),
+                                    p.identifier,
+                                    agent.id.to_string().bright_black()
+                                );
+                            }
+                            agent.id.to_string()
+                        }
+                        Ok(None) => {
+                            // Agent not registered yet — use name, will be reconciled on connect.
+                            if !json {
+                                eprintln!(
+                                    "    {} agent '{}' not yet registered; \
+                                 using name as identifier (will reconcile on connect)",
+                                    "Warning:".yellow(),
+                                    p.identifier,
+                                );
+                            }
+                            p.identifier.clone()
+                        }
+                        Err(e) => {
+                            // Orchestrator unavailable — use name, will be reconciled on connect.
+                            if !json {
+                                eprintln!(
+                                    "    {} could not resolve agent '{}' to UUID ({}); \
+                                 using name as identifier (will reconcile on connect)",
+                                    "Warning:".yellow(),
+                                    p.identifier,
+                                    e,
+                                );
+                            }
+                            p.identifier.clone()
+                        }
+                    },
+                    None => {
+                        // No orchestrator client provided — use name as-is.
+                        p.identifier.clone()
+                    }
+                }
+            } else {
+                // Already a UUID, or a human participant — use as-is.
+                p.identifier.clone()
+            };
+
         match communicate
             .add_participant(
                 room.id,
-                &AddParticipantRequest {
-                    identifier: p.identifier.clone(),
-                    kind,
-                    display_name,
-                    role,
-                },
+                &AddParticipantRequest { identifier, kind, display_name, role },
             )
             .await
         {
@@ -914,7 +981,7 @@ pub async fn apply_directory(
         }
         let communicate = CommunicateClient::from_env();
         for (_, tmpl) in &room_templates {
-            apply_room(&communicate, tmpl, false, json).await?;
+            apply_room(&communicate, Some(client), tmpl, false, json).await?;
         }
     }
 
