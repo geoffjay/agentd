@@ -423,7 +423,10 @@ struct ServiceStatus {
 }
 
 async fn check_all_services(json: bool) -> Result<()> {
-    let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(3)).build()?;
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .no_proxy() // avoid SCDynamicStoreCreate panic in sandboxed environments
+        .build()?;
 
     let checks: Vec<(&str, String)> = SERVICES
         .iter()
