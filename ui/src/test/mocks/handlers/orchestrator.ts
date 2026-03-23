@@ -5,7 +5,7 @@
  * Override individual handlers per test using server.use().
  */
 
-import { http, HttpResponse } from 'msw'
+import { http, HttpResponse, ws } from 'msw'
 import { makeAgent, makeAgentList, makeApprovalList } from '../factories'
 import type { PaginatedResponse } from '@/types/common'
 import type { Agent, PendingApproval } from '@/types/orchestrator'
@@ -181,4 +181,12 @@ export const orchestratorHandlers = [
   http.post(`${BASE}/approvals/:id/deny`, ({ params }) =>
     HttpResponse.json({ id: params.id, status: 'Denied' }),
   ),
+
+  // -------------------------------------------------------------------------
+  // Terminal WebSocket relay (PTY stream)
+  // The handler accepts the connection and does nothing — tests that need
+  // live PTY data drive the WebSocket directly in their own setup.
+  // -------------------------------------------------------------------------
+
+  ws.link(`ws://localhost:17006/terminal/:agentId`).addEventListener('connection', () => {}),
 ]
