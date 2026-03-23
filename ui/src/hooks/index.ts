@@ -72,3 +72,6 @@ export type {
 
 export { useMemorySearch } from './useMemorySearch'
 export type { UseMemorySearchResult } from './useMemorySearch'
+
+export { useAgentTerminal } from './useAgentTerminal'
+export type { TerminalStatus, UseAgentTerminalResult } from './useAgentTerminal'

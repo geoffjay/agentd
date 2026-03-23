@@ -28,6 +28,7 @@ import {
 import { AgentStatusBadge } from '@/components/agents/AgentStatusBadge'
 import { AgentConfigPanel } from '@/components/agents/AgentConfigPanel'
 import { AgentLogView } from '@/components/agents/AgentLogView'
+import { AgentTerminal } from '@/components/agents/AgentTerminal'
 import { AgentCommandInput } from '@/components/agents/AgentCommandInput'
 import { AgentPolicyEditor } from '@/components/agents/AgentPolicyEditor'
 import { AgentApprovals } from '@/components/agents/AgentApprovals'
@@ -580,6 +581,8 @@ export function AgentDetail() {
   const { usage, clearContext, clearing } = useAgentUsage(agentId)
   const toast = useToast()
 
+  const [activeTab, setActiveTab] = useState<'logs' | 'terminal'>('logs')
+
   const [confirmTerminate, setConfirmTerminate] = useState(false)
   const [terminating, setTerminating] = useState(false)
   const [confirmClearContext, setConfirmClearContext] = useState(false)
@@ -765,10 +768,69 @@ export function AgentDetail() {
 
       {/* ── Main content + sidebar ───────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Log view (takes 2/3 width on large screens) */}
+        {/* Log / Terminal tabs (takes 2/3 width on large screens) */}
         <div className="flex flex-col gap-3 lg:col-span-2">
+          {/* Tab bar */}
+          <div className="flex border-b border-gray-200 dark:border-gray-700">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'logs'}
+              aria-controls="panel-logs"
+              onClick={() => setActiveTab('logs')}
+              className={[
+                'px-4 py-2 text-sm font-medium transition-colors -mb-px border-b-2',
+                activeTab === 'logs'
+                  ? 'border-primary-500 text-gray-900 dark:text-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white',
+              ].join(' ')}
+            >
+              Logs
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'terminal'}
+              aria-controls="panel-terminal"
+              onClick={() => setActiveTab('terminal')}
+              className={[
+                'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors -mb-px border-b-2',
+                activeTab === 'terminal'
+                  ? 'border-primary-500 text-gray-900 dark:text-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white',
+              ].join(' ')}
+            >
+              Terminal
+              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                PTY
+              </span>
+            </button>
+          </div>
+
+          {/* Tab panels — both mounted; visibility toggled via hidden to preserve state */}
           <div className="h-[480px]">
-            <AgentLogView lines={lines} status={streamStatus} onClear={clearLog} />
+            <div
+              id="panel-logs"
+              role="tabpanel"
+              aria-label="Logs"
+              hidden={activeTab !== 'logs'}
+              className="h-full"
+            >
+              <AgentLogView lines={lines} status={streamStatus} onClear={clearLog} />
+            </div>
+            <div
+              id="panel-terminal"
+              role="tabpanel"
+              aria-label="Terminal"
+              hidden={activeTab !== 'terminal'}
+              className="h-full"
+            >
+              <AgentTerminal
+                agentId={agentId}
+                active={activeTab === 'terminal'}
+                onViewLogs={() => setActiveTab('logs')}
+              />
+            </div>
           </div>
 
           {/* Command input */}
