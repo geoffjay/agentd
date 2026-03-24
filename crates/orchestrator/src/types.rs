@@ -401,6 +401,11 @@ pub struct Agent {
     /// compatibility.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backend_type: Option<String>,
+    /// The exact `claude` command that was generated and sent to the execution
+    /// backend when the agent was spawned or restarted.  Useful for debugging
+    /// flags, `--sdk-url`, model selection, etc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub launch_command: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -415,6 +420,7 @@ impl Agent {
             config,
             session_id: None,
             backend_type: Some("tmux".to_string()),
+            launch_command: None,
             created_at: now,
             updated_at: now,
         }
@@ -496,6 +502,10 @@ pub struct AgentResponse {
     pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backend_type: Option<String>,
+    /// The exact `claude` command that was generated and sent to the execution
+    /// backend when the agent was spawned or restarted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub launch_command: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -514,6 +524,7 @@ impl From<Agent> for AgentResponse {
             config,
             session_id: agent.session_id,
             backend_type: agent.backend_type,
+            launch_command: agent.launch_command,
             created_at: agent.created_at,
             updated_at: agent.updated_at,
         }

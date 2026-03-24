@@ -52,6 +52,8 @@ export interface Agent {
   config: AgentConfig
   session_id?: string
   backend_type?: string
+  /** The exact `claude` command used to launch this agent session. */
+  launch_command?: string
   created_at: string
   updated_at: string
 }

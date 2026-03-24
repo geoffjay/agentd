@@ -436,6 +436,17 @@ export function AgentConfigPanel({ agent, onAddDir, onRemoveDir }: AgentConfigPa
             onAdd={onAddDir}
             onRemove={onRemoveDir}
           />
+
+          {agent.launch_command && (
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
+              <span className="w-36 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
+                Launch Command
+              </span>
+              <code className="min-w-0 flex-1 break-all rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+                {agent.launch_command}
+              </code>
+            </div>
+          )}
         </div>
       )}
     </section>

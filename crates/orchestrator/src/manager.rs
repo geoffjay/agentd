@@ -100,6 +100,9 @@ impl AgentManager {
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
         let claude_cmd = build_claude_command(&agent.config, &ws_url, effective_interactive);
 
+        // Persist the launch command so the UI can display it for debugging.
+        agent.launch_command = Some(claude_cmd.clone());
+
         // Send the command into the session.
         if let Err(e) = self.backend.send_command(&session_name, &claude_cmd).await {
             let _ = self.backend.kill_session(&session_name).await;
@@ -638,6 +641,9 @@ impl AgentManager {
             .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
         let claude_cmd = build_claude_command(&agent.config, &ws_url, effective_interactive);
+
+        // Persist the launch command so the UI can display it for debugging.
+        agent.launch_command = Some(claude_cmd.clone());
 
         if let Err(e) = self.backend.send_command(&session_name, &claude_cmd).await {
             let _ = self.backend.kill_session(&session_name).await;
