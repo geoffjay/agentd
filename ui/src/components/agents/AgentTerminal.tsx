@@ -27,6 +27,7 @@ import '@xterm/xterm/css/xterm.css'
 import {
   ChevronDown,
   ChevronUp,
+  Info,
   Keyboard,
   KeyboardOff,
   Loader2,
@@ -141,6 +142,49 @@ function TerminalStatusBadge({ status }: { status: TerminalStatus }) {
 }
 
 // ---------------------------------------------------------------------------
+// PTY mode badge
+// ---------------------------------------------------------------------------
+
+function TerminalModeBadge({ interactive }: { interactive: boolean }) {
+  return (
+    <span
+      aria-label={interactive ? 'PTY interactive mode' : 'PTY SDK mode'}
+      className="flex items-center gap-1 rounded bg-gray-800 px-1.5 py-0.5 font-mono text-xs text-gray-400"
+    >
+      PTY · {interactive ? 'Interactive' : 'SDK'}
+    </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SDK-mode info banner
+// ---------------------------------------------------------------------------
+
+function SdkModeBanner({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div
+      role="note"
+      aria-label="SDK mode info"
+      className="flex items-center gap-2 border-b border-blue-800 bg-blue-950/50 px-3 py-1.5 text-xs text-blue-300"
+    >
+      <Info size={12} aria-hidden="true" className="shrink-0" />
+      <span className="flex-1">
+        SDK mode — This terminal shows raw protocol output. Use the{' '}
+        <strong className="text-blue-200">Logs</strong> tab for structured output.
+      </span>
+      <button
+        type="button"
+        aria-label="Dismiss SDK mode info"
+        onClick={onDismiss}
+        className="rounded p-0.5 text-blue-400 hover:bg-blue-800 hover:text-white"
+      >
+        <X size={12} aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Unavailable fallback
 // ---------------------------------------------------------------------------
 
@@ -236,6 +280,7 @@ export function AgentTerminal({
   const [sdkMessage, setSdkMessage] = useState('')
   const [sdkSending, setSdkSending] = useState(false)
   const [sdkError, setSdkError] = useState<string | undefined>()
+  const [showSdkBanner, setShowSdkBanner] = useState(true)
 
   // Keep a ref in sync with interactive state so the onData closure can read it
   const interactiveRef = useRef(!readOnly)
@@ -549,7 +594,10 @@ export function AgentTerminal({
     >
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-gray-700 bg-gray-900 px-3 py-2">
-        <TerminalStatusBadge status={status} />
+        <div className="flex items-center gap-2">
+          <TerminalStatusBadge status={status} />
+          <TerminalModeBadge interactive={agentInteractive} />
+        </div>
 
         <div className="flex items-center gap-2">
           {/* Search toggle */}
@@ -614,6 +662,11 @@ export function AgentTerminal({
           )}
         </div>
       </div>
+
+      {/* SDK-mode info banner — dismissible, shown by default for SDK agents */}
+      {!agentInteractive && showSdkBanner && (
+        <SdkModeBanner onDismiss={() => setShowSdkBanner(false)} />
+      )}
 
       {/* SDK-mode error banner */}
       {!agentInteractive && sdkError && (
