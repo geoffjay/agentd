@@ -85,6 +85,14 @@ impl AgentManager {
         // remains interactable. Config-level `interactive` flag is also respected.
         let effective_interactive = agent.config.interactive || self.backend.supports_pty_input();
 
+        // Persist the effective interactive state so downstream consumers
+        // (API, UI) see the correct mode.  The DB record is the single source
+        // of truth; without this, PTY-backend agents are misidentified as SDK
+        // mode because `agent.config.interactive` stays `false` in storage.
+        if effective_interactive && !agent.config.interactive {
+            agent.config.interactive = true;
+        }
+
         // Build the claude command (never uses -p; prompt sent via WebSocket or PTY stdin).
         let ws_url = self
             .backend
@@ -619,6 +627,12 @@ impl AgentManager {
 
         // Build and send the claude command with the updated config.
         let effective_interactive = agent.config.interactive || self.backend.supports_pty_input();
+
+        // Persist the effective interactive state (mirrors the fix in spawn_agent).
+        if effective_interactive && !agent.config.interactive {
+            agent.config.interactive = true;
+        }
+
         let ws_url = self
             .backend
             .agent_ws_url(&session_name, Some(&session_config))
