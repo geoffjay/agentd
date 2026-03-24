@@ -127,4 +127,18 @@ describe('AgentConfigPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /show env values/i }))
     expect(screen.getByText('my-secret-value')).toBeInTheDocument()
   })
+
+  it('shows launch command when present', () => {
+    const cmd = 'claude --sdk-url ws://localhost:7006/ws/abc --model sonnet'
+    const agent = makeAgent({ launch_command: cmd })
+    render(<AgentConfigPanel agent={agent} />)
+    expect(screen.getByText('Launch Command')).toBeInTheDocument()
+    expect(screen.getByText(cmd)).toBeInTheDocument()
+  })
+
+  it('does not show launch command row when absent', () => {
+    const agent = makeAgent()
+    render(<AgentConfigPanel agent={agent} />)
+    expect(screen.queryByText('Launch Command')).not.toBeInTheDocument()
+  })
 })

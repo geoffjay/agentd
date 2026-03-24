@@ -19,6 +19,7 @@ mod m20250311_000006_add_additional_dirs;
 mod m20250312_000005_add_docker_config;
 mod m20260316_000007_rename_trigger_columns;
 mod m20260319_000008_add_rooms_to_agents;
+mod m20260323_000009_add_launch_command_to_agents;
 
 /// The migration runner — applies all known migrations in order.
 pub struct Migrator;
@@ -35,6 +36,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250311_000006_add_additional_dirs::Migration),
             Box::new(m20260316_000007_rename_trigger_columns::Migration),
             Box::new(m20260319_000008_add_rooms_to_agents::Migration),
+            Box::new(m20260323_000009_add_launch_command_to_agents::Migration),
         ]
     }
 }

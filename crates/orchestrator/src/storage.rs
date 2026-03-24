@@ -101,6 +101,7 @@ impl AgentStorage {
             rooms: Set(
                 serde_json::to_string(&agent.config.rooms).unwrap_or_else(|_| "[]".to_string())
             ),
+            launch_command: Set(agent.launch_command.clone()),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -160,6 +161,10 @@ impl AgentStorage {
                         .as_ref()
                         .map(|r| serde_json::to_string(r).unwrap_or_else(|_| "{}".to_string())),
                 ),
+            )
+            .col_expr(
+                agent_entity::Column::LaunchCommand,
+                Expr::value(agent.launch_command.clone()),
             )
             .col_expr(agent_entity::Column::UpdatedAt, Expr::value(agent.updated_at.to_rfc3339()))
             .filter(agent_entity::Column::Id.eq(agent.id.to_string()))
@@ -550,6 +555,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
+        launch_command: model.launch_command,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
