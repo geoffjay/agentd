@@ -31,6 +31,7 @@ import { AgentLogView } from '@/components/agents/AgentLogView'
 import { AgentTerminal } from '@/components/agents/AgentTerminal'
 import { AgentCommandInput } from '@/components/agents/AgentCommandInput'
 import { AgentPolicyEditor } from '@/components/agents/AgentPolicyEditor'
+import { PolicyDisplay } from '@/components/agents/PolicyDisplay'
 import { AgentApprovals } from '@/components/agents/AgentApprovals'
 import { AgentUsagePanel } from '@/components/agents/AgentUsagePanel'
 import { AgentTodosPanel } from '@/components/agents/AgentTodosPanel'
@@ -917,23 +918,7 @@ export function AgentDetail() {
               {policyEditing ? (
                 <AgentPolicyEditor policy={agent.config.tool_policy} onSave={handlePolicySave} />
               ) : (
-                <p className="text-sm text-gray-700 dark:text-gray-300">
-                  {(() => {
-                    const p = agent.config.tool_policy
-                    switch (p.mode) {
-                      case 'allow_all':
-                        return 'Allow all tools'
-                      case 'deny_all':
-                        return 'Deny all tools'
-                      case 'require_approval':
-                        return 'Require approval for all tools'
-                      case 'allow_list':
-                        return `Allow: ${p.tools.join(', ') || '(none)'}`
-                      case 'deny_list':
-                        return `Deny: ${p.tools.join(', ') || '(none)'}`
-                    }
-                  })()}
-                </p>
+                <PolicyDisplay policy={agent.config.tool_policy} />
               )}
             </div>
           </section>
