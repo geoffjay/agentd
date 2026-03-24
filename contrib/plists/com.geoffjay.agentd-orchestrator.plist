@@ -31,8 +31,10 @@
         <string>info</string>
         <key>AGENTD_PORT</key>
         <string>7006</string>
+        <!--
         <key>AGENTD_BACKEND</key>
         <string>pty</string>
+        -->
         <key>AGENTD_COMMUNICATE_SERVICE_URL</key>
         <string>http://localhost:7010</string>
     </dict>
