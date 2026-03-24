@@ -82,6 +82,29 @@ function EnvVarsRow({ env }: { env: Record<string, string> }) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Launch command helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Replace the system prompt value in a launch command string with a
+ * `<system prompt>` placeholder so the full (potentially long) prompt text
+ * is not duplicated in the debug view.
+ *
+ * The command builder shell-escapes the system prompt using single-quote
+ * POSIX escaping (`'value'` with embedded `'` replaced by `'\''`), so we
+ * reconstruct the same escaped form and replace it with the placeholder.
+ */
+function redactSystemPromptInCommand(command: string, systemPrompt: string | undefined | null): string {
+  if (!systemPrompt) return command
+  const escaped = systemPrompt.replace(/'/g, "'\\''")
+  return command.replace(`--system-prompt '${escaped}'`, "--system-prompt '<system prompt>'")
+}
+
+// ---------------------------------------------------------------------------
+// System prompt row
+// ---------------------------------------------------------------------------
+
 function SystemPromptRow({ prompt }: { prompt: string }) {
   const [expanded, setExpanded] = useState(false)
   const isLong = prompt.length > 200
@@ -438,13 +461,18 @@ export function AgentConfigPanel({ agent, onAddDir, onRemoveDir }: AgentConfigPa
           />
 
           {agent.launch_command && (
-            <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
-              <span className="w-36 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
                 Launch Command
               </span>
-              <code className="min-w-0 flex-1 break-all rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-800 dark:bg-gray-800 dark:text-gray-200">
-                {agent.launch_command}
-              </code>
+              <div data-testid="launch-command-code">
+                <HighlightedCode
+                  code={redactSystemPromptInCommand(agent.launch_command, config.system_prompt)}
+                  language="bash"
+                  maxHeight="12rem"
+                  className="border border-gray-200 dark:border-gray-700"
+                />
+              </div>
             </div>
           )}
         </div>

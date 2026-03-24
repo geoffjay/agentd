@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { AgentConfigPanel } from '@/components/agents/AgentConfigPanel'
 import { makeAgent } from '@/test/mocks/factories'
+import type { AgentConfig } from '@/types/orchestrator'
 
 describe('AgentConfigPanel', () => {
   it('renders configuration section', () => {
@@ -133,7 +134,32 @@ describe('AgentConfigPanel', () => {
     const agent = makeAgent({ launch_command: cmd })
     render(<AgentConfigPanel agent={agent} />)
     expect(screen.getByText('Launch Command')).toBeInTheDocument()
-    expect(screen.getByText(cmd)).toBeInTheDocument()
+    // HighlightedCode renders the command via react-shiki which splits text
+    // into syntax-highlighted spans. Verify the highlighted code block is
+    // rendered rather than searching for the raw command string.
+    expect(screen.getByTestId('launch-command-code')).toBeInTheDocument()
+  })
+
+  it('redacts system prompt in launch command display', () => {
+    const systemPrompt = 'You are a helpful assistant'
+    const cmd = `claude --sdk-url ws://localhost:7006/ws/abc --system-prompt '${systemPrompt}' --model sonnet`
+    const agent = makeAgent({
+      launch_command: cmd,
+      config: {
+        working_dir: '/tmp',
+        shell: '/bin/bash',
+        interactive: false,
+        tool_policy: { mode: 'allow_all' },
+        system_prompt: systemPrompt,
+      } as AgentConfig,
+    })
+    render(<AgentConfigPanel agent={agent} />)
+    // The highlighted code block should be present
+    const codeBlock = screen.getByTestId('launch-command-code')
+    expect(codeBlock).toBeInTheDocument()
+    // The raw system prompt text should not appear inside the launch command block
+    // (it may still appear in the SystemPromptRow above, but not here)
+    expect(codeBlock.textContent).not.toContain(systemPrompt)
   })
 
   it('does not show launch command row when absent', () => {
