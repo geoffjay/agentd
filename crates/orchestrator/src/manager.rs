@@ -80,12 +80,17 @@ impl AgentManager {
             }
         }
 
-        // Build the claude command (never uses -p; prompt sent via WebSocket).
+        // Determine whether to use interactive / PTY mode.
+        // PTY backend always uses PTY stdin (not WebSocket) so that the session
+        // remains interactable. Config-level `interactive` flag is also respected.
+        let effective_interactive = agent.config.interactive || self.backend.supports_pty_input();
+
+        // Build the claude command (never uses -p; prompt sent via WebSocket or PTY stdin).
         let ws_url = self
             .backend
             .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
-        let claude_cmd = build_claude_command(&agent.config, &ws_url);
+        let claude_cmd = build_claude_command(&agent.config, &ws_url, effective_interactive);
 
         // Send the command into the session.
         if let Err(e) = self.backend.send_command(&session_name, &claude_cmd).await {
@@ -113,7 +118,7 @@ impl AgentManager {
 
         // If there's an initial prompt, deliver it via the appropriate channel.
         //
-        // Interactive mode: Claude reads from PTY stdin, not the WebSocket.
+        // Interactive / PTY mode: Claude reads from PTY stdin, not the WebSocket.
         //   Write the prompt directly to PTY stdin. A brief delay lets the
         //   shell and Claude process start before input arrives.
         //
@@ -123,7 +128,7 @@ impl AgentManager {
             let prompt = prompt.clone();
             let agent_id = agent.id;
 
-            if agent.config.interactive {
+            if effective_interactive {
                 // Interactive mode — inject via PTY stdin.
                 let manager = self.clone();
                 tokio::spawn(async move {
@@ -613,11 +618,12 @@ impl AgentManager {
         }
 
         // Build and send the claude command with the updated config.
+        let effective_interactive = agent.config.interactive || self.backend.supports_pty_input();
         let ws_url = self
             .backend
             .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
-        let claude_cmd = build_claude_command(&agent.config, &ws_url);
+        let claude_cmd = build_claude_command(&agent.config, &ws_url, effective_interactive);
 
         if let Err(e) = self.backend.send_command(&session_name, &claude_cmd).await {
             let _ = self.backend.kill_session(&session_name).await;
@@ -683,12 +689,13 @@ fn build_env_assignments(env: &std::collections::HashMap<String, String>) -> Vec
     assignments
 }
 
-fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
+fn build_claude_command(config: &AgentConfig, ws_url: &str, interactive: bool) -> String {
     let mut args = vec!["claude".to_string()];
 
-    if config.interactive {
-        // Interactive mode: no --sdk-url, no --print, no stream-json flags.
-        // User can attach to the tmux session and interact directly.
+    if interactive {
+        // Interactive / PTY mode: no --sdk-url, no stream-json flags.
+        // Prompts are delivered via PTY stdin injection; a human can also
+        // type directly in the terminal.
     } else {
         args.push(format!("--sdk-url {}", ws_url));
         args.push("--output-format stream-json".to_string());
@@ -773,7 +780,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_no_model() {
         let config = base_config();
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(!cmd.contains("--model"));
         assert!(cmd.contains("claude"));
         assert!(cmd.contains("--sdk-url"));
@@ -782,14 +789,14 @@ mod tests {
     #[test]
     fn test_build_claude_command_with_model_alias() {
         let config = AgentConfig { model: Some("opus".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(cmd.contains("--model opus"));
     }
 
     #[test]
     fn test_build_claude_command_with_full_model_name() {
         let config = AgentConfig { model: Some("claude-sonnet-4-6".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(cmd.contains("--model claude-sonnet-4-6"));
     }
 
@@ -797,7 +804,7 @@ mod tests {
     fn test_build_claude_command_model_with_interactive() {
         let config =
             AgentConfig { model: Some("haiku".to_string()), interactive: true, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true);
         assert!(cmd.contains("--model haiku"));
         assert!(!cmd.contains("--sdk-url"));
     }
@@ -809,7 +816,7 @@ mod tests {
             user: Some("deploy".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(cmd.starts_with("sudo -u deploy"));
         assert!(cmd.contains("--model sonnet"));
     }
@@ -821,7 +828,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test123".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         assert!(cmd.contains("ANTHROPIC_API_KEY='sk-ant-test123'"));
         // Env prefix must come before claude
@@ -835,7 +842,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test".to_string());
         let config = AgentConfig { user: Some("deploy".to_string()), env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         // For sudo, env vars are injected via `env` to cross the sudo boundary
         assert!(cmd.starts_with("sudo -u deploy env"));
@@ -849,7 +856,7 @@ mod tests {
         // Value contains a single quote — must be properly escaped
         env.insert("MY_VAR".to_string(), "it's a value".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         // Single-quote escaping: ' → '\''
         assert!(cmd.contains("MY_VAR='it'\\''s a value'"));
@@ -863,7 +870,7 @@ mod tests {
         env.insert("123STARTS_WITH_DIGIT".to_string(), "v".to_string());
         env.insert("GOOD_KEY".to_string(), "ok".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         assert!(cmd.contains("GOOD_KEY='ok'"));
         assert!(!cmd.contains("BAD KEY"));
@@ -874,7 +881,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_empty_env_no_prefix() {
         let config = base_config(); // env is empty
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         // Must start directly with claude (no env prefix)
         assert!(cmd.starts_with("claude"));
@@ -885,7 +892,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_BASE_URL".to_string(), "https://custom.api.example.com".to_string());
         let config = AgentConfig { interactive: true, env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true);
 
         assert!(cmd.contains("ANTHROPIC_BASE_URL='https://custom.api.example.com'"));
         assert!(!cmd.contains("--sdk-url"));
@@ -899,8 +906,8 @@ mod tests {
         env.insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
         env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), "tok-123".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd1 = build_claude_command(&config, "ws://localhost:7006/ws/abc");
-        let cmd2 = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd1 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd2 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         // Output must be deterministic (sorted) across calls
         assert_eq!(cmd1, cmd2);
@@ -938,7 +945,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_no_add_dir_when_empty() {
         let config = base_config(); // additional_dirs is empty
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(!cmd.contains("--add-dir"), "no --add-dir flag when additional_dirs is empty");
     }
 
@@ -948,7 +955,7 @@ mod tests {
             additional_dirs: vec!["/tmp/project".to_string(), "/home/user/data".to_string()],
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(cmd.contains("--add-dir '/tmp/project'"), "first dir must appear");
         assert!(cmd.contains("--add-dir '/home/user/data'"), "second dir must appear");
     }
@@ -960,12 +967,33 @@ mod tests {
             additional_dirs: vec!["/tmp/my project/it's here".to_string()],
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         // Single-quote escaping: ' → '\''
         assert!(
             cmd.contains("--add-dir '/tmp/my project/it'\\''s here'"),
             "path with spaces and single quote must be shell-escaped: {cmd}"
         );
+    }
+
+    #[test]
+    fn test_build_claude_command_pty_backend_no_sdk_url() {
+        // Simulates PTY backend: effective_interactive = true
+        let config = base_config();
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true);
+        assert!(!cmd.contains("--sdk-url"), "PTY mode must not include --sdk-url");
+        assert!(!cmd.contains("--input-format"), "PTY mode must not include --input-format");
+        assert!(!cmd.contains("--output-format"), "PTY mode must not include --output-format");
+        assert!(cmd.contains("claude"));
+    }
+
+    #[test]
+    fn test_build_claude_command_sdk_mode_has_sdk_url() {
+        // Non-PTY backend: effective_interactive = false
+        let config = base_config(); // interactive = false
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--sdk-url"));
+        assert!(cmd.contains("--input-format stream-json"));
+        assert!(cmd.contains("--output-format stream-json"));
     }
 
     // -- shell_escape_value tests --

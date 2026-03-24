@@ -225,6 +225,19 @@ pub trait ExecutionBackend: Send + Sync {
         Ok(None)
     }
 
+    /// Returns `true` when this backend uses a real PTY and prompts should be
+    /// delivered via PTY stdin rather than the WebSocket SDK protocol.
+    ///
+    /// When `true`, agents are launched without `--sdk-url` / `--input-format
+    /// stream-json` so that both the orchestrator (via PTY stdin injection) and
+    /// an attached human can interact with the session.
+    ///
+    /// [`PtyBackend`](crate::pty::PtyBackend) overrides this to return `true`;
+    /// all other backends inherit the default of `false`.
+    fn supports_pty_input(&self) -> bool {
+        false
+    }
+
     /// Stops all sessions managed by this backend.
     ///
     /// Used during graceful shutdown to clean up all running sessions.
@@ -501,6 +514,12 @@ mod tests {
     fn tmux_backend_is_send_sync() {
         fn _assert_send_sync<T: Send + Sync>() {}
         _assert_send_sync::<TmuxBackend>();
+    }
+
+    #[test]
+    fn tmux_backend_supports_pty_input_returns_false() {
+        let backend = TmuxBackend::new("test");
+        assert!(!backend.supports_pty_input());
     }
 
     // -- SessionHealth tests --
