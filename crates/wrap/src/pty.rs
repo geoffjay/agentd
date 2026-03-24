@@ -208,6 +208,10 @@ impl ExecutionBackend for PtyBackend {
         Ok(sessions.get(session_name).map(|s| s.stream.clone()))
     }
 
+    fn supports_pty_input(&self) -> bool {
+        true
+    }
+
     async fn session_health(&self, session_name: &str) -> Result<SessionHealth> {
         let sessions = self.sessions.read().await;
         let Some(session) = sessions.get(session_name) else {
@@ -270,6 +274,12 @@ mod tests {
     fn pty_backend_new_sets_prefix() {
         let backend = PtyBackend::new("test-prefix");
         assert_eq!(backend.prefix(), "test-prefix");
+    }
+
+    #[test]
+    fn pty_backend_supports_pty_input() {
+        let backend = PtyBackend::new("test");
+        assert!(backend.supports_pty_input());
     }
 
     #[test]
