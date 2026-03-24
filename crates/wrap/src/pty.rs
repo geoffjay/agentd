@@ -84,6 +84,18 @@ impl ExecutionBackend for PtyBackend {
             // Build a simple shell command — agent is launched in launch_agent()
             let mut cmd = CommandBuilder::new_default_prog();
             cmd.cwd(&working_dir);
+            // Ensure color output works inside the PTY. Without these, Claude Code
+            // and shell tools detect a non-color terminal and emit plain text:
+            //   - TERM=xterm-256color   tells the shell and CLI tools the terminal
+            //     supports 256-color ANSI sequences.
+            //   - COLORTERM=truecolor   enables 24-bit color for tools that check it
+            //     (e.g. bat, delta, some editors).
+            //   - FORCE_COLOR=1         overrides Claude Code's isatty heuristic so
+            //     it always emits ANSI escape sequences even if the detection path
+            //     inside the spawned process is uncertain.
+            cmd.env("TERM", "xterm-256color");
+            cmd.env("COLORTERM", "truecolor");
+            cmd.env("FORCE_COLOR", "1");
 
             let child = pair.slave.spawn_command(cmd).context("Failed to spawn shell in PTY")?;
             let writer = pair.master.take_writer().context("Failed to get PTY writer")?;
