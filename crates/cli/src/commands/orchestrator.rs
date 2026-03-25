@@ -1103,6 +1103,8 @@ async fn create_agent(
         prompt: resolved_prompt,
         worktree,
         system_prompt: system_prompt.map(|s| s.to_string()),
+        system_prompt_file: None,
+        append_system_prompt: false,
         tool_policy,
         model: model.map(|s| s.to_string()),
         env,

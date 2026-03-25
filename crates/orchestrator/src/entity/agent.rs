@@ -22,6 +22,10 @@ pub struct Model {
     /// Stored as INTEGER (0/1); mapped to `bool` in the domain layer.
     pub worktree: i32,
     pub system_prompt: Option<String>,
+    /// Path to a file containing the system prompt. Nullable TEXT.
+    pub system_prompt_file: Option<String>,
+    /// Whether to append the system prompt instead of replacing. Stored as INTEGER (0/1).
+    pub append_system_prompt: i32,
     pub session_id: Option<String>,
     /// JSON-serialized [`crate::types::ToolPolicy`].
     pub tool_policy: String,
