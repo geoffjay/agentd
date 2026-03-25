@@ -1,7 +1,7 @@
 use crate::api::ApiError;
 use crate::manager::AgentManager;
 use crate::scheduler::template::validate_template;
-use crate::scheduler::types::*;
+use crate::scheduler::types::{WebhookSource, *};
 use crate::scheduler::webhook;
 use crate::scheduler::Scheduler;
 use crate::types::{clamp_limit, AgentStatus, PaginatedResponse};
@@ -375,30 +375,83 @@ async fn handle_webhook(
     body: Bytes,
 ) -> Result<impl IntoResponse, ApiError> {
     // Look up the workflow in the webhook registry.
-    let (sender, secret) = match state.scheduler.webhook_registry().lookup(&workflow_id).await {
-        Some(entry) => entry,
-        None => {
-            // Distinguish between "not found" and "not a webhook trigger".
-            if let Ok(Some(wf)) = state.scheduler.storage().get_workflow(&workflow_id).await {
-                if !matches!(wf.trigger_config, TriggerConfig::Webhook { .. }) {
-                    return Err(ApiError::InvalidInput(format!(
-                        "Workflow {} is not a webhook trigger (type: {})",
-                        workflow_id,
-                        wf.trigger_config.trigger_type()
-                    )));
+    let (sender, secret, source) =
+        match state.scheduler.webhook_registry().lookup(&workflow_id).await {
+            Some(entry) => entry,
+            None => {
+                // Distinguish between "not found" and "not a webhook trigger".
+                if let Ok(Some(wf)) = state.scheduler.storage().get_workflow(&workflow_id).await {
+                    if !matches!(wf.trigger_config, TriggerConfig::Webhook { .. }) {
+                        return Err(ApiError::InvalidInput(format!(
+                            "Workflow {} is not a webhook trigger (type: {})",
+                            workflow_id,
+                            wf.trigger_config.trigger_type()
+                        )));
+                    }
                 }
+                return Err(ApiError::NotFound);
             }
-            return Err(ApiError::NotFound);
+        };
+
+    // Extract source-specific headers for payload parsing and signature verification.
+    let github_event = headers.get("x-github-event").and_then(|v| v.to_str().ok());
+    let delivery_id = headers.get("x-github-delivery").and_then(|v| v.to_str().ok());
+    let linear_event = headers.get("linear-event").and_then(|v| v.to_str().ok());
+    let linear_delivery = headers.get("linear-delivery").and_then(|v| v.to_str().ok());
+
+    // Enforce that the incoming request matches the registered webhook source.
+    // This prevents source-header spoofing attacks where an attacker injects
+    // platform headers to bypass or redirect signature verification.
+    match &source {
+        WebhookSource::GitHub if linear_event.is_some() => {
+            return Err(ApiError::InvalidInput(
+                "This webhook workflow only accepts GitHub events; unexpected Linear-Event header"
+                    .to_string(),
+            ));
         }
-    };
+        WebhookSource::Linear if linear_event.is_none() => {
+            return Err(ApiError::InvalidInput(
+                "This webhook workflow only accepts Linear events; missing Linear-Event header"
+                    .to_string(),
+            ));
+        }
+        _ => {}
+    }
 
     // Verify HMAC-SHA256 signature if a secret is configured.
+    // Signature header is chosen based on the *registered* source to prevent
+    // an attacker from switching verification paths by injecting headers.
     if let Some(ref secret_value) = secret {
-        let signature =
-            headers.get("x-hub-signature-256").and_then(|v| v.to_str().ok()).unwrap_or("");
+        let (signature, header_name) = match &source {
+            WebhookSource::Linear => (
+                headers.get("linear-signature").and_then(|v| v.to_str().ok()).unwrap_or(""),
+                "Linear-Signature",
+            ),
+            WebhookSource::GitHub => (
+                headers.get("x-hub-signature-256").and_then(|v| v.to_str().ok()).unwrap_or(""),
+                "X-Hub-Signature-256",
+            ),
+            WebhookSource::Any => {
+                // When source is unspecified, infer from presence of Linear-Event header.
+                if linear_event.is_some() {
+                    (
+                        headers.get("linear-signature").and_then(|v| v.to_str().ok()).unwrap_or(""),
+                        "Linear-Signature",
+                    )
+                } else {
+                    (
+                        headers
+                            .get("x-hub-signature-256")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or(""),
+                        "X-Hub-Signature-256",
+                    )
+                }
+            }
+        };
 
         if signature.is_empty() {
-            return Err(ApiError::Unauthorized("Missing X-Hub-Signature-256 header".to_string()));
+            return Err(ApiError::Unauthorized(format!("Missing {} header", header_name)));
         }
 
         if !webhook::verify_signature(secret_value, &body, signature) {
@@ -406,12 +459,14 @@ async fn handle_webhook(
         }
     }
 
-    // Extract GitHub-specific headers for payload parsing.
-    let github_event = headers.get("x-github-event").and_then(|v| v.to_str().ok());
-    let delivery_id = headers.get("x-github-delivery").and_then(|v| v.to_str().ok());
-
     // Parse the payload into a Task.
-    let task = webhook::parse_webhook_payload(github_event, delivery_id, &body);
+    let task = webhook::parse_webhook_payload(
+        github_event,
+        delivery_id,
+        linear_event,
+        linear_delivery,
+        &body,
+    );
 
     info!(
         %workflow_id,

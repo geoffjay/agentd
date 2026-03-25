@@ -90,9 +90,11 @@ impl Scheduler {
         // Build strategy and capture any channel sender for the workflow type.
         let mut manual_tx: Option<mpsc::Sender<Task>> = None;
         let strategy: Box<dyn strategy::TriggerStrategy> =
-            if let TriggerConfig::Webhook { ref secret } = config.trigger_config {
+            if let TriggerConfig::Webhook { ref secret, ref source } = config.trigger_config {
                 let (tx, rx) = mpsc::channel(webhook::DEFAULT_CHANNEL_CAPACITY);
-                self.webhook_registry.register(workflow_id, tx, secret.clone()).await;
+                self.webhook_registry
+                    .register(workflow_id, tx, secret.clone(), source.clone())
+                    .await;
                 Box::new(WebhookStrategy::new(rx))
             } else if matches!(config.trigger_config, TriggerConfig::Manual {}) {
                 let (tx, rx) = mpsc::channel(webhook::DEFAULT_CHANNEL_CAPACITY);
