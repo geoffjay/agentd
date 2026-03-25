@@ -113,10 +113,23 @@ async fn create_workflow(
             // No additional validation needed; source_workflow_id and status are optional.
         }
         TriggerConfig::Webhook { .. } | TriggerConfig::Manual {} => {}
-        TriggerConfig::LinearIssues { .. } => {
-            // Field-level validation (team_key, project, etc.) will be added
-            // when LinearIssueSource is implemented — see issue #475.
-            // All fields are optional so there is nothing to validate here yet.
+        TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } => {
+            // Require at least one filter so the scheduler does not poll the
+            // entire Linear workspace indiscriminately.  All filter fields are
+            // optional individually, but at least one must be provided.
+            let has_team = team_key.as_deref().is_some_and(|v| !v.trim().is_empty());
+            let has_project = project.as_deref().is_some_and(|v| !v.trim().is_empty());
+            let has_status = status.as_deref().is_some_and(|v| !v.is_empty());
+            let has_labels = !labels.is_empty();
+            let has_assignee = assignee.as_deref().is_some_and(|v| !v.trim().is_empty());
+
+            if !has_team && !has_project && !has_status && !has_labels && !has_assignee {
+                return Err(ApiError::InvalidInput(
+                    "Linear trigger requires at least one filter: \
+                     team_key, project, status, labels, or assignee."
+                        .to_string(),
+                ));
+            }
         }
     }
 
