@@ -53,6 +53,23 @@ fn default_enabled() -> bool {
     true
 }
 
+/// The expected origin of a webhook payload.
+///
+/// Bound to a webhook workflow at registration time. The HTTP handler enforces
+/// that inbound requests carry the correct platform headers, preventing
+/// source-spoofing attacks.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WebhookSource {
+    /// Accept webhooks from GitHub (`X-GitHub-Event` / `X-Hub-Signature-256`).
+    GitHub,
+    /// Accept webhooks from Linear (`Linear-Event` / `Linear-Signature`).
+    Linear,
+    /// Accept webhooks from any source (default — backward compatible).
+    #[default]
+    Any,
+}
+
 /// Tagged enum for different trigger backends.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -107,6 +124,10 @@ pub enum TriggerConfig {
     Webhook {
         #[serde(default)]
         secret: Option<String>,
+        /// Expected webhook source. Enforced by the handler to prevent
+        /// source-header spoofing. Defaults to `Any` for backward compatibility.
+        #[serde(default)]
+        source: WebhookSource,
     },
     /// Manual trigger — dispatched explicitly via the API.
     Manual {},

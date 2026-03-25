@@ -2326,9 +2326,10 @@ async fn create_workflow(
                 run_at.ok_or_else(|| anyhow::anyhow!("--run-at is required for delay trigger"))?;
             TriggerConfig::Delay { run_at: run_at_val.to_string() }
         }
-        TriggerType::Webhook => {
-            TriggerConfig::Webhook { secret: webhook_secret.map(|s| s.to_string()) }
-        }
+        TriggerType::Webhook => TriggerConfig::Webhook {
+            secret: webhook_secret.map(|s| s.to_string()),
+            source: Default::default(),
+        },
         TriggerType::Manual => TriggerConfig::Manual {},
         TriggerType::LinearIssues => {
             // At least one filter must be provided (validated server-side too,
@@ -2696,7 +2697,7 @@ fn display_workflow(workflow: &WorkflowResponse) {
                 println!("{}: {}", "Status Filter".bold(), s);
             }
         }
-        TriggerConfig::Webhook { secret } => {
+        TriggerConfig::Webhook { secret, .. } => {
             let secret_display = if secret.is_some() { "configured" } else { "none" };
             println!("{}: {}", "Secret".bold(), secret_display);
         }
@@ -3684,10 +3685,11 @@ mod tests {
         w.trigger_config = TriggerConfig::Delay { run_at: "2026-12-01T00:00:00Z".into() };
         display_workflow(&w);
 
-        w.trigger_config = TriggerConfig::Webhook { secret: Some("s3cret".into()) };
+        w.trigger_config =
+            TriggerConfig::Webhook { secret: Some("s3cret".into()), source: Default::default() };
         display_workflow(&w);
 
-        w.trigger_config = TriggerConfig::Webhook { secret: None };
+        w.trigger_config = TriggerConfig::Webhook { secret: None, source: Default::default() };
         display_workflow(&w);
 
         w.trigger_config = TriggerConfig::Manual {};
@@ -3806,8 +3808,8 @@ mod tests {
         let configs = vec![
             TriggerConfig::Cron { expression: "0 */6 * * *".into() },
             TriggerConfig::Delay { run_at: "2026-12-01T00:00:00Z".into() },
-            TriggerConfig::Webhook { secret: Some("s3cret".into()) },
-            TriggerConfig::Webhook { secret: None },
+            TriggerConfig::Webhook { secret: Some("s3cret".into()), source: Default::default() },
+            TriggerConfig::Webhook { secret: None, source: Default::default() },
             TriggerConfig::Manual {},
             TriggerConfig::LinearIssues {
                 team_key: Some("ENG".into()),
@@ -3876,7 +3878,9 @@ mod tests {
         .is_implemented());
         assert!(TriggerConfig::Cron { expression: "* * * * *".into() }.is_implemented());
         assert!(TriggerConfig::Delay { run_at: "2026-01-01T00:00:00Z".into() }.is_implemented());
-        assert!(TriggerConfig::Webhook { secret: None }.is_implemented());
+        assert!(
+            TriggerConfig::Webhook { secret: None, source: Default::default() }.is_implemented()
+        );
         assert!(TriggerConfig::Manual {}.is_implemented());
         assert!(TriggerConfig::LinearIssues {
             team_key: Some("ENG".into()),

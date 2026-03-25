@@ -19,13 +19,21 @@ use crate::scheduler::types::Task;
 /// | `status`             | dispatch_result        | Completion status (`completed` or `failed`)    |
 /// | `timestamp`          | dispatch_result        | RFC 3339 timestamp of the completion event     |
 /// | `original_source_id` | dispatch_result        | Source ID from the parent dispatch (if any)    |
-/// | `identifier`         | linear_issues          | Linear issue identifier (e.g., `"ENG-123"`)    |
-/// | `state`              | linear_issues          | Linear issue state name (e.g., `"Todo"`)       |
-/// | `priority`           | linear_issues          | Linear priority level (0 = none, 1 = urgent)   |
-/// | `team`               | linear_issues          | Linear team key (e.g., `"ENG"`)                |
-/// | `team_name`          | linear_issues          | Linear team display name                       |
+/// | `action`             | webhook (GitHub/Linear)| Event action (e.g., `"opened"`, `"create"`)    |
+/// | `github_event`       | webhook (GitHub)       | GitHub event type (e.g., `"issues"`)           |
+/// | `delivery_id`        | webhook (GitHub)       | GitHub delivery UUID (`X-GitHub-Delivery`)     |
+/// | `issue_number`       | webhook (GitHub)       | GitHub issue number                            |
+/// | `pr_number`          | webhook (GitHub)       | GitHub pull request number                     |
+/// | `linear_event`       | webhook (Linear)       | Linear event type (e.g., `"Issue"`)            |
+/// | `linear_action`      | webhook (Linear)       | Linear action (e.g., `"create"`, `"update"`)   |
+/// | `linear_delivery_id` | webhook (Linear)       | Linear delivery ID (`Linear-Delivery` header)  |
+/// | `identifier`         | linear_issues, webhook (Linear) | Linear issue identifier (e.g., `"ENG-123"`) |
+/// | `state`              | linear_issues, webhook (Linear) | Linear issue state name (e.g., `"Todo"`)    |
+/// | `priority`           | linear_issues, webhook (Linear) | Linear priority level (0 = none, 1 = urgent)|
+/// | `team`               | linear_issues, webhook (Linear) | Linear team key (e.g., `"ENG"`)             |
+/// | `team_name`          | linear_issues, webhook (Linear) | Linear team display name                    |
 /// | `project`            | linear_issues          | Linear project name                            |
-/// | `linear_id`          | linear_issues          | Internal Linear UUID (stable dedup key)        |
+/// | `linear_id`          | linear_issues, webhook (Linear) | Internal Linear UUID (stable dedup key)     |
 pub const KNOWN_VARIABLES: &[&str] = &[
     // Top-level task fields
     "title",
@@ -47,7 +55,20 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "status",
     "timestamp",
     "original_source_id",
-    // Metadata-backed (linear_issues trigger)
+    // Metadata-backed (webhook triggers — GitHub)
+    // Note: `action` is also used by Linear webhooks as `linear_action`; the
+    // GitHub `action` key and the Linear `linear_action` key are kept separate
+    // to avoid ambiguity when both header types could be present.
+    "action",
+    "github_event",
+    "delivery_id",
+    "issue_number",
+    "pr_number",
+    // Metadata-backed (webhook triggers — Linear)
+    "linear_event",
+    "linear_action",
+    "linear_delivery_id",
+    // Metadata-backed (linear_issues trigger + Linear webhooks)
     "identifier",
     "state",
     "priority",

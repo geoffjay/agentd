@@ -25,7 +25,7 @@ use orchestrator::{
     scheduler::{
         api::{webhook_routes, WorkflowState},
         storage::SchedulerStorage,
-        types::{TriggerConfig, WorkflowConfig},
+        types::{TriggerConfig, WebhookSource, WorkflowConfig},
         Scheduler,
     },
     storage::AgentStorage,
@@ -105,7 +105,7 @@ fn make_webhook_workflow(agent_id: Uuid, secret: Option<String>) -> WorkflowConf
         id: Uuid::new_v4(),
         name: "test-webhook-workflow".to_string(),
         agent_id,
-        trigger_config: TriggerConfig::Webhook { secret },
+        trigger_config: TriggerConfig::Webhook { secret, source: WebhookSource::Any },
         prompt_template: "Review: {{title}}".to_string(),
         poll_interval_secs: 60,
         enabled: true,
@@ -120,6 +120,29 @@ fn sign_body(secret: &str, body: &[u8]) -> String {
     mac.update(body);
     let result = mac.finalize();
     format!("sha256={}", hex::encode(result.into_bytes()))
+}
+
+fn make_linear_webhook_workflow(agent_id: Uuid, secret: Option<String>) -> WorkflowConfig {
+    let now = Utc::now();
+    WorkflowConfig {
+        id: Uuid::new_v4(),
+        name: "test-linear-webhook-workflow".to_string(),
+        agent_id,
+        trigger_config: TriggerConfig::Webhook { secret, source: WebhookSource::Linear },
+        prompt_template: "Review: {{title}}".to_string(),
+        poll_interval_secs: 60,
+        enabled: true,
+        tool_policy: Default::default(),
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+fn sign_body_linear(secret: &str, body: &[u8]) -> String {
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(body);
+    let result = mac.finalize();
+    hex::encode(result.into_bytes()) // No "sha256=" prefix — Linear format
 }
 
 async fn body_json(response: axum::response::Response) -> serde_json::Value {
@@ -425,4 +448,163 @@ async fn test_post_webhook_error_response_is_json_with_single_error_key() {
     assert!(json.is_object());
     assert!(json["error"].is_string());
     assert_eq!(json.as_object().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_post_linear_webhook_missing_signature_returns_401() {
+    let (app, scheduler, _tmp) = build_webhook_app().await;
+    let workflow = make_linear_webhook_workflow(Uuid::new_v4(), Some("secret".to_string()));
+    scheduler.start_workflow(workflow.clone()).await.unwrap();
+
+    let body = serde_json::json!({
+        "action": "create", "type": "Issue",
+        "data": { "identifier": "ENG-1", "title": "Test" }
+    })
+    .to_string();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/webhooks/{}", workflow.id))
+                .header("Content-Type", "application/json")
+                .header("Linear-Event", "Issue")
+                .header("Linear-Delivery", "del-001")
+                // No Linear-Signature header
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let json = body_json(response).await;
+    assert!(json["error"].as_str().unwrap().contains("Missing"));
+}
+
+#[tokio::test]
+async fn test_post_linear_webhook_invalid_signature_returns_401() {
+    let (app, scheduler, _tmp) = build_webhook_app().await;
+    let workflow = make_linear_webhook_workflow(Uuid::new_v4(), Some("correct-secret".to_string()));
+    scheduler.start_workflow(workflow.clone()).await.unwrap();
+
+    let body = serde_json::json!({
+        "action": "create", "type": "Issue",
+        "data": { "identifier": "ENG-1", "title": "Test" }
+    })
+    .to_string();
+    let wrong_sig = sign_body_linear("wrong-secret", body.as_bytes());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/webhooks/{}", workflow.id))
+                .header("Content-Type", "application/json")
+                .header("Linear-Event", "Issue")
+                .header("Linear-Delivery", "del-002")
+                .header("Linear-Signature", wrong_sig)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let json = body_json(response).await;
+    assert!(json["error"].as_str().unwrap().contains("Invalid"));
+}
+
+#[tokio::test]
+async fn test_post_linear_webhook_valid_signature_returns_202() {
+    let (app, scheduler, _tmp) = build_webhook_app().await;
+    let secret = "linear-webhook-secret";
+    let workflow = make_linear_webhook_workflow(Uuid::new_v4(), Some(secret.to_string()));
+    scheduler.start_workflow(workflow.clone()).await.unwrap();
+
+    let body = serde_json::json!({
+        "action": "create", "type": "Issue",
+        "data": { "identifier": "ENG-5", "title": "New issue", "description": "" }
+    })
+    .to_string();
+    let sig = sign_body_linear(secret, body.as_bytes());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/webhooks/{}", workflow.id))
+                .header("Content-Type", "application/json")
+                .header("Linear-Event", "Issue")
+                .header("Linear-Delivery", "del-003")
+                .header("Linear-Signature", sig)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
+async fn test_post_github_header_on_linear_workflow_returns_400() {
+    // Source enforcement: a GitHub webhook spoofing attack against a Linear workflow.
+    let (app, scheduler, _tmp) = build_webhook_app().await;
+    let workflow = make_linear_webhook_workflow(Uuid::new_v4(), None);
+    scheduler.start_workflow(workflow.clone()).await.unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/webhooks/{}", workflow.id))
+                .header("Content-Type", "application/json")
+                // No Linear-Event header — request looks like GitHub
+                .body(Body::from(r#"{"action":"opened"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(response).await;
+    assert!(json["error"].as_str().unwrap().contains("Linear"));
+}
+
+#[tokio::test]
+async fn test_post_linear_header_on_github_workflow_returns_400() {
+    // Source enforcement: a Linear header spoofing attack against a GitHub workflow.
+    let (app, scheduler, _tmp) = build_webhook_app().await;
+    let now = Utc::now();
+    let github_workflow = WorkflowConfig {
+        id: Uuid::new_v4(),
+        name: "github-only-wf".to_string(),
+        agent_id: Uuid::new_v4(),
+        trigger_config: TriggerConfig::Webhook { secret: None, source: WebhookSource::GitHub },
+        prompt_template: "{{title}}".to_string(),
+        poll_interval_secs: 60,
+        enabled: true,
+        tool_policy: Default::default(),
+        created_at: now,
+        updated_at: now,
+    };
+    scheduler.start_workflow(github_workflow.clone()).await.unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/webhooks/{}", github_workflow.id))
+                .header("Content-Type", "application/json")
+                .header("Linear-Event", "Issue") // spoofing!
+                .body(Body::from(r#"{"action":"create","type":"Issue","data":{"title":"x"}}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(response).await;
+    assert!(json["error"].as_str().unwrap().contains("GitHub"));
 }

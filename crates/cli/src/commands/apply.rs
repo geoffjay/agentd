@@ -655,7 +655,9 @@ pub async fn apply_workflow_file(
         SourceTemplate::DispatchResult { source_workflow_id, status } => {
             TriggerConfig::DispatchResult { source_workflow_id, status }
         }
-        SourceTemplate::Webhook { secret } => TriggerConfig::Webhook { secret },
+        SourceTemplate::Webhook { secret } => {
+            TriggerConfig::Webhook { secret, source: Default::default() }
+        }
         SourceTemplate::Manual {} => TriggerConfig::Manual {},
         SourceTemplate::LinearIssues { team_key, project, status, labels, assignee } => {
             TriggerConfig::LinearIssues { team_key, project, status, labels, assignee }
