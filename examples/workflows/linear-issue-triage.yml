@@ -1,0 +1,62 @@
+# Linear Issue Triage Workflow
+#
+# Automatically triages new Linear issues by analyzing their content
+# and providing severity assessments, suggested next steps, and priority
+# recommendations.
+#
+# Prerequisites:
+#   - Set AGENTD_LINEAR_API_KEY in the orchestrator environment
+#   - Replace "ENG" with your actual Linear team key
+#
+# Usage:
+#   agent orchestrator create-workflow \
+#     --name linear-triage \
+#     --agent-name triage-agent \
+#     --trigger-type linear-issues \
+#     --linear-team-key ENG \
+#     --linear-status "Triage" \
+#     --linear-labels "agent" \
+#     --poll-interval 120 \
+#     --prompt-template-file examples/workflows/linear-issue-triage.yml
+
+name: linear-issue-triage
+agent: planner
+
+source:
+  type: linear_issues
+  team_key: ENG                    # Replace with your Linear team key
+  status: ["Triage"]               # Only issues awaiting triage
+  labels: ["agent"]                # Must carry the "agent" label
+
+poll_interval: 120
+enabled: true
+
+# Tool policy: read-only access for safe triage
+tool_policy:
+  mode: allow_list
+  tools:
+    - Read
+    - Grep
+    - Glob
+    - WebFetch
+
+prompt_template: |
+  Triage Linear issue {{identifier}}: {{title}}
+
+  {{body}}
+
+  Team: {{team_name}} ({{team}}) | Priority: {{priority}} | State: {{state}}
+  Project: {{project}}
+  Assignee: {{assignee}}
+  Labels: {{labels}}
+  URL: {{url}}
+
+  Please provide a triage assessment including:
+  1. **Severity** — critical / high / medium / low based on the description and current priority ({{priority}})
+  2. **Type** — bug / feature / improvement / question / docs
+  3. **Suggested labels** — any additional labels that should be applied
+  4. **Suggested priority** — recommended priority level (1=urgent, 2=high, 3=medium, 4=low)
+  5. **Next steps** — a brief description of what needs to happen to move this issue forward
+  6. **Estimated complexity** — simple / moderate / complex
+
+  Respond in a structured format so a human reviewer can quickly apply the recommendations.

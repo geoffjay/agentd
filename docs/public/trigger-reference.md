@@ -10,6 +10,7 @@ This page is a consolidated quick-reference for all workflow trigger types. For 
 |---------|--------------|----------|--------------------------|-------------|--------------|
 | `github_issues` | New or updated GitHub issues matching filters | Yes — polls continuously | No | Yes | Yes |
 | `github_pull_requests` | New or updated GitHub PRs matching filters | Yes — polls continuously | No | Yes | Yes |
+| `linear_issues` | New or updated Linear issues matching filters | Yes — polls continuously | No | Yes | Yes |
 | `cron` | On a recurring cron schedule | Yes — indefinitely | No | Yes | Yes |
 | `delay` | Once at a specific datetime | No — auto-disables | No | Yes | Yes |
 | `agent_lifecycle` | When the agent connects, disconnects, or clears context | Yes | No | No — API only | No — API only |
@@ -33,6 +34,20 @@ Do not use when:
 
 - You need sub-second latency (use `webhook` instead)
 - The trigger source is not GitHub
+
+### `linear_issues`
+
+Use when:
+
+- You want an agent to react to Linear issues automatically
+- You manage engineering work in Linear and want agent-driven triage, assignment, or resolution
+- You are behind a firewall or don't want to expose a public endpoint
+- Latency of up to `poll_interval` is acceptable (default: 60 s)
+
+Do not use when:
+
+- You need sub-second latency (use `webhook` instead)
+- The trigger source is not Linear
 
 ### `cron`
 
@@ -106,6 +121,7 @@ All trigger types use the `trigger_config` field with a `"type"` discriminant:
 ```json
 { "type": "github_issues",        "owner": "myorg", "repo": "myrepo", "labels": ["agent"], "state": "open" }
 { "type": "github_pull_requests", "owner": "myorg", "repo": "myrepo", "labels": [],        "state": "open" }
+{ "type": "linear_issues",        "team_key": "ENG", "status": ["Triage"], "labels": ["bug"] }
 { "type": "cron",                 "expression": "0 9 * * MON-FRI" }
 { "type": "delay",                "run_at": "2026-04-01T09:00:00Z" }
 { "type": "agent_lifecycle",      "event": "session_start" }
@@ -131,6 +147,15 @@ source:
   owner: myorg
   repo: myrepo
   state: open
+
+# Linear Issues
+source:
+  type: linear_issues
+  team_key: ENG
+  status: [Triage]
+  labels: [bug]
+  # project: Backend       # optional
+  # assignee: alice@example.com  # optional
 
 # Cron
 source:
@@ -218,6 +243,24 @@ agent orchestrator create-workflow --name wf --agent-name agent \
 | `{{assignee}}` | Assignee login |
 | `{{source_id}}` | Issue or PR number (string) |
 
+### `linear_issues`
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{title}}` | Issue title | `"Fix login timeout"` |
+| `{{body}}` | Issue description (markdown) | Full markdown content |
+| `{{identifier}}` | Linear issue identifier | `ENG-123` |
+| `{{state}}` | Issue state name | `Todo`, `In Progress` |
+| `{{priority}}` | Priority level (0 = none, 1 = urgent, 2 = high, 3 = medium, 4 = low) | `2` |
+| `{{team}}` | Linear team key | `ENG` |
+| `{{team_name}}` | Linear team display name | `Engineering` |
+| `{{project}}` | Linear project name (empty if unset) | `Backend` |
+| `{{assignee}}` | Assignee display name or email (empty if unassigned) | `alice@example.com` |
+| `{{labels}}` | Comma-separated label names | `"bug, urgent"` |
+| `{{url}}` | Linear issue URL | `https://linear.app/myorg/issue/ENG-123` |
+| `{{linear_id}}` | Internal Linear UUID (stable dedup key) | `abc-uuid-...` |
+| `{{source_id}}` | Same as `{{linear_id}}` | `abc-uuid-...` |
+
 ### `cron`
 
 | Variable | Description | Example |
@@ -281,13 +324,13 @@ agent orchestrator create-workflow --name wf --agent-name agent \
 
 ## Performance Considerations
 
-| Aspect | Polling (`github_issues`, `github_pull_requests`) | Schedule (`cron`, `delay`) | Event (`agent_lifecycle`, `dispatch_result`) | Webhook | Manual |
-|--------|--------------------------------------------------|---------------------------|----------------------------------------------|---------|--------|
-| Latency | Up to `poll_interval_secs` (default 60 s) | Zero — wakes exactly at fire time | Near-zero — in-process event bus | Sub-second | Immediate |
-| External API calls | Yes — GitHub API per poll | None | None | One inbound HTTP request per event | None |
-| Missed events on restart | No — deduplication by issue/PR number | No — dedup by fire time / workflow ID | Yes — events not stored | Depends on sender retry policy | N/A |
-| Network requirements | Outbound to GitHub | None | None | Inbound HTTP (public endpoint or tunnel) | None |
-| Rate limits | GitHub API rate limits apply | None | None | Depends on sender volume | None |
+| Aspect | Polling (`github_issues`, `github_pull_requests`) | Polling (`linear_issues`) | Schedule (`cron`, `delay`) | Event (`agent_lifecycle`, `dispatch_result`) | Webhook | Manual |
+|--------|--------------------------------------------------|--------------------------|---------------------------|----------------------------------------------|---------|--------|
+| Latency | Up to `poll_interval_secs` (default 60 s) | Up to `poll_interval` (default 60 s) | Zero — wakes exactly at fire time | Near-zero — in-process event bus | Sub-second | Immediate |
+| External API calls | Yes — GitHub API per poll | Yes — Linear API per poll | None | None | One inbound HTTP request per event | None |
+| Missed events on restart | No — deduplication by issue/PR number | No — deduplication by Linear UUID | No — dedup by fire time / workflow ID | Yes — events not stored | Depends on sender retry policy | N/A |
+| Network requirements | Outbound to GitHub | Outbound to Linear | None | None | Inbound HTTP (public endpoint or tunnel) | None |
+| Rate limits | GitHub API rate limits apply | Linear API rate limits apply | None | None | Depends on sender volume | None |
 
 ### Polling vs. webhooks for GitHub
 
@@ -371,6 +414,7 @@ This bypasses the workflow's normal trigger strategy and dispatches immediately.
 | Cron and delay triggers | [Schedule Triggers](schedule-triggers.md) |
 | Agent lifecycle and dispatch result triggers | [Event-Driven Triggers](event-triggers.md) |
 | Webhook trigger and GitHub setup | [Webhook Triggers](webhook-triggers.md) |
+| Linear trigger setup and filter options | [Linear Triggers](linear-triggers.md) |
 | Manual trigger and on-demand dispatch | [Manual Triggers](manual-trigger.md) |
 | YAML template schema | [Templates](templates.md) |
 | Migration from `source_config` | [Migration Guide](migration-trigger.md) |
