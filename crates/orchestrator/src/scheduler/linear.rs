@@ -342,6 +342,9 @@ pub struct LinearIssueSource {
     /// Pre-resolved API key.  Never logged.
     api_key: String,
     client: reqwest::Client,
+    /// Base URL for the Linear GraphQL API.  Defaults to [`LINEAR_API_URL`].
+    /// Overridable in tests to point at a local mock server.
+    api_url: String,
 }
 
 /// Custom Debug excludes the API key.
@@ -379,7 +382,35 @@ impl LinearIssueSource {
             assignee,
             api_key: config.api_key().to_string(),
             client: reqwest::Client::new(),
+            api_url: LINEAR_API_URL.to_string(),
         })
+    }
+
+    /// Create a source with an explicit API URL (for testing against a mock server).
+    ///
+    /// This constructor is intended for integration tests only. It bypasses
+    /// [`LinearConfig::resolve`] and accepts an explicit API key and base URL.
+    #[doc(hidden)]
+    #[allow(dead_code)]
+    pub fn new_with_url(
+        team_key: Option<String>,
+        project: Option<String>,
+        status: Option<Vec<String>>,
+        labels: Vec<String>,
+        assignee: Option<String>,
+        api_key: String,
+        api_url: String,
+    ) -> Self {
+        Self {
+            team_key,
+            project,
+            status,
+            labels,
+            assignee,
+            api_key,
+            client: reqwest::Client::new(),
+            api_url,
+        }
     }
 
     /// Build a Linear `IssueFilter` JSON object from the configured filters.
@@ -453,7 +484,7 @@ impl LinearIssueSource {
 
         let response = self
             .client
-            .post(LINEAR_API_URL)
+            .post(self.api_url.as_str())
             // Linear personal API keys use a bare `Authorization: <key>` header —
             // no "Bearer" prefix required.
             .header("Authorization", &self.api_key)
@@ -827,6 +858,7 @@ mod tests {
             assignee: assignee.map(str::to_string),
             api_key: "test_key".to_string(),
             client: reqwest::Client::new(),
+            api_url: LINEAR_API_URL.to_string(),
         }
     }
 
