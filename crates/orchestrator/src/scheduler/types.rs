@@ -110,6 +110,37 @@ pub enum TriggerConfig {
     },
     /// Manual trigger — dispatched explicitly via the API.
     Manual {},
+    /// Linear issues trigger — polls Linear for issues matching the given filters.
+    ///
+    /// Requires `AGENTD_LINEAR_API_KEY` to be set in the environment.
+    /// All filter fields are optional; omitting them returns all accessible issues.
+    ///
+    /// # Fields
+    ///
+    /// - `team_key` — Linear team key to filter by (e.g. `"ENG"`).
+    /// - `project` — Linear project name or ID to filter by.
+    /// - `status` — Issue status names to include (e.g. `["Todo", "In Progress"]`).
+    ///   Defaults to all statuses when omitted.
+    /// - `labels` — Label names the issue must have (all must match).
+    /// - `assignee` — Assignee display name or email to filter by.
+    LinearIssues {
+        /// Linear team key filter (e.g. `"ENG"`).
+        #[serde(default)]
+        team_key: Option<String>,
+        /// Linear project name or ID filter.
+        #[serde(default)]
+        project: Option<String>,
+        /// Issue status filter (e.g. `["Todo", "In Progress"]`).
+        /// Defaults to all statuses when `None`.
+        #[serde(default)]
+        status: Option<Vec<String>>,
+        /// Label filter — issue must carry all listed labels.
+        #[serde(default)]
+        labels: Vec<String>,
+        /// Assignee display name or email filter.
+        #[serde(default)]
+        assignee: Option<String>,
+    },
 }
 
 fn default_issue_state() -> String {
@@ -131,22 +162,24 @@ impl TriggerConfig {
             TriggerConfig::DispatchResult { .. } => "dispatch_result",
             TriggerConfig::Webhook { .. } => "webhook",
             TriggerConfig::Manual { .. } => "manual",
+            TriggerConfig::LinearIssues { .. } => "linear_issues",
         }
     }
 
     /// Returns `true` for trigger types that have a working implementation.
     pub fn is_implemented(&self) -> bool {
-        matches!(
-            self,
+        match self {
             TriggerConfig::GithubIssues { .. }
-                | TriggerConfig::GithubPullRequests { .. }
-                | TriggerConfig::Cron { .. }
-                | TriggerConfig::Delay { .. }
-                | TriggerConfig::AgentLifecycle { .. }
-                | TriggerConfig::DispatchResult { .. }
-                | TriggerConfig::Webhook { .. }
-                | TriggerConfig::Manual { .. }
-        )
+            | TriggerConfig::GithubPullRequests { .. }
+            | TriggerConfig::Cron { .. }
+            | TriggerConfig::Delay { .. }
+            | TriggerConfig::AgentLifecycle { .. }
+            | TriggerConfig::DispatchResult { .. }
+            | TriggerConfig::Webhook { .. }
+            | TriggerConfig::Manual { .. } => true,
+            // LinearIssues source is not yet implemented — see issue #475.
+            TriggerConfig::LinearIssues { .. } => false,
+        }
     }
 
     /// Returns `true` for one-shot trigger types that should auto-disable
@@ -309,5 +342,80 @@ impl From<DispatchRecord> for DispatchResponse {
             dispatched_at: d.dispatched_at,
             completed_at: d.completed_at,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_trigger_config_linear_issues_trigger_type() {
+        let cfg = TriggerConfig::LinearIssues {
+            team_key: Some("ENG".into()),
+            project: None,
+            status: None,
+            labels: vec![],
+            assignee: None,
+        };
+        assert_eq!(cfg.trigger_type(), "linear_issues");
+    }
+
+    #[test]
+    fn test_trigger_config_linear_issues_serde_full() {
+        let json = r#"{
+            "type": "linear_issues",
+            "team_key": "ENG",
+            "project": "Backend",
+            "status": ["Todo", "In Progress"],
+            "labels": ["bug", "urgent"],
+            "assignee": "alice@example.com"
+        }"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.trigger_type(), "linear_issues");
+        if let TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } = cfg {
+            assert_eq!(team_key.as_deref(), Some("ENG"));
+            assert_eq!(project.as_deref(), Some("Backend"));
+            assert_eq!(
+                status.as_deref(),
+                Some(&["Todo".to_string(), "In Progress".to_string()][..])
+            );
+            assert_eq!(labels, vec!["bug", "urgent"]);
+            assert_eq!(assignee.as_deref(), Some("alice@example.com"));
+        } else {
+            panic!("Expected LinearIssues variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_linear_issues_serde_minimal_defaults() {
+        // All optional fields omitted — should deserialize with defaults.
+        let json = r#"{"type": "linear_issues"}"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        if let TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } = cfg {
+            assert!(team_key.is_none());
+            assert!(project.is_none());
+            assert!(status.is_none());
+            assert!(labels.is_empty());
+            assert!(assignee.is_none());
+        } else {
+            panic!("Expected LinearIssues variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_linear_issues_serde_roundtrip() {
+        let original = TriggerConfig::LinearIssues {
+            team_key: Some("OPS".into()),
+            project: Some("Infra".into()),
+            status: Some(vec!["Todo".into()]),
+            labels: vec!["infra".into()],
+            assignee: Some("bob@example.com".into()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: TriggerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.trigger_type(), "linear_issues");
+        // Serialized tag must be snake_case.
+        assert!(json.contains(r#""type":"linear_issues""#));
     }
 }
