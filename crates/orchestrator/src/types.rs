@@ -324,9 +324,22 @@ pub struct AgentConfig {
     /// If true, start the session with --worktree.
     #[serde(default)]
     pub worktree: bool,
-    /// System prompt to use for the session.
+    /// System prompt to use for the session (inline text).
+    /// Mutually exclusive with `system_prompt_file`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    /// Path to a file whose contents will be used as the system prompt.
+    /// Mutually exclusive with `system_prompt`. Maps to `--system-prompt-file`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt_file: Option<String>,
+    /// If `true`, the system prompt is *appended* to the default prompt instead
+    /// of replacing it. Changes the flag used:
+    /// - `false` + `system_prompt` → `--system-prompt`
+    /// - `false` + `system_prompt_file` → `--system-prompt-file`
+    /// - `true`  + `system_prompt` → `--append-system-prompt`
+    /// - `true`  + `system_prompt_file` → `--append-system-prompt-file`
+    #[serde(default)]
+    pub append_system_prompt: bool,
     /// Tool-use policy for this agent.
     #[serde(default)]
     pub tool_policy: ToolPolicy,
@@ -445,9 +458,18 @@ pub struct CreateAgentRequest {
     /// If true, start the session with --worktree.
     #[serde(default)]
     pub worktree: bool,
-    /// System prompt to use for the session.
+    /// System prompt to use for the session (inline text).
+    /// Mutually exclusive with `system_prompt_file`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    /// Path to a file whose contents will be used as the system prompt.
+    /// Mutually exclusive with `system_prompt`. Maps to `--system-prompt-file`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt_file: Option<String>,
+    /// If `true`, use `--append-system-prompt` / `--append-system-prompt-file`
+    /// instead of the replace variants.
+    #[serde(default)]
+    pub append_system_prompt: bool,
     /// Tool-use policy for this agent.
     #[serde(default)]
     pub tool_policy: ToolPolicy,
@@ -860,6 +882,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: Some("opus".to_string()),
             env: HashMap::new(),
@@ -888,6 +912,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
@@ -914,6 +940,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: Some("sonnet".to_string()),
             env: HashMap::new(),
@@ -946,6 +974,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: env.clone(),
@@ -976,6 +1006,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
@@ -1018,6 +1050,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: env.clone(),
@@ -1051,6 +1085,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env,
@@ -1165,6 +1201,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
@@ -1192,6 +1230,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
@@ -1243,6 +1283,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
@@ -1273,6 +1315,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
@@ -1622,6 +1666,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: Default::default(),

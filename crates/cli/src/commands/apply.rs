@@ -50,6 +50,11 @@ pub struct AgentTemplate {
     pub worktree: bool,
     pub prompt: Option<String>,
     pub system_prompt: Option<String>,
+    /// Path to a file whose contents replace or append to the system prompt.
+    pub system_prompt_file: Option<String>,
+    /// If true, use --append-system-prompt / --append-system-prompt-file.
+    #[serde(default)]
+    pub append_system_prompt: bool,
     #[serde(default)]
     pub tool_policy: ToolPolicy,
     /// Model to use for the claude session (e.g. sonnet, opus, haiku).
@@ -1117,6 +1122,17 @@ async fn apply_agent(
         })
         .collect();
 
+    // Resolve system_prompt_file relative to the YAML file location, same as additional_dirs.
+    let system_prompt_file = tmpl.system_prompt_file.as_deref().map(|f| {
+        let p = Path::new(f);
+        if p.is_absolute() {
+            f.to_string()
+        } else {
+            let full = base.join(p);
+            full.canonicalize().unwrap_or(full).to_string_lossy().to_string()
+        }
+    });
+
     let request = CreateAgentRequest {
         name: tmpl.name.clone(),
         working_dir,
@@ -1126,6 +1142,8 @@ async fn apply_agent(
         prompt: tmpl.prompt.clone(),
         worktree: tmpl.worktree,
         system_prompt: tmpl.system_prompt.clone(),
+        system_prompt_file,
+        append_system_prompt: tmpl.append_system_prompt,
         tool_policy: tmpl.tool_policy.clone(),
         model: tmpl.model.clone(),
         env: tmpl.env.clone(),

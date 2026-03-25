@@ -150,6 +150,25 @@ async fn create_agent(
     State(state): State<ApiState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Validate and canonicalize system_prompt_file if provided.
+    let system_prompt_file = req
+        .system_prompt_file
+        .map(|raw| {
+            let p = std::path::Path::new(&raw);
+            if !p.exists() {
+                return Err(ApiError::InvalidInput(format!(
+                    "system_prompt_file does not exist: {raw}"
+                )));
+            }
+            if !p.is_file() {
+                return Err(ApiError::InvalidInput(format!(
+                    "system_prompt_file is not a regular file: {raw}"
+                )));
+            }
+            Ok(std::fs::canonicalize(p).map(|c| c.to_string_lossy().to_string()).unwrap_or(raw))
+        })
+        .transpose()?;
+
     let config = AgentConfig {
         working_dir: req.working_dir,
         user: req.user,
@@ -158,6 +177,8 @@ async fn create_agent(
         prompt: req.prompt,
         worktree: req.worktree,
         system_prompt: req.system_prompt,
+        system_prompt_file,
+        append_system_prompt: req.append_system_prompt,
         tool_policy: req.tool_policy,
         model: req.model,
         env: req.env,

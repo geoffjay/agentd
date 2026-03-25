@@ -80,6 +80,17 @@ impl AgentManager {
             }
         }
 
+        // Warn if system_prompt_file is set but does not exist at spawn time.
+        if let Some(ref path) = agent.config.system_prompt_file {
+            if !std::path::Path::new(path).is_file() {
+                warn!(
+                    agent_id = %agent.id,
+                    path = %path,
+                    "system_prompt_file does not exist or is not a regular file at spawn time"
+                );
+            }
+        }
+
         // Determine whether to use interactive / PTY mode.
         // PTY backend always uses PTY stdin (not WebSocket) so that the session
         // remains interactable. Config-level `interactive` flag is also respected.
@@ -734,8 +745,22 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str, interactive: bool) -
         args.push(format!("--add-dir {}", shell_escape_value(dir)));
     }
 
-    if let Some(ref system_prompt) = config.system_prompt {
-        args.push(format!("--system-prompt '{}'", system_prompt.replace('\'', "'\\''")));
+    // System prompt flags — four combinations based on (file vs inline) × (replace vs append).
+    match (config.append_system_prompt, &config.system_prompt, &config.system_prompt_file) {
+        (false, Some(prompt), _) => {
+            args.push(format!("--system-prompt {}", shell_escape_value(prompt)));
+        }
+        (false, None, Some(path)) => {
+            args.push(format!("--system-prompt-file {}", shell_escape_value(path)));
+        }
+        (true, Some(prompt), _) => {
+            args.push(format!("--append-system-prompt {}", shell_escape_value(prompt)));
+        }
+        (true, None, Some(path)) => {
+            args.push(format!("--append-system-prompt-file {}", shell_escape_value(path)));
+        }
+        // Neither prompt nor file set — no flag emitted.
+        (_, None, None) => {}
     }
 
     // NOTE: --print / -p is intentionally NOT used here. It causes claude to
@@ -784,6 +809,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
@@ -958,6 +985,115 @@ mod tests {
         assert!(!is_valid_env_var_name("HAS=EQUALS"));
         assert!(!is_valid_env_var_name("BAD;SEMICOLON"));
         assert!(!is_valid_env_var_name("KEY\nNEWLINE"));
+    }
+
+    // -- system prompt flag tests --
+
+    #[test]
+    fn test_build_claude_command_no_system_prompt_flag_when_absent() {
+        let config = base_config();
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(!cmd.contains("--system-prompt"), "no system-prompt flag when none configured");
+        assert!(!cmd.contains("--append-system-prompt"), "no append flag when none configured");
+    }
+
+    #[test]
+    fn test_build_claude_command_replace_inline_prompt() {
+        let config = AgentConfig {
+            system_prompt: Some("You are a Rust expert".to_string()),
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--system-prompt 'You are a Rust expert'"));
+        assert!(!cmd.contains("--append-system-prompt"));
+        assert!(!cmd.contains("--system-prompt-file"));
+    }
+
+    #[test]
+    fn test_build_claude_command_replace_prompt_file() {
+        let config = AgentConfig {
+            system_prompt_file: Some("./.agentd/agents/expert.md".to_string()),
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--system-prompt-file './.agentd/agents/expert.md'"));
+        assert!(!cmd.contains("--system-prompt "));
+        assert!(!cmd.contains("--append-system-prompt"));
+    }
+
+    #[test]
+    fn test_build_claude_command_append_inline_prompt() {
+        let config = AgentConfig {
+            system_prompt: Some("Always use TypeScript".to_string()),
+            append_system_prompt: true,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--append-system-prompt 'Always use TypeScript'"));
+        assert!(!cmd.contains("--system-prompt "));
+        assert!(!cmd.contains("--system-prompt-file"));
+    }
+
+    #[test]
+    fn test_build_claude_command_append_prompt_file() {
+        let config = AgentConfig {
+            system_prompt_file: Some("./style-rules.txt".to_string()),
+            append_system_prompt: true,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--append-system-prompt-file './style-rules.txt'"));
+        assert!(!cmd.contains("--system-prompt "));
+        assert!(!cmd.contains("--system-prompt-file "));
+    }
+
+    #[test]
+    fn test_build_claude_command_system_prompt_inline_escaped() {
+        // Single quotes in the prompt must be shell-escaped.
+        let config =
+            AgentConfig { system_prompt: Some("You're an expert".to_string()), ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--system-prompt 'You'\\''re an expert'"));
+    }
+
+    #[test]
+    fn test_build_claude_command_append_inline_prompt_escaped() {
+        let config = AgentConfig {
+            system_prompt: Some("Don't skip tests".to_string()),
+            append_system_prompt: true,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--append-system-prompt 'Don'\\''t skip tests'"));
+    }
+
+    #[test]
+    fn test_build_claude_command_system_prompt_inline_takes_precedence_over_file() {
+        // When both are set, system_prompt (inline) takes precedence (append=false).
+        let config = AgentConfig {
+            system_prompt: Some("inline prompt".to_string()),
+            system_prompt_file: Some("./file.md".to_string()),
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--system-prompt 'inline prompt'"));
+        assert!(!cmd.contains("--system-prompt-file"));
+    }
+
+    #[test]
+    fn test_build_claude_command_append_inline_takes_precedence_over_file() {
+        // When both are set with append=true, system_prompt (inline) takes precedence.
+        let config = AgentConfig {
+            system_prompt: Some("inline append".to_string()),
+            system_prompt_file: Some("./file.md".to_string()),
+            append_system_prompt: true,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--append-system-prompt 'inline append'"));
+        assert!(!cmd.contains("--append-system-prompt-file"));
+        assert!(!cmd.contains("--system-prompt-file"));
+        assert!(!cmd.contains("--system-prompt "));
     }
 
     // -- additional_dirs / --add-dir tests --

@@ -87,18 +87,23 @@ function EnvVarsRow({ env }: { env: Record<string, string> }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Replace the system prompt value in a launch command string with a
+ * Replace inline system prompt values in a launch command string with a
  * `<system prompt>` placeholder so the full (potentially long) prompt text
  * is not duplicated in the debug view.
  *
- * The command builder shell-escapes the system prompt using single-quote
- * POSIX escaping (`'value'` with embedded `'` replaced by `'\''`), so we
- * reconstruct the same escaped form and replace it with the placeholder.
+ * Handles both `--system-prompt` and `--append-system-prompt` flags.
+ * File-path variants (`--system-prompt-file`, `--append-system-prompt-file`)
+ * are left as-is since the path is short and not sensitive.
+ *
+ * The command builder shell-escapes the prompt using single-quote POSIX
+ * escaping (`'value'` with embedded `'` replaced by `'\''`).
  */
 function redactSystemPromptInCommand(command: string, systemPrompt: string | undefined | null): string {
   if (!systemPrompt) return command
   const escaped = systemPrompt.replace(/'/g, "'\\''")
-  return command.replace(`--system-prompt '${escaped}'`, "--system-prompt '<system prompt>'")
+  return command
+    .replace(`--system-prompt '${escaped}'`, "--system-prompt '<system prompt>'")
+    .replace(`--append-system-prompt '${escaped}'`, "--append-system-prompt '<system prompt>'")
 }
 
 // ---------------------------------------------------------------------------
@@ -451,6 +456,22 @@ export function AgentConfigPanel({ agent, onAddDir, onRemoveDir }: AgentConfigPa
           </ConfigRow>
 
           {config.system_prompt && <SystemPromptRow prompt={config.system_prompt} />}
+
+          {config.system_prompt_file && (
+            <ConfigRow label="Prompt File">
+              <span className="font-mono text-xs break-all">{config.system_prompt_file}</span>
+            </ConfigRow>
+          )}
+
+          {(config.system_prompt || config.system_prompt_file) && (
+            <ConfigRow label="Prompt Mode">
+              {config.append_system_prompt ? (
+                <span className="text-blue-600 dark:text-blue-400">Append</span>
+              ) : (
+                <span className="text-gray-500 dark:text-gray-400">Replace</span>
+              )}
+            </ConfigRow>
+          )}
 
           {config.env && Object.keys(config.env).length > 0 && <EnvVarsRow env={config.env} />}
 
