@@ -42,3 +42,4 @@ sea-orm = { version = "1.1", features = ["sqlx-sqlite", "runtime-tokio-rustls", 
 sea-orm-migration = { version = "1.1" }
 chrono = { version = ">=0.4.40", features = ["serde"] }
 croner = "3.0"
+toml = "0.8"

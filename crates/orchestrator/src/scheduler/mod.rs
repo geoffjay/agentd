@@ -1,6 +1,7 @@
 pub mod api;
 pub mod events;
 pub mod github;
+pub mod linear;
 pub mod runner;
 pub mod source;
 pub mod storage;
