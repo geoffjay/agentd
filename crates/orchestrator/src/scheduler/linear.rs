@@ -386,12 +386,12 @@ impl LinearIssueSource {
         })
     }
 
-    /// Create a source with an explicit API URL (for testing against a mock server).
+    /// Create a source with an explicit API URL.
     ///
-    /// This constructor is intended for integration tests only. It bypasses
-    /// [`LinearConfig::resolve`] and accepts an explicit API key and base URL.
+    /// Accepts an explicit API key and base URL, bypassing [`LinearConfig::resolve`].
+    /// Hidden from generated documentation (`#[doc(hidden)]`) but publicly callable —
+    /// used by integration tests in `tests/linear_fetch_http.rs`.
     #[doc(hidden)]
-    #[allow(dead_code)]
     pub fn new_with_url(
         team_key: Option<String>,
         project: Option<String>,

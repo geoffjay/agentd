@@ -112,6 +112,7 @@ async fn test_fetch_tasks_single_page_returns_all_issues() {
     assert_eq!(tasks[0].assignee, Some("Alice".to_string()));
     assert_eq!(tasks[0].labels, vec!["bug"]);
     assert_eq!(tasks[0].metadata.get("team").map(String::as_str), Some("ENG"));
+    assert_eq!(tasks[0].metadata.get("team_name").map(String::as_str), Some("Engineering"));
     assert_eq!(tasks[0].metadata.get("state").map(String::as_str), Some("Todo"));
     assert_eq!(tasks[0].metadata.get("priority").map(String::as_str), Some("2"));
     assert_eq!(tasks[0].metadata.get("project").map(String::as_str), Some("Q1 Roadmap"));
@@ -177,6 +178,7 @@ async fn test_fetch_tasks_paginates_through_multiple_pages() {
 
     Mock::given(method("POST"))
         .and(path("/graphql"))
+        .and(wiremock::matchers::body_string_contains("cursor-abc"))
         .respond_with(ResponseTemplate::new(200).set_body_json(&page2))
         .up_to_n_times(1)
         .expect(1)
@@ -224,7 +226,7 @@ async fn test_fetch_tasks_http_error_returns_err() {
     let result = source.fetch_tasks().await;
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("401") || msg.contains("Linear page fetch"), "error: {}", msg);
+    assert!(msg.contains("401") && msg.contains("Linear page fetch"), "error: {}", msg);
 }
 
 #[tokio::test]
