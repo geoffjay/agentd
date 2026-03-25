@@ -67,6 +67,7 @@ tags.temp
 # AI
 .claude/settings.local.json
 .claude/worktrees
+.claude/hooks/__pycache__/
 
 # Otter additions
 .claude/scripts/merge-claude-settings.sh

@@ -28,8 +28,10 @@ import {
 import { AgentStatusBadge } from '@/components/agents/AgentStatusBadge'
 import { AgentConfigPanel } from '@/components/agents/AgentConfigPanel'
 import { AgentLogView } from '@/components/agents/AgentLogView'
+import { AgentTerminal } from '@/components/agents/AgentTerminal'
 import { AgentCommandInput } from '@/components/agents/AgentCommandInput'
 import { AgentPolicyEditor } from '@/components/agents/AgentPolicyEditor'
+import { PolicyDisplay } from '@/components/agents/PolicyDisplay'
 import { AgentApprovals } from '@/components/agents/AgentApprovals'
 import { AgentUsagePanel } from '@/components/agents/AgentUsagePanel'
 import { AgentTodosPanel } from '@/components/agents/AgentTodosPanel'
@@ -41,6 +43,7 @@ import { useAgentUsage } from '@/hooks/useAgentUsage'
 import { useToast } from '@/hooks/useToast'
 import { orchestratorClient } from '@/services/orchestrator'
 import type { SessionUsage, SetModelRequest, ToolPolicy } from '@/types/orchestrator'
+import type { BackendInfo } from '@/types/common'
 
 // ---------------------------------------------------------------------------
 // Model selector constants
@@ -587,6 +590,24 @@ export function AgentDetail() {
   const [showAddDirDialog, setShowAddDirDialog] = useState(false)
   const [policyEditing, setPolicyEditing] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [activeTab, setActiveTab] = useState<'logs' | 'terminal'>('logs')
+  // Backend capability detection — populated on mount; null means loading.
+  const [backendInfo, setBackendInfo] = useState<BackendInfo | null>(null)
+
+  // Fetch backend capabilities once on mount so the UI can show/hide features.
+  useEffect(() => {
+    orchestratorClient
+      .getInfo()
+      .then(setBackendInfo)
+      .catch(() => {
+        // If the /info endpoint is unavailable (older orchestrator), assume
+        // a tmux backend without PTY streaming capability.
+        setBackendInfo({ backend_type: 'tmux', version: 'unknown', capabilities: [] })
+      })
+  }, [])
+
+  // Derived: whether the active backend supports PTY terminal streaming.
+  const ptyAvailable = backendInfo?.capabilities.includes('terminal') ?? false
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -765,10 +786,80 @@ export function AgentDetail() {
 
       {/* ── Main content + sidebar ───────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Log view (takes 2/3 width on large screens) */}
+        {/* Log / Terminal view (takes 2/3 width on large screens) */}
         <div className="flex flex-col gap-3 lg:col-span-2">
+          {/* Tab switcher — Terminal tab only shown when backend supports PTY streaming */}
+          <div
+            role="tablist"
+            aria-label="Agent output view"
+            className="flex gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <button
+              role="tab"
+              type="button"
+              aria-selected={activeTab === 'logs'}
+              aria-controls="tab-panel-logs"
+              id="tab-logs"
+              onClick={() => setActiveTab('logs')}
+              className={[
+                'flex-1 rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
+                activeTab === 'logs'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+              ].join(' ')}
+            >
+              Logs
+            </button>
+            {ptyAvailable && (
+              <button
+                role="tab"
+                type="button"
+                aria-selected={activeTab === 'terminal'}
+                aria-controls="tab-panel-terminal"
+                id="tab-terminal"
+                onClick={() => setActiveTab('terminal')}
+                className={[
+                  'flex-1 rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
+                  activeTab === 'terminal'
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+                ].join(' ')}
+              >
+                Terminal
+              </button>
+            )}
+          </div>
+
+          {/* Tab panels */}
           <div className="h-[480px]">
-            <AgentLogView lines={lines} status={streamStatus} onClear={clearLog} />
+            <div
+              role="tabpanel"
+              id="tab-panel-logs"
+              aria-labelledby="tab-logs"
+              hidden={activeTab !== 'logs'}
+              className="h-full"
+            >
+              <AgentLogView lines={lines} status={streamStatus} onClear={clearLog} />
+            </div>
+            {ptyAvailable && (
+              <div
+                role="tabpanel"
+                id="tab-panel-terminal"
+                aria-labelledby="tab-terminal"
+                hidden={activeTab !== 'terminal'}
+                className="h-full"
+              >
+                {/* Mount AgentTerminal only when the Terminal tab is active to
+                    avoid an unnecessary WebSocket connection while viewing Logs */}
+                {activeTab === 'terminal' && (
+                  <AgentTerminal
+                    agentId={agentId}
+                    agentInteractive={agent.config.interactive}
+                    readOnly={true}
+                  />
+                )}
+              </div>
+            )}
           </div>
 
           {/* Command input */}
@@ -827,23 +918,7 @@ export function AgentDetail() {
               {policyEditing ? (
                 <AgentPolicyEditor policy={agent.config.tool_policy} onSave={handlePolicySave} />
               ) : (
-                <p className="text-sm text-gray-700 dark:text-gray-300">
-                  {(() => {
-                    const p = agent.config.tool_policy
-                    switch (p.mode) {
-                      case 'allow_all':
-                        return 'Allow all tools'
-                      case 'deny_all':
-                        return 'Deny all tools'
-                      case 'require_approval':
-                        return 'Require approval for all tools'
-                      case 'allow_list':
-                        return `Allow: ${p.tools.join(', ') || '(none)'}`
-                      case 'deny_list':
-                        return `Deny: ${p.tools.join(', ') || '(none)'}`
-                    }
-                  })()}
-                </p>
+                <PolicyDisplay policy={agent.config.tool_policy} />
               )}
             </div>
           </section>

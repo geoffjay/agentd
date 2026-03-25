@@ -7,8 +7,9 @@
  */
 
 import { useState } from 'react'
-import { Plus, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Plus, Trash2, X } from 'lucide-react'
 import type { CreateAgentRequest, ToolPolicy } from '@/types/orchestrator'
+import { HighlightedCode } from '@/components/common'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -177,6 +178,7 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
   const [form, setForm] = useState<FormState>(DEFAULT_FORM)
   const [errors, setErrors] = useState<FormErrors>({})
   const [submitting, setSubmitting] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -347,36 +349,6 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
               </select>
             </div>
 
-            {/* Interactive toggle */}
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Interactive
-                </span>
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  Run agent in interactive (TTY) mode
-                </span>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={form.interactive}
-                aria-label="Interactive mode"
-                onClick={() => update('interactive', !form.interactive)}
-                className={[
-                  'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900',
-                  form.interactive ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700',
-                ].join(' ')}
-              >
-                <span
-                  className={[
-                    'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
-                    form.interactive ? 'translate-x-6' : 'translate-x-1',
-                  ].join(' ')}
-                />
-              </button>
-            </div>
-
             {/* Prompt — only shown when non-interactive */}
             {!form.interactive && (
               <div>
@@ -403,6 +375,17 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
                 placeholder="System prompt override…"
                 className={[inputCls, 'resize-none'].join(' ')}
               />
+              {form.system_prompt.trim().length > 0 && (
+                <div className="mt-2">
+                  <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Preview</p>
+                  <HighlightedCode
+                    code={form.system_prompt}
+                    language="markdown"
+                    maxHeight="10rem"
+                    className="border border-gray-200 dark:border-gray-700"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Tool Policy */}
@@ -440,89 +423,158 @@ export function CreateAgentDialog({ open, onClose, onCreate }: CreateAgentDialog
               )}
             </div>
 
-            {/* Auto-clear Threshold */}
-            <div>
-              <SectionLabel htmlFor="agent-auto-clear" label="Auto-clear Threshold" optional />
-              <input
-                id="agent-auto-clear"
-                type="number"
-                min="1"
-                step="1"
-                value={form.auto_clear_threshold}
-                onChange={(e) => update('auto_clear_threshold', e.target.value)}
-                placeholder="e.g. 100000"
-                className={[
-                  inputCls,
-                  errors.auto_clear_threshold ? 'border-red-500 focus:ring-red-500' : '',
-                ].join(' ')}
-              />
-              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                Automatically clear context when cumulative input tokens exceed this threshold. Leave empty to disable.
-              </p>
-              <FieldError msg={errors.auto_clear_threshold} />
-            </div>
+            {/* ── Advanced section ─────────────────────────────────────── */}
+            <div className="rounded-md border border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                aria-expanded={advancedOpen}
+                aria-controls="create-agent-advanced"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
+              >
+                <span>Advanced</span>
+                {advancedOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+              </button>
 
-            {/* Shell */}
-            <div>
-              <SectionLabel htmlFor="agent-shell" label="Shell" optional />
-              <input
-                id="agent-shell"
-                type="text"
-                value={form.shell}
-                onChange={(e) => update('shell', e.target.value)}
-                placeholder="/bin/bash"
-                className={inputCls}
-              />
-            </div>
-
-            {/* Environment Variables */}
-            <div>
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Environment Variables{' '}
-                <span className="text-xs font-normal text-gray-400 dark:text-gray-500">
-                  (optional)
-                </span>
-              </span>
-              <div className="mt-2 space-y-2">
-                {form.env_keys.map((key, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      aria-label={`Environment variable key ${i + 1}`}
-                      value={key}
-                      onChange={(e) => updateEnvKey(i, e.target.value)}
-                      placeholder="KEY"
-                      className={[inputCls, 'flex-1 font-mono text-xs'].join(' ')}
-                    />
-                    <span className="text-gray-400">=</span>
-                    <input
-                      type="text"
-                      aria-label={`Environment variable value ${i + 1}`}
-                      value={form.env_values[i] ?? ''}
-                      onChange={(e) => updateEnvValue(i, e.target.value)}
-                      placeholder="value"
-                      className={[inputCls, 'flex-1 font-mono text-xs'].join(' ')}
-                    />
-                    <button
-                      type="button"
-                      aria-label={`Remove environment variable ${i + 1}`}
-                      onClick={() => removeEnvRow(i)}
-                      disabled={form.env_keys.length === 1}
-                      className="rounded p-1 text-gray-400 hover:text-red-500 disabled:opacity-30"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={addEnvRow}
-                  className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              {advancedOpen && (
+                <div
+                  id="create-agent-advanced"
+                  className="space-y-5 border-t border-gray-200 px-4 py-4 dark:border-gray-700"
                 >
-                  <Plus size={12} />
-                  Add variable
-                </button>
-              </div>
+                  {/* Interactive mode toggle */}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 pr-4">
+                        <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Interactive mode
+                        </span>
+                        <span className="mt-0.5 block text-xs text-gray-400 dark:text-gray-500">
+                          Runs Claude without the SDK protocol. The Terminal tab becomes the
+                          primary interface; you can type directly and the application can inject
+                          prompts via PTY stdin. Cost tracking and tool policies are unavailable
+                          in this mode.
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={form.interactive}
+                        aria-label="Interactive mode"
+                        onClick={() => update('interactive', !form.interactive)}
+                        className={[
+                          'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900',
+                          form.interactive ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700',
+                        ].join(' ')}
+                      >
+                        <span
+                          className={[
+                            'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                            form.interactive ? 'translate-x-6' : 'translate-x-1',
+                          ].join(' ')}
+                        />
+                      </button>
+                    </div>
+                    {form.interactive && (
+                      <div
+                        role="note"
+                        className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+                      >
+                        <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                        <span>
+                          Interactive mode enabled. Cost tracking and tool policies will not be
+                          available for this agent. The initial prompt field is also disabled.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Auto-clear Threshold */}
+                  <div>
+                    <SectionLabel htmlFor="agent-auto-clear" label="Auto-clear Threshold" optional />
+                    <input
+                      id="agent-auto-clear"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={form.auto_clear_threshold}
+                      onChange={(e) => update('auto_clear_threshold', e.target.value)}
+                      placeholder="e.g. 100000"
+                      className={[
+                        inputCls,
+                        errors.auto_clear_threshold ? 'border-red-500 focus:ring-red-500' : '',
+                      ].join(' ')}
+                    />
+                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                      Automatically clear context when cumulative input tokens exceed this
+                      threshold. Leave empty to disable.
+                    </p>
+                    <FieldError msg={errors.auto_clear_threshold} />
+                  </div>
+
+                  {/* Shell */}
+                  <div>
+                    <SectionLabel htmlFor="agent-shell" label="Shell" optional />
+                    <input
+                      id="agent-shell"
+                      type="text"
+                      value={form.shell}
+                      onChange={(e) => update('shell', e.target.value)}
+                      placeholder="/bin/bash"
+                      className={inputCls}
+                    />
+                  </div>
+
+                  {/* Environment Variables */}
+                  <div>
+                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Environment Variables{' '}
+                      <span className="text-xs font-normal text-gray-400 dark:text-gray-500">
+                        (optional)
+                      </span>
+                    </span>
+                    <div className="mt-2 space-y-2">
+                      {form.env_keys.map((key, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            aria-label={`Environment variable key ${i + 1}`}
+                            value={key}
+                            onChange={(e) => updateEnvKey(i, e.target.value)}
+                            placeholder="KEY"
+                            className={[inputCls, 'flex-1 font-mono text-xs'].join(' ')}
+                          />
+                          <span className="text-gray-400">=</span>
+                          <input
+                            type="text"
+                            aria-label={`Environment variable value ${i + 1}`}
+                            value={form.env_values[i] ?? ''}
+                            onChange={(e) => updateEnvValue(i, e.target.value)}
+                            placeholder="value"
+                            className={[inputCls, 'flex-1 font-mono text-xs'].join(' ')}
+                          />
+                          <button
+                            type="button"
+                            aria-label={`Remove environment variable ${i + 1}`}
+                            onClick={() => removeEnvRow(i)}
+                            disabled={form.env_keys.length === 1}
+                            className="rounded p-1 text-gray-400 hover:text-red-500 disabled:opacity-30"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={addEnvRow}
+                        className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                      >
+                        <Plus size={12} />
+                        Add variable
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </form>

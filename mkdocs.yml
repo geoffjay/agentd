@@ -83,7 +83,9 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started: public/getting-started.md
-  - Configuration: public/configuration.md
+  - Configuration:
+      - Reference: public/configuration.md
+      - Execution Backends: public/configuration/backends.md
   - Installation: public/install.md
   - Tool Policies: public/tool-policies.md
   - Templates: public/templates.md
@@ -97,6 +99,9 @@ nav:
       - Ask: public/services/ask.md
       - Wrap: public/services/wrap.md
       - Communicate: public/services/communicate.md
+  - Agents:
+      - Contributor Onboarding: public/agents/onboarding.md
+      - Research Agent: public/agents/research.md
   - Workflows:
       - Trigger Reference: public/trigger-reference.md
       - Trigger Strategies: public/trigger-strategies.md
@@ -105,6 +110,12 @@ nav:
       - Webhook Triggers: public/webhook-triggers.md
       - Manual Triggers: public/manual-trigger.md
       - Migration (source_config → trigger_config): public/migration-trigger.md
+  - Pipeline:
+      - Architecture Overview: public/pipeline/index.md
+      - State Machine: public/pipeline-state-machine.md
+      - Conductor Behavior: public/pipeline/conductor.md
+      - Troubleshooting: public/pipeline/troubleshooting.md
+      - Human Approval Gates: planning/autonomous-pipeline-gates.md
   - Development:
       - Error Handling & Logging: public/error-handling.md
       - Storage Patterns: storage.md

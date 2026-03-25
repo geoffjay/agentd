@@ -9,8 +9,8 @@ Event-driven triggers fire workflows in response to internal orchestrator events
 
 Both types are backed by the internal [Event Bus](#event-bus-architecture) and implemented via `EventStrategy`.
 
-!!! note "API-only configuration"
-    `agent_lifecycle` and `dispatch_result` triggers are created via the REST API directly (e.g. `curl`). The `agent orchestrator create-workflow` CLI and `.agentd/` YAML templates do not yet expose these trigger types.
+!!! tip "YAML template support"
+    `dispatch_result` and `agent_lifecycle` triggers can be configured in `.agentd/` workflow YAML files (see [Pipeline chaining with YAML templates](#pipeline-chaining-with-yaml-templates)) as well as via the REST API.
 
 ---
 
@@ -56,7 +56,7 @@ graph LR
 | `AgentConnected { agent_id }` | `ConnectionRegistry` | An agent establishes a WebSocket connection |
 | `AgentDisconnected { agent_id }` | `ConnectionRegistry` | An agent's WebSocket connection is closed |
 | `ContextCleared { agent_id }` | `AgentManager` | An agent's conversation context is cleared (`/clear`) |
-| `DispatchCompleted { workflow_id, dispatch_id, status }` | `Scheduler` | A workflow dispatch finishes (success or failure) |
+| `DispatchCompleted { workflow_id, dispatch_id, status, source_id }` | `Scheduler` | A workflow dispatch finishes (success or failure). `source_id` is the original task identifier (e.g. GitHub issue or PR number). |
 
 ### Broadcast channel model
 
@@ -216,8 +216,11 @@ In practice, `dispatch_result` workflows are most useful filtering on `"complete
 | `dispatch_id` | UUID of the specific dispatch record | `a1b2c3d4-...` |
 | `status` | Completion status | `completed` |
 | `timestamp` | RFC 3339 timestamp | `2026-04-01T09:05:00Z` |
+| `original_source_id` | Source ID from the parent dispatch (e.g. GitHub issue or PR number). Present only when the parent workflow had a task-level source identifier. | `42` |
 
 `source_id` includes both the dispatch UUID and the timestamp, so it is unique per event.
+
+Use `{{original_source_id}}` in a chained workflow's prompt template to reference the GitHub issue or PR number that triggered the parent workflow. This is the key variable that makes triage→enrich and review→merge pipeline chains practical.
 
 ### Workflow chaining
 
@@ -240,13 +243,89 @@ Each downstream workflow uses `{{source_workflow_id}}` and `{{dispatch_id}}` in 
 ```
 Workflow {{source_workflow_id}} completed with status {{status}} at {{timestamp}}.
 Dispatch ID: {{dispatch_id}}.
+Original issue/PR: {{original_source_id}}.
 
 Run the next pipeline stage.
 ```
 
+All `dispatch_result` variables are also listed in the [template variable reference](templates.md).
+
 ---
 
-## Creating Event-Driven Workflows
+## Pipeline Chaining with YAML Templates
+
+Workflow chaining can be configured in `.agentd/` YAML files using `type: dispatch_result` in the `source` block. The orchestrator serialises the trigger configuration from YAML using the same `TriggerConfig` enum as the REST API.
+
+### triage → enrich example
+
+When the triage workflow completes, the conductor applies the `enrich-agent` label so the enrichment-worker picks up the issue next.
+
+```yaml
+name: triage-enrich-chain
+agent: conductor
+
+source:
+  type: dispatch_result
+  # source_workflow_id: "<TRIAGE_WORKER_UUID>"  # fill in after deployment
+  status: completed
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  Workflow {{source_workflow_id}} completed. Advance issue #{{original_source_id}}
+  to the enrichment stage by applying the enrich-agent label:
+
+    gh issue edit {{original_source_id}} --repo geoffjay/agentd --add-label "enrich-agent"
+```
+
+The ready-to-deploy version is at `.agentd/workflows/triage-enrich-chain.yml`.
+
+### review → merge example
+
+When the reviewer workflow completes, the conductor checks whether the PR is approved and CI is passing, then applies `merge-ready` if so.
+
+```yaml
+name: review-merge-chain
+agent: conductor
+
+source:
+  type: dispatch_result
+  # source_workflow_id: "<REVIEWER_WORKFLOW_UUID>"  # fill in after deployment
+  status: completed
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  Workflow {{source_workflow_id}} completed. Check PR #{{original_source_id}}
+  for merge readiness and apply merge-ready if all criteria are met.
+```
+
+The ready-to-deploy version is at `.agentd/workflows/review-merge-chain.yml`.
+
+### Setting `source_workflow_id` after deployment
+
+YAML templates cannot know workflow UUIDs before deployment. After running `agent apply`, retrieve the UUID and patch the workflow:
+
+```bash
+# 1. Find the triage-worker UUID
+agent orchestrator list-workflows | grep triage-worker
+# Example output: triage-worker  550e8400-e29b-41d4-a716-446655440001  enabled
+
+# 2. Find the chain workflow UUID
+agent orchestrator list-workflows | grep triage-enrich-chain
+# Example output: triage-enrich-chain  a1b2c3d4-e29b-41d4-a716-446655440002  enabled
+
+# 3. Update the chain workflow via the API
+curl -s -X PATCH http://127.0.0.1:17006/workflows/a1b2c3d4-e29b-41d4-a716-446655440002 \
+  -H "Content-Type: application/json" \
+  -d '{"source": {"type": "dispatch_result", "source_workflow_id": "550e8400-e29b-41d4-a716-446655440001", "status": "completed"}}'
+```
+
+---
+
+## Creating Event-Driven Workflows via REST API
 
 Event-driven triggers are created via the orchestrator REST API. Use `curl` or any HTTP client.
 

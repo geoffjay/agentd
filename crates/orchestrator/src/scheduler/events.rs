@@ -23,7 +23,16 @@ pub enum SystemEvent {
     /// An agent's conversation context was cleared.
     ContextCleared { agent_id: Uuid },
     /// A workflow dispatch completed (succeeded or failed).
-    DispatchCompleted { workflow_id: Uuid, dispatch_id: Uuid, status: DispatchStatus },
+    ///
+    /// `source_id` is the original task identifier (e.g. a GitHub issue or PR number)
+    /// that triggered the dispatch. It is `None` when the dispatch originated from a
+    /// trigger type that does not carry a task-level source identifier (rare).
+    DispatchCompleted {
+        workflow_id: Uuid,
+        dispatch_id: Uuid,
+        status: DispatchStatus,
+        source_id: Option<String>,
+    },
     /// An agent joined a communicate room.
     AgentJoinedRoom { agent_id: Uuid, room_id: Uuid },
 }
@@ -147,6 +156,7 @@ mod tests {
             workflow_id,
             dispatch_id,
             status: DispatchStatus::Completed,
+            source_id: Some("123".to_string()),
         });
 
         // Verify all four events arrive in order.
@@ -155,10 +165,16 @@ mod tests {
         assert!(matches!(rx.recv().await.unwrap(), SystemEvent::ContextCleared { .. }));
 
         match rx.recv().await.unwrap() {
-            SystemEvent::DispatchCompleted { workflow_id: wf, dispatch_id: d, status } => {
+            SystemEvent::DispatchCompleted {
+                workflow_id: wf,
+                dispatch_id: d,
+                status,
+                source_id,
+            } => {
                 assert_eq!(wf, workflow_id);
                 assert_eq!(d, dispatch_id);
                 assert_eq!(status, DispatchStatus::Completed);
+                assert_eq!(source_id, Some("123".to_string()));
             }
             other => panic!("Unexpected event: {:?}", other),
         }
@@ -244,6 +260,7 @@ mod tests {
             workflow_id,
             dispatch_id,
             status: DispatchStatus::Failed,
+            source_id: None,
         });
 
         match rx.recv().await.unwrap() {

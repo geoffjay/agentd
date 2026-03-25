@@ -23,6 +23,7 @@
 //!     model_provider: "anthropic".to_string(),
 //!     model_name: "claude-sonnet-4.5".to_string(),
 //!     layout: None,
+//!     backend: None,
 //! };
 //! # Ok(())
 //! # }
@@ -32,15 +33,19 @@ pub mod api;
 pub mod backend;
 pub mod client;
 pub mod docker;
+pub mod pty;
+pub mod pty_stream;
 pub mod tmux;
 pub mod types;
 
 pub use backend::{ExecutionBackend, SessionConfig, SessionExitInfo, SessionHealth, TmuxBackend};
 pub use client::WrapClient;
 pub use docker::{DockerBackend, NetworkPolicy};
+pub use pty::PtyBackend;
+pub use pty_stream::PtyOutputStream;
 pub use types::{
-    HealthResponse, KillSessionResponse, LaunchRequest, LaunchResponse, SessionInfo,
-    SessionListResponse, TmuxLayout,
+    BackendInfo, BackendType, HealthResponse, KillSessionResponse, LaunchRequest, LaunchResponse,
+    SessionInfo, SessionListResponse, TmuxLayout,
 };
 
 #[cfg(test)]

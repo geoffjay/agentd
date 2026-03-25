@@ -303,6 +303,7 @@ Available `{{placeholders}}` in prompt templates:
 | `{{source_workflow_id}}` | `dispatch_result` | UUID of the workflow that completed | `a1b2c3d4-...` |
 | `{{dispatch_id}}` | `dispatch_result` | UUID of the dispatch record | `b2c3d4e5-...` |
 | `{{status}}` | `dispatch_result` | Completion status | `completed` |
+| `{{original_source_id}}` | `dispatch_result` | Source ID from the parent dispatch (e.g. GitHub issue or PR number). Absent when the parent had no task-level source identifier. | `42` |
 
 !!! note
     Schedule and event trigger variables are stored in the task's `metadata` map and resolved during template rendering. If a variable is referenced but not present for the trigger type (e.g. `{{fire_time}}` in a delay workflow), the placeholder is left as-is in the rendered prompt.

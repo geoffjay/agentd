@@ -3,7 +3,8 @@ use crate::scheduler::api::{webhook_routes, workflow_routes, WorkflowState};
 use crate::scheduler::Scheduler;
 use crate::types::*;
 use crate::websocket::{
-    ws_handler, ws_stream_agent_handler, ws_stream_all_handler, ConnectionRegistry,
+    ws_handler, ws_stream_agent_handler, ws_stream_all_handler, ws_terminal_handler,
+    ConnectionRegistry, TerminalRelayState,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -23,6 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
+use wrap::types::{BackendInfo, BackendType};
 
 #[derive(Clone)]
 pub struct ApiState {
@@ -30,6 +32,8 @@ pub struct ApiState {
     pub registry: ConnectionRegistry,
     pub scheduler: Arc<Scheduler>,
     pub communicate: CommunicateClient,
+    /// The active execution backend type — used for capability reporting.
+    pub backend_type: BackendType,
 }
 
 pub fn create_router(state: ApiState) -> Router {
@@ -43,6 +47,11 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/stream/{agent_id}", get(ws_stream_agent_handler))
         .with_state(state.registry.clone());
 
+    // PTY terminal relay WebSocket — binary frames of raw terminal I/O.
+    let ws_terminal_routes = Router::new()
+        .route("/terminal/{agent_id}", get(ws_terminal_handler))
+        .with_state(TerminalRelayState { manager: state.manager.clone() });
+
     let wf_state =
         WorkflowState { scheduler: state.scheduler.clone(), manager: state.manager.clone() };
     let wf_routes = workflow_routes(wf_state.clone());
@@ -50,6 +59,7 @@ pub fn create_router(state: ApiState) -> Router {
 
     let api_routes = Router::new()
         .route("/health", get(health_check))
+        .route("/info", get(backend_info))
         .route("/agents", get(list_agents).post(create_agent))
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
         .route("/agents/{id}/message", post(send_message))
@@ -72,7 +82,12 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/debug/agents", get(debug_agents))
         .with_state(state);
 
-    api_routes.merge(ws_agent_routes).merge(ws_stream_routes).merge(wf_routes).merge(wh_routes)
+    api_routes
+        .merge(ws_agent_routes)
+        .merge(ws_stream_routes)
+        .merge(ws_terminal_routes)
+        .merge(wf_routes)
+        .merge(wh_routes)
 }
 
 #[derive(Deserialize)]
@@ -89,6 +104,20 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
         HealthResponse::ok("agentd-orchestrator", env!("CARGO_PKG_VERSION"))
             .with_detail("agents_active", serde_json::json!(active)),
     )
+}
+
+/// `GET /info` — active backend type and capabilities.
+///
+/// Returns information about the execution backend currently in use, including
+/// its capabilities. Clients (UI, CLI) can use this to discover which features
+/// are available (e.g., PTY streaming, health checks).
+async fn backend_info(State(state): State<ApiState>) -> impl IntoResponse {
+    let caps = state.backend_type.capabilities();
+    Json(BackendInfo {
+        backend_type: state.backend_type,
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        capabilities: caps,
+    })
 }
 
 async fn list_agents(
@@ -121,6 +150,25 @@ async fn create_agent(
     State(state): State<ApiState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Validate and canonicalize system_prompt_file if provided.
+    let system_prompt_file = req
+        .system_prompt_file
+        .map(|raw| {
+            let p = std::path::Path::new(&raw);
+            if !p.exists() {
+                return Err(ApiError::InvalidInput(format!(
+                    "system_prompt_file does not exist: {raw}"
+                )));
+            }
+            if !p.is_file() {
+                return Err(ApiError::InvalidInput(format!(
+                    "system_prompt_file is not a regular file: {raw}"
+                )));
+            }
+            Ok(std::fs::canonicalize(p).map(|c| c.to_string_lossy().to_string()).unwrap_or(raw))
+        })
+        .transpose()?;
+
     let config = AgentConfig {
         working_dir: req.working_dir,
         user: req.user,
@@ -129,6 +177,8 @@ async fn create_agent(
         prompt: req.prompt,
         worktree: req.worktree,
         system_prompt: req.system_prompt,
+        system_prompt_file,
+        append_system_prompt: req.append_system_prompt,
         tool_policy: req.tool_policy,
         model: req.model,
         env: req.env,
@@ -183,11 +233,22 @@ async fn send_message(
         )));
     }
 
-    state
-        .registry
-        .send_user_message(&id, &req.content)
-        .await
-        .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+    if agent.config.interactive {
+        // Interactive mode: Claude reads from PTY stdin, not the WebSocket.
+        // Inject the prompt as raw bytes so it appears as if the user typed it.
+        state
+            .manager
+            .inject_pty_prompt(&id, &req.content)
+            .await
+            .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+    } else {
+        // SDK mode: deliver via the orchestrator WebSocket protocol.
+        state
+            .registry
+            .send_user_message(&id, &req.content)
+            .await
+            .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+    }
 
     Ok(Json(serde_json::json!({ "status": "sent", "agent_id": id })))
 }

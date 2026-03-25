@@ -191,6 +191,53 @@ pub trait ExecutionBackend: Send + Sync {
         Ok(None)
     }
 
+    /// Resize the PTY terminal dimensions for a session.
+    ///
+    /// Only PTY-backed sessions support resize; all other backends no-op by
+    /// default. Callers should handle the no-op gracefully.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_name` — Name of the session to resize
+    /// * `cols` — New terminal width in columns
+    /// * `rows` — New terminal height in rows
+    async fn resize_session(
+        &self,
+        _session_name: &str,
+        _cols: u16,
+        _rows: u16,
+    ) -> anyhow::Result<()> {
+        Ok(()) // no-op for non-PTY backends
+    }
+
+    /// Returns the output stream for a PTY-backed session, if available.
+    ///
+    /// Only [`PtyBackend`](crate::pty::PtyBackend) implements this; all other
+    /// backends return `None` by default.
+    ///
+    /// The returned [`PtyOutputStream`](crate::pty_stream::PtyOutputStream)
+    /// provides a ring-buffer history replay and a live broadcast receiver
+    /// for streaming terminal output to callers.
+    async fn session_output_stream(
+        &self,
+        _session_name: &str,
+    ) -> anyhow::Result<Option<crate::pty_stream::PtyOutputStream>> {
+        Ok(None)
+    }
+
+    /// Returns `true` when this backend uses a real PTY and prompts should be
+    /// delivered via PTY stdin rather than the WebSocket SDK protocol.
+    ///
+    /// When `true`, agents are launched without `--sdk-url` / `--input-format
+    /// stream-json` so that both the orchestrator (via PTY stdin injection) and
+    /// an attached human can interact with the session.
+    ///
+    /// [`PtyBackend`](crate::pty::PtyBackend) overrides this to return `true`;
+    /// all other backends inherit the default of `false`.
+    fn supports_pty_input(&self) -> bool {
+        false
+    }
+
     /// Stops all sessions managed by this backend.
     ///
     /// Used during graceful shutdown to clean up all running sessions.
@@ -241,7 +288,7 @@ impl TmuxBackend {
 }
 
 /// Build the shell command string for launching an agent CLI.
-fn build_agent_command(config: &SessionConfig) -> anyhow::Result<String> {
+pub(crate) fn build_agent_command(config: &SessionConfig) -> anyhow::Result<String> {
     match config.agent_type.as_str() {
         "claude-code" => Ok("claude".to_string()),
         "crush" => Ok("crush".to_string()),
@@ -467,6 +514,12 @@ mod tests {
     fn tmux_backend_is_send_sync() {
         fn _assert_send_sync<T: Send + Sync>() {}
         _assert_send_sync::<TmuxBackend>();
+    }
+
+    #[test]
+    fn tmux_backend_supports_pty_input_returns_false() {
+        let backend = TmuxBackend::new("test");
+        assert!(!backend.supports_pty_input());
     }
 
     // -- SessionHealth tests --

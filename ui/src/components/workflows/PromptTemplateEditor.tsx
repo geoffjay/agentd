@@ -8,6 +8,7 @@
 
 import { useState } from 'react'
 import { ChevronDown, ChevronUp, Info } from 'lucide-react'
+import { HighlightedCode } from '@/components/common'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -146,9 +147,13 @@ export function PromptTemplateEditor({
           </button>
 
           {showPreview && (
-            <pre className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono overflow-auto max-h-48">
-              {preview}
-            </pre>
+            <div className="border-t border-gray-200 dark:border-gray-700">
+              <HighlightedCode
+                code={preview}
+                language="markdown"
+                maxHeight="12rem"
+              />
+            </div>
           )}
         </div>
       )}

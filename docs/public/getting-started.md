@@ -523,6 +523,8 @@ See [Installation Guide](install.md) for detailed setup instructions.
 
 ### Port Reference
 
+agentd uses a dual-port scheme: **dev ports (17xxx)** when running with `cargo run`, and **production ports (7xxx)** when installed as a LaunchAgent (macOS) or systemd unit (Linux).
+
 | Service | Dev Port | Prod Port |
 |---------|----------|-----------|
 | agentd-ask | 17001 | 7001 |
@@ -531,22 +533,63 @@ See [Installation Guide](install.md) for detailed setup instructions.
 | agentd-notify | 17004 | 7004 |
 | agentd-wrap | 17005 | 7005 |
 | agentd-orchestrator | 17006 | 7006 |
+| agentd-memory | — | 7008 |
+| agentd-communicate | 17010 | 7010 |
+
+The `agent` CLI defaults to **production ports** (7xxx). If your services are running on dev ports, set the URL overrides:
+
+```bash
+source .env   # sets all AGENTD_*_SERVICE_URL vars to dev ports
+```
+
+Or override a single service:
+
+```bash
+AGENTD_COMMUNICATE_SERVICE_URL=http://localhost:17010 agent communicate health
+```
+
+See [Configuration Reference](configuration.md) for the full list of environment variables.
 
 ---
 
 ## Troubleshooting
 
+### `agent status` shows services as down when they are running
+
+The `agent status` command checks **production ports (7xxx)** by default. If you're running services with `cargo run` (dev ports 17xxx), status checks will fail even though services are healthy.
+
+Check which ports your services are actually on:
+
+```bash
+# Test dev ports directly
+curl -s http://localhost:17004/health   # notify (dev)
+curl -s http://localhost:17006/health   # orchestrator (dev)
+
+# Test production ports
+curl -s http://localhost:7004/health    # notify (prod)
+curl -s http://localhost:7006/health    # orchestrator (prod)
+```
+
+If dev services are healthy but `agent status` shows them down, source the `.env` file to point the CLI at dev ports:
+
+```bash
+source .env
+agent status
+```
+
+See [issue #536](https://github.com/geoffjay/agentd/issues/536) — a code fix is in progress to make `agent status` port-scheme-aware.
+
 ### "Connection refused" when hitting health endpoints
 
-The service isn't running. Check:
+The service isn't running, or you're checking the wrong port. Check:
 
 ```bash
 # Is the process running?
 ps aux | grep agentd
 
-# Check for port conflicts
-lsof -i :17004
-lsof -i :17006
+# Are services on dev ports (cargo run) or prod ports (installed)?
+curl -s http://localhost:17004/health   # dev
+curl -s http://localhost:7004/health    # prod
 ```
 
 If another process holds the port, either stop it or override with `AGENTD_PORT=18004 cargo run -p agentd-notify`.

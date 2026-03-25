@@ -1,0 +1,109 @@
+# Triage worker workflow — dispatches triage tasks to the triage agent.
+#
+# Triggered when an issue has the "needs-triage" label applied. The triage
+# agent reads the issue, detects duplicates, assigns labels, estimates
+# complexity, suggests a milestone, asks clarifying questions if needed,
+# posts a triage summary, and removes the trigger label.
+#
+# Usage:
+#   agent apply .agentd/workflows/triage-worker.yml
+#   agent apply .agentd/  # creates all agents + workflows together
+
+name: triage-worker
+agent: triage
+
+source:
+  type: github_issues
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - needs-triage
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  You have been assigned a triage task.
+
+  Issue #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Step 0 — Gather context from memory:
+  Before triaging, search shared memory for relevant context:
+  1. Search for prior triage decisions on similar issues:
+     agent memory search "{{title}}" --as-actor triage --limit 5 --json
+  2. Search for known triage patterns or label conventions:
+     agent memory search "triage label conventions" --as-actor triage --limit 3 --json
+  3. Review results and apply labels consistently with past decisions.
+
+  Instructions:
+
+  Work through each step of the triage process defined in your system prompt.
+  Use the issue details provided above as your primary input.
+
+  1. **Read the issue** — review title, body, and any existing labels carefully.
+     Identify the type of change, affected crates/services, and how well-specified
+     the request is.
+
+  2. **Check for duplicates** — search open and recently closed issues for the
+     same feature or bug. If a likely duplicate is found, comment on the issue,
+     apply the `duplicate` label, remove `needs-triage`, and stop.
+
+  3. **Assign type and area labels** — apply exactly one type label
+     (bug/enhancement/documentation/refactor/research/security/release) and any
+     relevant area labels (architecture/frontend/ui). Apply status labels
+     (needs-refinement/needs-tests/needs-context/needs-decision) as appropriate.
+
+  4. **Estimate complexity** — apply one of:
+     - `complexity:small`  (<50 lines, single file, clear solution)
+     - `complexity:medium` (<200 lines, 1-2 files, some design required)
+     - `complexity:large`  (>200 lines, multiple files/crates)
+
+     Create the complexity label if it does not yet exist:
+     ```bash
+     gh label create "complexity:small"  --repo geoffjay/agentd \
+       --color "0E8A16" --description "Small scope: <50 lines, single file" \
+       2>/dev/null || true
+     gh label create "complexity:medium" --repo geoffjay/agentd \
+       --color "FBCA04" --description "Medium scope: <200 lines, 1-2 files" \
+       2>/dev/null || true
+     gh label create "complexity:large"  --repo geoffjay/agentd \
+       --color "D93F0B" --description "Large scope: >200 lines, multiple files" \
+       2>/dev/null || true
+     ```
+
+  5. **Suggest a milestone** — read open milestones and assign or comment with
+     the best fit. If unclear, post a comment with your suggestion and rationale.
+
+  6. **Ask clarifying questions** (only if genuinely blocking) — if acceptance
+     criteria are absent or the scope is ambiguous, post targeted questions and
+     apply `needs-context`. Do not ask about implementation approach or style.
+
+  7. **Post a triage summary** — comment on the issue with a brief summary table
+     (type, complexity, milestone, labels applied, any notes).
+
+  8. **Store decisions** — save any label conventions or complexity patterns
+     discovered during triage for future consistency (store before label
+     transition so a memory failure does not block the issue from moving on):
+     ```bash
+     agent memory remember "<triage decision or label convention>" \
+       --created-by triage --type information \
+       --tags triage,issue-{{source_id}} --visibility public
+     ```
+
+  9. **Finalize** — remove `needs-triage` and apply `triaged`:
+     ```bash
+     gh issue edit {{source_id}} --repo geoffjay/agentd \
+       --remove-label "needs-triage" --add-label "triaged"
+     ```
+
+  10. **Announce** — post a brief update to the engineering room:
+      ```bash
+      agent communicate message send engineering \
+        "🏷️ Triage complete on #{{source_id}} ({{title}}). Labels: <applied labels>."
+      ```

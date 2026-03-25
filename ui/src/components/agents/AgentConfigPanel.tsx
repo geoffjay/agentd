@@ -14,6 +14,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Eye, EyeOff, FolderOpen, Plus, X } from 'lucide-react'
 import type { Agent, ToolPolicy } from '@/types/orchestrator'
+import { HighlightedCode } from '@/components/common'
 
 // ---------------------------------------------------------------------------
 // Tool policy display helper
@@ -81,18 +82,56 @@ function EnvVarsRow({ env }: { env: Record<string, string> }) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Launch command helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Replace inline system prompt values in a launch command string with a
+ * `<system prompt>` placeholder so the full (potentially long) prompt text
+ * is not duplicated in the debug view.
+ *
+ * Handles both `--system-prompt` and `--append-system-prompt` flags.
+ * File-path variants (`--system-prompt-file`, `--append-system-prompt-file`)
+ * are left as-is since the path is short and not sensitive.
+ *
+ * The command builder shell-escapes the prompt using single-quote POSIX
+ * escaping (`'value'` with embedded `'` replaced by `'\''`).
+ */
+function redactSystemPromptInCommand(command: string, systemPrompt: string | undefined | null): string {
+  if (!systemPrompt) return command
+  const escaped = systemPrompt.replace(/'/g, "'\\''")
+  return command
+    .replace(`--system-prompt '${escaped}'`, "--system-prompt '<system prompt>'")
+    .replace(`--append-system-prompt '${escaped}'`, "--append-system-prompt '<system prompt>'")
+}
+
+// ---------------------------------------------------------------------------
+// System prompt row
+// ---------------------------------------------------------------------------
+
 function SystemPromptRow({ prompt }: { prompt: string }) {
   const [expanded, setExpanded] = useState(false)
   const isLong = prompt.length > 200
-  const display = !expanded && isLong ? `${prompt.slice(0, 200)}…` : prompt
 
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
       <span className="w-36 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
         System Prompt
       </span>
-      <div className="flex flex-col gap-1">
-        <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{display}</p>
+      <div className="flex flex-col gap-1 min-w-0 flex-1">
+        {expanded ? (
+          <HighlightedCode
+            code={prompt}
+            language="markdown"
+            maxHeight="20rem"
+            className="border border-gray-200 dark:border-gray-700"
+          />
+        ) : (
+          <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+            {isLong ? `${prompt.slice(0, 200)}…` : prompt}
+          </p>
+        )}
         {isLong && (
           <button
             type="button"
@@ -418,6 +457,22 @@ export function AgentConfigPanel({ agent, onAddDir, onRemoveDir }: AgentConfigPa
 
           {config.system_prompt && <SystemPromptRow prompt={config.system_prompt} />}
 
+          {config.system_prompt_file && (
+            <ConfigRow label="Prompt File">
+              <span className="font-mono text-xs break-all">{config.system_prompt_file}</span>
+            </ConfigRow>
+          )}
+
+          {(config.system_prompt || config.system_prompt_file) && (
+            <ConfigRow label="Prompt Mode">
+              {config.append_system_prompt ? (
+                <span className="text-blue-600 dark:text-blue-400">Append</span>
+              ) : (
+                <span className="text-gray-500 dark:text-gray-400">Replace</span>
+              )}
+            </ConfigRow>
+          )}
+
           {config.env && Object.keys(config.env).length > 0 && <EnvVarsRow env={config.env} />}
 
           <AdditionalDirsRow
@@ -425,6 +480,22 @@ export function AgentConfigPanel({ agent, onAddDir, onRemoveDir }: AgentConfigPa
             onAdd={onAddDir}
             onRemove={onRemoveDir}
           />
+
+          {agent.launch_command && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+                Launch Command
+              </span>
+              <div data-testid="launch-command-code">
+                <HighlightedCode
+                  code={redactSystemPromptInCommand(agent.launch_command, config.system_prompt)}
+                  language="bash"
+                  maxHeight="12rem"
+                  className="border border-gray-200 dark:border-gray-700"
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>

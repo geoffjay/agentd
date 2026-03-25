@@ -33,6 +33,10 @@ export interface AgentConfig {
   prompt?: string
   worktree?: string
   system_prompt?: string
+  /** Path to a file whose contents replace or append to the system prompt. */
+  system_prompt_file?: string
+  /** When true, uses --append-system-prompt / --append-system-prompt-file instead of replacing. */
+  append_system_prompt?: boolean
   tool_policy: ToolPolicy
   model?: string
   env?: Record<string, string>
@@ -52,6 +56,8 @@ export interface Agent {
   config: AgentConfig
   session_id?: string
   backend_type?: string
+  /** The exact `claude` command used to launch this agent session. */
+  launch_command?: string
   created_at: string
   updated_at: string
 }
@@ -70,6 +76,8 @@ export interface CreateAgentRequest {
   prompt?: string
   worktree?: string
   system_prompt?: string
+  system_prompt_file?: string
+  append_system_prompt?: boolean
   tool_policy: ToolPolicy
   model?: string
   env?: Record<string, string>

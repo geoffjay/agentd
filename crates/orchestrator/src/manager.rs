@@ -14,6 +14,7 @@ use wrap::backend::ExecutionBackend;
 /// Uses an [`ExecutionBackend`] trait object to interact with the underlying
 /// session manager (tmux, Docker, etc.), making the orchestrator
 /// backend-agnostic.
+#[derive(Clone)]
 pub struct AgentManager {
     storage: Arc<AgentStorage>,
     backend: Arc<dyn ExecutionBackend>,
@@ -79,12 +80,39 @@ impl AgentManager {
             }
         }
 
-        // Build the claude command (never uses -p; prompt sent via WebSocket).
+        // Warn if system_prompt_file is set but does not exist at spawn time.
+        if let Some(ref path) = agent.config.system_prompt_file {
+            if !std::path::Path::new(path).is_file() {
+                warn!(
+                    agent_id = %agent.id,
+                    path = %path,
+                    "system_prompt_file does not exist or is not a regular file at spawn time"
+                );
+            }
+        }
+
+        // Determine whether to use interactive / PTY mode.
+        // PTY backend always uses PTY stdin (not WebSocket) so that the session
+        // remains interactable. Config-level `interactive` flag is also respected.
+        let effective_interactive = agent.config.interactive || self.backend.supports_pty_input();
+
+        // Persist the effective interactive state so downstream consumers
+        // (API, UI) see the correct mode.  The DB record is the single source
+        // of truth; without this, PTY-backend agents are misidentified as SDK
+        // mode because `agent.config.interactive` stays `false` in storage.
+        if effective_interactive && !agent.config.interactive {
+            agent.config.interactive = true;
+        }
+
+        // Build the claude command (never uses -p; prompt sent via WebSocket or PTY stdin).
         let ws_url = self
             .backend
             .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
-        let claude_cmd = build_claude_command(&agent.config, &ws_url);
+        let claude_cmd = build_claude_command(&agent.config, &ws_url, effective_interactive);
+
+        // Persist the launch command so the UI can display it for debugging.
+        agent.launch_command = Some(claude_cmd.clone());
 
         // Send the command into the session.
         if let Err(e) = self.backend.send_command(&session_name, &claude_cmd).await {
@@ -110,33 +138,56 @@ impl AgentManager {
             "Agent spawned"
         );
 
-        // If there's an initial prompt, send it via WebSocket once the agent
-        // connects (poll briefly since the tmux/claude process needs a moment).
+        // If there's an initial prompt, deliver it via the appropriate channel.
+        //
+        // Interactive / PTY mode: Claude reads from PTY stdin, not the WebSocket.
+        //   Write the prompt directly to PTY stdin. A brief delay lets the
+        //   shell and Claude process start before input arrives.
+        //
+        // SDK mode: Claude connects back to the orchestrator WebSocket.
+        //   Poll until the agent connects, then send via WebSocket.
         if let Some(ref prompt) = agent.config.prompt {
-            let registry = self.registry.clone();
-            let agent_id = agent.id;
             let prompt = prompt.clone();
-            tokio::spawn(async move {
-                for attempt in 1..=30 {
+            let agent_id = agent.id;
+
+            if effective_interactive {
+                // Interactive mode — inject via PTY stdin.
+                let manager = self.clone();
+                tokio::spawn(async move {
+                    // Give the shell and Claude a moment to start.
                     tokio::time::sleep(Duration::from_secs(2)).await;
-                    if registry.is_connected(&agent_id).await {
-                        match registry.send_user_message(&agent_id, &prompt).await {
-                            Ok(_) => {
-                                info!(%agent_id, "Initial prompt sent via WebSocket");
-                                return;
-                            }
-                            Err(e) => {
-                                warn!(%agent_id, %e, "Failed to send initial prompt");
-                                return;
-                            }
+                    match manager.inject_pty_prompt(&agent_id, &prompt).await {
+                        Ok(_) => info!(%agent_id, "Initial prompt injected via PTY stdin"),
+                        Err(e) => {
+                            warn!(%agent_id, %e, "Failed to inject initial prompt via PTY stdin")
                         }
                     }
-                    if attempt % 5 == 0 {
-                        info!(%agent_id, attempt, "Waiting for agent to connect...");
+                });
+            } else {
+                // SDK mode — wait for the agent to connect, then send via WebSocket.
+                let registry = self.registry.clone();
+                tokio::spawn(async move {
+                    for attempt in 1..=30 {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        if registry.is_connected(&agent_id).await {
+                            match registry.send_user_message(&agent_id, &prompt).await {
+                                Ok(_) => {
+                                    info!(%agent_id, "Initial prompt sent via WebSocket");
+                                    return;
+                                }
+                                Err(e) => {
+                                    warn!(%agent_id, %e, "Failed to send initial prompt");
+                                    return;
+                                }
+                            }
+                        }
+                        if attempt % 5 == 0 {
+                            info!(%agent_id, attempt, "Waiting for agent to connect...");
+                        }
                     }
-                }
-                warn!(%agent_id, "Agent never connected, initial prompt not sent");
-            });
+                    warn!(%agent_id, "Agent never connected, initial prompt not sent");
+                });
+            }
         }
 
         Ok(agent)
@@ -479,6 +530,82 @@ impl AgentManager {
         }
     }
 
+    /// Return the PTY output stream for an agent's session, if the backend
+    /// supports it.
+    ///
+    /// Returns `Ok(None)` when the agent does not have a session or when the
+    /// backend does not support PTY streaming (e.g., tmux or Docker backends).
+    /// Returns `Ok(Some(stream))` for PTY-backed sessions.
+    pub async fn get_agent_pty_stream(
+        &self,
+        agent_id: &Uuid,
+    ) -> anyhow::Result<Option<wrap::pty_stream::PtyOutputStream>> {
+        let agent =
+            self.storage.get(agent_id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+
+        let session_name = match agent.session_id {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        self.backend.session_output_stream(&session_name).await
+    }
+
+    /// Inject a prompt into an interactive-mode agent by writing text to PTY
+    /// stdin, exactly as if the user had typed it in the terminal.
+    ///
+    /// This is the programmatic prompt path for agents launched with
+    /// `config.interactive = true`. In interactive mode Claude reads from PTY
+    /// stdin, not from a WebSocket connection, so `send_user_message` cannot
+    /// be used.
+    ///
+    /// A newline is appended automatically so Claude receives the prompt as a
+    /// complete input line.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The agent is not found or has no active session.
+    /// - The backend does not expose a PTY stream (tmux / Docker backends).
+    /// - The PTY writer has been closed (session already exited).
+    pub async fn inject_pty_prompt(&self, agent_id: &Uuid, prompt: &str) -> anyhow::Result<()> {
+        let stream = self.get_agent_pty_stream(agent_id).await?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Agent {} has no PTY stream; inject_pty_prompt requires a PTY backend",
+                agent_id
+            )
+        })?;
+
+        // Append a newline so Claude receives a complete input line.
+        let mut input = prompt.as_bytes().to_vec();
+        input.push(b'\n');
+        stream.write_input(&input)?;
+        Ok(())
+    }
+
+    /// Resize the PTY terminal for an agent's session.
+    ///
+    /// No-ops silently for backends that do not support resize (tmux/Docker).
+    /// Returns `Ok(())` when the agent has no active session.
+    pub async fn resize_agent_pty(
+        &self,
+        agent_id: &Uuid,
+        cols: u16,
+        rows: u16,
+    ) -> anyhow::Result<()> {
+        let agent = match self.storage.get(agent_id).await? {
+            Some(a) => a,
+            None => return Ok(()),
+        };
+
+        let session_name = match agent.session_id {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+
+        self.backend.resize_session(&session_name, cols, rows).await
+    }
+
     /// Restart a running agent: kill the current session and re-launch Claude.
     ///
     /// Preserves the agent's ID, name, and config. The prompt is NOT re-sent
@@ -513,11 +640,21 @@ impl AgentManager {
         }
 
         // Build and send the claude command with the updated config.
+        let effective_interactive = agent.config.interactive || self.backend.supports_pty_input();
+
+        // Persist the effective interactive state (mirrors the fix in spawn_agent).
+        if effective_interactive && !agent.config.interactive {
+            agent.config.interactive = true;
+        }
+
         let ws_url = self
             .backend
             .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
-        let claude_cmd = build_claude_command(&agent.config, &ws_url);
+        let claude_cmd = build_claude_command(&agent.config, &ws_url, effective_interactive);
+
+        // Persist the launch command so the UI can display it for debugging.
+        agent.launch_command = Some(claude_cmd.clone());
 
         if let Err(e) = self.backend.send_command(&session_name, &claude_cmd).await {
             let _ = self.backend.kill_session(&session_name).await;
@@ -583,12 +720,13 @@ fn build_env_assignments(env: &std::collections::HashMap<String, String>) -> Vec
     assignments
 }
 
-fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
+fn build_claude_command(config: &AgentConfig, ws_url: &str, interactive: bool) -> String {
     let mut args = vec!["claude".to_string()];
 
-    if config.interactive {
-        // Interactive mode: no --sdk-url, no --print, no stream-json flags.
-        // User can attach to the tmux session and interact directly.
+    if interactive {
+        // Interactive / PTY mode: no --sdk-url, no stream-json flags.
+        // Prompts are delivered via PTY stdin injection; a human can also
+        // type directly in the terminal.
     } else {
         args.push(format!("--sdk-url {}", ws_url));
         args.push("--output-format stream-json".to_string());
@@ -607,8 +745,22 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str) -> String {
         args.push(format!("--add-dir {}", shell_escape_value(dir)));
     }
 
-    if let Some(ref system_prompt) = config.system_prompt {
-        args.push(format!("--system-prompt '{}'", system_prompt.replace('\'', "'\\''")));
+    // System prompt flags — four combinations based on (file vs inline) × (replace vs append).
+    match (config.append_system_prompt, &config.system_prompt, &config.system_prompt_file) {
+        (false, Some(prompt), _) => {
+            args.push(format!("--system-prompt {}", shell_escape_value(prompt)));
+        }
+        (false, None, Some(path)) => {
+            args.push(format!("--system-prompt-file {}", shell_escape_value(path)));
+        }
+        (true, Some(prompt), _) => {
+            args.push(format!("--append-system-prompt {}", shell_escape_value(prompt)));
+        }
+        (true, None, Some(path)) => {
+            args.push(format!("--append-system-prompt-file {}", shell_escape_value(path)));
+        }
+        // Neither prompt nor file set — no flag emitted.
+        (_, None, None) => {}
     }
 
     // NOTE: --print / -p is intentionally NOT used here. It causes claude to
@@ -657,6 +809,8 @@ mod tests {
             prompt: None,
             worktree: false,
             system_prompt: None,
+            system_prompt_file: None,
+            append_system_prompt: false,
             tool_policy: ToolPolicy::default(),
             model: None,
             env: HashMap::new(),
@@ -673,7 +827,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_no_model() {
         let config = base_config();
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(!cmd.contains("--model"));
         assert!(cmd.contains("claude"));
         assert!(cmd.contains("--sdk-url"));
@@ -682,14 +836,14 @@ mod tests {
     #[test]
     fn test_build_claude_command_with_model_alias() {
         let config = AgentConfig { model: Some("opus".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(cmd.contains("--model opus"));
     }
 
     #[test]
     fn test_build_claude_command_with_full_model_name() {
         let config = AgentConfig { model: Some("claude-sonnet-4-6".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(cmd.contains("--model claude-sonnet-4-6"));
     }
 
@@ -697,7 +851,7 @@ mod tests {
     fn test_build_claude_command_model_with_interactive() {
         let config =
             AgentConfig { model: Some("haiku".to_string()), interactive: true, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true);
         assert!(cmd.contains("--model haiku"));
         assert!(!cmd.contains("--sdk-url"));
     }
@@ -709,7 +863,7 @@ mod tests {
             user: Some("deploy".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(cmd.starts_with("sudo -u deploy"));
         assert!(cmd.contains("--model sonnet"));
     }
@@ -721,7 +875,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test123".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         assert!(cmd.contains("ANTHROPIC_API_KEY='sk-ant-test123'"));
         // Env prefix must come before claude
@@ -735,7 +889,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test".to_string());
         let config = AgentConfig { user: Some("deploy".to_string()), env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         // For sudo, env vars are injected via `env` to cross the sudo boundary
         assert!(cmd.starts_with("sudo -u deploy env"));
@@ -749,7 +903,7 @@ mod tests {
         // Value contains a single quote — must be properly escaped
         env.insert("MY_VAR".to_string(), "it's a value".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         // Single-quote escaping: ' → '\''
         assert!(cmd.contains("MY_VAR='it'\\''s a value'"));
@@ -763,7 +917,7 @@ mod tests {
         env.insert("123STARTS_WITH_DIGIT".to_string(), "v".to_string());
         env.insert("GOOD_KEY".to_string(), "ok".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         assert!(cmd.contains("GOOD_KEY='ok'"));
         assert!(!cmd.contains("BAD KEY"));
@@ -774,7 +928,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_empty_env_no_prefix() {
         let config = base_config(); // env is empty
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         // Must start directly with claude (no env prefix)
         assert!(cmd.starts_with("claude"));
@@ -785,7 +939,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_BASE_URL".to_string(), "https://custom.api.example.com".to_string());
         let config = AgentConfig { interactive: true, env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true);
 
         assert!(cmd.contains("ANTHROPIC_BASE_URL='https://custom.api.example.com'"));
         assert!(!cmd.contains("--sdk-url"));
@@ -799,8 +953,8 @@ mod tests {
         env.insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
         env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), "tok-123".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd1 = build_claude_command(&config, "ws://localhost:7006/ws/abc");
-        let cmd2 = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd1 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd2 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
 
         // Output must be deterministic (sorted) across calls
         assert_eq!(cmd1, cmd2);
@@ -833,12 +987,121 @@ mod tests {
         assert!(!is_valid_env_var_name("KEY\nNEWLINE"));
     }
 
+    // -- system prompt flag tests --
+
+    #[test]
+    fn test_build_claude_command_no_system_prompt_flag_when_absent() {
+        let config = base_config();
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(!cmd.contains("--system-prompt"), "no system-prompt flag when none configured");
+        assert!(!cmd.contains("--append-system-prompt"), "no append flag when none configured");
+    }
+
+    #[test]
+    fn test_build_claude_command_replace_inline_prompt() {
+        let config = AgentConfig {
+            system_prompt: Some("You are a Rust expert".to_string()),
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--system-prompt 'You are a Rust expert'"));
+        assert!(!cmd.contains("--append-system-prompt"));
+        assert!(!cmd.contains("--system-prompt-file"));
+    }
+
+    #[test]
+    fn test_build_claude_command_replace_prompt_file() {
+        let config = AgentConfig {
+            system_prompt_file: Some("./.agentd/agents/expert.md".to_string()),
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--system-prompt-file './.agentd/agents/expert.md'"));
+        assert!(!cmd.contains("--system-prompt "));
+        assert!(!cmd.contains("--append-system-prompt"));
+    }
+
+    #[test]
+    fn test_build_claude_command_append_inline_prompt() {
+        let config = AgentConfig {
+            system_prompt: Some("Always use TypeScript".to_string()),
+            append_system_prompt: true,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--append-system-prompt 'Always use TypeScript'"));
+        assert!(!cmd.contains("--system-prompt "));
+        assert!(!cmd.contains("--system-prompt-file"));
+    }
+
+    #[test]
+    fn test_build_claude_command_append_prompt_file() {
+        let config = AgentConfig {
+            system_prompt_file: Some("./style-rules.txt".to_string()),
+            append_system_prompt: true,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--append-system-prompt-file './style-rules.txt'"));
+        assert!(!cmd.contains("--system-prompt "));
+        assert!(!cmd.contains("--system-prompt-file "));
+    }
+
+    #[test]
+    fn test_build_claude_command_system_prompt_inline_escaped() {
+        // Single quotes in the prompt must be shell-escaped.
+        let config =
+            AgentConfig { system_prompt: Some("You're an expert".to_string()), ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--system-prompt 'You'\\''re an expert'"));
+    }
+
+    #[test]
+    fn test_build_claude_command_append_inline_prompt_escaped() {
+        let config = AgentConfig {
+            system_prompt: Some("Don't skip tests".to_string()),
+            append_system_prompt: true,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--append-system-prompt 'Don'\\''t skip tests'"));
+    }
+
+    #[test]
+    fn test_build_claude_command_system_prompt_inline_takes_precedence_over_file() {
+        // When both are set, system_prompt (inline) takes precedence (append=false).
+        let config = AgentConfig {
+            system_prompt: Some("inline prompt".to_string()),
+            system_prompt_file: Some("./file.md".to_string()),
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--system-prompt 'inline prompt'"));
+        assert!(!cmd.contains("--system-prompt-file"));
+    }
+
+    #[test]
+    fn test_build_claude_command_append_inline_takes_precedence_over_file() {
+        // When both are set with append=true, system_prompt (inline) takes precedence.
+        let config = AgentConfig {
+            system_prompt: Some("inline append".to_string()),
+            system_prompt_file: Some("./file.md".to_string()),
+            append_system_prompt: true,
+            ..base_config()
+        };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--append-system-prompt 'inline append'"));
+        assert!(!cmd.contains("--append-system-prompt-file"));
+        assert!(!cmd.contains("--system-prompt-file"));
+        assert!(!cmd.contains("--system-prompt "));
+    }
+
     // -- additional_dirs / --add-dir tests --
 
     #[test]
     fn test_build_claude_command_no_add_dir_when_empty() {
         let config = base_config(); // additional_dirs is empty
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(!cmd.contains("--add-dir"), "no --add-dir flag when additional_dirs is empty");
     }
 
@@ -848,7 +1111,7 @@ mod tests {
             additional_dirs: vec!["/tmp/project".to_string(), "/home/user/data".to_string()],
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         assert!(cmd.contains("--add-dir '/tmp/project'"), "first dir must appear");
         assert!(cmd.contains("--add-dir '/home/user/data'"), "second dir must appear");
     }
@@ -860,12 +1123,33 @@ mod tests {
             additional_dirs: vec!["/tmp/my project/it's here".to_string()],
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc");
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
         // Single-quote escaping: ' → '\''
         assert!(
             cmd.contains("--add-dir '/tmp/my project/it'\\''s here'"),
             "path with spaces and single quote must be shell-escaped: {cmd}"
         );
+    }
+
+    #[test]
+    fn test_build_claude_command_pty_backend_no_sdk_url() {
+        // Simulates PTY backend: effective_interactive = true
+        let config = base_config();
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true);
+        assert!(!cmd.contains("--sdk-url"), "PTY mode must not include --sdk-url");
+        assert!(!cmd.contains("--input-format"), "PTY mode must not include --input-format");
+        assert!(!cmd.contains("--output-format"), "PTY mode must not include --output-format");
+        assert!(cmd.contains("claude"));
+    }
+
+    #[test]
+    fn test_build_claude_command_sdk_mode_has_sdk_url() {
+        // Non-PTY backend: effective_interactive = false
+        let config = base_config(); // interactive = false
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        assert!(cmd.contains("--sdk-url"));
+        assert!(cmd.contains("--input-format stream-json"));
+        assert!(cmd.contains("--output-format stream-json"));
     }
 
     // -- shell_escape_value tests --
@@ -890,5 +1174,179 @@ mod tests {
     #[test]
     fn test_shell_escape_value_empty() {
         assert_eq!(shell_escape_value(""), "''");
+    }
+
+    // -----------------------------------------------------------------------
+    // inject_pty_prompt tests
+    // -----------------------------------------------------------------------
+
+    use crate::storage::AgentStorage;
+    use crate::types::{Agent, AgentStatus};
+    use crate::websocket::ConnectionRegistry;
+    use async_trait::async_trait;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+    use tempfile::TempDir;
+    use wrap::backend::{ExecutionBackend, SessionConfig, SessionHealth};
+    use wrap::pty_stream::{PtyOutputStream, DEFAULT_CHANNEL_CAPACITY, DEFAULT_HISTORY_BYTES};
+
+    // A writer that captures bytes into a shared Vec for inspection.
+    struct CapturingWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for CapturingWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // Mock backend that returns a PtyOutputStream for any session.
+    struct MockPtyBackend {
+        stream: PtyOutputStream,
+    }
+
+    impl MockPtyBackend {
+        fn new(captured: Arc<Mutex<Vec<u8>>>) -> Self {
+            let writer = Box::new(CapturingWriter(captured));
+            Self {
+                stream: PtyOutputStream::new(
+                    DEFAULT_CHANNEL_CAPACITY,
+                    DEFAULT_HISTORY_BYTES,
+                    writer,
+                ),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ExecutionBackend for MockPtyBackend {
+        async fn create_session(&self, _config: &SessionConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn launch_agent(&self, _config: &SessionConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn session_exists(&self, _session_name: &str) -> anyhow::Result<bool> {
+            Ok(true)
+        }
+        async fn kill_session(&self, _session_name: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn send_command(&self, _session_name: &str, _command: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn list_sessions(&self) -> anyhow::Result<Vec<String>> {
+            Ok(vec![])
+        }
+        fn prefix(&self) -> &str {
+            "mock"
+        }
+        async fn session_health(&self, _session_name: &str) -> anyhow::Result<SessionHealth> {
+            Ok(SessionHealth::Healthy)
+        }
+        async fn session_output_stream(
+            &self,
+            _session_name: &str,
+        ) -> anyhow::Result<Option<PtyOutputStream>> {
+            Ok(Some(self.stream.clone()))
+        }
+    }
+
+    // Mock backend with no PTY support (default session_output_stream → None).
+    struct MockNoPtyBackend;
+
+    #[async_trait]
+    impl ExecutionBackend for MockNoPtyBackend {
+        async fn create_session(&self, _config: &SessionConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn launch_agent(&self, _config: &SessionConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn session_exists(&self, _session_name: &str) -> anyhow::Result<bool> {
+            Ok(true)
+        }
+        async fn kill_session(&self, _session_name: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn send_command(&self, _session_name: &str, _command: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn list_sessions(&self) -> anyhow::Result<Vec<String>> {
+            Ok(vec![])
+        }
+        fn prefix(&self) -> &str {
+            "no-pty"
+        }
+    }
+
+    async fn make_manager_with_agent(
+        backend: Arc<dyn ExecutionBackend>,
+        interactive: bool,
+    ) -> (AgentManager, Agent, TempDir) {
+        let temp = TempDir::new().unwrap();
+        let db_path = temp.path().join("test.db");
+        let storage = Arc::new(AgentStorage::with_path(&db_path).await.unwrap());
+        let registry = ConnectionRegistry::new();
+        let manager =
+            AgentManager::new(storage.clone(), backend, registry, "ws://localhost".into());
+
+        let mut agent =
+            Agent::new("test-agent".into(), AgentConfig { interactive, ..base_config() });
+        agent.status = AgentStatus::Running;
+        agent.session_id = Some("mock-session-1".into());
+        storage.add(&agent).await.unwrap();
+        (manager, agent, temp)
+    }
+
+    #[tokio::test]
+    async fn inject_pty_prompt_writes_text_and_newline() {
+        let captured = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let backend = Arc::new(MockPtyBackend::new(captured.clone()));
+        let (manager, agent, _temp) = make_manager_with_agent(backend, /*interactive=*/ true).await;
+
+        manager.inject_pty_prompt(&agent.id, "hello world").await.unwrap();
+
+        let written = captured.lock().unwrap().clone();
+        assert_eq!(written, b"hello world\n");
+    }
+
+    #[tokio::test]
+    async fn inject_pty_prompt_appends_newline_to_multi_line_input() {
+        let captured = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let backend = Arc::new(MockPtyBackend::new(captured.clone()));
+        let (manager, agent, _temp) = make_manager_with_agent(backend, /*interactive=*/ true).await;
+
+        manager.inject_pty_prompt(&agent.id, "line one\nline two").await.unwrap();
+
+        let written = captured.lock().unwrap().clone();
+        // A trailing newline is appended; the embedded newline is preserved.
+        assert_eq!(written, b"line one\nline two\n");
+    }
+
+    #[tokio::test]
+    async fn inject_pty_prompt_errors_when_no_pty_stream() {
+        let backend = Arc::new(MockNoPtyBackend);
+        let (manager, agent, _temp) = make_manager_with_agent(backend, /*interactive=*/ true).await;
+
+        let result = manager.inject_pty_prompt(&agent.id, "hello").await;
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("no PTY stream"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn inject_pty_prompt_errors_when_agent_not_found() {
+        let backend = Arc::new(MockPtyBackend::new(Arc::new(Mutex::new(vec![]))));
+        let (manager, _agent, _temp) =
+            make_manager_with_agent(backend, /*interactive=*/ true).await;
+
+        let unknown_id = uuid::Uuid::new_v4();
+        let result = manager.inject_pty_prompt(&unknown_id, "hello").await;
+        assert!(result.is_err());
     }
 }

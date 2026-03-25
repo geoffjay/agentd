@@ -76,6 +76,8 @@ impl AgentStorage {
             prompt: Set(agent.config.prompt.clone()),
             worktree: Set(if agent.config.worktree { 1 } else { 0 }),
             system_prompt: Set(agent.config.system_prompt.clone()),
+            system_prompt_file: Set(agent.config.system_prompt_file.clone()),
+            append_system_prompt: Set(if agent.config.append_system_prompt { 1 } else { 0 }),
             session_id: Set(agent.session_id.clone()),
             tool_policy: Set(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default()),
             backend_type: Set(agent.backend_type.clone()),
@@ -101,6 +103,7 @@ impl AgentStorage {
             rooms: Set(
                 serde_json::to_string(&agent.config.rooms).unwrap_or_else(|_| "[]".to_string())
             ),
+            launch_command: Set(agent.launch_command.clone()),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -160,6 +163,10 @@ impl AgentStorage {
                         .as_ref()
                         .map(|r| serde_json::to_string(r).unwrap_or_else(|_| "{}".to_string())),
                 ),
+            )
+            .col_expr(
+                agent_entity::Column::LaunchCommand,
+                Expr::value(agent.launch_command.clone()),
             )
             .col_expr(agent_entity::Column::UpdatedAt, Expr::value(agent.updated_at.to_rfc3339()))
             .filter(agent_entity::Column::Id.eq(agent.id.to_string()))
@@ -529,6 +536,8 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
             prompt: model.prompt,
             worktree: model.worktree != 0,
             system_prompt: model.system_prompt,
+            system_prompt_file: model.system_prompt_file,
+            append_system_prompt: model.append_system_prompt != 0,
             tool_policy,
             model: model.model,
             env,
@@ -550,6 +559,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
+        launch_command: model.launch_command,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
@@ -606,6 +616,8 @@ mod tests {
                 prompt: None,
                 worktree: false,
                 system_prompt: None,
+                system_prompt_file: None,
+                append_system_prompt: false,
                 tool_policy: ToolPolicy::default(),
                 model: None,
                 env: HashMap::new(),

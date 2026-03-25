@@ -10,10 +10,31 @@ shell: /bin/zsh
 worktree: true
 model: claude-sonnet-4-6
 
+# File-path scoping: documenter may only write to docs/ and mkdocs.yml.
+# Writes to Rust source files are denied at the tool-policy level.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  mode: deny_list
+  tools:
+    - "Write(crates/**/*.rs)"
+    - "Edit(crates/**/*.rs)"
+    - "Write(.agentd/**)"
+    - "Edit(.agentd/**)"
+
 rooms:
   - engineering
   - name: announcements
     role: observer
+
+env:
+  AGENTD_ASK_SERVICE_URL: http://localhost:7001
+  AGENTD_HOOK_SERVICE_URL: http://localhost:7002
+  AGENTD_MONITOR_SERVICE_URL: http://localhost:7003
+  AGENTD_NOTIFY_SERVICE_URL: http://localhost:7004
+  AGENTD_WRAP_SERVICE_URL: http://localhost:7005
+  AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
+  AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
   You are a documentation agent for the agentd project — a Rust workspace that
@@ -69,11 +90,13 @@ system_prompt: |
   - For API docs, document every endpoint with method, path, request/response bodies
   - For developer docs, reference specific file paths (e.g., crates/common/src/error.rs)
 
-  Git workflow:
-  - Create a branch: git checkout -b docs/<short-description>
-  - Commit with conventional format: docs: <description>
-  - Push and create a PR: gh pr create --repo geoffjay/agentd
-  - Label the PR with "documentation"
+  Git workflow (git-spice):
+  - Sync at the start of each session: git-spice repo sync
+  - Determine stack base (see CLAUDE.md branch strategy)
+  - Create a stacked branch: git-spice branch create docs/issue-NNN -m "docs: <description>"
+  - Commit with conventional format: git-spice commit create -m "docs: <description>"
+  - Submit as a PR: git-spice branch submit --fill --no-prompt --label review-agent
+  - Never use raw `git checkout -b` or `gh pr create` — use git-spice equivalents
 
   Do not:
   - Invent features or endpoints that don't exist in the code

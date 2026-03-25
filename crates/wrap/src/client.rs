@@ -35,6 +35,7 @@
 //!     model_provider: "anthropic".to_string(),
 //!     model_name: "claude-sonnet-4.5".to_string(),
 //!     layout: None,
+//!     backend: None,
 //! };
 //!
 //! let response = client.launch(&request).await?;
@@ -49,6 +50,9 @@ use crate::types::*;
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+
+// Re-export so callers can build WS URLs without constructing them manually.
+pub use crate::types::BackendInfo;
 
 /// Client for the wrap service REST API.
 ///
@@ -116,6 +120,7 @@ impl WrapClient {
     ///     model_provider: "anthropic".to_string(),
     ///     model_name: "claude-sonnet-4.5".to_string(),
     ///     layout: None,
+    ///     backend: None,
     /// };
     ///
     /// let response = client.launch(&request).await?;
@@ -142,6 +147,25 @@ impl WrapClient {
     /// Kill/terminate a specific session by name.
     pub async fn kill_session(&self, name: &str) -> Result<KillSessionResponse> {
         self.delete(&format!("/sessions/{}", name)).await
+    }
+
+    /// Fetch information about the active execution backend.
+    ///
+    /// Returns [`BackendInfo`] containing the backend type, version, and
+    /// supported capabilities.
+    pub async fn info(&self) -> Result<BackendInfo> {
+        self.get("/info").await
+    }
+
+    /// Build the WebSocket URL for the PTY terminal relay of a session.
+    ///
+    /// The returned URL uses the `ws://` scheme and can be passed directly
+    /// to `tokio-tungstenite::connect_async`.
+    pub fn terminal_ws_url(&self, session_name: &str) -> String {
+        // Convert http:// → ws:// (or https:// → wss://)
+        let ws_base =
+            self.base_url.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1);
+        format!("{}/sessions/{}/terminal", ws_base, session_name)
     }
 
     /// Check the health of the wrap service.

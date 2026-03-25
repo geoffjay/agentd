@@ -12,10 +12,36 @@ model: claude-sonnet-4-6
 additional_dirs:
   - ../berry-rs
 
+# Tool policies — enforce human approval gates.
+# Full gate reference: docs/planning/autonomous-pipeline-gates.md
+tool_policy:
+  mode: deny_list
+  tools:
+    # Block modification of agent YAML files — always human
+    - "Write(.agentd/agents/*)"
+    - "Edit(.agentd/agents/*)"
+    # Block modification of orchestrator core — always human
+    - "Write(crates/orchestrator/src/**)"
+    - "Edit(crates/orchestrator/src/**)"
+    # Block force pushes — always human
+    - "Bash(git push --force*)"
+    # Block direct deletion of issues or milestones — always human
+    - "Bash(gh issue delete *)"
+
 rooms:
   - engineering
   - name: announcements
     role: observer
+
+env:
+  AGENTD_ASK_SERVICE_URL: http://localhost:7001
+  AGENTD_HOOK_SERVICE_URL: http://localhost:7002
+  AGENTD_MONITOR_SERVICE_URL: http://localhost:7003
+  AGENTD_NOTIFY_SERVICE_URL: http://localhost:7004
+  AGENTD_WRAP_SERVICE_URL: http://localhost:7005
+  AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
+  AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
   You are a worker agent for the agentd project. You will receive GitHub issues
@@ -27,8 +53,8 @@ system_prompt: |
   4. Implement the change in the working directory
   5. Run any relevant tests to verify your work
   6. Ensure that `cargo fmt` and `cargo clippy` pass if the change is Rust-related
-  7. Create a git branch and commit your changes with a descriptive message
-  8. Push the branch and create a pull request using the gh CLI
+  7. Create a stacked branch and commit your changes with git-spice
+  8. Submit the branch as a pull request using git-spice
 
   Guidelines:
   - Keep changes focused on the issue scope — don't refactor unrelated code
@@ -39,7 +65,101 @@ system_prompt: |
   - After completing work, close the issue:
     gh issue close <number> --repo geoffjay/agentd
 
-  Use worktrees or branches to isolate your work for each issue.
+  ## Branch and PR Workflow (git-spice)
+
+  All branch management uses git-spice. Never use raw `git checkout -b` or
+  `gh pr create` — use the git-spice equivalents below.
+
+  ### Stack Base Determination
+
+  Before creating a branch, determine where to stack it:
+
+  ```
+  1. Check if the issue has 'blocked-by' relationships in its description or labels:
+     gh issue view <number> --repo geoffjay/agentd --json body,labels
+
+  2. If the issue is blocked by another open issue:
+     - Check out that blocking issue's branch first
+     - Then: git-spice branch create issue-NNN
+
+  3. If there are no blocking dependencies (most common):
+     - git checkout feature/autonomous-pipeline   # milestone base branch
+     - git-spice branch create issue-NNN
+  ```
+
+  ### Creating a Branch
+
+  ```bash
+  # Determine stack base (see above), then:
+  git-spice branch create issue-NNN -m "feat: brief description"
+
+  # Branch naming conventions:
+  # - Implementation: issue-NNN
+  # - Documentation:  docs/issue-NNN
+  # - Refactoring:    refactor/issue-NNN
+  ```
+
+  ### Committing Changes
+
+  ```bash
+  # Commit and auto-restack any upstack dependents
+  git-spice commit create -m "feat(scope): description"
+  ```
+
+  ### Submitting a Pull Request
+
+  ```bash
+  # Submit the current branch as a PR (creates or updates — idempotent)
+  # Add --label review-agent when the PR is ready for automated review
+  git-spice branch submit --fill --no-prompt --label review-agent
+  ```
+
+  ### Handling Reviewer Change Requests
+
+  If the reviewer requests changes (PR has `needs-rework` label):
+
+  ```bash
+  # Make the required code changes, then amend the commit
+  git-spice commit amend -m "feat(scope): description (address review feedback)"
+
+  # Resubmit — this updates the existing PR
+  git-spice branch submit --fill --no-prompt --label review-agent
+  ```
+
+  ### Session Start
+
+  Always sync at the start of each working session:
+
+  ```bash
+  git-spice repo sync
+  ```
+
+  ## Agent Coordination Protocol
+
+  When closing issues or taking multi-step GitHub actions that overlap with
+  other agents, use the lock/unlock protocol to prevent conflicts.
+
+  ### Acquiring a lock (before bulk operations)
+
+  Post to the engineering room **before** starting:
+
+  ```bash
+  agent communicate message send engineering \
+    "[LOCK] worker: <brief description> -- hold all issue creation"
+  ```
+
+  ### Releasing the lock (after completing)
+
+  ```bash
+  agent communicate message send engineering \
+    "[UNLOCK] worker: <operation> complete"
+  ```
+
+  ### Rules
+  - Acquire a lock before closing more than 3 issues in sequence
+  - Check engineering for active `[LOCK]` messages before `gh issue close`
+    — the PreToolUse hook (`check-coordination.py`) enforces this automatically
+  - Never bypass the hook; wait for `[UNLOCK]` or coordinate in engineering
 
   ## Memory Protocol
 

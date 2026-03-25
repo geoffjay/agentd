@@ -13,6 +13,7 @@ import { ArrowLeft, Edit2, RefreshCw, Trash2, Zap } from 'lucide-react'
 import { DispatchHistory } from '@/components/workflows/DispatchHistory'
 import { WorkflowForm } from '@/components/workflows/WorkflowForm'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { HighlightedCode } from '@/components/common'
 import { CardSkeleton } from '@/components/common/LoadingSkeleton'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { useWorkflowDetail } from '@/hooks/useWorkflows'
@@ -204,9 +205,12 @@ export function WorkflowDetail() {
           <ConfigRow
             label="Prompt template"
             value={
-              <pre className="text-xs font-mono bg-gray-50 dark:bg-gray-900 rounded p-2 whitespace-pre-wrap max-h-32 overflow-auto">
-                {workflow.prompt_template}
-              </pre>
+              <HighlightedCode
+                code={workflow.prompt_template}
+                language="markdown"
+                maxHeight="8rem"
+                className="border border-gray-200 dark:border-gray-700"
+              />
             }
           />
         </dl>

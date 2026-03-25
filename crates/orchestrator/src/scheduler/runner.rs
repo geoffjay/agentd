@@ -21,6 +21,10 @@ use uuid::Uuid;
 pub struct BusyState {
     /// The dispatch record ID of the currently active task.
     pub(crate) active_dispatch_id: Option<Uuid>,
+    /// The source identifier (e.g. GitHub issue/PR number) of the currently active task.
+    /// Populated alongside `active_dispatch_id` so callers can include it in
+    /// `DispatchCompleted` events without an extra storage lookup.
+    pub(crate) active_source_id: Option<String>,
 }
 
 /// Runs the trigger-dispatch loop for a single workflow.
@@ -64,7 +68,10 @@ impl WorkflowRunner {
             storage,
             registry,
             strategy,
-            busy: Arc::new(Mutex::new(BusyState { active_dispatch_id: None })),
+            busy: Arc::new(Mutex::new(BusyState {
+                active_dispatch_id: None,
+                active_source_id: None,
+            })),
             shutdown_tx,
             shutdown_rx,
         }
@@ -189,6 +196,7 @@ impl WorkflowRunner {
             {
                 let mut busy = self.busy.lock().await;
                 busy.active_dispatch_id = Some(record.id);
+                busy.active_source_id = Some(task.source_id.clone());
             }
 
             // Apply the workflow's tool policy to the agent before dispatching.
@@ -209,6 +217,7 @@ impl WorkflowRunner {
                     .await;
                 let mut busy = self.busy.lock().await;
                 busy.active_dispatch_id = None;
+                busy.active_source_id = None;
                 return Err(e);
             }
 
@@ -234,6 +243,7 @@ pub async fn notify_complete(
 ) {
     let dispatch_id = {
         let mut busy = busy.lock().await;
+        busy.active_source_id = None;
         busy.active_dispatch_id.take()
     };
 

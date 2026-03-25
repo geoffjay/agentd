@@ -1103,6 +1103,8 @@ async fn create_agent(
         prompt: resolved_prompt,
         worktree,
         system_prompt: system_prompt.map(|s| s.to_string()),
+        system_prompt_file: None,
+        append_system_prompt: false,
         tool_policy,
         model: model.map(|s| s.to_string()),
         env,
@@ -1125,38 +1127,45 @@ async fn create_agent(
         display_agent(&agent);
     }
 
-    // If --attach was requested, exec into the session (tmux or docker)
+    // If --attach was requested, connect to the agent session.
     if attach {
-        let session = agent
-            .session_id
-            .as_deref()
-            .context("Agent response missing 'session_id' field — cannot attach")?;
-
         let is_docker = agent.backend_type.as_deref() == Some("docker");
+        let is_pty = agent.backend_type.as_deref() == Some("pty");
 
-        if is_docker {
+        if is_pty {
             println!();
-            println!("{}", format!("Attaching to Docker container: {session}").cyan());
-
-            let status = std::process::Command::new("docker")
-                .args(["exec", "-it", session, "bash"])
-                .status()
-                .context("Failed to exec docker exec")?;
-
-            if !status.success() {
-                bail!("docker exec exited with status: {status}");
-            }
+            attach_pty_agent(&agent).await?;
         } else {
-            println!();
-            println!("{}", format!("Attaching to tmux session: {session}").cyan());
+            let session = agent
+                .session_id
+                .as_deref()
+                .context("Agent response missing 'session_id' field — cannot attach")?;
 
-            let status = std::process::Command::new("tmux")
-                .args(["attach-session", "-t", session])
-                .status()
-                .context("Failed to exec tmux attach-session")?;
+            if is_docker {
+                println!();
+                println!("{}", format!("Attaching to Docker container: {session}").cyan());
 
-            if !status.success() {
-                bail!("tmux attach-session exited with status: {status}");
+                let status = std::process::Command::new("docker")
+                    .args(["exec", "-it", session, "bash"])
+                    .status()
+                    .context("Failed to exec docker exec")?;
+
+                if !status.success() {
+                    bail!("docker exec exited with status: {status}");
+                }
+            } else {
+                // Tmux backend (default)
+                println!();
+                println!("{}", format!("Attaching to tmux session: {session}").cyan());
+
+                let status = std::process::Command::new("tmux")
+                    .args(["attach-session", "-t", session])
+                    .status()
+                    .context("Failed to exec tmux attach-session")?;
+
+                if !status.success() {
+                    bail!("tmux attach-session exited with status: {status}");
+                }
             }
         }
     }
@@ -1309,6 +1318,15 @@ async fn attach_agent(
         if !exit.success() {
             bail!("docker exec exited with status: {}", exit);
         }
+    } else if agent.backend_type.as_deref() == Some("pty") {
+        // PTY backend: connect to orchestrator WebSocket terminal relay.
+        //
+        // The orchestrator exposes a WebSocket endpoint at /terminal/{agent_id}
+        // that bridges the local terminal to the remote PTY managed by the
+        // orchestrator process.  Binary frames carry raw I/O bytes; JSON text
+        // frames carry resize events: {"type":"resize","cols":N,"rows":N}.
+        // Ctrl-D or Ctrl-] detaches without terminating the agent.
+        attach_pty_agent(&agent).await?;
     } else {
         // Tmux backend: attach to the tmux session
         if std::process::Command::new("tmux")
@@ -1353,6 +1371,112 @@ async fn attach_agent(
     }
 
     Ok(())
+}
+
+// -- PTY terminal relay --
+
+/// Connect to the orchestrator's WebSocket terminal relay for a PTY-backed agent.
+///
+/// Enables crossterm raw mode, bridges local stdin/stdout with the remote PTY
+/// over the `/terminal/{agent_id}` WebSocket endpoint, and restores the
+/// terminal on all exit paths via a drop guard.
+///
+/// # Protocol
+/// - Binary frames: raw I/O bytes (stdin → server, server → stdout).
+/// - Text frames:   JSON resize events sent from client to server:
+///   `{"type":"resize","cols":N,"rows":N}`.
+/// - Detach keys: Ctrl-D (`\x04`) or Ctrl-`]` (`\x1d`) — detach without
+///   killing the agent.
+async fn attach_pty_agent(agent: &AgentResponse) -> Result<()> {
+    let base_url = std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
+        .unwrap_or_else(|_| "http://localhost:7006".to_string());
+    let ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://");
+    let ws_url = format!("{}/terminal/{}", ws_base, agent.id);
+
+    println!("{}", format!("Attaching to agent '{}' via PTY terminal relay...", agent.name).cyan());
+
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url).await.with_context(|| {
+        format!("Failed to connect to terminal relay at {}. Is the orchestrator running?", ws_url)
+    })?;
+
+    let (mut ws_tx, mut ws_rx) = futures_util::StreamExt::split(ws_stream);
+
+    // Enable raw terminal mode; restore it on all exit paths via a drop guard.
+    crossterm::terminal::enable_raw_mode().context("Failed to enable raw terminal mode")?;
+
+    struct RawModeGuard;
+    impl Drop for RawModeGuard {
+        fn drop(&mut self) {
+            let _ = crossterm::terminal::disable_raw_mode();
+        }
+    }
+    let _guard = RawModeGuard;
+
+    eprintln!("Attached to '{}'. Press Ctrl-D or Ctrl-] to detach.\r", agent.name);
+
+    // Send initial terminal size so the orchestrator can size the PTY correctly.
+    if let Ok((cols, rows)) = crossterm::terminal::size() {
+        let resize = serde_json::json!({"type": "resize", "cols": cols, "rows": rows});
+        let _ = ws_tx
+            .send(tokio_tungstenite::tungstenite::Message::Text(resize.to_string().into()))
+            .await;
+    }
+
+    use futures_util::SinkExt;
+    use std::io::Write as _;
+    use tokio::io::AsyncReadExt as _;
+
+    let mut stdin = tokio::io::stdin();
+    let mut stdout = std::io::stdout();
+    let mut buf = [0u8; 1024];
+
+    let result: Result<()> = loop {
+        tokio::select! {
+            // Terminal stdin → WebSocket (binary frames)
+            n = stdin.read(&mut buf) => {
+                match n {
+                    Ok(0) => break Ok(()), // EOF
+                    Ok(n) => {
+                        let data = &buf[..n];
+                        // Ctrl-D (\x04) or Ctrl-] (\x1d) detaches without killing agent
+                        if data.contains(&0x04) || data.contains(&0x1d) {
+                            break Ok(());
+                        }
+                        if ws_tx
+                            .send(tokio_tungstenite::tungstenite::Message::Binary(
+                                bytes::Bytes::copy_from_slice(data),
+                            ))
+                            .await
+                            .is_err()
+                        {
+                            break Ok(()); // WebSocket closed
+                        }
+                    }
+                    Err(e) => break Err(e.into()),
+                }
+            }
+            // WebSocket → terminal stdout (binary frames)
+            msg = futures_util::StreamExt::next(&mut ws_rx) => {
+                match msg {
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Binary(data))) => {
+                        stdout.write_all(&data)?;
+                        stdout.flush()?;
+                    }
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) | None => {
+                        break Ok(());
+                    }
+                    Some(Err(_)) => break Ok(()),
+                    _ => {}
+                }
+            }
+        }
+    };
+
+    // _guard drops here → disable_raw_mode runs before the newline print.
+    drop(_guard);
+    eprintln!("\r\nDetached from '{}'.", agent.name);
+
+    result
 }
 
 // -- Logs --

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PromptTemplateEditor } from '@/components/workflows/PromptTemplateEditor'
 
 describe('PromptTemplateEditor', () => {
@@ -42,11 +42,16 @@ describe('PromptTemplateEditor', () => {
     expect(screen.queryByText('Preview with sample data')).not.toBeInTheDocument()
   })
 
-  it('expands preview when clicked', () => {
-    render(<PromptTemplateEditor value="Fix: {{title}}" onChange={() => {}} />)
+  it('expands preview when clicked', async () => {
+    const { container } = render(
+      <PromptTemplateEditor value="Fix: {{title}}" onChange={() => {}} />,
+    )
     fireEvent.click(screen.getByText('Preview with sample data'))
-    // Preview should show sample substitution
-    expect(screen.getByText(/Fix: Fix login bug/)).toBeInTheDocument()
+    // ShikiHighlighter is async; wait for it to finish rendering the
+    // substituted preview text (split across highlight spans).
+    await waitFor(() => {
+      expect(container.textContent).toMatch(/Fix: Fix login bug/)
+    })
   })
 
   it('renders error message when provided', () => {
