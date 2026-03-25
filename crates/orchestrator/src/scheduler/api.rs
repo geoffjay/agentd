@@ -114,9 +114,9 @@ async fn create_workflow(
         }
         TriggerConfig::Webhook { .. } | TriggerConfig::Manual {} => {}
         TriggerConfig::LinearIssues { .. } => {
-            // Field-level validation will be added when LinearIssueSource is
-            // implemented (see issue #475). All fields are optional so there
-            // is nothing to validate here yet.
+            // Field-level validation (team_key, project, etc.) will be added
+            // when LinearIssueSource is implemented — see issue #475.
+            // All fields are optional so there is nothing to validate here yet.
         }
     }
 
@@ -126,6 +126,21 @@ async fn create_workflow(
             "Trigger type '{}' is not yet implemented. See documentation for currently supported trigger types.",
             req.trigger_config.trigger_type()
         )));
+    }
+
+    // For implemented trigger types that require external credentials, validate
+    // them here so callers get a clear error at creation time rather than a
+    // silent failure on the first poll. The key value is never included in any
+    // error message.
+    if matches!(req.trigger_config, TriggerConfig::LinearIssues { .. })
+        && !crate::scheduler::linear::LinearConfig::is_configured()
+    {
+        return Err(ApiError::InvalidInput(
+            "Linear API key not configured. \
+             Set the AGENTD_LINEAR_API_KEY environment variable \
+             or add 'api_key' to the [linear] section of the agentd config file."
+                .to_string(),
+        ));
     }
 
     // Validate that the agent exists and is running.

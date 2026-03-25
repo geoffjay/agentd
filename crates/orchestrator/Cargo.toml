@@ -54,6 +54,9 @@ hex = "0.4"
 # Cron expression parsing
 croner = { workspace = true }
 
+# TOML config file parsing (for agentd config file support)
+toml = { workspace = true }
+
 # Tmux management (reuse from wrap crate)
 wrap = { path = "../wrap" }
 
