@@ -516,7 +516,7 @@ mod tests {
         // a reqwest::Client (see note above).
         let url = String::from("http://localhost:17010");
         // Mirror the Into<String> behaviour used in ::new()
-        let stored: String = url.into();
+        let stored: String = url;
         assert_eq!(stored, "http://localhost:17010");
     }
 
