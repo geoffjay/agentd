@@ -342,9 +342,9 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        match try_new_client("http://localhost:7004") {
-            Some(client) => assert_eq!(client.base_url, "http://localhost:7004"),
-            None => {} // macOS TLS init panic — acceptable in test threads
+        if let Some(client) = try_new_client("http://localhost:7004") {
+            // macOS TLS init panic — acceptable in test threads if None
+            assert_eq!(client.base_url, "http://localhost:7004");
         }
     }
 

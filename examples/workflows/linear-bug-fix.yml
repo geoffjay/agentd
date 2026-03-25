@@ -1,0 +1,65 @@
+# Linear Bug Fix Workflow
+#
+# Automatically investigates and fixes bugs reported in Linear issues.
+# The agent has full tool access to read, edit, test, and commit code.
+#
+# Prerequisites:
+#   - Set AGENTD_LINEAR_API_KEY in the orchestrator environment
+#   - Replace "ENG" with your actual Linear team key
+#   - Ensure the agent has write access to the repository
+#
+# Usage:
+#   agent orchestrator create-workflow \
+#     --name linear-bug-fixer \
+#     --agent-name fix-agent \
+#     --trigger-type linear-issues \
+#     --linear-team-key ENG \
+#     --linear-status "Todo" \
+#     --linear-label "bug,agent" \
+#     --poll-interval 60 \
+#     --prompt-template-file examples/workflows/linear-bug-fix.yml
+
+name: linear-bug-fix
+agent: worker
+
+source:
+  type: linear_issues
+  team_key: ENG                    # Replace with your Linear team key
+  status: ["Todo"]                 # Pick up issues ready to work on
+  labels: ["bug", "agent"]         # Must be tagged as a bug assigned to the agent
+
+poll_interval_secs: 60
+enabled: true
+
+# Tool policy: allow all tools for full fix capability
+tool_policy:
+  mode: allow_all
+
+prompt_template: |
+  Work on the following Linear bug report:
+
+  Issue {{identifier}}: {{title}}
+  URL: {{url}}
+  Priority: {{priority}} | State: {{state}}
+  Project: {{project}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Instructions:
+  1. Read the bug description carefully and understand the expected vs actual behaviour
+  2. Search the codebase to identify the root cause
+  3. Implement a focused fix — do not refactor unrelated code
+  4. Write or update tests to cover the bug scenario
+  5. Run the test suite to verify the fix: cargo test (or the appropriate test command)
+  6. Create a git branch named after the issue: git checkout -b linear-{{identifier}}
+  7. Commit with a descriptive message referencing the issue:
+       git commit -m "fix: <short description> (Linear {{identifier}})"
+  8. Push the branch and open a pull request:
+       gh pr create --title "fix: {{title}}" \
+         --body "Fixes Linear issue {{identifier}}\n\n{{url}}"
+
+  If the bug cannot be reproduced or the description is unclear, leave a comment
+  on the Linear issue explaining what additional information is needed before
+  opening a PR.

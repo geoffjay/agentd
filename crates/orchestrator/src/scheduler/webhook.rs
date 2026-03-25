@@ -826,7 +826,7 @@ mod tests {
         // Should be treated as a Linear event.
         assert_eq!(task.source_id, "linear:ENG-1");
         assert_eq!(task.metadata.get("linear_event"), Some(&"Issue".to_string()));
-        assert!(task.metadata.get("github_event").is_none());
+        assert!(!task.metadata.contains_key("github_event"));
     }
 
     #[test]

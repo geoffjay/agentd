@@ -392,6 +392,7 @@ impl LinearIssueSource {
     /// Hidden from generated documentation (`#[doc(hidden)]`) but publicly callable —
     /// used by integration tests in `tests/linear_fetch_http.rs`.
     #[doc(hidden)]
+    #[allow(dead_code)] // used by integration tests in tests/linear_fetch_http.rs
     pub fn new_with_url(
         team_key: Option<String>,
         project: Option<String>,
