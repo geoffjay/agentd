@@ -265,6 +265,27 @@ pub enum SourceTemplate {
         secret: Option<String>,
     },
     Manual {},
+    /// Linear issues trigger — polls Linear for issues matching the given filters.
+    ///
+    /// Requires `AGENTD_LINEAR_API_KEY` to be set in the environment.
+    /// At least one filter field must be provided.
+    LinearIssues {
+        /// Linear team key filter (e.g. `"ENG"`).
+        #[serde(default)]
+        team_key: Option<String>,
+        /// Linear project name or ID filter.
+        #[serde(default)]
+        project: Option<String>,
+        /// Issue status filter (e.g. `["Todo", "In Progress"]`).
+        #[serde(default)]
+        status: Option<Vec<String>>,
+        /// Label filter — issue must carry all listed labels.
+        #[serde(default)]
+        labels: Vec<String>,
+        /// Assignee display name or email filter.
+        #[serde(default)]
+        assignee: Option<String>,
+    },
 }
 
 fn default_state() -> String {
@@ -636,6 +657,9 @@ pub async fn apply_workflow_file(
         }
         SourceTemplate::Webhook { secret } => TriggerConfig::Webhook { secret },
         SourceTemplate::Manual {} => TriggerConfig::Manual {},
+        SourceTemplate::LinearIssues { team_key, project, status, labels, assignee } => {
+            TriggerConfig::LinearIssues { team_key, project, status, labels, assignee }
+        }
     };
 
     let request = CreateWorkflowRequest {

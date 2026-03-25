@@ -73,6 +73,8 @@ pub enum TriggerType {
     Delay,
     Webhook,
     Manual,
+    /// Linear issues trigger — polls Linear for matching issues.
+    LinearIssues,
 }
 
 /// Orchestrator service management subcommands.
@@ -604,6 +606,17 @@ pub enum OrchestratorCommand {
     ///     --owner acme --repo widgets \
     ///     --prompt-template "Review: {{title}}"
     ///
+    /// Create a Linear issues workflow:
+    ///
+    ///   agent orchestrator create-workflow \
+    ///     --name linear-triage \
+    ///     --agent-name planner \
+    ///     --trigger-type linear-issues \
+    ///     --team-key ENG \
+    ///     --linear-status Todo \
+    ///     --linear-status "In Progress" \
+    ///     --prompt-template "Triage: {{title}}\n\n{{body}}"
+    ///
     /// Create a disabled workflow for testing:
     ///
     ///   agent orchestrator create-workflow \
@@ -656,6 +669,26 @@ pub enum OrchestratorCommand {
         /// Webhook secret (optional, for webhook trigger type)
         #[arg(long)]
         webhook_secret: Option<String>,
+
+        /// Linear team key filter (e.g. "ENG") — linear-issues trigger only
+        #[arg(long)]
+        team_key: Option<String>,
+
+        /// Linear project name or ID filter — linear-issues trigger only
+        #[arg(long)]
+        linear_project: Option<String>,
+
+        /// Linear issue status filter (repeatable, e.g. --linear-status Todo --linear-status "In Progress")
+        #[arg(long = "linear-status")]
+        linear_status: Vec<String>,
+
+        /// Linear label filter (repeatable, e.g. --linear-label bug --linear-label urgent) — linear-issues trigger only
+        #[arg(long = "linear-label")]
+        linear_labels: Vec<String>,
+
+        /// Linear assignee display name or email filter — linear-issues trigger only
+        #[arg(long)]
+        linear_assignee: Option<String>,
 
         /// Prompt template with {{placeholders}} (e.g. "Fix: {{title}}\n{{body}}")
         #[arg(long, conflicts_with = "prompt_template_file")]
@@ -890,6 +923,11 @@ impl OrchestratorCommand {
                 cron_expression,
                 run_at,
                 webhook_secret,
+                team_key,
+                linear_project,
+                linear_status,
+                linear_labels,
+                linear_assignee,
                 prompt_template,
                 prompt_template_file,
                 poll_interval,
@@ -908,6 +946,11 @@ impl OrchestratorCommand {
                     cron_expression.as_deref(),
                     run_at.as_deref(),
                     webhook_secret.as_deref(),
+                    team_key.as_deref(),
+                    linear_project.as_deref(),
+                    linear_status,
+                    linear_labels,
+                    linear_assignee.as_deref(),
                     prompt_template.as_deref(),
                     prompt_template_file.as_deref(),
                     *poll_interval,
@@ -2222,6 +2265,11 @@ async fn create_workflow(
     cron_expression: Option<&str>,
     run_at: Option<&str>,
     webhook_secret: Option<&str>,
+    team_key: Option<&str>,
+    linear_project: Option<&str>,
+    linear_status: &[String],
+    linear_labels: &[String],
+    linear_assignee: Option<&str>,
     prompt_template: Option<&str>,
     prompt_template_file: Option<&std::path::Path>,
     poll_interval: u64,
@@ -2282,6 +2330,29 @@ async fn create_workflow(
             TriggerConfig::Webhook { secret: webhook_secret.map(|s| s.to_string()) }
         }
         TriggerType::Manual => TriggerConfig::Manual {},
+        TriggerType::LinearIssues => {
+            // At least one filter must be provided (validated server-side too,
+            // but catch obvious mistakes early with a helpful message).
+            let has_filter = team_key.is_some()
+                || linear_project.is_some()
+                || !linear_status.is_empty()
+                || !linear_labels.is_empty()
+                || linear_assignee.is_some();
+            if !has_filter {
+                bail!(
+                    "linear-issues trigger requires at least one filter: \
+                     --team-key, --linear-project, --linear-status, \
+                     --linear-label, or --linear-assignee"
+                );
+            }
+            TriggerConfig::LinearIssues {
+                team_key: team_key.map(|s| s.to_string()),
+                project: linear_project.map(|s| s.to_string()),
+                status: if linear_status.is_empty() { None } else { Some(linear_status.to_vec()) },
+                labels: linear_labels.to_vec(),
+                assignee: linear_assignee.map(|s| s.to_string()),
+            }
+        }
     };
 
     let request = CreateWorkflowRequest {
@@ -2700,6 +2771,8 @@ mod tests {
                 prompt: None,
                 worktree: false,
                 system_prompt: None,
+                system_prompt_file: None,
+                append_system_prompt: false,
                 tool_policy: Default::default(),
                 model: None,
                 env: Default::default(),
@@ -2713,6 +2786,7 @@ mod tests {
             },
             session_id: Some("agentd-orch-abc123".to_string()),
             backend_type: Some("tmux".to_string()),
+            launch_command: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -3548,6 +3622,8 @@ mod tests {
                 prompt: None,
                 worktree: false,
                 system_prompt: None,
+                system_prompt_file: None,
+                append_system_prompt: false,
                 tool_policy: Default::default(),
                 model: Some("opus".to_string()),
                 env: Default::default(),
@@ -3568,6 +3644,7 @@ mod tests {
             },
             session_id: Some("abc123container".to_string()),
             backend_type: Some("docker".to_string()),
+            launch_command: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -3732,6 +3809,13 @@ mod tests {
             TriggerConfig::Webhook { secret: Some("s3cret".into()) },
             TriggerConfig::Webhook { secret: None },
             TriggerConfig::Manual {},
+            TriggerConfig::LinearIssues {
+                team_key: Some("ENG".into()),
+                project: None,
+                status: None,
+                labels: vec![],
+                assignee: None,
+            },
         ];
         for config in configs {
             let json = serde_json::to_string(&config).unwrap();
@@ -3794,14 +3878,173 @@ mod tests {
         assert!(TriggerConfig::Delay { run_at: "2026-01-01T00:00:00Z".into() }.is_implemented());
         assert!(TriggerConfig::Webhook { secret: None }.is_implemented());
         assert!(TriggerConfig::Manual {}.is_implemented());
-        // LinearIssues is not yet implemented — source added in issue #475.
-        assert!(!TriggerConfig::LinearIssues {
-            team_key: None,
+        assert!(TriggerConfig::LinearIssues {
+            team_key: Some("ENG".into()),
             project: None,
             status: None,
             labels: vec![],
             assignee: None,
         }
         .is_implemented());
+    }
+
+    #[test]
+    fn test_create_workflow_trigger_type_linear_issues_with_team_key() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name",
+            "linear-triage",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--trigger-type",
+            "linear-issues",
+            "--team-key",
+            "ENG",
+            "--prompt-template",
+            "Triage: {{title}}",
+        ])
+        .expect("Should parse with --trigger-type linear-issues and --team-key");
+
+        if let OrchestratorCommand::CreateWorkflow { trigger_type, team_key, .. } = cli.command {
+            assert!(matches!(trigger_type, TriggerType::LinearIssues));
+            assert_eq!(team_key, Some("ENG".to_string()));
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
+    }
+
+    #[test]
+    fn test_create_workflow_trigger_type_linear_issues_with_status_and_labels() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name",
+            "linear-bugs",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--trigger-type",
+            "linear-issues",
+            "--linear-status",
+            "Todo",
+            "--linear-status",
+            "In Progress",
+            "--linear-label",
+            "bug",
+            "--prompt-template",
+            "Fix: {{title}}",
+        ])
+        .expect("Should parse with --linear-status (repeatable) and --linear-label");
+
+        if let OrchestratorCommand::CreateWorkflow {
+            trigger_type,
+            linear_status,
+            linear_labels,
+            ..
+        } = cli.command
+        {
+            assert!(matches!(trigger_type, TriggerType::LinearIssues));
+            assert_eq!(linear_status, vec!["Todo".to_string(), "In Progress".to_string()]);
+            assert_eq!(linear_labels, vec!["bug".to_string()]);
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
+    }
+
+    #[test]
+    fn test_create_workflow_trigger_type_linear_issues_with_assignee_and_project() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name",
+            "linear-assigned",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--trigger-type",
+            "linear-issues",
+            "--linear-project",
+            "Backend",
+            "--linear-assignee",
+            "alice@example.com",
+            "--prompt-template",
+            "Handle: {{title}}",
+        ])
+        .expect("Should parse with --linear-project and --linear-assignee");
+
+        if let OrchestratorCommand::CreateWorkflow {
+            trigger_type,
+            linear_project,
+            linear_assignee,
+            ..
+        } = cli.command
+        {
+            assert!(matches!(trigger_type, TriggerType::LinearIssues));
+            assert_eq!(linear_project, Some("Backend".to_string()));
+            assert_eq!(linear_assignee, Some("alice@example.com".to_string()));
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
+    }
+
+    /// Verify that the client-side filter guard fires when no Linear filter
+    /// flags are supplied, producing a clear error before any network call.
+    #[tokio::test]
+    async fn test_create_workflow_linear_no_filters_returns_error() {
+        // Drive create_workflow() directly with all Linear filter params empty/None
+        // and a dummy client that should never be reached.
+        let client = OrchestratorClient::new("http://127.0.0.1:0");
+        let result = create_workflow(
+            &client,
+            "linear-nofilter",
+            Some("550e8400-e29b-41d4-a716-446655440000"),
+            None,
+            &TriggerType::LinearIssues,
+            None, // owner
+            None, // repo
+            None, // labels
+            None, // state
+            None, // cron_expression
+            None, // run_at
+            None, // webhook_secret
+            None, // team_key
+            None, // linear_project
+            &[],  // linear_status
+            &[],  // linear_labels
+            None, // linear_assignee
+            Some("Fix: {{title}}"),
+            None,
+            60,
+            true,
+            false,
+        )
+        .await;
+
+        let err = result.expect_err("should have failed with no filter");
+        let msg = err.to_string();
+        assert!(msg.contains("at least one filter"), "expected filter-guard error, got: {msg}");
     }
 }
