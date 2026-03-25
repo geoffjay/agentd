@@ -7,7 +7,7 @@ agentd                                     Linear
 ──────────────────────────────────         ──────────────────────
 WorkflowRunner timer fires            ──▶  GraphQL API
 LinearStrategy fetches matching issues◀──  Issue list response
-Deduplicate by linear_id
+Deduplicate by identifier (ENG-123)
 Dispatch new issues as Tasks          ──▶  Agent processes each issue
 ```
 
@@ -67,7 +67,7 @@ If `AGENTD_LINEAR_API_KEY` is not set when a `linear_issues` workflow is created
     "labels": ["agent"]
   },
   "prompt_template": "Triage Linear issue {{identifier}}: {{title}}\n\n{{body}}\n\nTeam: {{team}} | Priority: {{priority}}",
-  "poll_interval": 120,
+  "poll_interval_secs": 120,
   "enabled": true
 }
 ```
@@ -94,7 +94,7 @@ agent orchestrator create-workflow \
   --trigger-type linear-issues \
   --linear-team-key ENG \
   --linear-status "Triage" \
-  --linear-labels "agent" \
+  --linear-label "agent" \
   --poll-interval 120 \
   --prompt-template "Triage Linear issue {{identifier}}: {{title}}\n\n{{body}}"
 ```
@@ -113,7 +113,7 @@ source:
   # project: Backend               # Optional: filter by project name
   # assignee: alice@example.com    # Optional: filter by assignee
 
-poll_interval: 120
+poll_interval_secs: 120
 enabled: true
 
 prompt_template: |
@@ -193,11 +193,11 @@ Linear-specific variables available in `prompt_template`:
 | `{{team}}` | Linear team key | `ENG` |
 | `{{team_name}}` | Linear team display name | `Engineering` |
 | `{{project}}` | Linear project name (empty if unset) | `Backend` |
-| `{{assignee}}` | Assignee display name or email (empty if unassigned) | `alice@example.com` |
+| `{{assignee}}` | Assignee display name (empty if unassigned) | `Alice Example` |
 | `{{labels}}` | Comma-separated label names | `"bug, urgent"` |
 | `{{url}}` | Linear issue URL | `https://linear.app/myorg/issue/ENG-123` |
-| `{{linear_id}}` | Internal Linear UUID (stable dedup key) | `abc-uuid-...` |
-| `{{source_id}}` | Same as `{{linear_id}}` | `abc-uuid-...` |
+| `{{linear_id}}` | Internal Linear UUID | `abc-uuid-...` |
+| `{{source_id}}` | Linear issue identifier (e.g. `ENG-123`) | `ENG-123` |
 
 **Priority values:**
 
@@ -234,23 +234,23 @@ Please:
 
 ## Deduplication
 
-Each Linear issue has a stable UUID (`linear_id`). agentd records processed `linear_id` values so each issue triggers the agent **at most once**, even across restarts. An issue is re-dispatched only if:
+Each Linear issue has a human-readable identifier (e.g. `ENG-123`). agentd records processed identifiers so each issue triggers the agent **at most once**, even across restarts. An issue is re-dispatched only if:
 
 - It was never processed (new issue matching the filters)
 - The deduplication store is cleared (e.g. database reset)
 
-Unlike GitHub issues (deduplicated by issue number), Linear deduplication uses the internal UUID because issue identifiers (`ENG-123`) can be reassigned when issues move between teams.
+Linear deduplication uses `issue.identifier` (the same value as `{{source_id}}` in templates). The internal UUID (`{{linear_id}}`) is available in templates for reference but is not used as the deduplication key.
 
 ---
 
 ## Polling Behaviour
 
-The `poll_interval` field (in seconds, default `60`) controls how often agentd queries the Linear API. At each poll:
+The `poll_interval_secs` field (in seconds, default `60`) controls how often agentd queries the Linear API. At each poll:
 
 1. Linear GraphQL API is queried with the configured filters
 2. Each returned issue is checked against the dedup store
 3. New issues are converted to `Task` objects and dispatched to the agent
-4. `linear_id` values are recorded to prevent re-dispatch
+4. Issue identifiers (e.g. `ENG-123`) are recorded to prevent re-dispatch
 
 **Choosing a poll interval:**
 
@@ -261,7 +261,7 @@ The `poll_interval` field (in seconds, default `60`) controls how often agentd q
 | High-frequency triage | `30` (30 s) |
 
 !!! note "Linear API rate limits"
-    Linear's API allows up to 1 500 requests per hour per API key. A `poll_interval` of `60` with a single workflow uses ~60 requests/hour, well within limits. If you run many Linear workflows with the same key, increase the interval accordingly.
+    Linear's API allows up to 1 500 requests per hour per API key. A `poll_interval_secs` of `60` with a single workflow uses ~60 requests/hour, well within limits. If you run many Linear workflows with the same key, increase the interval accordingly.
 
 ---
 

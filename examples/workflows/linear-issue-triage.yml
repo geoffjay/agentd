@@ -15,7 +15,7 @@
 #     --trigger-type linear-issues \
 #     --linear-team-key ENG \
 #     --linear-status "Triage" \
-#     --linear-labels "agent" \
+#     --linear-label "agent" \
 #     --poll-interval 120 \
 #     --prompt-template-file examples/workflows/linear-issue-triage.yml
 
@@ -28,7 +28,7 @@ source:
   status: ["Triage"]               # Only issues awaiting triage
   labels: ["agent"]                # Must carry the "agent" label
 
-poll_interval: 120
+poll_interval_secs: 120
 enabled: true
 
 # Tool policy: read-only access for safe triage

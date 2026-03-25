@@ -42,7 +42,7 @@ Use when:
 - You want an agent to react to Linear issues automatically
 - You manage engineering work in Linear and want agent-driven triage, assignment, or resolution
 - You are behind a firewall or don't want to expose a public endpoint
-- Latency of up to `poll_interval` is acceptable (default: 60 s)
+- Latency of up to `poll_interval_secs` is acceptable (default: 60 s)
 
 Do not use when:
 
@@ -255,11 +255,11 @@ agent orchestrator create-workflow --name wf --agent-name agent \
 | `{{team}}` | Linear team key | `ENG` |
 | `{{team_name}}` | Linear team display name | `Engineering` |
 | `{{project}}` | Linear project name (empty if unset) | `Backend` |
-| `{{assignee}}` | Assignee display name or email (empty if unassigned) | `alice@example.com` |
+| `{{assignee}}` | Assignee display name (empty if unassigned) | `Alice Example` |
 | `{{labels}}` | Comma-separated label names | `"bug, urgent"` |
 | `{{url}}` | Linear issue URL | `https://linear.app/myorg/issue/ENG-123` |
-| `{{linear_id}}` | Internal Linear UUID (stable dedup key) | `abc-uuid-...` |
-| `{{source_id}}` | Same as `{{linear_id}}` | `abc-uuid-...` |
+| `{{linear_id}}` | Internal Linear UUID | `abc-uuid-...` |
+| `{{source_id}}` | Linear issue identifier (e.g. `ENG-123`) | `ENG-123` |
 
 ### `cron`
 
@@ -326,9 +326,9 @@ agent orchestrator create-workflow --name wf --agent-name agent \
 
 | Aspect | Polling (`github_issues`, `github_pull_requests`) | Polling (`linear_issues`) | Schedule (`cron`, `delay`) | Event (`agent_lifecycle`, `dispatch_result`) | Webhook | Manual |
 |--------|--------------------------------------------------|--------------------------|---------------------------|----------------------------------------------|---------|--------|
-| Latency | Up to `poll_interval_secs` (default 60 s) | Up to `poll_interval` (default 60 s) | Zero — wakes exactly at fire time | Near-zero — in-process event bus | Sub-second | Immediate |
+| Latency | Up to `poll_interval_secs` (default 60 s) | Up to `poll_interval_secs` (default 60 s) | Zero — wakes exactly at fire time | Near-zero — in-process event bus | Sub-second | Immediate |
 | External API calls | Yes — GitHub API per poll | Yes — Linear API per poll | None | None | One inbound HTTP request per event | None |
-| Missed events on restart | No — deduplication by issue/PR number | No — deduplication by Linear UUID | No — dedup by fire time / workflow ID | Yes — events not stored | Depends on sender retry policy | N/A |
+| Missed events on restart | No — deduplication by issue/PR number | No — deduplication by issue identifier (e.g. `ENG-123`) | No — dedup by fire time / workflow ID | Yes — events not stored | Depends on sender retry policy | N/A |
 | Network requirements | Outbound to GitHub | Outbound to Linear | None | None | Inbound HTTP (public endpoint or tunnel) | None |
 | Rate limits | GitHub API rate limits apply | Linear API rate limits apply | None | None | Depends on sender volume | None |
 
