@@ -1,5 +1,6 @@
 use crate::scheduler::events::EventBus;
 use crate::scheduler::github::{GithubIssueSource, GithubPullRequestSource};
+use crate::scheduler::linear::LinearIssueSource;
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
 use crate::scheduler::strategy::{
@@ -272,8 +273,17 @@ fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> 
                 state.clone(),
             )))
         }
+        TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } => {
+            Ok(Box::new(LinearIssueSource::new(
+                team_key.clone(),
+                project.clone(),
+                status.clone(),
+                labels.clone(),
+                assignee.clone(),
+            )?))
+        }
         other => anyhow::bail!(
-            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests",
+            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests, linear_issues",
             other.trigger_type()
         ),
     }
