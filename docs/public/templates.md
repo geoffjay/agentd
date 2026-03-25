@@ -293,6 +293,18 @@ Available `{{placeholders}}` in prompt templates:
 | `{{issue_number}}` | `webhook` (GitHub issues) | Issue number | `42` |
 | `{{pr_number}}` | `webhook` (GitHub PRs) | Pull request number | `99` |
 
+**Linear trigger variables** — populated by the `linear_issues` trigger:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{identifier}}` | Linear issue identifier | `ENG-123` |
+| `{{state}}` | Linear issue state name | `Todo`, `In Progress` |
+| `{{priority}}` | Priority level (0 = none, 1 = urgent, 2 = high, 3 = medium, 4 = low) | `2` |
+| `{{team}}` | Linear team key | `ENG` |
+| `{{team_name}}` | Linear team display name | `Engineering` |
+| `{{project}}` | Linear project name | `Backend` |
+| `{{linear_id}}` | Internal Linear UUID (stable dedup key) | `abc-uuid-...` |
+
 **Event trigger variables** — populated by `agent_lifecycle` and `dispatch_result` triggers:
 
 | Variable | Trigger | Description | Example |
@@ -371,6 +383,19 @@ source:
 ```
 
 See [Manual Triggers](manual-trigger.md) for the `trigger-workflow` CLI command and the `POST /workflows/{id}/trigger` API endpoint.
+
+**Linear Issues:**
+```yaml
+source:
+  type: linear_issues
+  team_key: ENG                    # Linear team key filter (optional but at least one filter required)
+  project: Backend                 # Project name filter (optional)
+  status: [Todo, "In Progress"]    # Issue status filter (optional)
+  labels: [bug]                    # Label filter — issue must carry all listed labels (optional)
+  assignee: alice@example.com      # Assignee display name or email (optional)
+```
+
+Requires `AGENTD_LINEAR_API_KEY` to be set in the environment. At least one filter field must be provided. Linear-specific variables (`{{identifier}}`, `{{state}}`, `{{priority}}`, `{{team}}`, `{{team_name}}`, `{{project}}`, `{{linear_id}}`) are available in the prompt template.
 
 !!! note "Event-driven triggers (API only)"
     The `agent_lifecycle` and `dispatch_result` trigger types are configured via the REST API only. They are not supported in `.agentd/` YAML templates. See [Event-Driven Triggers](event-triggers.md).

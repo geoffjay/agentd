@@ -19,6 +19,13 @@ use crate::scheduler::types::Task;
 /// | `status`             | dispatch_result        | Completion status (`completed` or `failed`)    |
 /// | `timestamp`          | dispatch_result        | RFC 3339 timestamp of the completion event     |
 /// | `original_source_id` | dispatch_result        | Source ID from the parent dispatch (if any)    |
+/// | `identifier`         | linear_issues          | Linear issue identifier (e.g., `"ENG-123"`)    |
+/// | `state`              | linear_issues          | Linear issue state name (e.g., `"Todo"`)       |
+/// | `priority`           | linear_issues          | Linear priority level (0 = none, 1 = urgent)   |
+/// | `team`               | linear_issues          | Linear team key (e.g., `"ENG"`)                |
+/// | `team_name`          | linear_issues          | Linear team display name                       |
+/// | `project`            | linear_issues          | Linear project name                            |
+/// | `linear_id`          | linear_issues          | Internal Linear UUID (stable dedup key)        |
 pub const KNOWN_VARIABLES: &[&str] = &[
     // Top-level task fields
     "title",
@@ -40,6 +47,14 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "status",
     "timestamp",
     "original_source_id",
+    // Metadata-backed (linear_issues trigger)
+    "identifier",
+    "state",
+    "priority",
+    "team",
+    "team_name",
+    "project",
+    "linear_id",
 ];
 
 /// Validate a prompt template, returning any warnings or errors.
@@ -376,6 +391,94 @@ mod tests {
                         {{source_workflow_id}} {{dispatch_id}} {{status}} {{timestamp}} {{original_source_id}}";
         let warnings = validate_template(template);
         assert!(warnings.is_empty(), "Expected no warnings, got: {:?}", warnings);
+    }
+
+    // ── linear_issues trigger variable tests ────────────────────────
+
+    #[test]
+    fn test_validate_linear_variables_accepted() {
+        let template =
+            "{{identifier}} {{state}} {{priority}} {{team}} {{team_name}} {{project}} {{linear_id}}";
+        let warnings = validate_template(template);
+        assert!(warnings.is_empty(), "Expected no warnings, got: {:?}", warnings);
+    }
+
+    #[test]
+    fn test_render_linear_identifier_and_title() {
+        let mut task = sample_task();
+        task.metadata.insert("identifier".to_string(), "ENG-123".to_string());
+        let result = render_template("Work on {{identifier}}: {{title}}", &task);
+        assert_eq!(result, "Work on ENG-123: Fix login bug");
+    }
+
+    #[test]
+    fn test_render_linear_all_metadata_variables() {
+        let mut task = sample_task();
+        task.metadata.insert("identifier".to_string(), "ENG-42".to_string());
+        task.metadata.insert("state".to_string(), "In Progress".to_string());
+        task.metadata.insert("priority".to_string(), "1".to_string());
+        task.metadata.insert("team".to_string(), "ENG".to_string());
+        task.metadata.insert("team_name".to_string(), "Engineering".to_string());
+        task.metadata.insert("project".to_string(), "Backend".to_string());
+        task.metadata.insert("linear_id".to_string(), "abc-uuid-def".to_string());
+
+        let template = "{{identifier}}: {{title}}\nTeam: {{team}} ({{team_name}}) | Project: {{project}} | Priority: {{priority}} | State: {{state}}";
+        let result = render_template(template, &task);
+        assert_eq!(
+            result,
+            "ENG-42: Fix login bug\nTeam: ENG (Engineering) | Project: Backend | Priority: 1 | State: In Progress"
+        );
+    }
+
+    #[test]
+    fn test_render_linear_missing_optional_fields_preserves_placeholder() {
+        // state and project are optional — if the Linear issue has no project,
+        // the placeholder is preserved in the output.
+        let mut task = sample_task();
+        task.metadata.insert("identifier".to_string(), "ENG-7".to_string());
+        // state and project intentionally absent
+
+        let result =
+            render_template("{{identifier}} | State: {{state}} | Project: {{project}}", &task);
+        assert_eq!(result, "ENG-7 | State: {{state}} | Project: {{project}}");
+    }
+
+    #[test]
+    fn test_validate_all_variables_including_linear() {
+        let template = "{{title}} {{body}} {{url}} {{labels}} {{assignee}} {{source_id}} {{metadata}} \
+                        {{fire_time}} {{cron_expression}} {{trigger_type}} {{run_at}} {{workflow_id}} \
+                        {{source_workflow_id}} {{dispatch_id}} {{status}} {{timestamp}} {{original_source_id}} \
+                        {{identifier}} {{state}} {{priority}} {{team}} {{team_name}} {{project}} {{linear_id}}";
+        let warnings = validate_template(template);
+        assert!(warnings.is_empty(), "Expected no warnings, got: {:?}", warnings);
+    }
+
+    #[test]
+    fn test_render_linear_full_workflow_template() {
+        // Simulate a realistic linear_issues trigger task.
+        let mut task = Task {
+            source_id: "ENG-123".to_string(),
+            title: "Fix authentication timeout".to_string(),
+            body: "Session tokens expire too quickly under load.".to_string(),
+            url: "https://linear.app/eng/issue/ENG-123".to_string(),
+            labels: vec!["bug".to_string(), "auth".to_string()],
+            assignee: Some("alice".to_string()),
+            metadata: HashMap::new(),
+        };
+        task.metadata.insert("identifier".to_string(), "ENG-123".to_string());
+        task.metadata.insert("state".to_string(), "Todo".to_string());
+        task.metadata.insert("priority".to_string(), "2".to_string());
+        task.metadata.insert("team".to_string(), "ENG".to_string());
+        task.metadata.insert("team_name".to_string(), "Engineering".to_string());
+        task.metadata.insert("project".to_string(), "Auth Service".to_string());
+        task.metadata.insert("linear_id".to_string(), "stable-uuid-789".to_string());
+
+        let template = "Work on Linear issue {{identifier}}: {{title}}\n\n{{body}}\n\nTeam: {{team}} | Project: {{project}} | Priority: {{priority}} | State: {{state}}";
+        let result = render_template(template, &task);
+        assert_eq!(
+            result,
+            "Work on Linear issue ENG-123: Fix authentication timeout\n\nSession tokens expire too quickly under load.\n\nTeam: ENG | Project: Auth Service | Priority: 2 | State: Todo"
+        );
     }
 
     #[test]
