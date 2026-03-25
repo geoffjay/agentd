@@ -176,9 +176,8 @@ impl TriggerConfig {
             | TriggerConfig::AgentLifecycle { .. }
             | TriggerConfig::DispatchResult { .. }
             | TriggerConfig::Webhook { .. }
-            | TriggerConfig::Manual { .. } => true,
-            // LinearIssues source is not yet implemented — see issue #475.
-            TriggerConfig::LinearIssues { .. } => false,
+            | TriggerConfig::Manual { .. }
+            | TriggerConfig::LinearIssues { .. } => true,
         }
     }
 
