@@ -28,7 +28,7 @@ source:
   status: ["Triage"]               # Only issues awaiting triage
   labels: ["agent"]                # Must carry the "agent" label
 
-poll_interval_secs: 120
+poll_interval: 120
 enabled: true
 
 # Tool policy: read-only access for safe triage

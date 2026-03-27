@@ -20,7 +20,7 @@ source:
     - review
   state: open
 
-poll_interval_secs: 300
+poll_interval: 300
 enabled: true
 
 # Tool policy: read-only tools for safe code review

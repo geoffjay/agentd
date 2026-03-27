@@ -28,7 +28,7 @@ source:
   status: ["Todo"]                 # Pick up issues ready to work on
   labels: ["bug", "agent"]         # Must be tagged as a bug assigned to the agent
 
-poll_interval_secs: 60
+poll_interval: 60
 enabled: true
 
 # Tool policy: allow all tools for full fix capability

@@ -21,7 +21,7 @@ source:
     - audit
   state: open
 
-poll_interval_secs: 600
+poll_interval: 600
 enabled: true
 
 # Tool policy: deny all tools by default, require human approval
