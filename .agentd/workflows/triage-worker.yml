@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
 # Triage worker workflow — dispatches triage tasks to the triage agent.
 #
 # Triggered when an issue has the "needs-triage" label applied. The triage

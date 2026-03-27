@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/agent.yml
+
 # Designer agent — maintains UI design, design system, and visual consistency.
 #
 # Usage:

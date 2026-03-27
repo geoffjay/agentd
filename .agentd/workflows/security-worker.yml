@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
 # Security worker workflow — on-demand security audit via label trigger.
 #
 # Triggered when an issue has the "security-agent" label applied. The security

@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
 # Design workflow — dispatches design issues to the designer agent.
 #
 # Issues with the "design-agent" label are picked up automatically.

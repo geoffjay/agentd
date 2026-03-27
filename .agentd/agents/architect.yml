@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/agent.yml
+
 # Architect agent — cross-service design review and ADR authoring.
 #
 # Reviews PRs labeled "architecture" for cross-crate design concerns, authors

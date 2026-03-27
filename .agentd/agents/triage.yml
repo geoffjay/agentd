@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/agent.yml
+
 # Triage agent — automatic issue processing for the agentd project.
 #
 # Triggered when an issue is labeled "needs-triage". Assigns labels,

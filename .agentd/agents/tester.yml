@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/agent.yml
+
 # Tester agent — systematic test coverage for the agentd workspace.
 #
 # Triggered when an issue is labeled "test-agent". Identifies undertested

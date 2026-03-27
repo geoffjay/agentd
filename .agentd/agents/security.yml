@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/agent.yml
+
 # Security agent — proactive security auditing and vulnerability management.
 #
 # Triggered by the "security-agent" label on an issue, or on a weekly cron
