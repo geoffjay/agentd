@@ -1,0 +1,149 @@
+%YAML 1.1
+---
+$schema: "http://stsci.edu/schemas/yaml-schema/draft-01"
+id: "https://agentd.dev/schemas/room"
+title: "agentd room template"
+description: |
+  Schema for room template files located in .agentd/rooms/*.yml.
+
+  A room template declares a conversation channel for agents and humans.
+  Rooms are created idempotently — re-applying a template with the same
+  name updates the existing room rather than creating a duplicate.
+
+type: object
+
+propertyOrder:
+  - name
+  - type
+  - topic
+  - description
+  - participants
+
+properties:
+
+  name:
+    description: "Unique name for the room."
+    type: string
+    minLength: 1
+
+  type:
+    description: |
+      The kind of conversation this room represents.
+
+        - direct:    One-to-one conversation between exactly two participants.
+        - group:     Multi-participant group conversation (default).
+        - broadcast: One-to-many channel where only admins can post.
+    $ref: "definitions.yml#/definitions/room_type"
+    default: "group"
+
+  topic:
+    description: "Short topic line displayed in room headers and listings."
+    type: string
+
+  description:
+    description: "Longer description of the room's purpose."
+    type: string
+
+  participants:
+    description: |
+      Initial participants to add to the room. Agent participants are
+      resolved by name to their UUID at apply time (best-effort — if
+      the agent hasn't been registered yet, the name is stored and
+      reconciled when the agent connects).
+    type: array
+    items:
+      $ref: "#/definitions/room_participant"
+
+required:
+  - name
+
+additionalProperties: false
+
+definitions:
+
+  room_participant:
+    description: "A participant entry in a room template."
+    type: object
+    properties:
+      identifier:
+        description: |
+          Agent name, agent UUID, or human username. Agent names are
+          resolved to UUIDs at apply time.
+        type: string
+        minLength: 1
+      kind:
+        description: "Whether this participant is an agent or a human."
+        $ref: "definitions.yml#/definitions/participant_kind"
+        default: "agent"
+      role:
+        description: |
+          The role this participant holds within the room.
+
+            - member:   Can read and post messages.
+            - admin:    Can manage participants and settings; required
+                        for posting in broadcast rooms.
+            - observer: Read-only access.
+        $ref: "definitions.yml#/definitions/participant_role"
+        default: "member"
+      display_name:
+        description: |
+          Human-readable display name. Defaults to the identifier if
+          omitted.
+        type: string
+    required: [identifier]
+    additionalProperties: false
+    propertyOrder: [identifier, kind, role, display_name]
+
+examples:
+  -
+    - "Minimal group room"
+    - |
+      name: engineering
+      topic: "Engineering coordination"
+  -
+    - "Broadcast room with admin and observers"
+    - |
+      name: announcements
+      type: broadcast
+      topic: "General announcements"
+      description: "Important information for all agents"
+      participants:
+        - identifier: conductor
+          kind: agent
+          role: admin
+        - identifier: worker
+          kind: agent
+          role: observer
+        - identifier: reviewer
+          kind: agent
+          role: observer
+  -
+    - "Mixed agent and human room"
+    - |
+      name: operations
+      type: group
+      topic: "Pipeline operations and status"
+      description: "Conductor posts pipeline status digests"
+      participants:
+        - identifier: conductor
+          kind: agent
+          role: admin
+        - identifier: worker
+          kind: agent
+          role: observer
+        - identifier: geoff
+          kind: human
+          role: admin
+          display_name: "Geoff"
+  -
+    - "Direct message room"
+    - |
+      name: conductor-geoff
+      type: direct
+      participants:
+        - identifier: conductor
+          kind: agent
+        - identifier: geoff
+          kind: human
+          display_name: "Geoff"
+...

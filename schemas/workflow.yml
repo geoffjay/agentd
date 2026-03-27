@@ -1,0 +1,479 @@
+%YAML 1.1
+---
+$schema: "http://stsci.edu/schemas/yaml-schema/draft-01"
+id: "https://agentd.dev/schemas/workflow"
+title: "agentd workflow template"
+description: |
+  Schema for workflow template files located in .agentd/workflows/*.yml.
+
+  A workflow template binds an agent to a trigger source and a prompt
+  template, defining when and how the agent is dispatched to handle
+  external tasks.
+
+type: object
+
+propertyOrder:
+  - name
+  - agent
+  - source
+  - prompt_template
+  - prompt_template_file
+  - poll_interval
+  - enabled
+  - tool_policy
+
+properties:
+
+  name:
+    description: "Unique name for the workflow."
+    type: string
+    minLength: 1
+
+  agent:
+    description: |
+      Name of the agent to dispatch tasks to. Resolved to the agent's
+      UUID at apply time — the agent must exist (or be created in the
+      same apply batch).
+    type: string
+    minLength: 1
+
+  source:
+    description: |
+      Trigger configuration that determines when and how the workflow
+      fires. Discriminated by the 'type' field.
+    $ref: "#/definitions/source_template"
+
+  prompt_template:
+    description: |
+      Inline prompt template with {{placeholder}} variables that are
+      replaced with task data at dispatch time. Mutually exclusive
+      with prompt_template_file.
+
+      Available variables depend on the trigger type. Common top-level
+      variables: {{title}}, {{body}}, {{url}}, {{labels}}, {{assignee}},
+      {{source_id}}, {{metadata}}.
+    type: string
+    style: literal
+
+  prompt_template_file:
+    description: |
+      Path to a file containing the prompt template. Relative paths are
+      resolved relative to the YAML file location. Mutually exclusive
+      with prompt_template.
+    type: string
+
+  poll_interval:
+    description: "How often to poll the task source, in seconds."
+    type: integer
+    minimum: 1
+    default: 60
+
+  enabled:
+    description: "Whether the workflow is active."
+    type: boolean
+    default: true
+
+  tool_policy:
+    description: |
+      Tool policy override applied to the agent when dispatching tasks
+      from this workflow. If omitted, the agent's own policy is used.
+    $ref: "definitions.yml#/definitions/tool_policy"
+
+required:
+  - name
+  - agent
+  - source
+
+additionalProperties: false
+
+definitions:
+
+  # ---------------------------------------------------------------------------
+  # Source template (trigger configuration)
+  # ---------------------------------------------------------------------------
+  source_template:
+    description: |
+      Tagged union of all supported trigger types. The 'type' field
+      selects the variant; remaining fields are variant-specific.
+    oneOf:
+      - $ref: "#/definitions/source_github_issues"
+      - $ref: "#/definitions/source_github_pull_requests"
+      - $ref: "#/definitions/source_cron"
+      - $ref: "#/definitions/source_delay"
+      - $ref: "#/definitions/source_agent_lifecycle"
+      - $ref: "#/definitions/source_dispatch_result"
+      - $ref: "#/definitions/source_webhook"
+      - $ref: "#/definitions/source_manual"
+      - $ref: "#/definitions/source_linear_issues"
+
+  # ---------------------------------------------------------------------------
+  # GitHub Issues
+  # ---------------------------------------------------------------------------
+  source_github_issues:
+    description: |
+      Polls GitHub for issues matching the given filters.
+
+      Template variables: {{title}}, {{body}}, {{url}}, {{labels}},
+      {{assignee}}, {{source_id}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [github_issues]
+      owner:
+        description: "GitHub repository owner (user or organisation)."
+        type: string
+      repo:
+        description: "GitHub repository name."
+        type: string
+      labels:
+        description: "Filter issues to those carrying all listed labels."
+        type: array
+        items:
+          type: string
+        default: []
+      state:
+        description: "Issue state filter."
+        type: string
+        enum: [open, closed, all]
+        default: "open"
+    required: [type, owner, repo]
+    additionalProperties: false
+    propertyOrder: [type, owner, repo, labels, state]
+    examples:
+      -
+        - "Issues labelled 'agent' in open state"
+        - |
+          type: github_issues
+          owner: myorg
+          repo: myrepo
+          labels: [agent]
+
+  # ---------------------------------------------------------------------------
+  # GitHub Pull Requests
+  # ---------------------------------------------------------------------------
+  source_github_pull_requests:
+    description: |
+      Polls GitHub for pull requests matching the given filters.
+
+      Template variables: {{title}}, {{body}}, {{url}}, {{labels}},
+      {{assignee}}, {{source_id}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [github_pull_requests]
+      owner:
+        description: "GitHub repository owner."
+        type: string
+      repo:
+        description: "GitHub repository name."
+        type: string
+      labels:
+        description: "Filter PRs to those carrying all listed labels."
+        type: array
+        items:
+          type: string
+        default: []
+      state:
+        description: "Pull request state filter."
+        type: string
+        enum: [open, closed, all]
+        default: "open"
+    required: [type, owner, repo]
+    additionalProperties: false
+    propertyOrder: [type, owner, repo, labels, state]
+
+  # ---------------------------------------------------------------------------
+  # Cron
+  # ---------------------------------------------------------------------------
+  source_cron:
+    description: |
+      Fires on a cron schedule.
+
+      Template variables: {{fire_time}}, {{cron_expression}},
+      {{trigger_type}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [cron]
+      expression:
+        description: |
+          Standard cron expression (5 fields: minute hour day-of-month
+          month day-of-week). Extended expressions with seconds are not
+          supported.
+        type: string
+    required: [type, expression]
+    additionalProperties: false
+    propertyOrder: [type, expression]
+    examples:
+      -
+        - "Every weekday at 09:00 UTC"
+        - |
+          type: cron
+          expression: "0 9 * * MON-FRI"
+      -
+        - "Every 5 minutes"
+        - |
+          type: cron
+          expression: "*/5 * * * *"
+
+  # ---------------------------------------------------------------------------
+  # Delay (one-shot)
+  # ---------------------------------------------------------------------------
+  source_delay:
+    description: |
+      One-shot trigger that fires at a specific time, then auto-disables
+      the workflow.
+
+      Template variables: {{run_at}}, {{workflow_id}}, {{trigger_type}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [delay]
+      run_at:
+        description: "ISO 8601 datetime string for when to fire."
+        type: string
+        format: date-time
+    required: [type, run_at]
+    additionalProperties: false
+    propertyOrder: [type, run_at]
+    examples:
+      -
+        - "Fire once at a specific time"
+        - |
+          type: delay
+          run_at: "2026-04-01T09:00:00Z"
+
+  # ---------------------------------------------------------------------------
+  # Agent Lifecycle
+  # ---------------------------------------------------------------------------
+  source_agent_lifecycle:
+    description: |
+      Fires when a matching agent lifecycle event occurs on the event bus.
+
+      Events:
+        - session_start  -> AgentConnected
+        - session_end    -> AgentDisconnected
+        - context_clear  -> ContextCleared
+
+      Template variables: {{title}}, {{body}}, {{source_id}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [agent_lifecycle]
+      event:
+        description: "The lifecycle event type to listen for."
+        type: string
+        enum: [session_start, session_end, context_clear]
+    required: [type, event]
+    additionalProperties: false
+    propertyOrder: [type, event]
+
+  # ---------------------------------------------------------------------------
+  # Dispatch Result (workflow chaining)
+  # ---------------------------------------------------------------------------
+  source_dispatch_result:
+    description: |
+      Fires when a workflow dispatch completes, enabling workflow chaining.
+
+      Template variables: {{source_workflow_id}}, {{dispatch_id}},
+      {{status}}, {{timestamp}}, {{original_source_id}}, {{title}},
+      {{body}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [dispatch_result]
+      source_workflow_id:
+        description: "Only trigger when this specific workflow completes."
+        $ref: "definitions.yml#/definitions/uuid"
+      status:
+        description: "Only trigger on a specific completion status."
+        $ref: "definitions.yml#/definitions/dispatch_status"
+    required: [type]
+    additionalProperties: false
+    propertyOrder: [type, source_workflow_id, status]
+    examples:
+      -
+        - "Chain after a specific workflow completes successfully"
+        - |
+          type: dispatch_result
+          source_workflow_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          status: completed
+
+  # ---------------------------------------------------------------------------
+  # Webhook
+  # ---------------------------------------------------------------------------
+  source_webhook:
+    description: |
+      Webhook-driven trigger. The orchestrator exposes an HTTP endpoint
+      that external services can POST to.
+
+      Template variables depend on the source:
+        GitHub: {{action}}, {{github_event}}, {{delivery_id}},
+                {{issue_number}}, {{pr_number}}, {{title}}, {{body}}.
+        Linear: {{linear_event}}, {{linear_action}},
+                {{linear_delivery_id}}, {{title}}, {{body}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [webhook]
+      secret:
+        description: |
+          Shared secret for HMAC signature verification. For GitHub
+          webhooks this is the webhook secret; for Linear it is the
+          signing secret.
+        type: string
+      source:
+        description: |
+          Expected webhook source. Enforced by the handler to prevent
+          source-header spoofing. Defaults to 'any'.
+        $ref: "definitions.yml#/definitions/webhook_source"
+        default: any
+    required: [type]
+    additionalProperties: false
+    propertyOrder: [type, source, secret]
+
+  # ---------------------------------------------------------------------------
+  # Manual
+  # ---------------------------------------------------------------------------
+  source_manual:
+    description: |
+      Manual trigger — dispatched explicitly via the API.
+
+      Template variables: {{title}}, {{body}}, {{metadata}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [manual]
+    required: [type]
+    additionalProperties: false
+
+  # ---------------------------------------------------------------------------
+  # Linear Issues
+  # ---------------------------------------------------------------------------
+  source_linear_issues:
+    description: |
+      Polls Linear for issues matching the given filters.
+
+      Requires AGENTD_LINEAR_API_KEY to be set in the orchestrator's
+      environment or configured in the agentd config file under
+      [linear].api_key.
+
+      All filter fields are optional; omitting them returns all
+      accessible issues.
+
+      Template variables: {{title}}, {{body}}, {{url}}, {{labels}},
+      {{assignee}}, {{source_id}}, {{identifier}}, {{state}},
+      {{priority}}, {{team}}, {{team_name}}, {{project}},
+      {{linear_id}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [linear_issues]
+      team_key:
+        description: "Linear team key filter (e.g. 'ENG')."
+        type: string
+      project:
+        description: "Linear project name or ID filter."
+        type: string
+      status:
+        description: |
+          Issue status filter. Only issues whose status matches one of
+          these values are returned. Defaults to all statuses.
+        type: array
+        items:
+          type: string
+      labels:
+        description: "Label filter — issue must carry all listed labels."
+        type: array
+        items:
+          type: string
+        default: []
+      assignee:
+        description: "Assignee display name or email filter."
+        type: string
+    required: [type]
+    additionalProperties: false
+    propertyOrder: [type, team_key, project, status, labels, assignee]
+    examples:
+      -
+        - "Engineering team, Todo issues"
+        - |
+          type: linear_issues
+          team_key: ENG
+          status: ["Todo"]
+      -
+        - "Filtered by project, labels, and assignee"
+        - |
+          type: linear_issues
+          team_key: ENG
+          project: Backend
+          status: ["Todo", "In Progress"]
+          labels: ["needs-review"]
+          assignee: "alice@example.com"
+
+examples:
+  -
+    - "GitHub issue workflow"
+    - |
+      name: issue-worker
+      agent: worker
+      source:
+        type: github_issues
+        owner: myorg
+        repo: myrepo
+        labels: [agent]
+      poll_interval: 60
+      prompt_template: |
+        Fix the following issue:
+        Title: {{title}}
+        Body: {{body}}
+        URL: {{url}}
+  -
+    - "Cron-based security scan"
+    - |
+      name: security-audit
+      agent: security
+      source:
+        type: cron
+        expression: "0 0 * * 0"
+      prompt_template: |
+        Run a weekly security audit of the codebase.
+        Trigger type: {{trigger_type}}
+        Fire time: {{fire_time}}
+  -
+    - "Linear issue workflow"
+    - |
+      name: linear-worker
+      agent: worker
+      source:
+        type: linear_issues
+        team_key: ENG
+        status: ["Todo"]
+      prompt_template: |
+        Implement the following Linear issue:
+        {{identifier}}: {{title}}
+        {{body}}
+  -
+    - "Workflow with prompt template file and tool policy override"
+    - |
+      name: docs-worker
+      agent: documenter
+      source:
+        type: github_issues
+        owner: myorg
+        repo: myrepo
+        labels: [docs-agent]
+      prompt_template_file: templates/docs-prompt.yml
+      tool_policy:
+        mode: allow_list
+        tools: [Read, Grep, Glob, Write, Edit]
+...

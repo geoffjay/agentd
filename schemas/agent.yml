@@ -1,0 +1,247 @@
+%YAML 1.1
+---
+$schema: "http://stsci.edu/schemas/yaml-schema/draft-01"
+id: "https://agentd.dev/schemas/agent"
+title: "agentd agent template"
+description: |
+  Schema for agent template files located in .agentd/agents/*.yml.
+
+  An agent template declares a managed AI agent instance — its execution
+  environment, model, system prompt, tool policy, and room memberships.
+
+type: object
+
+propertyOrder:
+  - name
+  - model
+  - working_dir
+  - shell
+  - interactive
+  - worktree
+  - prompt
+  - system_prompt
+  - system_prompt_file
+  - append_system_prompt
+  - tool_policy
+  - env
+  - auto_clear_threshold
+  - additional_dirs
+  - rooms
+  - network_policy
+  - docker_image
+  - extra_mounts
+  - resource_limits
+
+properties:
+
+  name:
+    description: |
+      Unique name for the agent. Used as the identifier when referenced
+      by workflow templates and room participant lists.
+    type: string
+    minLength: 1
+
+  working_dir:
+    description: |
+      Working directory for the agent process. Relative paths are
+      resolved relative to the YAML file location.
+    type: string
+    default: "."
+
+  shell:
+    description: "Shell to run the agent in."
+    type: string
+    default: "zsh"
+    examples:
+      -
+        - "Default shell"
+        - "zsh"
+      -
+        - "Bash shell"
+        - "bash"
+
+  interactive:
+    description: |
+      If true, start Claude in normal interactive mode without WebSocket
+      SDK connection.
+    type: boolean
+    default: false
+
+  worktree:
+    description: |
+      If true, start the session with --worktree, giving the agent an
+      isolated git worktree.
+    type: boolean
+    default: false
+
+  prompt:
+    description: "Initial prompt to execute the Claude session with."
+    type: string
+
+  system_prompt:
+    description: |
+      System prompt to use for the session (inline text).
+      Mutually exclusive with system_prompt_file.
+    type: string
+    style: literal
+
+  system_prompt_file:
+    description: |
+      Path to a file whose contents will be used as the system prompt.
+      Mutually exclusive with system_prompt. Relative paths are resolved
+      relative to the YAML file location.
+    type: string
+
+  append_system_prompt:
+    description: |
+      If true, the system prompt is appended to the default prompt
+      instead of replacing it.
+
+      Combined with system_prompt:
+        false -> --system-prompt
+        true  -> --append-system-prompt
+
+      Combined with system_prompt_file:
+        false -> --system-prompt-file
+        true  -> --append-system-prompt-file
+    type: boolean
+    default: false
+
+  tool_policy:
+    description: "Tool-use policy for this agent."
+    $ref: "definitions.yml#/definitions/tool_policy"
+    default:
+      mode: allow_all
+
+  model:
+    description: |
+      Model to use for the Claude session. Maps to --model flag.
+      Accepts aliases (sonnet, opus, haiku) or full model names
+      (e.g. claude-sonnet-4-6, claude-opus-4-6).
+    type: string
+    examples:
+      -
+        - "Alias"
+        - "sonnet"
+      -
+        - "Full model name"
+        - "claude-opus-4-6"
+
+  env:
+    description: |
+      Environment variables to set when launching the agent.
+      Values support shell-style variable expansion:
+        ${VAR}           - required, error if unset
+        ${VAR:-default}  - use value or fallback
+    $ref: "definitions.yml#/definitions/env_map"
+    examples:
+      -
+        - "Pass through API key from host environment"
+        - |
+          env:
+            ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+            CUSTOM_FLAG: ${MY_FLAG:-default_value}
+
+  auto_clear_threshold:
+    description: |
+      Automatically clear the agent's context when the cumulative
+      input-token count for the current session exceeds this threshold.
+    type: integer
+    minimum: 1
+
+  network_policy:
+    description: |
+      Network policy for Docker-backed agents. Controls whether the
+      container has internet access, is fully isolated, or shares the
+      host network. Ignored for tmux backends.
+    $ref: "definitions.yml#/definitions/network_policy"
+
+  docker_image:
+    description: |
+      Custom Docker image override for this agent. When set, the Docker
+      backend uses this image instead of its default. Ignored for tmux
+      backends.
+    type: string
+
+  extra_mounts:
+    description: |
+      Additional volume mounts for Docker-backed agents. Appended to
+      the default /workspace bind mount. Ignored for tmux backends.
+    type: array
+    items:
+      $ref: "definitions.yml#/definitions/volume_mount"
+
+  resource_limits:
+    description: |
+      Resource limits (CPU, memory) for Docker-backed agents. Overrides
+      the backend's default limits. Ignored for tmux backends.
+    $ref: "definitions.yml#/definitions/resource_limits"
+
+  additional_dirs:
+    description: |
+      Additional directories the agent has access to. Maps to Claude
+      Code's --add-dir flag. Relative paths are resolved relative to
+      the YAML file location.
+    type: array
+    items:
+      type: string
+
+  rooms:
+    description: |
+      Rooms the agent should automatically join when it connects.
+      Each entry is either a plain room name (defaults to member role)
+      or an object with name and role.
+    type: array
+    items:
+      $ref: "definitions.yml#/definitions/agent_room_config"
+    examples:
+      -
+        - "Mix of plain names and explicit roles"
+        - |
+          rooms:
+            - engineering
+            - name: operations
+              role: observer
+
+required:
+  - name
+
+additionalProperties: false
+
+examples:
+  -
+    - "Minimal agent template"
+    - |
+      name: worker
+      model: claude-sonnet-4-6
+  -
+    - "Full-featured agent with worktree, tool policy, and rooms"
+    - |
+      name: reviewer
+      model: claude-sonnet-4-6
+      worktree: true
+      working_dir: .
+      tool_policy:
+        mode: allow_list
+        tools: [Read, Grep, Glob, Bash(gh *)]
+      rooms:
+        - engineering
+        - name: operations
+          role: observer
+      env:
+        GITHUB_TOKEN: ${GITHUB_TOKEN}
+  -
+    - "Docker-backed agent with resource limits"
+    - |
+      name: sandbox-worker
+      model: claude-sonnet-4-6
+      network_policy: isolated
+      docker_image: "ghcr.io/myorg/agent-sandbox:latest"
+      resource_limits:
+        cpu_limit: 2.0
+        memory_limit_mb: 4096
+      extra_mounts:
+        - host_path: /data/shared
+          container_path: /mnt/shared
+          read_only: true
+...

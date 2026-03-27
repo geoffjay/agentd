@@ -1,0 +1,239 @@
+%YAML 1.1
+---
+$schema: "http://stsci.edu/schemas/yaml-schema/draft-01"
+id: "https://agentd.dev/schemas/definitions"
+title: "agentd shared definitions"
+description: |
+  Reusable type definitions shared across agent, workflow, and room
+  template schemas.
+
+definitions:
+
+  # ---------------------------------------------------------------------------
+  # Tool policy
+  # ---------------------------------------------------------------------------
+  tool_policy:
+    description: |
+      Policy controlling which tools an agent is allowed to use.
+
+      Supports glob-style patterns for fine-grained control:
+        - "Bash"             — plain name match, ignores input.
+        - "Bash(cargo *)"    — matches tool name + command glob.
+        - "Write(docs/**)"   — matches tool name + file-path glob.
+    oneOf:
+      - description: "Allow all tools without restriction (default)."
+        type: object
+        properties:
+          mode:
+            type: string
+            enum: [allow_all]
+        required: [mode]
+        additionalProperties: false
+
+      - description: "Deny all tool usage."
+        type: object
+        properties:
+          mode:
+            type: string
+            enum: [deny_all]
+        required: [mode]
+        additionalProperties: false
+
+      - description: "Only allow the listed tools; deny everything else."
+        type: object
+        properties:
+          mode:
+            type: string
+            enum: [allow_list]
+          tools:
+            type: array
+            items:
+              type: string
+            minItems: 1
+        required: [mode, tools]
+        additionalProperties: false
+
+      - description: "Allow everything except the listed tools."
+        type: object
+        properties:
+          mode:
+            type: string
+            enum: [deny_list]
+          tools:
+            type: array
+            items:
+              type: string
+            minItems: 1
+        required: [mode, tools]
+        additionalProperties: false
+
+      - description: "Hold every tool request for human approval."
+        type: object
+        properties:
+          mode:
+            type: string
+            enum: [require_approval]
+        required: [mode]
+        additionalProperties: false
+
+    examples:
+      -
+        - "Allow all (default)"
+        - |
+          mode: allow_all
+      -
+        - "Allow only safe read tools"
+        - |
+          mode: allow_list
+          tools: [Read, Grep, Glob]
+      -
+        - "Deny destructive bash commands"
+        - |
+          mode: deny_list
+          tools:
+            - "Bash(rm *)"
+            - "Bash(git push *)"
+      -
+        - "Require human approval for every tool"
+        - |
+          mode: require_approval
+
+  # ---------------------------------------------------------------------------
+  # Volume mount (Docker backend)
+  # ---------------------------------------------------------------------------
+  volume_mount:
+    description: |
+      A volume mount specification for Docker-backed agents.
+      Ignored for tmux backends.
+    type: object
+    properties:
+      host_path:
+        description: "Path on the host machine."
+        type: string
+      container_path:
+        description: "Mount point inside the container."
+        type: string
+      read_only:
+        description: "If true, mount as read-only."
+        type: boolean
+        default: false
+    required: [host_path, container_path]
+    additionalProperties: false
+
+  # ---------------------------------------------------------------------------
+  # Resource limits (Docker backend)
+  # ---------------------------------------------------------------------------
+  resource_limits:
+    description: |
+      Resource limits for Docker-backed agent containers.
+      Ignored for tmux backends.
+    type: object
+    properties:
+      cpu_limit:
+        description: "Number of CPUs (e.g. 2.0 means two full cores)."
+        type: number
+        minimum: 0
+        exclusiveMinimum: true
+      memory_limit_mb:
+        description: "Memory cap in megabytes (e.g. 2048 for 2 GiB)."
+        type: integer
+        minimum: 1
+    additionalProperties: false
+
+  # ---------------------------------------------------------------------------
+  # Network policy (Docker backend)
+  # ---------------------------------------------------------------------------
+  network_policy:
+    description: |
+      Network access policy for Docker-backed agent containers.
+      Ignored for tmux backends.
+    type: string
+    enum: [internet, isolated, host_network]
+
+  # ---------------------------------------------------------------------------
+  # Participant kind
+  # ---------------------------------------------------------------------------
+  participant_kind:
+    description: "Whether a participant is an autonomous agent or a human user."
+    type: string
+    enum: [agent, human]
+
+  # ---------------------------------------------------------------------------
+  # Participant role
+  # ---------------------------------------------------------------------------
+  participant_role:
+    description: "The role a participant holds within a room."
+    type: string
+    enum: [member, admin, observer]
+
+  # ---------------------------------------------------------------------------
+  # Room type
+  # ---------------------------------------------------------------------------
+  room_type:
+    description: "The kind of conversation a room represents."
+    type: string
+    enum: [direct, group, broadcast]
+
+  # ---------------------------------------------------------------------------
+  # Dispatch status (used in dispatch_result triggers)
+  # ---------------------------------------------------------------------------
+  dispatch_status:
+    description: "Completion status of a workflow dispatch."
+    type: string
+    enum: [pending, dispatched, completed, failed, skipped]
+
+  # ---------------------------------------------------------------------------
+  # Webhook source
+  # ---------------------------------------------------------------------------
+  webhook_source:
+    description: |
+      Expected origin of a webhook payload. The HTTP handler enforces
+      that inbound requests carry the correct platform headers.
+    type: string
+    enum: [github, linear, any]
+
+  # ---------------------------------------------------------------------------
+  # Environment variable map
+  # ---------------------------------------------------------------------------
+  env_map:
+    description: |
+      Key-value map of environment variables to set when launching the
+      agent. Values support shell-style variable expansion:
+        - ${VAR}           — required, error if unset.
+        - ${VAR:-default}  — use environment value or fallback.
+    type: object
+    additionalProperties:
+      type: string
+    propertyOrder: []
+
+  # ---------------------------------------------------------------------------
+  # Agent room config (used inside agent templates)
+  # ---------------------------------------------------------------------------
+  agent_room_config:
+    description: |
+      Room membership entry for an agent. Accepts either a plain room
+      name string (defaults to member role) or an object with name and
+      role.
+    oneOf:
+      - description: "Room name as a plain string (role defaults to member)."
+        type: string
+      - description: "Room name with explicit role."
+        type: object
+        properties:
+          name:
+            description: "Room name."
+            type: string
+          role:
+            $ref: "#/definitions/participant_role"
+            default: member
+        required: [name]
+        additionalProperties: false
+
+  # ---------------------------------------------------------------------------
+  # UUID string
+  # ---------------------------------------------------------------------------
+  uuid:
+    description: "A UUID v4 string."
+    type: string
+    pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+...
