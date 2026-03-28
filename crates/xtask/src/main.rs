@@ -378,6 +378,11 @@ fn install_user() -> Result<()> {
     println!("{}", "Building binaries...".blue());
     build_release()?;
 
+    // Build UI
+    println!();
+    println!("{}", "Building UI...".blue());
+    build_ui()?;
+
     // Determine install prefix and bin directory
     let prefix = get_prefix();
     let bin_dir = prefix.join("bin");
@@ -619,6 +624,54 @@ pub fn build_release() -> Result<()> {
         anyhow::bail!("Build failed");
     }
 
+    Ok(())
+}
+
+/// Build the UI by running `npm install` and `npm run build` in the `ui/` directory.
+///
+/// Requires `npm` to be installed. The built output lands in `ui/dist/`.
+pub fn build_ui() -> Result<()> {
+    let ui_dir = Path::new("ui");
+    if !ui_dir.exists() {
+        anyhow::bail!("ui/ directory not found — must be run from project root");
+    }
+
+    // Check npm is available
+    if Command::new("npm").arg("--version").output().is_err() {
+        eprintln!("{}", "npm not found.".red().bold());
+        eprintln!("Install Node.js and npm to build the UI.");
+        anyhow::bail!("npm is required to build the UI");
+    }
+
+    println!("  Running npm install...");
+    let install_status = Command::new("npm")
+        .arg("install")
+        .current_dir(ui_dir)
+        .status()
+        .context("Failed to execute npm install")?;
+
+    if !install_status.success() {
+        anyhow::bail!("npm install failed");
+    }
+
+    println!("  Running npm run build...");
+    let build_status = Command::new("npm")
+        .arg("run")
+        .arg("build")
+        .current_dir(ui_dir)
+        .status()
+        .context("Failed to execute npm run build")?;
+
+    if !build_status.success() {
+        anyhow::bail!("npm run build failed");
+    }
+
+    let dist_dir = ui_dir.join("dist");
+    if !dist_dir.exists() {
+        anyhow::bail!("UI build completed but ui/dist/ was not created");
+    }
+
+    println!("  {} UI built to ui/dist/", "✓".green());
     Ok(())
 }
 
