@@ -4,4 +4,5 @@
 //! including HTTP client, type definitions, and command implementations.
 
 pub mod client;
+pub mod picker;
 pub mod types;

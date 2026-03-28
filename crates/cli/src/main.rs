@@ -73,6 +73,7 @@
 
 pub mod client;
 mod commands;
+pub mod picker;
 pub mod types;
 
 use anyhow::Result;
