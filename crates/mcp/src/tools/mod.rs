@@ -22,4 +22,5 @@ pub mod diagnostic;
 pub mod health;
 pub mod lifecycle;
 pub mod notifications;
+pub mod remediation;
 pub mod workflows;

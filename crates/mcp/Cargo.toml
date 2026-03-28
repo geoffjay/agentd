@@ -28,5 +28,8 @@ reqwest = { version = "0.12", features = ["json"] }
 # Async utilities for concurrent health checks
 futures = "0.3"
 
+# Date/time for remediation time-window filtering
+chrono = { version = "0.4", features = ["serde"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
