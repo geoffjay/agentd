@@ -6,7 +6,7 @@
 
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
-use crate::tools::{approvals, diagnostic};
+use crate::tools::{approvals, diagnostic, lifecycle};
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     tool, ServerHandler,
@@ -126,6 +126,95 @@ impl AgentdMcp {
         reason: Option<String>,
     ) -> String {
         approvals::run_deny_tool_request(&self.client, &approval_id, reason.as_deref()).await
+    }
+
+    // ── Agent lifecycle management ──────────────────────────────────────
+
+    /// Restart a failed or stopped agent by terminating and recreating it.
+    ///
+    /// ⚠️ DESTRUCTIVE: kills the current tmux session and loses in-flight work.
+    #[tool(
+        description = "⚠️ DESTRUCTIVE — Restart an agent by terminating the current session and recreating it with the same configuration. Loses all in-flight work. Use on Failed or Stopped agents. Returns the new agent ID."
+    )]
+    async fn restart_agent(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The agent ID (UUID) to restart")]
+        agent_id: String,
+    ) -> String {
+        lifecycle::run_restart_agent(&self.client, &agent_id).await
+    }
+
+    /// Send a message/prompt to a running agent.
+    #[tool(
+        description = "Send a message or prompt to a running agent via the orchestrator. The agent will process the message in its current session context."
+    )]
+    async fn send_agent_message(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The agent ID (UUID) to message")]
+        agent_id: String,
+        #[tool(param)]
+        #[schemars(description = "The message content or prompt to send to the agent")]
+        message: String,
+    ) -> String {
+        lifecycle::run_send_agent_message(&self.client, &agent_id, &message).await
+    }
+
+    /// Update an agent's tool policy.
+    #[tool(
+        description = "Update an agent's tool policy to restrict or allow tool usage. Modes: allow_all, deny_all, require_approval, allow_list (needs tools), deny_list (needs tools)."
+    )]
+    async fn update_agent_tool_policy(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The agent ID (UUID)")]
+        agent_id: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Policy mode: allow_all | deny_all | require_approval | allow_list | deny_list"
+        )]
+        mode: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Tool name patterns for allow_list or deny_list modes (e.g. [\"Bash\", \"Write\"])"
+        )]
+        tools: Option<Vec<String>>,
+    ) -> String {
+        lifecycle::run_update_agent_tool_policy(&self.client, &agent_id, &mode, tools).await
+    }
+
+    /// Terminate a running agent — kills the tmux session permanently.
+    ///
+    /// ⚠️ DESTRUCTIVE: all in-flight work is lost and cannot be recovered.
+    #[tool(
+        description = "⚠️ DESTRUCTIVE — Terminate a running agent. Kills the tmux session and removes the agent from the registry. All in-flight work is permanently lost. Prefer restart_agent if you intend to recover the agent."
+    )]
+    async fn terminate_agent(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The agent ID (UUID) to terminate")]
+        agent_id: String,
+    ) -> String {
+        lifecycle::run_terminate_agent(&self.client, &agent_id).await
+    }
+
+    /// Change the model an agent is using.
+    #[tool(
+        description = "Change the AI model an agent is using (e.g. switch from claude-sonnet to claude-opus). Takes effect for subsequent turns in the current session."
+    )]
+    async fn update_agent_model(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The agent ID (UUID)")]
+        agent_id: String,
+        #[tool(param)]
+        #[schemars(
+            description = "The new model identifier (e.g. claude-opus-4-5, claude-sonnet-4-5)"
+        )]
+        model: String,
+    ) -> String {
+        lifecycle::run_update_agent_model(&self.client, &agent_id, &model).await
     }
 }
 

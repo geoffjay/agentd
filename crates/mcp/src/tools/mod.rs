@@ -18,3 +18,4 @@
 
 pub mod approvals;
 pub mod diagnostic;
+pub mod lifecycle;
