@@ -29,8 +29,11 @@
 
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
+use colored::Colorize;
 use communicate::client::CommunicateClient;
+use communicate::types::{CreateMessageRequest, ParticipantKind};
 use orchestrator::client::OrchestratorClient;
+use orchestrator::types::SendMessageRequest;
 use uuid::Uuid;
 
 use crate::picker::{select_recipient, RecipientKind, RecipientOption};
@@ -59,6 +62,10 @@ pub enum PromptCommand {
         /// Full prompt string, e.g. `"@worker-agent hello"`
         input: String,
 
+        /// Sender identity for room messages (default: "user")
+        #[arg(long, default_value = "user")]
+        from: String,
+
         /// Output raw JSON instead of formatted text
         #[arg(long)]
         json: bool,
@@ -74,8 +81,8 @@ impl PromptCommand {
         json: bool,
     ) -> Result<()> {
         match self {
-            PromptCommand::Send { input, json: cmd_json } => {
-                send_prompt(input, orch, comm, json || *cmd_json).await
+            PromptCommand::Send { input, from, json: cmd_json } => {
+                send_prompt(input, from, orch, comm, json || *cmd_json).await
             }
         }
     }
@@ -307,32 +314,29 @@ pub async fn resolve_route(
 
 async fn send_prompt(
     input: &str,
+    from: &str,
     orch: &OrchestratorClient,
     comm: &CommunicateClient,
     json: bool,
 ) -> Result<()> {
     let parsed = parse_prompt(input);
 
-    if parsed.message.is_empty() && parsed.recipient.is_none() {
+    if parsed.message.is_empty() {
         bail!("No message provided. Usage: agent prompt send \"@recipient <message>\"");
     }
 
-    // Resolve the target — either from @recipient or via the picker.
+    // Resolve the target — either from @recipient or via the interactive picker.
     let target = match &parsed.recipient {
-        Some(name) => {
-            match resolve_route(name, orch, comm).await? {
-                Some(t) => t,
-                None => {
-                    // Name given but not matched — show picker with hint.
-                    eprintln!("No agent or room named '{name}' found. Select from available:");
-                    let options = build_picker_options(orch, comm).await?;
-                    let chosen = select_recipient(&options, "Select recipient:")?;
-                    recipient_option_to_target(chosen)?
-                }
+        Some(name) => match resolve_route(name, orch, comm).await? {
+            Some(t) => t,
+            None => {
+                eprintln!("No agent or room named '{name}' found. Select from available:");
+                let options = build_picker_options(orch, comm).await?;
+                let chosen = select_recipient(&options, "Select recipient:")?;
+                recipient_option_to_target(chosen)?
             }
-        }
+        },
         None => {
-            // No @recipient — show full picker.
             let options = build_picker_options(orch, comm).await?;
             if options.is_empty() {
                 bail!("No running agents or rooms available");
@@ -342,43 +346,72 @@ async fn send_prompt(
         }
     };
 
-    // Routing (issue-734): send message to target.
-    // For now, print confirmation stub.
-    match &target {
+    // Route the message to the resolved target.
+    route_message(&target, &parsed.message, from, orch, comm, json).await
+}
+
+/// Send the message to the resolved [`RouteTarget`] and print a confirmation.
+async fn route_message(
+    target: &RouteTarget,
+    message: &str,
+    from: &str,
+    orch: &OrchestratorClient,
+    comm: &CommunicateClient,
+    json: bool,
+) -> Result<()> {
+    match target {
         RouteTarget::Agent { id, name } => {
+            let request = SendMessageRequest { content: message.to_string() };
+            let response = orch
+                .send_message(id, &request)
+                .await
+                .with_context(|| format!("Failed to send message to agent '{name}'"))?;
+
             if json {
                 println!(
                     "{}",
                     serde_json::json!({
-                        "status": "pending",
+                        "status": "sent",
                         "target": name,
                         "target_type": "agent",
                         "agent_id": id,
-                        "message": parsed.message,
+                        "response_status": response.status,
                     })
                 );
             } else {
-                println!("→ Sending to agent '{name}' ({id})");
-                println!("  message: {}", parsed.message);
-                println!("  (routing implementation pending issue-734)");
+                println!("{} Prompt sent to agent '{}'", "✓".green().bold(), name.bold());
+                println!("  status: {}", response.status.cyan());
             }
         }
+
         RouteTarget::Room { id, name } => {
+            let request = CreateMessageRequest {
+                sender_id: from.to_string(),
+                sender_name: from.to_string(),
+                sender_kind: ParticipantKind::Human,
+                content: message.to_string(),
+                metadata: std::collections::HashMap::new(),
+                reply_to: None,
+            };
+            let response = comm
+                .send_message(*id, &request)
+                .await
+                .with_context(|| format!("Failed to send message to room '{name}'"))?;
+
             if json {
                 println!(
                     "{}",
                     serde_json::json!({
-                        "status": "pending",
+                        "status": "sent",
                         "target": name,
                         "target_type": "room",
                         "room_id": id,
-                        "message": parsed.message,
+                        "message_id": response.id,
                     })
                 );
             } else {
-                println!("→ Sending to room '{name}' ({id})");
-                println!("  message: {}", parsed.message);
-                println!("  (routing implementation pending issue-734)");
+                println!("{} Message sent to room '{}'", "✓".green().bold(), name.bold());
+                println!("  message id: {}", response.id.to_string().cyan());
             }
         }
     }
@@ -749,18 +782,200 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Routing integration tests (blocked by issue-734)
+    // route_message — routing integration tests
     // -----------------------------------------------------------------------
 
-    #[tokio::test]
-    #[ignore = "blocked by issue-734: message routing not yet implemented"]
-    async fn send_to_agent_uses_orchestrator_api() {
-        todo!()
+    fn message_response_json(room_id: &str, msg_id: &str) -> serde_json::Value {
+        json!({
+            "id": msg_id,
+            "room_id": room_id,
+            "sender_id": "user",
+            "sender_name": "user",
+            "sender_kind": "human",
+            "content": "hello",
+            "metadata": {},
+            "reply_to": null,
+            "status": "delivered",
+            "created_at": "2024-01-01T00:00:00Z",
+        })
+    }
+
+    fn send_message_response_json(agent_id: &str) -> serde_json::Value {
+        json!({
+            "status": "sent",
+            "agent_id": agent_id,
+        })
     }
 
     #[tokio::test]
-    #[ignore = "blocked by issue-734: message routing not yet implemented"]
+    async fn send_to_agent_uses_orchestrator_api() {
+        let agent_id = "550e8400-e29b-41d4-a716-446655440020";
+        let mut orch_server = Server::new_async().await;
+        let comm_server = Server::new_async().await;
+
+        let _mock = orch_server
+            .mock("POST", format!("/agents/{agent_id}/message").as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(send_message_response_json(agent_id).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let target = RouteTarget::Agent {
+            id: Uuid::parse_str(agent_id).unwrap(),
+            name: "planner".to_string(),
+        };
+
+        let result =
+            route_message(&target, "summarise the last PR", "user", &orch, &comm, false).await;
+
+        assert!(result.is_ok(), "expected Ok, got: {result:?}");
+        _mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn send_to_agent_json_output() {
+        let agent_id = "550e8400-e29b-41d4-a716-446655440021";
+        let mut orch_server = Server::new_async().await;
+        let comm_server = Server::new_async().await;
+
+        let _mock = orch_server
+            .mock("POST", format!("/agents/{agent_id}/message").as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(send_message_response_json(agent_id).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let target = RouteTarget::Agent {
+            id: Uuid::parse_str(agent_id).unwrap(),
+            name: "planner".to_string(),
+        };
+
+        // json=true path must not panic
+        let result = route_message(&target, "hello", "user", &orch, &comm, true).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
     async fn send_to_room_uses_communicate_api() {
-        todo!()
+        let room_id = "660e8400-e29b-41d4-a716-446655440020";
+        let msg_id = "770e8400-e29b-41d4-a716-446655440020";
+        let orch_server = Server::new_async().await;
+        let mut comm_server = Server::new_async().await;
+
+        let _mock = comm_server
+            .mock("POST", format!("/rooms/{room_id}/messages").as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(message_response_json(room_id, msg_id).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let target = RouteTarget::Room {
+            id: Uuid::parse_str(room_id).unwrap(),
+            name: "engineering".to_string(),
+        };
+
+        let result = route_message(&target, "deploy is done", "user", &orch, &comm, false).await;
+
+        assert!(result.is_ok(), "expected Ok, got: {result:?}");
+        _mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn send_to_room_json_output() {
+        let room_id = "660e8400-e29b-41d4-a716-446655440021";
+        let msg_id = "770e8400-e29b-41d4-a716-446655440021";
+        let orch_server = Server::new_async().await;
+        let mut comm_server = Server::new_async().await;
+
+        let _mock = comm_server
+            .mock("POST", format!("/rooms/{room_id}/messages").as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(message_response_json(room_id, msg_id).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let target = RouteTarget::Room {
+            id: Uuid::parse_str(room_id).unwrap(),
+            name: "engineering".to_string(),
+        };
+
+        let result = route_message(&target, "hello", "bot-sender", &orch, &comm, true).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn agent_not_running_returns_error() {
+        let agent_id = "550e8400-e29b-41d4-a716-446655440030";
+        let mut orch_server = Server::new_async().await;
+        let comm_server = Server::new_async().await;
+
+        // Simulate orchestrator returning 404 (agent stopped between resolution
+        // and routing — a race condition the router must handle gracefully).
+        let _mock = orch_server
+            .mock("POST", format!("/agents/{agent_id}/message").as_str())
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"error":"agent not found"}"#)
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let target = RouteTarget::Agent {
+            id: Uuid::parse_str(agent_id).unwrap(),
+            name: "planner".to_string(),
+        };
+
+        let result = route_message(&target, "hello", "user", &orch, &comm, false).await;
+
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("planner"), "error should mention agent name: {msg}");
+    }
+
+    #[tokio::test]
+    async fn room_not_found_returns_error() {
+        let room_id = "660e8400-e29b-41d4-a716-446655440030";
+        let orch_server = Server::new_async().await;
+        let mut comm_server = Server::new_async().await;
+
+        let _mock = comm_server
+            .mock("POST", format!("/rooms/{room_id}/messages").as_str())
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"error":"room not found"}"#)
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let target = RouteTarget::Room {
+            id: Uuid::parse_str(room_id).unwrap(),
+            name: "engineering".to_string(),
+        };
+
+        let result = route_message(&target, "hello", "user", &orch, &comm, false).await;
+
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("engineering"), "error should mention room name: {msg}");
     }
 }
