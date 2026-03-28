@@ -120,6 +120,30 @@ async fn create_workflow(
                 ));
             }
         }
+        TriggerConfig::FileWatch { paths, mode, poll_interval_secs, .. } => {
+            if paths.is_empty() {
+                return Err(ApiError::InvalidInput(
+                    "FileWatch trigger requires at least one path".to_string(),
+                ));
+            }
+            if paths.iter().any(|p| p.trim().is_empty()) {
+                return Err(ApiError::InvalidInput(
+                    "FileWatch trigger paths must not be empty strings".to_string(),
+                ));
+            }
+            let valid_modes = ["native", "polling", "auto"];
+            if !valid_modes.contains(&mode.as_str()) {
+                return Err(ApiError::InvalidInput(format!(
+                    "FileWatch mode must be one of: native, polling, auto (got '{}')",
+                    mode
+                )));
+            }
+            if mode == "polling" && *poll_interval_secs == 0 {
+                return Err(ApiError::InvalidInput(
+                    "FileWatch polling mode requires 'poll_interval_secs' > 0".to_string(),
+                ));
+            }
+        }
         TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } => {
             // Require at least one filter so the scheduler does not poll the
             // entire Linear workspace indiscriminately.  All filter fields are

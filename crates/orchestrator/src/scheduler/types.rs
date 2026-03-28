@@ -143,6 +143,39 @@ pub enum TriggerConfig {
         /// How many seconds of inactivity trigger the workflow.
         idle_seconds: u64,
     },
+    /// Filesystem change trigger (Phase 7).
+    ///
+    /// Fires when a file under a watched path changes. Uses the OS-native
+    /// filesystem event API (inotify/FSEvents/kqueue) by default, with an
+    /// optional mtime-polling fallback.
+    ///
+    /// # Fields
+    ///
+    /// - `paths` — directories or files to watch recursively (required).
+    /// - `patterns` — optional glob patterns restricting which paths produce tasks.
+    /// - `events` — event kinds to accept: `"create"`, `"modify"`, `"delete"`, `"access"`. Empty = all.
+    /// - `debounce_ms` — debounce window in milliseconds (default: 200).
+    /// - `mode` — watch backend: `"native"` | `"polling"` | `"auto"` (default: `"auto"`).
+    /// - `poll_interval_secs` — polling interval when mode is `"polling"` (default: 5).
+    FileWatch {
+        /// Paths to watch recursively (required, at least one).
+        paths: Vec<String>,
+        /// Optional glob patterns. Empty = watch all files.
+        #[serde(default)]
+        patterns: Vec<String>,
+        /// Event kinds to accept. Empty = all kinds.
+        #[serde(default)]
+        events: Vec<String>,
+        /// Debounce window in milliseconds.
+        #[serde(default = "default_file_watch_debounce_ms")]
+        debounce_ms: u64,
+        /// Watch backend: `"native"`, `"polling"`, or `"auto"`.
+        #[serde(default = "default_file_watch_mode")]
+        mode: String,
+        /// Polling interval in seconds when mode is `"polling"` or auto-fallback.
+        #[serde(default = "default_file_watch_poll_interval")]
+        poll_interval_secs: u64,
+    },
     /// Linear issues trigger — polls Linear for issues matching the given filters.
     ///
     /// Requires `AGENTD_LINEAR_API_KEY` to be set in the environment.
@@ -184,6 +217,18 @@ fn default_pr_state() -> String {
     "open".to_string()
 }
 
+fn default_file_watch_debounce_ms() -> u64 {
+    200
+}
+
+fn default_file_watch_mode() -> String {
+    "auto".to_string()
+}
+
+fn default_file_watch_poll_interval() -> u64 {
+    5
+}
+
 impl TriggerConfig {
     pub fn trigger_type(&self) -> &'static str {
         match self {
@@ -196,6 +241,7 @@ impl TriggerConfig {
             TriggerConfig::Webhook { .. } => "webhook",
             TriggerConfig::Manual { .. } => "manual",
             TriggerConfig::AgentIdle { .. } => "agent_idle",
+            TriggerConfig::FileWatch { .. } => "file_watch",
             TriggerConfig::LinearIssues { .. } => "linear_issues",
         }
     }
@@ -212,6 +258,7 @@ impl TriggerConfig {
             | TriggerConfig::Webhook { .. }
             | TriggerConfig::Manual { .. }
             | TriggerConfig::AgentIdle { .. }
+            | TriggerConfig::FileWatch { .. }
             | TriggerConfig::LinearIssues { .. } => true,
         }
     }
