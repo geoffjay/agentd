@@ -6,7 +6,9 @@
 
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
-use crate::tools::{agents, approvals, diagnostic, health, lifecycle, workflows};
+use crate::tools::{
+    agents, approvals, diagnostic, health, lifecycle, notifications, remediation, workflows,
+};
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     tool, ServerHandler,
@@ -171,6 +173,91 @@ impl AgentdMcp {
         workflows::run_get_failed_dispatches(&self.client, limit).await
     }
 
+    // ── Notification management ─────────────────────────────────────────
+
+    /// List notifications with optional filters.
+    #[tool(
+        description = "List notifications with optional filters for status and priority. Sorted by priority (highest first). Use get_actionable_notifications for a focused view of items requiring attention."
+    )]
+    async fn list_notifications(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Filter by status: pending | viewed | responded | dismissed | expired. Omit for all."
+        )]
+        status: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "Filter by priority: low | normal | high | urgent. Omit for all."
+        )]
+        priority: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Maximum number to return (default: 20, max: 200)")]
+        limit: Option<u32>,
+    ) -> String {
+        notifications::run_list_notifications(
+            &self.client,
+            status.as_deref(),
+            priority.as_deref(),
+            limit,
+        )
+        .await
+    }
+
+    /// Get full details of a specific notification.
+    #[tool(
+        description = "Get full details of a specific notification including source data, message body, and response (if any)."
+    )]
+    async fn get_notification(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The notification ID (UUID)")]
+        notification_id: String,
+    ) -> String {
+        notifications::run_get_notification(&self.client, &notification_id).await
+    }
+
+    /// Get all actionable notifications requiring a response.
+    #[tool(
+        description = "Get all notifications that are pending or viewed and have not expired. These require attention or a response. Sorted by priority (urgent first)."
+    )]
+    async fn get_actionable_notifications(&self) -> String {
+        notifications::run_get_actionable_notifications(&self.client).await
+    }
+
+    /// Create a system notification.
+    #[tool(
+        description = "Create a system notification, useful for flagging issues found during diagnostics or remediation workflows. Creates a persistent, non-response-required notification."
+    )]
+    async fn create_notification(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Short title for the notification")]
+        title: String,
+        #[tool(param)]
+        #[schemars(description = "Detailed message body with diagnostic context")]
+        message: String,
+        #[tool(param)]
+        #[schemars(description = "Priority level: low | normal | high | urgent (default: normal)")]
+        priority: Option<String>,
+    ) -> String {
+        notifications::run_create_notification(&self.client, &title, &message, priority.as_deref())
+            .await
+    }
+
+    /// Dismiss a notification.
+    #[tool(
+        description = "Dismiss a notification, marking it as reviewed and removing it from the active backlog."
+    )]
+    async fn dismiss_notification(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The notification ID (UUID) to dismiss")]
+        notification_id: String,
+    ) -> String {
+        notifications::run_dismiss_notification(&self.client, &notification_id).await
+    }
+
     // ── Approval management ─────────────────────────────────────────────
 
     /// List all pending tool approval requests across all agents.
@@ -310,6 +397,77 @@ impl AgentdMcp {
         model: String,
     ) -> String {
         lifecycle::run_update_agent_model(&self.client, &agent_id, &model).await
+    }
+
+    // ── Self-healing remediation ────────────────────────────────────────
+
+    /// Find all failed agents and restart them.
+    #[tool(
+        description = "⚠️ DESTRUCTIVE — Find all agents in a failed state and restart them. For each: captures config, terminates the old session, and recreates the agent. Returns a report of successes and failures. Only targets agents already in failed state."
+    )]
+    async fn restart_failed_agents(&self) -> String {
+        remediation::run_restart_failed_agents(&self.client).await
+    }
+
+    /// Retry failed dispatches for a workflow within a time window.
+    #[tool(
+        description = "Retry failed dispatch records for a workflow by re-sending their prompts to the associated agent. Only retries dispatches that failed within the given time window."
+    )]
+    async fn retry_failed_dispatches(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The workflow ID (UUID) to retry dispatches for")]
+        workflow_id: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Only retry dispatches that failed within this many hours (default: 24)"
+        )]
+        hours: Option<u32>,
+    ) -> String {
+        remediation::run_retry_failed_dispatches(&self.client, &workflow_id, hours).await
+    }
+
+    /// Identify dispatches stuck in 'dispatched' state beyond the staleness threshold.
+    #[tool(
+        description = "Identify dispatch records stuck in 'dispatched' state longer than the staleness threshold. Reports stale dispatches for visibility — use restart_agent on the associated agent to unblock. Note: the orchestrator API does not support direct dispatch status updates."
+    )]
+    async fn cleanup_stale_dispatches(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Consider dispatches stale after this many hours (default: 2)")]
+        stale_hours: Option<u32>,
+    ) -> String {
+        remediation::run_cleanup_stale_dispatches(&self.client, stale_hours).await
+    }
+
+    /// Auto-approve pending tool requests matching the safe list.
+    #[tool(
+        description = "Automatically approve pending tool requests that match a conservative safe list of read-only tools (Read, Glob, Grep, ListFiles, WebFetch, etc.). Non-matching requests are skipped and reported. Additional tools can be added to the safe list via the parameter."
+    )]
+    async fn auto_approve_safe_tools(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Additional tool names to consider safe beyond the default read-only set (e.g. [\"LSP\", \"TaskOutput\"])"
+        )]
+        additional_safe_tools: Option<Vec<String>>,
+    ) -> String {
+        remediation::run_auto_approve_safe_tools(&self.client, additional_safe_tools).await
+    }
+
+    /// Bulk-dismiss old notifications that are no longer actionable.
+    #[tool(
+        description = "Analyze and bulk-dismiss pending notifications that are no longer actionable: expired ephemeral notifications and low-priority notifications older than the threshold. Returns an audit report of dismissed vs retained items."
+    )]
+    async fn resolve_notification_backlog(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Dismiss low-priority notifications older than this many hours (default: 48)"
+        )]
+        hours: Option<u32>,
+    ) -> String {
+        remediation::run_resolve_notification_backlog(&self.client, hours).await
     }
 
     // ── Service health and system metrics ───────────────────────────────
