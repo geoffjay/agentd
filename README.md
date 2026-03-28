@@ -25,6 +25,7 @@ A modular daemon system for managing AI agents, notifications, interactive quest
 - **agentd-notify** — Notification service with REST API and SQLite storage
 - **agentd-ask** — Interactive question service with tmux integration
 - **agentd-wrap** — Tmux session management for launching and managing agents
+- **agentd-mcp** — MCP server exposing agent management, diagnostics, and self-healing tools for Claude and other MCP clients
 - **agentd-common** — Shared types, error handling, and utilities
 - **agentd-hook** — Shell hook integration service (planned)
 - **agentd-monitor** — System monitoring service (planned)
@@ -230,7 +231,7 @@ agent completions zsh > ~/.zfunc/_agent
 
 ### REST API
 
-Full API reference: [Orchestrator](docs/public/services/orchestrator.md) | [Notify](docs/public/services/notify.md) | [Ask](docs/public/services/ask.md) | [Wrap](docs/public/services/wrap.md)
+Full API reference: [Orchestrator](docs/public/services/orchestrator.md) | [Notify](docs/public/services/notify.md) | [Ask](docs/public/services/ask.md) | [Wrap](docs/public/services/wrap.md) | [MCP](docs/public/services/mcp.md)
 
 ```bash
 # Health check (all services expose GET /health)
@@ -264,15 +265,21 @@ websocat ws://localhost:17006/stream  # or raw WebSocket
                 │  notify  │ │   ask   │ │  wrap  │ │ orchestrator │
                 │  :17004  │ │  :17001 │ │ :17005 │ │    :17006    │
                 └──────────┘ └────┬────┘ └────────┘ └──┬───────────┘
-                      ▲           │                    │
-                      │           │                    │  WebSocket
-                      └───────────┘                    │  (SDK protocol)
-                   ask creates notifications           │
-                   in the notify service               ▼
-                                              ┌────────────────┐
-                                              │  tmux sessions  │
-                                              │  (claude-code)  │
-                                              └────────────────┘
+                      ▲     ▲     │                    │
+                      │     │     │                    │  WebSocket
+                      │     │     └───────────┐        │  (SDK protocol)
+                      │     │  ask creates    │        │
+                      │     │  notifications  │        ▼
+                      │     │                 │ ┌────────────────┐
+                      │     │                 │ │  tmux sessions  │
+                      │     │                 │ │  (claude-code)  │
+                      │     │                 │ └────────────────┘
+                      │     │                 │
+                ┌─────┴─────┴─────────────────┴────────────────────┐
+                │                  agentd-mcp                       │
+                │  MCP server (stdio) — diagnostics, management,   │
+                │  self-healing tools for Claude & MCP clients      │
+                └──────────────────────────────────────────────────┘
 ```
 
 All services communicate via REST APIs. The orchestrator additionally provides WebSocket endpoints for the Claude Code SDK protocol, real-time monitoring streams, and tool approval workflows.
@@ -288,6 +295,7 @@ All services communicate via REST APIs. The orchestrator additionally provides W
 | `wrap` | Tmux and Docker session management, multi-agent launch |
 | `common` | Shared types (PaginatedResponse, HealthResponse, ApiError), utilities |
 | `hook` | Shell hook integration (planned) |
+| `mcp` | MCP server for agent diagnostics, management, and self-healing |
 | `monitor` | System monitoring (planned) |
 
 ## Development
@@ -341,6 +349,7 @@ For the complete configuration reference including all environment variables, da
 | agentd-notify | 17004 | 7004 | Notification service |
 | agentd-wrap | 17005 | 7005 | Tmux session management |
 | agentd-orchestrator | 17006 | 7006 | Agent orchestration |
+| agentd-mcp | — | — | MCP server (stdio transport, no HTTP port) |
 
 ### Environment Variables
 
@@ -372,6 +381,15 @@ For the complete configuration reference including all environment variables, da
 - ✅ YAML workflow templates with agent name references
 - ✅ Composite `agent apply` / `agent teardown`
 - ✅ Example workflow templates in `examples/workflows/`
+
+**MCP Observability Server:**
+- ✅ MCP server with 34 tools for agent diagnostics, management, and self-healing
+- ✅ System diagnostics (diagnose_system, diagnose_agent, diagnose_workflow, check_connectivity)
+- ✅ Agent inspection and lifecycle management (list, get, restart, terminate, send messages)
+- ✅ Workflow and dispatch inspection with failure analysis
+- ✅ Notification and approval management
+- ✅ Self-healing remediation (restart failed agents, retry dispatches, auto-approve safe tools)
+- ✅ Service health checks and Prometheus metrics parsing
 
 **Observability:**
 - ✅ Prometheus `/metrics` endpoints on all services

@@ -99,6 +99,7 @@ nav:
       - Ask: public/services/ask.md
       - Wrap: public/services/wrap.md
       - Communicate: public/services/communicate.md
+      - MCP: public/services/mcp.md
   - Agents:
       - Contributor Onboarding: public/agents/onboarding.md
       - Research Agent: public/agents/research.md
