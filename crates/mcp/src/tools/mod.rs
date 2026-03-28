@@ -16,6 +16,7 @@
 //! - `wrap`      — manage wrap configurations (issue #255)
 //! - `workflow`  — dispatch and monitor workflows (issue #256)
 
+pub mod agents;
 pub mod approvals;
 pub mod diagnostic;
 pub mod health;

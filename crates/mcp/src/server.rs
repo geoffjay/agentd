@@ -6,7 +6,7 @@
 
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
-use crate::tools::{approvals, diagnostic, health, lifecycle};
+use crate::tools::{agents, approvals, diagnostic, health, lifecycle};
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     tool, ServerHandler,
@@ -74,6 +74,44 @@ impl AgentdMcp {
     )]
     async fn check_connectivity(&self) -> String {
         diagnostic::run_check_connectivity(&self.client).await
+    }
+
+    // ── Agent inspection ────────────────────────────────────────────────
+
+    /// List all agents managed by agentd.
+    #[tool(
+        description = "List all agents managed by agentd, optionally filtered by status. Returns a table with agent ID, name, status, and activity state."
+    )]
+    async fn list_agents(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Filter by status: pending | running | stopped | failed. Omit for all agents."
+        )]
+        status: Option<String>,
+    ) -> String {
+        agents::run_list_agents(&self.client, status.as_deref()).await
+    }
+
+    /// Get full details for a specific agent.
+    #[tool(
+        description = "Get detailed information about a specific agent including its configuration, tool policy, model, working directory, and environment variable keys (values are redacted)."
+    )]
+    async fn get_agent(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The agent ID (UUID) to inspect")]
+        agent_id: String,
+    ) -> String {
+        agents::run_get_agent(&self.client, &agent_id).await
+    }
+
+    /// Get a fleet-wide summary of agent statuses.
+    #[tool(
+        description = "Get a summary of all agent statuses: counts of pending, running, stopped, and failed agents. Lists any failed agents with their IDs and names for quick identification."
+    )]
+    async fn get_agent_status_summary(&self) -> String {
+        agents::run_get_agent_status_summary(&self.client).await
     }
 
     // ── Approval management ─────────────────────────────────────────────
