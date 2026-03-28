@@ -59,17 +59,18 @@ prompt_template: |
        --title "feat: <title>" \
        --body "<one-sentence summary of what was implemented>
 
-Closes #{{source_id}}"
+  Closes #{{source_id}}"
+
   9. Store any significant findings or decisions made during implementation:
-     agent memory remember "<what you learned>" --created-by worker --type information --tags worker,issue-{{source_id}} --visibility public
+    agent memory remember "<what you learned>" --created-by worker --type information --tags worker,issue-{{source_id}} --visibility public
   10. Close the issue: gh issue close {{source_id}} --repo geoffjay/agentd
 
   Handling needs-rework (reviewer requested changes):
   If this issue's PR has the "needs-rework" label, the reviewer found issues.
   Fetch the review comments, address the feedback, then:
-     git-spice commit amend -m "feat: <description> (address review feedback)"
-     git-spice branch submit --no-prompt --label review-agent \
-       --title "feat: <title>" \
-       --body "<summary of changes made>
+    git-spice commit amend -m "feat: <description> (address review feedback)"
+    git-spice branch submit --no-prompt --label review-agent \
+      --title "feat: <title>" \
+      --body "<summary of changes made>
 
-Closes #{{source_id}}"
+  Closes #{{source_id}}"
