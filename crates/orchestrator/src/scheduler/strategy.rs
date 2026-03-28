@@ -11,7 +11,10 @@ use crate::scheduler::types::{DispatchStatus, Task};
 use async_trait::async_trait;
 use chrono::Utc;
 use croner::Cron;
+use globset::{Glob, GlobSet, GlobSetBuilder};
+use notify::Watcher as _;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, watch};
@@ -834,6 +837,288 @@ impl TriggerStrategy for IdleStrategy {
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FileWatchStrategy
+// ---------------------------------------------------------------------------
+
+/// Convert a `notify::EventKind` to a short lowercase string suitable for
+/// template variables and `source_id` generation.
+fn event_kind_to_str(kind: &notify::EventKind) -> &'static str {
+    match kind {
+        notify::EventKind::Create(_) => "create",
+        notify::EventKind::Modify(_) => "modify",
+        notify::EventKind::Remove(_) => "delete",
+        notify::EventKind::Access(_) => "access",
+        notify::EventKind::Other => "other",
+        notify::EventKind::Any => "any",
+    }
+}
+
+/// A [`TriggerStrategy`] that watches filesystem paths for changes using the
+/// OS-native notification API (inotify on Linux, FSEvents on macOS, ReadDirectoryChangesW
+/// on Windows) via the `notify` crate.
+///
+/// When a matching filesystem event occurs the strategy fires a synthetic
+/// [`Task`] carrying the changed file's path, name, containing directory, and
+/// event kind in its metadata.
+///
+/// # Pattern Filtering
+///
+/// If `patterns` is provided, only paths matching at least one glob (using
+/// `globset` syntax) will produce tasks. An empty or absent patterns list
+/// accepts every path.
+///
+/// # Event Kind Filtering
+///
+/// `event_kinds` contains lowercase strings: `"create"`, `"modify"`,
+/// `"delete"`, `"access"`, `"rename"`. An empty vec accepts all kinds.
+///
+/// # Debouncing
+///
+/// After the first matching event the strategy waits `debounce_ms` milliseconds
+/// for more events. Any additional events within the window reset the timer.
+/// When the window expires the strategy fires a single task based on the
+/// *first* event seen in the burst, reducing duplicate dispatches on rapid
+/// file changes (e.g., editor atomic writes).
+///
+/// # Shutdown
+///
+/// Both the first-event wait and the debounce phase respect the shutdown
+/// signal and return an empty vec immediately when it fires.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use orchestrator::scheduler::strategy::FileWatchStrategy;
+///
+/// let strategy = FileWatchStrategy::new(
+///     vec!["/tmp/watched".into()],
+///     Some(vec!["**/*.toml".into()]),
+///     vec!["create".into(), "modify".into()],
+///     200, // 200 ms debounce
+/// )?;
+/// ```
+pub struct FileWatchStrategy {
+    /// The OS-level filesystem watcher — must be kept alive for the lifetime of
+    /// this strategy or events will stop being delivered.
+    _watcher: notify::RecommendedWatcher,
+    /// Async receiver end of the mpsc bridge from the sync `notify` callback.
+    rx: mpsc::UnboundedReceiver<notify::Result<notify::Event>>,
+    /// Optional glob patterns — `None` means accept every path.
+    include_patterns: Option<GlobSet>,
+    /// Event kinds to accept. Empty means accept all.
+    event_kinds: Vec<String>,
+    /// Debounce window in milliseconds (0 = no debounce).
+    debounce_ms: u64,
+    /// Watched root paths (stored for metadata / diagnostics).
+    #[allow(dead_code)]
+    watch_paths: Vec<PathBuf>,
+}
+
+impl FileWatchStrategy {
+    /// Create a new file-watch strategy.
+    ///
+    /// * `paths` — directories or files to watch recursively.
+    /// * `patterns` — optional glob patterns restricting which paths produce tasks.
+    /// * `event_kinds` — which event kinds to accept (`"create"`, `"modify"`,
+    ///   `"delete"`, `"access"`). An empty vec accepts all.
+    /// * `debounce_ms` — debounce window in milliseconds (0 = no debounce).
+    pub fn new(
+        paths: Vec<PathBuf>,
+        patterns: Option<Vec<String>>,
+        event_kinds: Vec<String>,
+        debounce_ms: u64,
+    ) -> anyhow::Result<Self> {
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        // Build the OS-native watcher.  The callback bridges sync notify events
+        // into the async mpsc channel.
+        let mut watcher = notify::RecommendedWatcher::new(
+            move |res: notify::Result<notify::Event>| {
+                // Ignore send errors — receiver may have been dropped during shutdown.
+                let _ = tx.send(res);
+            },
+            notify::Config::default(),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create filesystem watcher: {}", e))?;
+
+        // Register each path for recursive watching.
+        for path in &paths {
+            watcher
+                .watch(path, notify::RecursiveMode::Recursive)
+                .map_err(|e| anyhow::anyhow!("Failed to watch path {:?}: {}", path, e))?;
+        }
+
+        // Build the optional glob set.
+        let include_patterns = match patterns {
+            None => None,
+            Some(pats) if pats.is_empty() => None,
+            Some(pats) => {
+                let mut builder = GlobSetBuilder::new();
+                for pat in &pats {
+                    let glob = Glob::new(pat)
+                        .map_err(|e| anyhow::anyhow!("Invalid glob pattern '{}': {}", pat, e))?;
+                    builder.add(glob);
+                }
+                Some(
+                    builder
+                        .build()
+                        .map_err(|e| anyhow::anyhow!("Failed to build glob set: {}", e))?,
+                )
+            }
+        };
+
+        Ok(Self {
+            _watcher: watcher,
+            rx,
+            include_patterns,
+            event_kinds,
+            debounce_ms,
+            watch_paths: paths,
+        })
+    }
+
+    /// Returns `true` if the event passes the kind and pattern filters.
+    fn matches_event(&self, event: &notify::Event) -> bool {
+        // Filter by event kind.
+        if !self.event_kinds.is_empty() {
+            let kind_str = event_kind_to_str(&event.kind);
+            if !self.event_kinds.iter().any(|k| k == kind_str) {
+                return false;
+            }
+        }
+
+        // Filter by glob patterns.
+        if let Some(ref patterns) = self.include_patterns {
+            if !event.paths.iter().any(|p| patterns.is_match(p)) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Build a synthetic [`Task`] from a filesystem event.
+    ///
+    /// The task's metadata includes:
+    ///
+    /// | key          | value                      |
+    /// |--------------|----------------------------|
+    /// | `file_path`  | full path of changed file  |
+    /// | `file_name`  | basename of changed file   |
+    /// | `file_dir`   | parent directory           |
+    /// | `event_type` | `"create"` / `"modify"` / … |
+    /// | `timestamp`  | RFC 3339 fire time         |
+    fn build_task(&self, event: &notify::Event) -> Task {
+        let path = event.paths.first().map(|p| p.display().to_string()).unwrap_or_default();
+        let file_name = event
+            .paths
+            .first()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let file_dir = event
+            .paths
+            .first()
+            .and_then(|p| p.parent())
+            .map(|d| d.display().to_string())
+            .unwrap_or_default();
+        let kind_str = event_kind_to_str(&event.kind);
+        let timestamp = Utc::now().to_rfc3339();
+
+        let mut metadata = HashMap::new();
+        metadata.insert("file_path".to_string(), path.clone());
+        metadata.insert("file_name".to_string(), file_name);
+        metadata.insert("file_dir".to_string(), file_dir);
+        metadata.insert("event_type".to_string(), kind_str.to_string());
+        metadata.insert("timestamp".to_string(), timestamp);
+
+        Task {
+            source_id: format!("file:{}:{}", path, kind_str),
+            title: format!("File {} event: {}", kind_str, path),
+            body: String::new(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }
+    }
+}
+
+#[async_trait]
+impl TriggerStrategy for FileWatchStrategy {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
+        let mut shutdown = shutdown.clone();
+
+        // ── Phase 1: wait for the first matching event ──────────────────────
+        let first_event = loop {
+            tokio::select! {
+                maybe_event = self.rx.recv() => {
+                    match maybe_event {
+                        Some(Ok(event)) if self.matches_event(&event) => break event,
+                        Some(Ok(_)) => {
+                            // Non-matching event — keep waiting.
+                        }
+                        Some(Err(e)) => {
+                            warn!(%e, "FileWatchStrategy: watcher error");
+                        }
+                        None => {
+                            // Watcher was dropped — signal done.
+                            return Ok(vec![]);
+                        }
+                    }
+                }
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() {
+                        return Ok(vec![]);
+                    }
+                }
+            }
+        };
+
+        // ── Phase 2: debounce — drain additional events within the window ───
+        if self.debounce_ms > 0 {
+            let debounce = Duration::from_millis(self.debounce_ms);
+            loop {
+                // A fresh sleep each iteration means arriving events reset the timer.
+                let sleep = tokio::time::sleep(debounce);
+                tokio::pin!(sleep);
+
+                tokio::select! {
+                    _ = &mut sleep => {
+                        // Window expired — ready to fire.
+                        break;
+                    }
+                    maybe_event = self.rx.recv() => {
+                        match maybe_event {
+                            Some(Ok(_)) => {
+                                // Another event arrived — loop restarts with a fresh sleep.
+                            }
+                            Some(Err(e)) => {
+                                warn!(%e, "FileWatchStrategy: watcher error during debounce");
+                            }
+                            None => break,
+                        }
+                    }
+                    _ = shutdown.changed() => {
+                        if *shutdown.borrow() {
+                            return Ok(vec![]);
+                        }
+                    }
+                }
+            }
+        }
+
+        let task = self.build_task(&first_event);
+        info!(
+            path = %first_event.paths.first().map(|p| p.display().to_string()).unwrap_or_default(),
+            kind = %event_kind_to_str(&first_event.kind),
+            "FileWatchStrategy: filesystem event fired task"
+        );
+        Ok(vec![task])
     }
 }
 
