@@ -57,6 +57,11 @@ impl AgentdClient {
         &self.config.monitor_url
     }
 
+    /// Returns the base URL for the hook service.
+    pub fn hook_url(&self) -> &str {
+        &self.config.hook_url
+    }
+
     /// Perform a GET request against a service URL and deserialize the JSON response.
     pub async fn get<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T> {
         let resp = self.inner.get(url).send().await?.error_for_status()?;

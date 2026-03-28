@@ -35,6 +35,9 @@ name = "agentd-mcp"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "axum",
+ "chrono",
+ "futures",
  "reqwest",
  "rmcp",
  "schemars 0.8.22",
