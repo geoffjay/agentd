@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# infra/update.sh — Regenerate and install observability configs, then restart services.
+# infra/update.sh - Regenerate and install observability configs, then restart services.
 #
 # Generates environment-aware Prometheus config via generate-config.sh,
 # installs it and the latest Grafana dashboards to the config directory
 # used by the running services, and restarts both via launchctl.
 #
-# This never modifies files in the repo — it writes to the installed
+# This never modifies files in the repo - it writes to the installed
 # config directory (~/Library/Application Support/agentd/).
 #
 # Prerequisites:
@@ -13,14 +13,14 @@
 #   - Prometheus and Grafana launchd agents must be registered
 #
 # Environment variables (passed through to generate-config.sh):
-#   AGENTD_ENV                        — "production" or "development" (default: development)
-#   AGENTD_ORCHESTRATOR_SERVICE_URL   — Override orchestrator target
-#   AGENTD_COMMUNICATE_SERVICE_URL    — Override communicate target
-#   AGENTD_NOTIFY_SERVICE_URL         — Override notify target
-#   AGENTD_ASK_SERVICE_URL            — Override ask target
-#   AGENTD_WRAP_SERVICE_URL           — Override wrap target
-#   AGENTD_MEMORY_SERVICE_URL         — Override memory target
-#   AGENTD_MONITOR_SERVICE_URL        — Override monitor target
+#   AGENTD_ENV                        - "production" or "development" (default: development)
+#   AGENTD_ORCHESTRATOR_SERVICE_URL   - Override orchestrator target
+#   AGENTD_COMMUNICATE_SERVICE_URL    - Override communicate target
+#   AGENTD_NOTIFY_SERVICE_URL         - Override notify target
+#   AGENTD_ASK_SERVICE_URL            - Override ask target
+#   AGENTD_WRAP_SERVICE_URL           - Override wrap target
+#   AGENTD_MEMORY_SERVICE_URL         - Override memory target
+#   AGENTD_MONITOR_SERVICE_URL        - Override monitor target
 #
 # Usage:
 #   ./infra/update.sh                       # update with current env settings
@@ -73,7 +73,7 @@ for arg in "$@"; do
     esac
 done
 
-[[ "$DRY_RUN" == true ]] && info "Dry-run mode — no changes will be made."
+[[ "$DRY_RUN" == true ]] && info "Dry-run mode - no changes will be made."
 
 # ---------------------------------------------------------------------------
 # Preflight checks
@@ -85,11 +85,11 @@ PROM_CONFIG_DST="$CONFIG_DIR/prometheus/prometheus.yml"
 DASHBOARDS_DST="$CONFIG_DIR/grafana/dashboards"
 
 if [[ ! -d "$CONFIG_DIR" ]]; then
-    error "Config directory not found: $CONFIG_DIR — run infra/setup.sh first."
+    error "Config directory not found: $CONFIG_DIR - run infra/setup.sh first."
 fi
 
 if [[ ! -d "$DASHBOARDS_DST" ]]; then
-    error "Dashboard directory not found: $DASHBOARDS_DST — run infra/setup.sh first."
+    error "Dashboard directory not found: $DASHBOARDS_DST - run infra/setup.sh first."
 fi
 
 ok "Config directory exists: $CONFIG_DIR"
@@ -156,7 +156,7 @@ step "Restarting Prometheus"
 PROM_PLIST_PATH="$LAUNCH_AGENTS_DIR/$PROMETHEUS_PLIST"
 
 if [[ ! -f "$PROM_PLIST_PATH" ]]; then
-    warn "Prometheus plist not found at $PROM_PLIST_PATH — skipping restart."
+    warn "Prometheus plist not found at $PROM_PLIST_PATH - skipping restart."
     warn "Run infra/setup.sh to register the launchd agent."
 elif [[ "$DRY_RUN" == true ]]; then
     info "[DRY] Would restart Prometheus via launchctl"
@@ -178,7 +178,7 @@ step "Restarting Grafana"
 GRAFANA_PLIST_PATH="$LAUNCH_AGENTS_DIR/$GRAFANA_PLIST"
 
 if [[ ! -f "$GRAFANA_PLIST_PATH" ]]; then
-    warn "Grafana plist not found at $GRAFANA_PLIST_PATH — skipping restart."
+    warn "Grafana plist not found at $GRAFANA_PLIST_PATH - skipping restart."
     warn "Run infra/setup.sh to register the launchd agent."
 elif [[ "$DRY_RUN" == true ]]; then
     info "[DRY] Would restart Grafana via launchctl"
@@ -205,6 +205,6 @@ echo "  Dashboards:        $DASHBOARDS_DST"
 echo "  Environment:       ${AGENTD_ENV:-development}"
 echo
 if [[ "$DRY_RUN" == true ]]; then
-    echo "  (Dry-run — no changes were made)"
+    echo "  (Dry-run - no changes were made)"
     echo
 fi

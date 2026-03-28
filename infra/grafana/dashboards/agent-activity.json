@@ -319,7 +319,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "agentd — Agent Activity",
+  "title": "agentd - Agent Activity",
   "uid": "agentd-agent-activity",
   "version": 2
 }

@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# generate-config.sh — Generate a prometheus.yml based on AGENTD_ENV.
+# generate-config.sh - Generate a prometheus.yml based on AGENTD_ENV.
 #
 # Writes to the path given as $1, or stdout if no argument is provided.
 # Never modifies the checked-in development configuration.
 #
 # Environment variables:
-#   AGENTD_ENV                        — "production" or "development" (default: development)
-#   AGENTD_ORCHESTRATOR_SERVICE_URL   — Override orchestrator target (e.g. http://host:port)
-#   AGENTD_COMMUNICATE_SERVICE_URL    — Override communicate target
-#   AGENTD_NOTIFY_SERVICE_URL         — Override notify target
-#   AGENTD_ASK_SERVICE_URL            — Override ask target
-#   AGENTD_WRAP_SERVICE_URL           — Override wrap target
-#   AGENTD_MEMORY_SERVICE_URL         — Override memory target
-#   AGENTD_MONITOR_SERVICE_URL        — Override monitor target
+#   AGENTD_ENV                        - "production" or "development" (default: development)
+#   AGENTD_ORCHESTRATOR_SERVICE_URL   - Override orchestrator target (e.g. http://host:port)
+#   AGENTD_COMMUNICATE_SERVICE_URL    - Override communicate target
+#   AGENTD_NOTIFY_SERVICE_URL         - Override notify target
+#   AGENTD_ASK_SERVICE_URL            - Override ask target
+#   AGENTD_WRAP_SERVICE_URL           - Override wrap target
+#   AGENTD_MEMORY_SERVICE_URL         - Override memory target
+#   AGENTD_MONITOR_SERVICE_URL        - Override monitor target
 #
 # Usage:
 #   ./generate-config.sh                          # write to stdout
@@ -93,49 +93,49 @@ global:
     cluster: 'agentd-local'
 
 scrape_configs:
-  # Orchestrator — agent management, workflow scheduling, dispatch
+  # Orchestrator - agent management, workflow scheduling, dispatch
   - job_name: 'agentd-orchestrator'
     static_configs:
       - targets: ['${TARGET_ORCHESTRATOR}']
         labels:
           service: 'orchestrator'
 
-  # Communicate — WebSocket rooms and real-time messaging
+  # Communicate - WebSocket rooms and real-time messaging
   - job_name: 'agentd-communicate'
     static_configs:
       - targets: ['${TARGET_COMMUNICATE}']
         labels:
           service: 'communicate'
 
-  # Notify — notification ingestion and delivery
+  # Notify - notification ingestion and delivery
   - job_name: 'agentd-notify'
     static_configs:
       - targets: ['${TARGET_NOTIFY}']
         labels:
           service: 'notify'
 
-  # Ask — approval requests and human-in-the-loop gates
+  # Ask - approval requests and human-in-the-loop gates
   - job_name: 'agentd-ask'
     static_configs:
       - targets: ['${TARGET_ASK}']
         labels:
           service: 'ask'
 
-  # Wrap — PTY session and tmux agent launcher
+  # Wrap - PTY session and tmux agent launcher
   - job_name: 'agentd-wrap'
     static_configs:
       - targets: ['${TARGET_WRAP}']
         labels:
           service: 'wrap'
 
-  # Memory — vector-backed knowledge store
+  # Memory - vector-backed knowledge store
   - job_name: 'agentd-memory'
     static_configs:
       - targets: ['${TARGET_MEMORY}']
         labels:
           service: 'memory'
 
-  # Monitor — system monitoring and health checks
+  # Monitor - system monitoring and health checks
   # Uses /prom-metrics to avoid conflict with the JSON /metrics endpoint
   - job_name: 'agentd-monitor'
     metrics_path: '/prom-metrics'

@@ -318,7 +318,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "agentd — Service Overview",
+  "title": "agentd - Service Overview",
   "uid": "agentd-service-overview",
   "version": 2
 }
