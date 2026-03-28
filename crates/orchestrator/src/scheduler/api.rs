@@ -139,6 +139,20 @@ async fn create_workflow(
                 ));
             }
         }
+        TriggerConfig::Queue { queue_name, .. } => {
+            if queue_name.trim().is_empty() {
+                return Err(ApiError::InvalidInput(
+                    "Queue trigger requires a non-empty 'queue_name'".to_string(),
+                ));
+            }
+            if !queue_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                || queue_name.len() > 64
+            {
+                return Err(ApiError::InvalidInput(
+                    "Queue name may only contain alphanumeric characters and hyphens (max 64 chars)".to_string(),
+                ));
+            }
+        }
     }
 
     // Reject trigger types that are not yet implemented.

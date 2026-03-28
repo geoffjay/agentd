@@ -5,7 +5,7 @@ use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
 use crate::scheduler::strategy::{
     CronStrategy, DelayStrategy, EventFilter, EventStrategy, IdleStrategy, PollingStrategy,
-    TriggerStrategy,
+    QueueStrategy, TriggerStrategy,
 };
 use crate::scheduler::template::render_template;
 use crate::scheduler::types::{
@@ -304,6 +304,7 @@ fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> 
 pub fn create_strategy(
     config: &WorkflowConfig,
     event_bus: Option<&Arc<EventBus>>,
+    storage: Option<&SchedulerStorage>,
 ) -> anyhow::Result<Box<dyn TriggerStrategy>> {
     match &config.trigger_config {
         TriggerConfig::Cron { expression } => {
@@ -341,6 +342,17 @@ pub fn create_strategy(
                 .ok_or_else(|| anyhow::anyhow!("EventBus is required for agent_idle triggers"))?;
             let duration = std::time::Duration::from_secs(*idle_seconds);
             Ok(Box::new(IdleStrategy::new(bus.clone(), config.agent_id, duration)))
+        }
+        TriggerConfig::Queue { queue_name, poll_interval_secs, visibility_timeout_secs } => {
+            let st = storage.ok_or_else(|| {
+                anyhow::anyhow!("SchedulerStorage is required for queue triggers")
+            })?;
+            Ok(Box::new(QueueStrategy::new(
+                st.clone(),
+                queue_name.clone(),
+                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(5)),
+                visibility_timeout_secs.unwrap_or(300),
+            )))
         }
         _ => {
             let source = create_source(&config.trigger_config)?;
