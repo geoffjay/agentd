@@ -42,9 +42,12 @@
 //! ```
 
 mod api;
+mod entity;
 mod error;
+mod migration;
 mod notification_client;
 mod state;
+mod storage;
 mod tmux_check;
 mod types;
 
@@ -55,6 +58,7 @@ use metrics_exporter_prometheus::PrometheusHandle;
 use notification_client::NotificationClient;
 use state::AppState;
 use std::env;
+use storage::QuestionStorage;
 use tracing::{error, info, warn};
 
 fn init_metrics() -> PrometheusHandle {
@@ -111,8 +115,20 @@ async fn main() -> Result<()> {
         info!("tmux is installed");
     }
 
+    // Initialize persistent storage
+    let storage = match QuestionStorage::new().await {
+        Ok(s) => {
+            info!("Question storage initialized");
+            s
+        }
+        Err(e) => {
+            error!("Failed to initialize question storage: {}", e);
+            return Err(e);
+        }
+    };
+
     // Initialize application state
-    let app_state = AppState::new();
+    let app_state = AppState::new_with_storage(storage);
 
     // Initialize notification client
     let notification_client = NotificationClient::new(notify_service_url.clone());
@@ -162,7 +178,9 @@ async fn main() -> Result<()> {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
             info!("Running cleanup of old questions");
-            cleanup_state.cleanup_old_questions().await;
+            if let Err(e) = cleanup_state.cleanup_old_questions().await {
+                error!("Cleanup failed: {}", e);
+            }
         }
     });
 

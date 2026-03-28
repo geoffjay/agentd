@@ -57,6 +57,7 @@
 //! # }
 //! ```
 
+use crate::storage::QuestionStorage;
 use crate::types::{CheckType, QuestionInfo, QuestionStatus};
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
@@ -97,12 +98,15 @@ pub struct AppState {
 /// This struct contains the actual data. It is not exposed publicly and is only
 /// accessed through the [`AppState`] methods which handle locking.
 struct AppStateInner {
-    /// Active questions indexed by question ID
+    /// Active questions indexed by question ID (in-memory cache)
     questions: HashMap<Uuid, QuestionInfo>,
     /// Last notification sent timestamp per check type
     last_notification: HashMap<CheckType, DateTime<Utc>>,
     /// Notification cooldown period (default: 30 minutes)
     cooldown_duration: Duration,
+    /// Optional persistent storage backend
+    #[allow(dead_code)]
+    storage: Option<QuestionStorage>,
 }
 
 impl AppState {
@@ -155,6 +159,26 @@ impl AppState {
                 questions: HashMap::new(),
                 last_notification: HashMap::new(),
                 cooldown_duration,
+                storage: None,
+            })),
+        }
+    }
+
+    /// Creates a new application state backed by persistent storage.
+    ///
+    /// Questions are written through to the [`QuestionStorage`] on every mutation,
+    /// providing durability across service restarts.
+    ///
+    /// # Arguments
+    ///
+    /// - `storage` - The persistent question storage backend
+    pub fn new_with_storage(storage: QuestionStorage) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(AppStateInner {
+                questions: HashMap::new(),
+                last_notification: HashMap::new(),
+                cooldown_duration: Duration::minutes(30),
+                storage: Some(storage),
             })),
         }
     }
@@ -263,8 +287,16 @@ impl AppState {
     /// # }
     /// ```
     pub async fn add_question(&self, question: QuestionInfo) {
-        let mut state = self.inner.write().await;
-        state.questions.insert(question.question_id, question);
+        let storage = {
+            let mut state = self.inner.write().await;
+            state.questions.insert(question.question_id, question.clone());
+            state.storage.clone()
+        };
+        if let Some(s) = storage {
+            if let Err(e) = s.add(&question).await {
+                tracing::warn!("Failed to persist question {}: {}", question.question_id, e);
+            }
+        }
     }
 
     /// Retrieves a question by its ID.
@@ -352,37 +384,60 @@ impl AppState {
         question_id: &Uuid,
         answer: String,
     ) -> Result<QuestionInfo, String> {
-        let mut state = self.inner.write().await;
+        let (updated, storage) = {
+            let mut state = self.inner.write().await;
 
-        let question = state
-            .questions
-            .get_mut(question_id)
-            .ok_or_else(|| format!("Question {question_id} not found"))?;
+            let question = state
+                .questions
+                .get_mut(question_id)
+                .ok_or_else(|| format!("Question {question_id} not found"))?;
 
-        if question.status != QuestionStatus::Pending {
-            return Err(format!(
-                "Question {} is not pending (status: {:?})",
-                question_id, question.status
-            ));
+            if question.status != QuestionStatus::Pending {
+                return Err(format!(
+                    "Question {} is not pending (status: {:?})",
+                    question_id, question.status
+                ));
+            }
+
+            question.status = QuestionStatus::Answered;
+            question.answer = Some(answer.clone());
+            let updated = question.clone();
+            let storage = state.storage.clone();
+            (updated, storage)
+        };
+
+        if let Some(s) = storage {
+            if let Err(e) =
+                s.update_status(question_id, QuestionStatus::Answered, Some(answer)).await
+            {
+                tracing::warn!("Failed to persist answer for question {}: {}", question_id, e);
+            }
         }
 
-        question.status = QuestionStatus::Answered;
-        question.answer = Some(answer);
-
-        Ok(question.clone())
+        Ok(updated)
     }
 
     /// Mark a question as expired
     #[allow(dead_code)]
     pub async fn expire_question(&self, question_id: &Uuid) -> Result<(), String> {
-        let mut state = self.inner.write().await;
+        let storage = {
+            let mut state = self.inner.write().await;
 
-        let question = state
-            .questions
-            .get_mut(question_id)
-            .ok_or_else(|| format!("Question {question_id} not found"))?;
+            let question = state
+                .questions
+                .get_mut(question_id)
+                .ok_or_else(|| format!("Question {question_id} not found"))?;
 
-        question.status = QuestionStatus::Expired;
+            question.status = QuestionStatus::Expired;
+            state.storage.clone()
+        };
+
+        if let Some(s) = storage {
+            if let Err(e) = s.update_status(question_id, QuestionStatus::Expired, None).await {
+                tracing::warn!("Failed to persist expiry for question {}: {}", question_id, e);
+            }
+        }
+
         Ok(())
     }
 
@@ -415,16 +470,24 @@ impl AppState {
     /// let state = AppState::new();
     ///
     /// // Periodically clean up old questions
-    /// state.cleanup_old_questions().await;
+    /// let removed = state.cleanup_old_questions().await.unwrap();
     /// # }
     /// ```
-    pub async fn cleanup_old_questions(&self) {
-        let mut state = self.inner.write().await;
-        let cutoff = Utc::now() - Duration::hours(24);
+    pub async fn cleanup_old_questions(&self) -> anyhow::Result<u64> {
+        let storage = {
+            let mut state = self.inner.write().await;
+            let cutoff = Utc::now() - Duration::hours(24);
+            state.questions.retain(|_, question| {
+                question.asked_at > cutoff || question.status == QuestionStatus::Pending
+            });
+            state.storage.clone()
+        };
 
-        state.questions.retain(|_, question| {
-            question.asked_at > cutoff || question.status == QuestionStatus::Pending
-        });
+        if let Some(s) = storage {
+            return s.cleanup_old().await;
+        }
+
+        Ok(0)
     }
 
     /// Get the cooldown duration
@@ -646,7 +709,7 @@ mod tests {
         state.add_question(recent_answered.clone()).await;
         state.add_question(old_pending.clone()).await;
 
-        state.cleanup_old_questions().await;
+        state.cleanup_old_questions().await.unwrap();
 
         // Old answered should be removed
         assert!(state.get_question(&old_answered.question_id).await.is_none());

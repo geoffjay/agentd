@@ -97,8 +97,11 @@
 
 pub mod api;
 pub mod client;
+pub mod entity;
 pub mod error;
+pub mod migration;
 pub mod notification_client;
 pub mod state;
+pub mod storage;
 pub mod tmux_check;
 pub mod types;
