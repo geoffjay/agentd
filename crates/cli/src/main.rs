@@ -73,6 +73,7 @@
 
 pub mod client;
 mod commands;
+pub mod picker;
 pub mod types;
 
 use anyhow::Result;
@@ -375,7 +376,13 @@ async fn main() -> Result<()> {
             command.execute(&client, &url, cli.json).await?;
         }
         Commands::Prompt { command } => {
-            command.execute().await?;
+            let orch_url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+            let comm_url = env::var("AGENTD_COMMUNICATE_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:17010".to_string());
+            let orch_client = OrchestratorClient::new(orch_url);
+            let comm_client = CommunicateClient::new(&comm_url);
+            command.execute(&orch_client, &comm_client, cli.json).await?;
         }
     }
 

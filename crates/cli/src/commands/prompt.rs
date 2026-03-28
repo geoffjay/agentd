@@ -7,22 +7,33 @@
 //! # Syntax
 //!
 //! ```text
-//! agent prompt "@worker-agent please summarise the last PR"
-//! agent prompt "@engineering hello team"
-//! agent prompt "no recipient — falls back to interactive picker"
+//! agent prompt send "@worker-agent please summarise the last PR"
+//! agent prompt send "@engineering hello team"
+//! agent prompt send "no recipient — falls back to interactive picker"
 //! ```
 //!
-//! # Recipient resolution
+//! # Recipient resolution (issue-733)
 //!
 //! 1. Parse the `@name` token from the front of the input string.
-//! 2. Look up the name against known agents (via orchestrator) and rooms (via communicate).
-//! 3. Route the message to the appropriate service.
+//! 2. Fetch running agents from the orchestrator and all rooms from the
+//!    communicate service.
+//! 3. Match the name against agents first (priority), then rooms.
+//! 4. If no match, fall back to the interactive picker.
+//! 5. If no `@` is given, show the full picker immediately.
 //!
-//! Routing integration tests are gated behind issue-734 (message routing
-//! implementation) and are marked `#[ignore]` until that work lands.
+//! # Message routing (issue-734)
+//!
+//! Once a target is resolved the message is forwarded to the appropriate API.
+//! Routing is implemented in issue-734; until then the command prints a
+//! confirmation stub.
 
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use clap::Subcommand;
+use communicate::client::CommunicateClient;
+use orchestrator::client::OrchestratorClient;
+use uuid::Uuid;
+
+use crate::picker::{select_recipient, RecipientKind, RecipientOption};
 
 // ---------------------------------------------------------------------------
 // Clap command definition
@@ -35,13 +46,14 @@ pub enum PromptCommand {
     ///
     /// The input string is expected to begin with `@recipient` followed by the
     /// message body.  If no `@` prefix is found the command falls back to an
-    /// interactive recipient picker (not yet implemented).
+    /// interactive recipient picker.
     ///
     /// # Examples
     ///
     /// ```bash
     /// agent prompt send "@worker-agent summarise the last PR"
     /// agent prompt send "@engineering deploy is done"
+    /// agent prompt send "open picker for all agents and rooms"
     /// ```
     Send {
         /// Full prompt string, e.g. `"@worker-agent hello"`
@@ -55,9 +67,16 @@ pub enum PromptCommand {
 
 impl PromptCommand {
     /// Dispatch to the appropriate handler.
-    pub async fn execute(&self) -> Result<()> {
+    pub async fn execute(
+        &self,
+        orch: &OrchestratorClient,
+        comm: &CommunicateClient,
+        json: bool,
+    ) -> Result<()> {
         match self {
-            PromptCommand::Send { input, json } => send_prompt(input, *json).await,
+            PromptCommand::Send { input, json: cmd_json } => {
+                send_prompt(input, orch, comm, json || *cmd_json).await
+            }
         }
     }
 }
@@ -169,73 +188,212 @@ pub fn match_recipient<'a>(query: &str, candidates: &[&'a str]) -> Option<&'a st
 }
 
 // ---------------------------------------------------------------------------
-// Routing (stub — full implementation pending issue-734)
+// Recipient resolution
 // ---------------------------------------------------------------------------
 
-/// Destination for a routed message.
+/// Resolved routing target carrying the service UUID needed to send a message.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RouteTarget {
-    /// Send via orchestrator agent API.
-    Agent(String),
-    /// Send via communicate room API.
-    Room(String),
+    /// Send via `POST /agents/{id}/message` on the orchestrator.
+    Agent {
+        /// Orchestrator-assigned UUID.
+        id: Uuid,
+        /// Human-readable agent name (for display and logging).
+        name: String,
+    },
+    /// Send via `POST /rooms/{id}/messages` on the communicate service.
+    Room {
+        /// Communicate-service UUID.
+        id: Uuid,
+        /// Human-readable room name (for display and logging).
+        name: String,
+    },
+}
+
+/// Fetch all running agents and available rooms and build a list of
+/// [`RecipientOption`]s for use with the interactive picker.
+///
+/// Agents are listed before rooms so the picker default selection favours
+/// agents.
+pub async fn build_picker_options(
+    orch: &OrchestratorClient,
+    comm: &CommunicateClient,
+) -> Result<Vec<RecipientOption>> {
+    let mut options: Vec<RecipientOption> = Vec::new();
+
+    // --- Running agents ---
+    match orch.list_agents(Some("running")).await {
+        Ok(page) => {
+            for agent in page.items {
+                options.push(RecipientOption::agent(
+                    &agent.name,
+                    agent.id,
+                    agent.status,
+                    agent.activity,
+                ));
+            }
+        }
+        Err(e) => {
+            // Non-fatal: warn but continue so rooms can still be shown.
+            eprintln!("warning: could not fetch agent list: {e}");
+        }
+    }
+
+    // --- Rooms ---
+    match comm.list_rooms(100, 0).await {
+        Ok(page) => {
+            for room in page.items {
+                options.push(RecipientOption::room(
+                    &room.name,
+                    room.id,
+                    &room.room_type.to_string(),
+                ));
+            }
+        }
+        Err(e) => {
+            eprintln!("warning: could not fetch room list: {e}");
+        }
+    }
+
+    Ok(options)
 }
 
 /// Resolve a recipient name to a [`RouteTarget`].
 ///
-/// This is a stub that will be wired to live service calls in issue-734.
-/// Once implemented it will query the orchestrator for the agent list and the
-/// communicate service for the room list, then call [`match_recipient`] against
-/// each to find the best match.
-pub async fn resolve_route(recipient: &str) -> Option<RouteTarget> {
-    // TODO(issue-734): replace stubs with live orchestrator + communicate lookups.
-    let agents: Vec<&str> = vec![];
-    let rooms: Vec<&str> = vec![];
+/// Resolution flow:
+/// 1. Fetch running agents from the orchestrator.
+/// 2. Check agents for a name match (agents take priority over rooms).
+/// 3. Fetch rooms from the communicate service.
+/// 4. Check rooms for a name match.
+/// 5. Return `None` if no match found (caller should invoke the picker).
+///
+/// Matching uses [`match_recipient`]: exact → case-insensitive → hyphen/space
+/// equivalence.
+pub async fn resolve_route(
+    recipient: &str,
+    orch: &OrchestratorClient,
+    comm: &CommunicateClient,
+) -> Result<Option<RouteTarget>> {
+    // --- 1. Check running agents (priority) ---
+    let agents_page =
+        orch.list_agents(Some("running")).await.context("Failed to list running agents")?;
 
-    if let Some(name) = match_recipient(recipient, &agents) {
-        return Some(RouteTarget::Agent(name.to_string()));
+    let agent_names: Vec<&str> = agents_page.items.iter().map(|a| a.name.as_str()).collect();
+
+    if let Some(matched_name) = match_recipient(recipient, &agent_names) {
+        // Find the full agent record to get the UUID.
+        if let Some(agent) = agents_page.items.iter().find(|a| a.name == matched_name) {
+            return Ok(Some(RouteTarget::Agent { id: agent.id, name: agent.name.clone() }));
+        }
     }
 
-    if let Some(name) = match_recipient(recipient, &rooms) {
-        return Some(RouteTarget::Room(name.to_string()));
+    // --- 2. Check rooms ---
+    let rooms_page = comm.list_rooms(100, 0).await.context("Failed to list rooms")?;
+
+    let room_names: Vec<&str> = rooms_page.items.iter().map(|r| r.name.as_str()).collect();
+
+    if let Some(matched_name) = match_recipient(recipient, &room_names) {
+        if let Some(room) = rooms_page.items.iter().find(|r| r.name == matched_name) {
+            return Ok(Some(RouteTarget::Room { id: room.id, name: room.name.clone() }));
+        }
     }
 
-    None
+    Ok(None)
 }
 
 // ---------------------------------------------------------------------------
 // Command handler
 // ---------------------------------------------------------------------------
 
-async fn send_prompt(input: &str, _json: bool) -> Result<()> {
+async fn send_prompt(
+    input: &str,
+    orch: &OrchestratorClient,
+    comm: &CommunicateClient,
+    json: bool,
+) -> Result<()> {
     let parsed = parse_prompt(input);
 
-    match &parsed.recipient {
+    if parsed.message.is_empty() && parsed.recipient.is_none() {
+        bail!("No message provided. Usage: agent prompt send \"@recipient <message>\"");
+    }
+
+    // Resolve the target — either from @recipient or via the picker.
+    let target = match &parsed.recipient {
         Some(name) => {
-            // Route via live services once issue-734 lands.
-            match resolve_route(name).await {
-                Some(RouteTarget::Agent(agent)) => {
-                    println!("routing to agent: {agent}");
-                    println!("message:          {}", parsed.message);
-                }
-                Some(RouteTarget::Room(room)) => {
-                    println!("routing to room: {room}");
-                    println!("message:         {}", parsed.message);
-                }
+            match resolve_route(name, orch, comm).await? {
+                Some(t) => t,
                 None => {
-                    // Recipient named but not yet resolvable — print stub output.
-                    println!("recipient: {name} (unresolved — routing pending issue-734)");
-                    println!("message:   {}", parsed.message);
+                    // Name given but not matched — show picker with hint.
+                    eprintln!("No agent or room named '{name}' found. Select from available:");
+                    let options = build_picker_options(orch, comm).await?;
+                    let chosen = select_recipient(&options, "Select recipient:")?;
+                    recipient_option_to_target(chosen)?
                 }
             }
         }
         None => {
-            println!("No recipient specified. Interactive picker not yet implemented.");
-            println!("message: {}", parsed.message);
+            // No @recipient — show full picker.
+            let options = build_picker_options(orch, comm).await?;
+            if options.is_empty() {
+                bail!("No running agents or rooms available");
+            }
+            let chosen = select_recipient(&options, "Select recipient:")?;
+            recipient_option_to_target(chosen)?
+        }
+    };
+
+    // Routing (issue-734): send message to target.
+    // For now, print confirmation stub.
+    match &target {
+        RouteTarget::Agent { id, name } => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "pending",
+                        "target": name,
+                        "target_type": "agent",
+                        "agent_id": id,
+                        "message": parsed.message,
+                    })
+                );
+            } else {
+                println!("→ Sending to agent '{name}' ({id})");
+                println!("  message: {}", parsed.message);
+                println!("  (routing implementation pending issue-734)");
+            }
+        }
+        RouteTarget::Room { id, name } => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "pending",
+                        "target": name,
+                        "target_type": "room",
+                        "room_id": id,
+                        "message": parsed.message,
+                    })
+                );
+            } else {
+                println!("→ Sending to room '{name}' ({id})");
+                println!("  message: {}", parsed.message);
+                println!("  (routing implementation pending issue-734)");
+            }
         }
     }
 
     Ok(())
+}
+
+/// Convert a chosen [`RecipientOption`] from the picker into a [`RouteTarget`].
+fn recipient_option_to_target(opt: &RecipientOption) -> Result<RouteTarget> {
+    match &opt.kind {
+        RecipientKind::Agent { id, .. } => {
+            Ok(RouteTarget::Agent { id: *id, name: opt.name.clone() })
+        }
+        RecipientKind::Room { id, .. } => Ok(RouteTarget::Room { id: *id, name: opt.name.clone() }),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +403,8 @@ async fn send_prompt(input: &str, _json: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mockito::Server;
+    use serde_json::json;
 
     // -----------------------------------------------------------------------
     // @ parsing
@@ -266,7 +426,6 @@ mod tests {
 
     #[test]
     fn parse_at_only_no_message() {
-        // "@" with no name and no message
         let p = parse_prompt("@");
         assert!(p.recipient.is_none());
         assert_eq!(p.message, "");
@@ -281,7 +440,6 @@ mod tests {
 
     #[test]
     fn parse_multiple_words_no_quotes() {
-        // First token is not @-prefixed — all words go into the message.
         let p = parse_prompt("send this to nobody in particular");
         assert!(p.recipient.is_none());
         assert_eq!(p.message, "send this to nobody in particular");
@@ -298,13 +456,11 @@ mod tests {
     fn parse_at_with_spaces_in_message() {
         let p = parse_prompt("@bot   spaces   preserved in message");
         assert_eq!(p.recipient.as_deref(), Some("bot"));
-        // Leading spaces on the rest are trimmed; interior spaces are kept.
         assert_eq!(p.message, "spaces   preserved in message");
     }
 
     #[test]
     fn parse_recipient_only_no_message() {
-        // "@name" with nothing after it — recipient is set, message is empty.
         let p = parse_prompt("@triage");
         assert_eq!(p.recipient.as_deref(), Some("triage"));
         assert_eq!(p.message, "");
@@ -331,30 +487,23 @@ mod tests {
     #[test]
     fn match_hyphen_to_space() {
         let names = vec!["worker-agent"];
-        // Query uses a space; candidate uses a hyphen.
         assert_eq!(match_recipient("worker agent", &names), Some("worker-agent"));
     }
 
     #[test]
     fn match_space_to_hyphen() {
-        // Candidate uses spaces; query uses a hyphen.
         let names = vec!["my agent"];
         assert_eq!(match_recipient("my-agent", &names), Some("my agent"));
     }
 
     #[test]
     fn match_exact_preferred() {
-        // Both "Worker" (case-insensitive match) and "worker" (exact match)
-        // are in the list — the exact match must be returned.
         let names = vec!["Worker", "worker"];
         assert_eq!(match_recipient("worker", &names), Some("worker"));
     }
 
     #[test]
     fn match_case_insensitive_preferred_over_normalised() {
-        // "TRIAGE" is a case-insensitive match for "triage"; also a normalised
-        // match.  The case-insensitive path (rule 2) must fire before
-        // hyphen-normalisation (rule 3).
         let names = vec!["triage", "triage-bot"];
         assert_eq!(match_recipient("TRIAGE", &names), Some("triage"));
     }
@@ -372,34 +521,246 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // Recipient resolution — unit tests with mock servers
+    // -----------------------------------------------------------------------
+
+    fn agent_json(id: &str, name: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "name": name,
+            "status": "running",
+            "activity": "idle",
+            "config": {
+                "working_dir": "/tmp",
+                "shell": "bash"
+            },
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+        })
+    }
+
+    fn room_json(id: &str, name: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "name": name,
+            "topic": null,
+            "description": null,
+            "room_type": "group",
+            "created_by": "test",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+        })
+    }
+
+    fn paginated<T: serde::Serialize>(items: Vec<T>) -> serde_json::Value {
+        let len = items.len() as u64;
+        json!({ "items": items, "total": len, "limit": 100, "offset": 0 })
+    }
+
+    #[tokio::test]
+    async fn resolve_route_matches_running_agent_by_name() {
+        let agent_id = "550e8400-e29b-41d4-a716-446655440001";
+        let mut orch_server = Server::new_async().await;
+        let mut comm_server = Server::new_async().await;
+
+        let _orch_mock = orch_server
+            .mock("GET", "/agents?status=running")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(vec![agent_json(agent_id, "planner")]).to_string())
+            .create_async()
+            .await;
+
+        // communicate mock not reached when agent matches first
+        let _comm_mock = comm_server
+            .mock("GET", mockito::Matcher::Regex(r"/rooms".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(Vec::<serde_json::Value>::new()).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let result = resolve_route("planner", &orch, &comm).await.unwrap();
+
+        assert!(matches!(
+            result,
+            Some(RouteTarget::Agent { ref name, .. }) if name == "planner"
+        ));
+        if let Some(RouteTarget::Agent { id, .. }) = result {
+            assert_eq!(id.to_string(), agent_id);
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_route_matches_agent_case_insensitively() {
+        let agent_id = "550e8400-e29b-41d4-a716-446655440002";
+        let mut orch_server = Server::new_async().await;
+        let mut comm_server = Server::new_async().await;
+
+        let _m = orch_server
+            .mock("GET", "/agents?status=running")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(vec![agent_json(agent_id, "planner")]).to_string())
+            .create_async()
+            .await;
+
+        let _mc = comm_server
+            .mock("GET", mockito::Matcher::Regex(r"/rooms".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(Vec::<serde_json::Value>::new()).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let result = resolve_route("PLANNER", &orch, &comm).await.unwrap();
+        assert!(matches!(result, Some(RouteTarget::Agent { .. })));
+    }
+
+    #[tokio::test]
+    async fn resolve_route_matches_agent_with_hyphen_query() {
+        let agent_id = "550e8400-e29b-41d4-a716-446655440003";
+        let mut orch_server = Server::new_async().await;
+        let mut comm_server = Server::new_async().await;
+
+        let _m = orch_server
+            .mock("GET", "/agents?status=running")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(vec![agent_json(agent_id, "worker-agent")]).to_string())
+            .create_async()
+            .await;
+
+        let _mc = comm_server
+            .mock("GET", mockito::Matcher::Regex(r"/rooms".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(Vec::<serde_json::Value>::new()).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        // "worker agent" (space) should match "worker-agent" (hyphen)
+        let result = resolve_route("worker agent", &orch, &comm).await.unwrap();
+        assert!(matches!(result, Some(RouteTarget::Agent { .. })));
+    }
+
+    #[tokio::test]
+    async fn resolve_route_matches_room_when_no_agent_match() {
+        let room_id = "660e8400-e29b-41d4-a716-446655440001";
+        let mut orch_server = Server::new_async().await;
+        let mut comm_server = Server::new_async().await;
+
+        let _m = orch_server
+            .mock("GET", "/agents?status=running")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(Vec::<serde_json::Value>::new()).to_string())
+            .create_async()
+            .await;
+
+        let _mc = comm_server
+            .mock("GET", mockito::Matcher::Regex(r"/rooms".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(vec![room_json(room_id, "engineering")]).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let result = resolve_route("engineering", &orch, &comm).await.unwrap();
+        assert!(matches!(
+            result,
+            Some(RouteTarget::Room { ref name, .. }) if name == "engineering"
+        ));
+        if let Some(RouteTarget::Room { id, .. }) = result {
+            assert_eq!(id.to_string(), room_id);
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_route_agents_take_priority_over_rooms() {
+        // Same name exists as both an agent and a room — agent wins.
+        let agent_id = "550e8400-e29b-41d4-a716-446655440010";
+        let room_id = "660e8400-e29b-41d4-a716-446655440010";
+        let mut orch_server = Server::new_async().await;
+        let mut comm_server = Server::new_async().await;
+
+        let _m = orch_server
+            .mock("GET", "/agents?status=running")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(vec![agent_json(agent_id, "shared-name")]).to_string())
+            .create_async()
+            .await;
+
+        let _mc = comm_server
+            .mock("GET", mockito::Matcher::Regex(r"/rooms".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(vec![room_json(room_id, "shared-name")]).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let result = resolve_route("shared-name", &orch, &comm).await.unwrap();
+        // Must be the agent, not the room.
+        assert!(matches!(result, Some(RouteTarget::Agent { .. })));
+    }
+
+    #[tokio::test]
+    async fn resolve_route_returns_none_for_unknown_recipient() {
+        let mut orch_server = Server::new_async().await;
+        let mut comm_server = Server::new_async().await;
+
+        let _m = orch_server
+            .mock("GET", "/agents?status=running")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(Vec::<serde_json::Value>::new()).to_string())
+            .create_async()
+            .await;
+
+        let _mc = comm_server
+            .mock("GET", mockito::Matcher::Regex(r"/rooms".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(Vec::<serde_json::Value>::new()).to_string())
+            .create_async()
+            .await;
+
+        let orch = OrchestratorClient::new(orch_server.url());
+        let comm = CommunicateClient::new(&comm_server.url());
+
+        let result = resolve_route("nonexistent-bot", &orch, &comm).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    // -----------------------------------------------------------------------
     // Routing integration tests (blocked by issue-734)
     // -----------------------------------------------------------------------
 
     #[tokio::test]
     #[ignore = "blocked by issue-734: message routing not yet implemented"]
     async fn send_to_agent_uses_orchestrator_api() {
-        // TODO(issue-734): mock orchestrator, assert POST /agents/{name}/message
         todo!()
     }
 
     #[tokio::test]
     #[ignore = "blocked by issue-734: message routing not yet implemented"]
     async fn send_to_room_uses_communicate_api() {
-        // TODO(issue-734): mock communicate service, assert POST /rooms/{name}/messages
-        todo!()
-    }
-
-    #[tokio::test]
-    #[ignore = "blocked by issue-734: message routing not yet implemented"]
-    async fn agent_not_running_returns_error() {
-        // TODO(issue-734): verify graceful error when agent is not running
-        todo!()
-    }
-
-    #[tokio::test]
-    #[ignore = "blocked by issue-734: message routing not yet implemented"]
-    async fn unknown_recipient_triggers_picker() {
-        // TODO(issue-734): verify fallback to interactive picker
         todo!()
     }
 }
