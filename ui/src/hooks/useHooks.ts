@@ -9,35 +9,35 @@
  * hook service is available.
  */
 
-import { useState } from 'react'
-import type { Hook, HookEvent } from '@/types/hook'
+import { useState } from "react";
+import type { Hook, HookEvent } from "@/types/hook";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface UseHooksResult {
-  hooks: Hook[]
-  total: number
-  loading: boolean
-  error?: string
-  refetch: () => void
+	hooks: Hook[];
+	total: number;
+	loading: boolean;
+	error?: string;
+	refetch: () => void;
 }
 
 export interface UseHookEventsResult {
-  events: HookEvent[]
-  total: number
-  loading: boolean
-  error?: string
-  refetch: () => void
+	events: HookEvent[];
+	total: number;
+	loading: boolean;
+	error?: string;
+	refetch: () => void;
 }
 
 export interface UseHookServiceStatusResult {
-  /** Whether the hook service is reachable */
-  reachable: boolean
-  checking: boolean
-  /** Port the hook service listens on */
-  port: number
+	/** Whether the hook service is reachable */
+	reachable: boolean;
+	checking: boolean;
+	/** Port the hook service listens on */
+	port: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ export interface UseHookServiceStatusResult {
 // ---------------------------------------------------------------------------
 
 /** The hook service listens on port 17002 (not yet implemented) */
-export const HOOK_SERVICE_PORT = 17002
+export const HOOK_SERVICE_PORT = 17002;
 
 // ---------------------------------------------------------------------------
 // useHooks — list all registered hooks
@@ -58,17 +58,17 @@ export const HOOK_SERVICE_PORT = 17002
  * Replace with a real API call when the hook service is available.
  */
 export function useHooks(): UseHooksResult {
-  const [loading] = useState(false)
+	const [loading] = useState(false);
 
-  return {
-    hooks: [],
-    total: 0,
-    loading,
-    error: undefined,
-    refetch: () => {
-      // TODO: fetch from hook service when implemented
-    },
-  }
+	return {
+		hooks: [],
+		total: 0,
+		loading,
+		error: undefined,
+		refetch: () => {
+			// TODO: fetch from hook service when implemented
+		},
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -81,17 +81,17 @@ export function useHooks(): UseHooksResult {
  * Currently returns empty data since the service is not yet implemented.
  */
 export function useHookEvents(): UseHookEventsResult {
-  const [loading] = useState(false)
+	const [loading] = useState(false);
 
-  return {
-    events: [],
-    total: 0,
-    loading,
-    error: undefined,
-    refetch: () => {
-      // TODO: fetch from hook service when implemented
-    },
-  }
+	return {
+		events: [],
+		total: 0,
+		loading,
+		error: undefined,
+		refetch: () => {
+			// TODO: fetch from hook service when implemented
+		},
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -105,9 +105,9 @@ export function useHookEvents(): UseHookEventsResult {
  * Replace with a real health-check call when the hook service is available.
  */
 export function useHookServiceStatus(): UseHookServiceStatusResult {
-  return {
-    reachable: false,
-    checking: false,
-    port: HOOK_SERVICE_PORT,
-  }
+	return {
+		reachable: false,
+		checking: false,
+		port: HOOK_SERVICE_PORT,
+	};
 }

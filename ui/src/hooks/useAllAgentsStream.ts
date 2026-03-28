@@ -13,49 +13,53 @@
  *   connectionState - WebSocket connection state
  */
 
-import { useEffect, useRef, useState } from 'react'
-import { WebSocketManager } from '@/services/websocket'
-import { serviceConfig } from '@/services/config'
-import { agentEventBus } from '@/services/eventBus'
-import type { ConnectionState } from '@/services/websocket'
-import type { AgentEvent, UsageUpdateEvent, ContextClearedEvent } from '@/types/orchestrator'
-import type { LogLine } from './useAgentStream'
+import { useEffect, useRef, useState } from "react";
+import { serviceConfig } from "@/services/config";
+import { agentEventBus } from "@/services/eventBus";
+import type { ConnectionState } from "@/services/websocket";
+import { WebSocketManager } from "@/services/websocket";
+import type {
+	AgentEvent,
+	ContextClearedEvent,
+	UsageUpdateEvent,
+} from "@/types/orchestrator";
+import type { LogLine } from "./useAgentStream";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_LINES_PER_AGENT = 1_000
+const MAX_LINES_PER_AGENT = 1_000;
 
-let msgId = 0
+let msgId = 0;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function allStreamUrl(): string {
-  const wsBase = serviceConfig.orchestratorServiceUrl.replace(/^http/, 'ws')
-  return `${wsBase}/stream`
+	const wsBase = serviceConfig.orchestratorServiceUrl.replace(/^http/, "ws");
+	return `${wsBase}/stream`;
 }
 
 function makeLine(text: string): LogLine {
-  return { id: ++msgId, text, timestamp: new Date().toISOString() }
+	return { id: ++msgId, text, timestamp: new Date().toISOString() };
 }
 
 function addLine(
-  prev: Map<string, LogLine[]>,
-  agentId: string,
-  line: LogLine,
+	prev: Map<string, LogLine[]>,
+	agentId: string,
+	line: LogLine,
 ): Map<string, LogLine[]> {
-  const existing = prev.get(agentId) ?? []
-  const updated = [...existing, line]
-  const capped =
-    updated.length > MAX_LINES_PER_AGENT
-      ? updated.slice(updated.length - MAX_LINES_PER_AGENT)
-      : updated
-  const next = new Map(prev)
-  next.set(agentId, capped)
-  return next
+	const existing = prev.get(agentId) ?? [];
+	const updated = [...existing, line];
+	const capped =
+		updated.length > MAX_LINES_PER_AGENT
+			? updated.slice(updated.length - MAX_LINES_PER_AGENT)
+			: updated;
+	const next = new Map(prev);
+	next.set(agentId, capped);
+	return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,13 +67,16 @@ function addLine(
 // ---------------------------------------------------------------------------
 
 export interface UseAllAgentsStreamResult {
-  /** Map of agentId → buffered log lines from the /stream endpoint */
-  agentMessages: Map<string, LogLine[]>
-  connectionState: ConnectionState
-  /** Map of agentId → latest usage snapshot from real-time events */
-  usageUpdates: Map<string, import('@/types/orchestrator').UsageUpdateEvent>
-  /** Map of agentId → latest context-cleared event */
-  contextClears: Map<string, import('@/types/orchestrator').ContextClearedEvent>
+	/** Map of agentId → buffered log lines from the /stream endpoint */
+	agentMessages: Map<string, LogLine[]>;
+	connectionState: ConnectionState;
+	/** Map of agentId → latest usage snapshot from real-time events */
+	usageUpdates: Map<string, import("@/types/orchestrator").UsageUpdateEvent>;
+	/** Map of agentId → latest context-cleared event */
+	contextClears: Map<
+		string,
+		import("@/types/orchestrator").ContextClearedEvent
+	>;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,69 +84,78 @@ export interface UseAllAgentsStreamResult {
 // ---------------------------------------------------------------------------
 
 export function useAllAgentsStream(): UseAllAgentsStreamResult {
-  const [agentMessages, setAgentMessages] = useState<Map<string, LogLine[]>>(new Map())
-  const [connectionState, setConnectionState] = useState<ConnectionState>('Disconnected')
-  const [usageUpdates, setUsageUpdates] = useState<Map<string, UsageUpdateEvent>>(new Map())
-  const [contextClears, setContextClears] = useState<Map<string, ContextClearedEvent>>(new Map())
+	const [agentMessages, setAgentMessages] = useState<Map<string, LogLine[]>>(
+		new Map(),
+	);
+	const [connectionState, setConnectionState] =
+		useState<ConnectionState>("Disconnected");
+	const [usageUpdates, setUsageUpdates] = useState<
+		Map<string, UsageUpdateEvent>
+	>(new Map());
+	const [contextClears, setContextClears] = useState<
+		Map<string, ContextClearedEvent>
+	>(new Map());
 
-  const managerRef = useRef<WebSocketManager | null>(null)
+	const managerRef = useRef<WebSocketManager | null>(null);
 
-  useEffect(() => {
-    const manager = new WebSocketManager(allStreamUrl())
-    managerRef.current = manager
+	useEffect(() => {
+		const manager = new WebSocketManager(allStreamUrl());
+		managerRef.current = manager;
 
-    const unsubState = manager.onStateChange(setConnectionState)
+		const unsubState = manager.onStateChange(setConnectionState);
 
-    const unsubMsg = manager.onMessage((event: MessageEvent) => {
-      const raw = String(event.data)
+		const unsubMsg = manager.onMessage((event: MessageEvent) => {
+			const raw = String(event.data);
 
-      let parsed: AgentEvent | null = null
-      try {
-        parsed = JSON.parse(raw) as AgentEvent
-      } catch {
-        // Non-JSON fallback: treat as plain output
-        setAgentMessages((prev) => addLine(prev, 'unknown', makeLine(raw)))
-        return
-      }
+			let parsed: AgentEvent | null = null;
+			try {
+				parsed = JSON.parse(raw) as AgentEvent;
+			} catch {
+				// Non-JSON fallback: treat as plain output
+				setAgentMessages((prev) => addLine(prev, "unknown", makeLine(raw)));
+				return;
+			}
 
-      // Broadcast to all event bus subscribers
-      agentEventBus.emit(parsed)
+			// Broadcast to all event bus subscribers
+			agentEventBus.emit(parsed);
 
-      // Maintain the per-agent log buffer for output events
-      if (parsed.type === 'agent:output') {
-        setAgentMessages((prev) => addLine(prev, parsed.agentId, makeLine(parsed.line)))
-      }
+			// Maintain the per-agent log buffer for output events
+			if (parsed.type === "agent:output") {
+				setAgentMessages((prev) =>
+					addLine(prev, parsed.agentId, makeLine(parsed.line)),
+				);
+			}
 
-      // Track latest usage update per agent
-      if (parsed.type === 'agent:usage_update') {
-        const evt = parsed as UsageUpdateEvent
-        setUsageUpdates((prev) => {
-          const next = new Map(prev)
-          next.set(evt.agentId, evt)
-          return next
-        })
-      }
+			// Track latest usage update per agent
+			if (parsed.type === "agent:usage_update") {
+				const evt = parsed as UsageUpdateEvent;
+				setUsageUpdates((prev) => {
+					const next = new Map(prev);
+					next.set(evt.agentId, evt);
+					return next;
+				});
+			}
 
-      // Track context cleared events per agent
-      if (parsed.type === 'agent:context_cleared') {
-        const evt = parsed as ContextClearedEvent
-        setContextClears((prev) => {
-          const next = new Map(prev)
-          next.set(evt.agentId, evt)
-          return next
-        })
-      }
-    })
+			// Track context cleared events per agent
+			if (parsed.type === "agent:context_cleared") {
+				const evt = parsed as ContextClearedEvent;
+				setContextClears((prev) => {
+					const next = new Map(prev);
+					next.set(evt.agentId, evt);
+					return next;
+				});
+			}
+		});
 
-    manager.connect()
+		manager.connect();
 
-    return () => {
-      unsubState()
-      unsubMsg()
-      manager.disconnect()
-      managerRef.current = null
-    }
-  }, [])
+		return () => {
+			unsubState();
+			unsubMsg();
+			manager.disconnect();
+			managerRef.current = null;
+		};
+	}, []);
 
-  return { agentMessages, connectionState, usageUpdates, contextClears }
+	return { agentMessages, connectionState, usageUpdates, contextClears };
 }

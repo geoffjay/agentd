@@ -1,7 +1,7 @@
-import { NotificationList } from './notifications/NotificationList'
+import { NotificationList } from "./notifications/NotificationList";
 
 export function NotificationsPage() {
-  return <NotificationList />
+	return <NotificationList />;
 }
 
-export default NotificationsPage
+export default NotificationsPage;

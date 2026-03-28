@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.geoffjay.agentd-ui</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/Agent.app/Contents/MacOS/agentd-ui</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/agentd-ui.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/agentd-ui.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>RUST_LOG</key>
+        <string>info</string>
+        <key>AGENTD_PORT</key>
+        <string>7009</string>
+        <key>AGENTD_UI_DIR</key>
+        <string>/Applications/Agent.app/Contents/Resources/ui</string>
+        <key>AGENTD_ASK_SERVICE_URL</key>
+        <string>http://localhost:7001</string>
+        <key>AGENTD_NOTIFY_SERVICE_URL</key>
+        <string>http://localhost:7004</string>
+        <key>AGENTD_ORCHESTRATOR_SERVICE_URL</key>
+        <string>http://localhost:7006</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/usr/local</string>
+</dict>
+</plist>

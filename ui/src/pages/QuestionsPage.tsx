@@ -1,7 +1,7 @@
-import { QuestionList } from './questions/QuestionList'
+import { QuestionList } from "./questions/QuestionList";
 
 export function QuestionsPage() {
-  return <QuestionList />
+	return <QuestionList />;
 }
 
-export default QuestionsPage
+export default QuestionsPage;

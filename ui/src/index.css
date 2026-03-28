@@ -1,5 +1,5 @@
-@import '@animxyz/core';
-@import 'tailwindcss';
+@import "@animxyz/core";
+@import "tailwindcss";
 
 /* Configure class-based dark mode — adds `dark:` variant support via .dark class */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -124,102 +124,102 @@
    Semantic CSS custom properties — light theme (default)
    --------------------------------------------------------------------------- */
 :root {
-  /* Backgrounds */
-  --bg-primary: var(--color-secondary-50);
-  --bg-secondary: var(--color-secondary-100);
-  --bg-tertiary: var(--color-secondary-200);
+	/* Backgrounds */
+	--bg-primary: var(--color-secondary-50);
+	--bg-secondary: var(--color-secondary-100);
+	--bg-tertiary: var(--color-secondary-200);
 
-  /* Surface (cards, panels) */
-  --surface-default: #ffffff;
-  --surface-raised: var(--color-secondary-50);
-  --surface-overlay: #ffffff;
+	/* Surface (cards, panels) */
+	--surface-default: #ffffff;
+	--surface-raised: var(--color-secondary-50);
+	--surface-overlay: #ffffff;
 
-  /* Navigation */
-  --nav-bg: var(--color-secondary-900);
-  --nav-border: var(--color-secondary-700);
-  --nav-text: var(--color-secondary-400);
-  --nav-text-active: #ffffff;
-  --nav-item-hover: var(--color-secondary-700);
-  --nav-item-active: var(--color-primary-700);
+	/* Navigation */
+	--nav-bg: var(--color-secondary-900);
+	--nav-border: var(--color-secondary-700);
+	--nav-text: var(--color-secondary-400);
+	--nav-text-active: #ffffff;
+	--nav-item-hover: var(--color-secondary-700);
+	--nav-item-active: var(--color-primary-700);
 
-  /* Text */
-  --text-primary: var(--color-secondary-900);
-  --text-secondary: var(--color-secondary-700);
-  --text-muted: var(--color-secondary-500);
-  --text-inverse: #ffffff;
+	/* Text */
+	--text-primary: var(--color-secondary-900);
+	--text-secondary: var(--color-secondary-700);
+	--text-muted: var(--color-secondary-500);
+	--text-inverse: #ffffff;
 
-  /* Borders */
-  --border-default: var(--color-secondary-200);
-  --border-strong: var(--color-secondary-300);
-  --border-focus: var(--color-primary-500);
+	/* Borders */
+	--border-default: var(--color-secondary-200);
+	--border-strong: var(--color-secondary-300);
+	--border-focus: var(--color-primary-500);
 
-  /* Accent / brand */
-  --accent-primary: var(--color-primary-500);
-  --accent-primary-hover: var(--color-primary-600);
-  --accent-secondary: var(--color-primary-100);
+	/* Accent / brand */
+	--accent-primary: var(--color-primary-500);
+	--accent-primary-hover: var(--color-primary-600);
+	--accent-secondary: var(--color-primary-100);
 
-  /* Status */
-  --status-success: var(--color-success-500);
-  --status-warning: var(--color-warning-500);
-  --status-error: var(--color-error-500);
-  --status-info: var(--color-info-500);
+	/* Status */
+	--status-success: var(--color-success-500);
+	--status-warning: var(--color-warning-500);
+	--status-error: var(--color-error-500);
+	--status-info: var(--color-info-500);
 
-  /* Form elements */
-  --input-bg: #ffffff;
-  --input-border: var(--color-secondary-300);
-  --input-text: var(--color-secondary-900);
-  --input-placeholder: var(--color-secondary-400);
+	/* Form elements */
+	--input-bg: #ffffff;
+	--input-border: var(--color-secondary-300);
+	--input-text: var(--color-secondary-900);
+	--input-placeholder: var(--color-secondary-400);
 }
 
 /* ---------------------------------------------------------------------------
    Semantic CSS custom properties — dark theme
    --------------------------------------------------------------------------- */
 .dark {
-  /* Backgrounds */
-  --bg-primary: var(--color-secondary-950);
-  --bg-secondary: var(--color-secondary-900);
-  --bg-tertiary: var(--color-secondary-800);
+	/* Backgrounds */
+	--bg-primary: var(--color-secondary-950);
+	--bg-secondary: var(--color-secondary-900);
+	--bg-tertiary: var(--color-secondary-800);
 
-  /* Surface (cards, panels) */
-  --surface-default: var(--color-secondary-900);
-  --surface-raised: var(--color-secondary-800);
-  --surface-overlay: var(--color-secondary-800);
+	/* Surface (cards, panels) */
+	--surface-default: var(--color-secondary-900);
+	--surface-raised: var(--color-secondary-800);
+	--surface-overlay: var(--color-secondary-800);
 
-  /* Navigation */
-  --nav-bg: var(--color-secondary-900);
-  --nav-border: var(--color-secondary-700);
-  --nav-text: var(--color-secondary-400);
-  --nav-text-active: #ffffff;
-  --nav-item-hover: var(--color-secondary-700);
-  --nav-item-active: var(--color-primary-700);
+	/* Navigation */
+	--nav-bg: var(--color-secondary-900);
+	--nav-border: var(--color-secondary-700);
+	--nav-text: var(--color-secondary-400);
+	--nav-text-active: #ffffff;
+	--nav-item-hover: var(--color-secondary-700);
+	--nav-item-active: var(--color-primary-700);
 
-  /* Text */
-  --text-primary: var(--color-secondary-50);
-  --text-secondary: var(--color-secondary-300);
-  --text-muted: var(--color-secondary-400);
-  --text-inverse: var(--color-secondary-900);
+	/* Text */
+	--text-primary: var(--color-secondary-50);
+	--text-secondary: var(--color-secondary-300);
+	--text-muted: var(--color-secondary-400);
+	--text-inverse: var(--color-secondary-900);
 
-  /* Borders */
-  --border-default: var(--color-secondary-800);
-  --border-strong: var(--color-secondary-700);
-  --border-focus: var(--color-primary-400);
+	/* Borders */
+	--border-default: var(--color-secondary-800);
+	--border-strong: var(--color-secondary-700);
+	--border-focus: var(--color-primary-400);
 
-  /* Accent / brand */
-  --accent-primary: var(--color-primary-400);
-  --accent-primary-hover: var(--color-primary-300);
-  --accent-secondary: var(--color-primary-900);
+	/* Accent / brand */
+	--accent-primary: var(--color-primary-400);
+	--accent-primary-hover: var(--color-primary-300);
+	--accent-secondary: var(--color-primary-900);
 
-  /* Status */
-  --status-success: var(--color-success-500);
-  --status-warning: var(--color-warning-500);
-  --status-error: var(--color-error-500);
-  --status-info: var(--color-info-500);
+	/* Status */
+	--status-success: var(--color-success-500);
+	--status-warning: var(--color-warning-500);
+	--status-error: var(--color-error-500);
+	--status-info: var(--color-info-500);
 
-  /* Form elements */
-  --input-bg: var(--color-secondary-800);
-  --input-border: var(--color-secondary-600);
-  --input-text: var(--color-secondary-50);
-  --input-placeholder: var(--color-secondary-500);
+	/* Form elements */
+	--input-bg: var(--color-secondary-800);
+	--input-border: var(--color-secondary-600);
+	--input-text: var(--color-secondary-50);
+	--input-placeholder: var(--color-secondary-500);
 }
 
 /* ---------------------------------------------------------------------------
@@ -228,15 +228,15 @@
 *,
 *::before,
 *::after {
-  box-sizing: border-box;
+	box-sizing: border-box;
 }
 
 html {
-  font-family: var(--font-sans);
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+	font-family: var(--font-sans);
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
 }
 
 /* Smooth theme transitions — only on background-color to keep performance good */
@@ -245,9 +245,9 @@ body,
 *,
 *::before,
 *::after {
-  transition-property: background-color, border-color;
-  transition-duration: 150ms;
-  transition-timing-function: ease;
+	transition-property: background-color, border-color;
+	transition-duration: 150ms;
+	transition-timing-function: ease;
 }
 
 /* Opt-out of transitions for elements that should change instantly */
@@ -255,18 +255,18 @@ body,
 .no-theme-transition *,
 svg,
 svg * {
-  transition: none !important;
+	transition: none !important;
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
+	margin: 0;
+	min-height: 100vh;
+	background-color: var(--bg-primary);
+	color: var(--text-primary);
 }
 
 #root {
-  min-height: 100vh;
+	min-height: 100vh;
 }
 
 /* ---------------------------------------------------------------------------
@@ -275,15 +275,15 @@ body {
    We use :focus-visible so mouse clicks don't show the ring.
    --------------------------------------------------------------------------- */
 *:focus-visible {
-  outline: 2px solid var(--color-primary-500);
-  outline-offset: 2px;
+	outline: 2px solid var(--color-primary-500);
+	outline-offset: 2px;
 }
 
 /* Form inputs: no focus outline */
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: none;
+	outline: none;
 }
 
 /* Remove default outline for elements that manage focus themselves */
@@ -292,7 +292,7 @@ a:focus:not(:focus-visible),
 input:focus:not(:focus-visible),
 select:focus:not(:focus-visible),
 textarea:focus:not(:focus-visible) {
-  outline: none;
+	outline: none;
 }
 
 /* ---------------------------------------------------------------------------
@@ -301,14 +301,14 @@ textarea:focus:not(:focus-visible) {
    WCAG 2.3.3 (AAA) / recommended for AA compliance.
    --------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
 }
 
 /* ---------------------------------------------------------------------------
@@ -316,13 +316,13 @@ textarea:focus:not(:focus-visible) {
    Ensure interactive elements remain visible in Windows High Contrast mode.
    --------------------------------------------------------------------------- */
 @media (forced-colors: active) {
-  :focus-visible {
-    outline: 3px solid ButtonText;
-  }
-  button,
-  [role='button'] {
-    forced-color-adjust: none;
-  }
+	:focus-visible {
+		outline: 3px solid ButtonText;
+	}
+	button,
+	[role="button"] {
+		forced-color-adjust: none;
+	}
 }
 
 /* ---------------------------------------------------------------------------
@@ -331,18 +331,18 @@ textarea:focus:not(:focus-visible) {
 html,
 body,
 #root {
-  overflow-x: hidden;
-  max-width: 100vw;
+	overflow-x: hidden;
+	max-width: 100vw;
 }
 
 /* Touch targets — minimum 44×44px on interactive elements (WCAG 2.5.5) */
 @media (pointer: coarse) {
-  button,
-  [role='button'],
-  a,
-  input[type='checkbox'],
-  input[type='radio'] {
-    min-height: 44px;
-    min-width: 44px;
-  }
+	button,
+	[role="button"],
+	a,
+	input[type="checkbox"],
+	input[type="radio"] {
+		min-height: 44px;
+		min-width: 44px;
+	}
 }

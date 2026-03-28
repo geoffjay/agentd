@@ -1,7 +1,7 @@
-import { MonitoringDashboard } from './monitoring/MonitoringDashboard'
+import { MonitoringDashboard } from "./monitoring/MonitoringDashboard";
 
 export function MonitoringPage() {
-  return <MonitoringDashboard />
+	return <MonitoringDashboard />;
 }
 
-export default MonitoringPage
+export default MonitoringPage;

@@ -7,32 +7,32 @@
  * Ctrl+K / Cmd+K is handled at the AppShell level.
  */
 
-import { Link } from 'react-router-dom'
-import { Bell, Menu, Search, Settings } from 'lucide-react'
-import { useLayout } from './context'
-import { ThemeToggle } from '@/components/common/ThemeToggle'
-import { ConnectionStatus } from '@/components/common/ConnectionStatus'
-import { useAllAgentsStream } from '@/hooks/useAllAgentsStream'
-import { useNotificationCount } from '@/hooks/useNotificationCount'
+import { Bell, Menu, Search, Settings } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ConnectionStatus } from "@/components/common/ConnectionStatus";
+import { ThemeToggle } from "@/components/common/ThemeToggle";
+import { useAllAgentsStream } from "@/hooks/useAllAgentsStream";
+import { useNotificationCount } from "@/hooks/useNotificationCount";
+import { useLayout } from "./context";
 
 // ---------------------------------------------------------------------------
 // Notification badge
 // ---------------------------------------------------------------------------
 
 interface NotificationBadgeProps {
-  count: number
+	count: number;
 }
 
 function NotificationBadge({ count }: NotificationBadgeProps) {
-  if (count === 0) return null
-  return (
-    <span
-      aria-label={`${count} unread notifications`}
-      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white"
-    >
-      {count > 99 ? '99+' : count}
-    </span>
-  )
+	if (count === 0) return null;
+	return (
+		<span
+			aria-label={`${count} unread notifications`}
+			className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white"
+		>
+			{count > 99 ? "99+" : count}
+		</span>
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -40,23 +40,23 @@ function NotificationBadge({ count }: NotificationBadgeProps) {
 // ---------------------------------------------------------------------------
 
 function SearchTrigger() {
-  const { openSearch } = useLayout()
+	const { openSearch } = useLayout();
 
-  return (
-    <button
-      type="button"
-      aria-label="Global search"
-      aria-keyshortcuts="Control+k Meta+k"
-      onClick={openSearch}
-      className="flex items-center gap-2 rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-4 text-sm text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-300"
-    >
-      <Search size={14} aria-hidden="true" />
-      <span className="hidden md:inline">Search…</span>
-      <kbd className="hidden rounded border border-gray-300 px-1 py-0.5 text-[10px] text-gray-400 dark:border-gray-600 dark:text-gray-500 md:inline">
-        Ctrl+K
-      </kbd>
-    </button>
-  )
+	return (
+		<button
+			type="button"
+			aria-label="Global search"
+			aria-keyshortcuts="Control+k Meta+k"
+			onClick={openSearch}
+			className="flex items-center gap-2 rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-4 text-sm text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-300"
+		>
+			<Search size={14} aria-hidden="true" />
+			<span className="hidden md:inline">Search…</span>
+			<kbd className="hidden rounded border border-gray-300 px-1 py-0.5 text-[10px] text-gray-400 dark:border-gray-600 dark:text-gray-500 md:inline">
+				Ctrl+K
+			</kbd>
+		</button>
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -64,71 +64,79 @@ function SearchTrigger() {
 // ---------------------------------------------------------------------------
 
 export interface HeaderProps {
-  /** Number of unread notifications to show in the badge; if omitted, fetched automatically */
-  unreadCount?: number
+	/** Number of unread notifications to show in the badge; if omitted, fetched automatically */
+	unreadCount?: number;
 }
 
 export function Header({ unreadCount }: HeaderProps) {
-  const { sidebarOpen, toggleSidebar } = useLayout()
-  const { connectionState } = useAllAgentsStream()
-  const { pending } = useNotificationCount({ refreshInterval: 15_000 })
-  const displayCount = unreadCount ?? pending
+	const { sidebarOpen, toggleSidebar } = useLayout();
+	const { connectionState } = useAllAgentsStream();
+	const { pending } = useNotificationCount({ refreshInterval: 15_000 });
+	const displayCount = unreadCount ?? pending;
 
-  return (
-    <header
-      className={[
-        'fixed top-2 right-2 z-30 flex h-16 items-center gap-3 px-4 transition-all duration-300 ease-in-out rounded-t-lg',
-        'border border-gray-200 dark:border-gray-700',
-        'bg-gray-100 dark:bg-gray-800',
-        // 'shadow-xl',
-        // 'backdrop-blur-md',
-        // Offset left edge by sidebar width
-        sidebarOpen ? 'lg:left-60' : 'lg:left-16',
-        'left-0',
-      ].join(' ')}
-    >
-      {/* Sidebar toggle */}
-      <button
-        type="button"
-        aria-label="Toggle sidebar"
-        onClick={toggleSidebar}
-        className="rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-      >
-        <Menu size={20} />
-      </button>
+	return (
+		<header
+			className={[
+				"fixed top-2 right-2 z-30 flex h-16 items-center gap-3 px-4 transition-all duration-300 ease-in-out rounded-t-lg",
+				"border border-gray-200 dark:border-gray-700",
+				"bg-gray-100 dark:bg-gray-800",
+				// 'shadow-xl',
+				// 'backdrop-blur-md',
+				// Offset left edge by sidebar width
+				sidebarOpen ? "lg:left-60" : "lg:left-16",
+				"left-0",
+			].join(" ")}
+		>
+			{/* Sidebar toggle */}
+			<button
+				type="button"
+				aria-label="Toggle sidebar"
+				onClick={toggleSidebar}
+				className="rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+			>
+				<Menu size={20} />
+			</button>
 
-      {/* Search trigger */}
-      <SearchTrigger />
+			{/* Search trigger */}
+			<SearchTrigger />
 
-      {/* Spacer */}
-      <div className="flex-1" />
+			{/* Spacer */}
+			<div className="flex-1" />
 
-      {/* Global stream connection status (icon only on small screens) */}
-      <ConnectionStatus connectionState={connectionState} iconOnly className="hidden sm:flex" />
+			{/* Global stream connection status (icon only on small screens) */}
+			<ConnectionStatus
+				connectionState={connectionState}
+				iconOnly
+				className="hidden sm:flex"
+			/>
 
-      {/* Theme toggle */}
-      <ThemeToggle />
+			{/* Theme toggle */}
+			<ThemeToggle />
 
-      {/* Notification bell */}
-      <Link
-        to="/notifications"
-        aria-label={displayCount > 0 ? `Notifications — ${displayCount} unread` : 'Notifications'}
-        className="relative rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-      >
-        <Bell size={20} />
-        <NotificationBadge count={displayCount} />
-      </Link>
+			{/* Notification bell */}
+			<Link
+				to="/notifications"
+				aria-label={
+					displayCount > 0
+						? `Notifications — ${displayCount} unread`
+						: "Notifications"
+				}
+				className="relative rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+			>
+				<Bell size={20} />
+				<NotificationBadge count={displayCount} />
+			</Link>
 
-      {/* Settings */}
-      <Link
-        to="/settings"
-        aria-label="Settings"
-        className="rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-      >
-        <Settings size={20} />
-      </Link>
-    </header>
-  )
+			{/* Settings */}
+			<Link
+				to="/settings"
+				aria-label="Settings"
+				className="rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+			>
+				<Settings size={20} />
+			</Link>
+		</header>
+	);
 }
 
-export default Header
+export default Header;

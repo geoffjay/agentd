@@ -6,33 +6,37 @@
  */
 
 export interface ApprovalBadgeProps {
-  count: number
-  /** When true show even if count is 0 (for testing / placeholder) */
-  showZero?: boolean
-  className?: string
+	count: number;
+	/** When true show even if count is 0 (for testing / placeholder) */
+	showZero?: boolean;
+	className?: string;
 }
 
-export function ApprovalBadge({ count, showZero = false, className = '' }: ApprovalBadgeProps) {
-  if (count === 0 && !showZero) return null
+export function ApprovalBadge({
+	count,
+	showZero = false,
+	className = "",
+}: ApprovalBadgeProps) {
+	if (count === 0 && !showZero) return null;
 
-  const displayCount = count > 99 ? '99+' : String(count)
+	const displayCount = count > 99 ? "99+" : String(count);
 
-  return (
-    <span
-      aria-label={`${count} pending approval${count !== 1 ? 's' : ''}`}
-      className={[
-        'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1',
-        'bg-yellow-500 text-[10px] font-bold leading-none text-gray-900',
-        // Pulse animation when count > 0 to draw attention
-        count > 0 ? 'animate-pulse' : '',
-        className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
-    >
-      {displayCount}
-    </span>
-  )
+	return (
+		<span
+			aria-label={`${count} pending approval${count !== 1 ? "s" : ""}`}
+			className={[
+				"inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1",
+				"bg-yellow-500 text-[10px] font-bold leading-none text-gray-900",
+				// Pulse animation when count > 0 to draw attention
+				count > 0 ? "animate-pulse" : "",
+				className,
+			]
+				.filter(Boolean)
+				.join(" ")}
+		>
+			{displayCount}
+		</span>
+	);
 }
 
-export default ApprovalBadge
+export default ApprovalBadge;

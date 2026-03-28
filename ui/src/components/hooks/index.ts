@@ -1,1 +1,1 @@
-export { HookPlaceholder } from './HookPlaceholder'
+export { HookPlaceholder } from "./HookPlaceholder";

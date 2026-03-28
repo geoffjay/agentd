@@ -5,45 +5,49 @@
  * question/answer workflow for interactive agent approvals.
  */
 
-import { ApiClient } from './base'
-import { serviceConfig } from './config'
-import type { HealthResponse } from '@/types/common'
-import type { AnswerRequest, AnswerResponse, TriggerResponse } from '@/types/ask'
+import type {
+	AnswerRequest,
+	AnswerResponse,
+	TriggerResponse,
+} from "@/types/ask";
+import type { HealthResponse } from "@/types/common";
+import { ApiClient } from "./base";
+import { serviceConfig } from "./config";
 
 export class AskClient extends ApiClient {
-  // -------------------------------------------------------------------------
-  // Health
-  // -------------------------------------------------------------------------
+	// -------------------------------------------------------------------------
+	// Health
+	// -------------------------------------------------------------------------
 
-  getHealth(): Promise<HealthResponse> {
-    return this.get<HealthResponse>('/health')
-  }
+	getHealth(): Promise<HealthResponse> {
+		return this.get<HealthResponse>("/health");
+	}
 
-  // -------------------------------------------------------------------------
-  // Environment checks
-  // -------------------------------------------------------------------------
+	// -------------------------------------------------------------------------
+	// Environment checks
+	// -------------------------------------------------------------------------
 
-  /**
-   * Run all environment checks (e.g., tmux session detection) and create
-   * notifications for any actionable findings.
-   */
-  trigger(): Promise<TriggerResponse> {
-    return this.post<TriggerResponse>('/trigger')
-  }
+	/**
+	 * Run all environment checks (e.g., tmux session detection) and create
+	 * notifications for any actionable findings.
+	 */
+	trigger(): Promise<TriggerResponse> {
+		return this.post<TriggerResponse>("/trigger");
+	}
 
-  // -------------------------------------------------------------------------
-  // Answers
-  // -------------------------------------------------------------------------
+	// -------------------------------------------------------------------------
+	// Answers
+	// -------------------------------------------------------------------------
 
-  /**
-   * Submit an answer to a pending question.
-   */
-  answer(request: AnswerRequest): Promise<AnswerResponse> {
-    return this.post<AnswerResponse>('/answer', request)
-  }
+	/**
+	 * Submit an answer to a pending question.
+	 */
+	answer(request: AnswerRequest): Promise<AnswerResponse> {
+		return this.post<AnswerResponse>("/answer", request);
+	}
 }
 
 /** Singleton client instance using the configured service URL */
 export const askClient = new AskClient({
-  baseUrl: serviceConfig.askServiceUrl,
-})
+	baseUrl: serviceConfig.askServiceUrl,
+});

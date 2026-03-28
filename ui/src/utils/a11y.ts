@@ -14,27 +14,27 @@
 
 /** CSS selector that matches all interactive/focusable elements */
 export const FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-  'details > summary',
-].join(', ')
+	"a[href]",
+	"button:not([disabled])",
+	"input:not([disabled])",
+	"select:not([disabled])",
+	"textarea:not([disabled])",
+	'[tabindex]:not([tabindex="-1"])',
+	"details > summary",
+].join(", ");
 
 /**
  * Returns all focusable elements within a container, in DOM order.
  * Excludes elements that are hidden (display:none, visibility:hidden).
  */
 export function getFocusableElements(container: HTMLElement): HTMLElement[] {
-  const elements = Array.from(
-    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-  )
-  return elements.filter((el) => {
-    const style = getComputedStyle(el)
-    return style.display !== 'none' && style.visibility !== 'hidden'
-  })
+	const elements = Array.from(
+		container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+	);
+	return elements.filter((el) => {
+		const style = getComputedStyle(el);
+		return style.display !== "none" && style.visibility !== "hidden";
+	});
 }
 
 /**
@@ -42,23 +42,23 @@ export function getFocusableElements(container: HTMLElement): HTMLElement[] {
  * Falls back to focusing the container itself if nothing is focusable.
  */
 export function focusFirst(container: HTMLElement): void {
-  const focusable = getFocusableElements(container)
-  if (focusable.length > 0) {
-    focusable[0].focus()
-  } else {
-    container.setAttribute('tabindex', '-1')
-    container.focus()
-  }
+	const focusable = getFocusableElements(container);
+	if (focusable.length > 0) {
+		focusable[0].focus();
+	} else {
+		container.setAttribute("tabindex", "-1");
+		container.focus();
+	}
 }
 
 /**
  * Move focus to the last focusable element inside a container.
  */
 export function focusLast(container: HTMLElement): void {
-  const focusable = getFocusableElements(container)
-  if (focusable.length > 0) {
-    focusable[focusable.length - 1].focus()
-  }
+	const focusable = getFocusableElements(container);
+	if (focusable.length > 0) {
+		focusable[focusable.length - 1].focus();
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -66,18 +66,26 @@ export function focusLast(container: HTMLElement): void {
 // ---------------------------------------------------------------------------
 
 /** Returns true if the keyboard event is Enter or Space */
-export function isActivationKey(event: KeyboardEvent | React.KeyboardEvent): boolean {
-  return event.key === 'Enter' || event.key === ' '
+export function isActivationKey(
+	event: KeyboardEvent | React.KeyboardEvent,
+): boolean {
+	return event.key === "Enter" || event.key === " ";
 }
 
 /** Returns true if the keyboard event is Escape */
-export function isEscapeKey(event: KeyboardEvent | React.KeyboardEvent): boolean {
-  return event.key === 'Escape'
+export function isEscapeKey(
+	event: KeyboardEvent | React.KeyboardEvent,
+): boolean {
+	return event.key === "Escape";
 }
 
 /** Returns true if the keyboard event is an arrow key */
-export function isArrowKey(event: KeyboardEvent | React.KeyboardEvent): boolean {
-  return ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)
+export function isArrowKey(
+	event: KeyboardEvent | React.KeyboardEvent,
+): boolean {
+	return ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+		event.key,
+	);
 }
 
 /**
@@ -85,21 +93,21 @@ export function isArrowKey(event: KeyboardEvent | React.KeyboardEvent): boolean 
  * is pressed. Use on non-button elements with `role="button"`.
  */
 export function onKeyActivate(
-  onClick: (event: React.KeyboardEvent) => void,
+	onClick: (event: React.KeyboardEvent) => void,
 ): (event: React.KeyboardEvent) => void {
-  return (event: React.KeyboardEvent) => {
-    if (isActivationKey(event)) {
-      event.preventDefault()
-      onClick(event)
-    }
-  }
+	return (event: React.KeyboardEvent) => {
+		if (isActivationKey(event)) {
+			event.preventDefault();
+			onClick(event);
+		}
+	};
 }
 
 // ---------------------------------------------------------------------------
 // Unique ID generation
 // ---------------------------------------------------------------------------
 
-let _counter = 0
+let _counter = 0;
 
 /**
  * Generate a unique ID string with an optional prefix.
@@ -108,13 +116,13 @@ let _counter = 0
  * @example
  *   const id = generateId('email-field') // → "email-field-1"
  */
-export function generateId(prefix = 'agentd'): string {
-  return `${prefix}-${++_counter}`
+export function generateId(prefix = "agentd"): string {
+	return `${prefix}-${++_counter}`;
 }
 
 /** Reset the counter (useful in tests to get predictable IDs) */
 export function resetIdCounter(): void {
-  _counter = 0
+	_counter = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,11 +137,11 @@ export function resetIdCounter(): void {
  *   if (!prefersReducedMotion()) startAnimation()
  */
 export function prefersReducedMotion(): boolean {
-  try {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  } catch {
-    return false
-  }
+	try {
+		return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+	} catch {
+		return false;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -150,34 +158,34 @@ export function prefersReducedMotion(): boolean {
  * @param politeness 'polite' (default) or 'assertive'
  */
 export function announce(
-  message: string,
-  politeness: 'polite' | 'assertive' = 'polite',
+	message: string,
+	politeness: "polite" | "assertive" = "polite",
 ): void {
-  const el = document.createElement('div')
-  el.setAttribute('aria-live', politeness)
-  el.setAttribute('aria-atomic', 'true')
-  el.setAttribute('role', politeness === 'assertive' ? 'alert' : 'status')
+	const el = document.createElement("div");
+	el.setAttribute("aria-live", politeness);
+	el.setAttribute("aria-atomic", "true");
+	el.setAttribute("role", politeness === "assertive" ? "alert" : "status");
 
-  // Visually hidden but readable by screen readers
-  Object.assign(el.style, {
-    position: 'absolute',
-    width: '1px',
-    height: '1px',
-    padding: '0',
-    margin: '-1px',
-    overflow: 'hidden',
-    clip: 'rect(0,0,0,0)',
-    whiteSpace: 'nowrap',
-    border: '0',
-  })
+	// Visually hidden but readable by screen readers
+	Object.assign(el.style, {
+		position: "absolute",
+		width: "1px",
+		height: "1px",
+		padding: "0",
+		margin: "-1px",
+		overflow: "hidden",
+		clip: "rect(0,0,0,0)",
+		whiteSpace: "nowrap",
+		border: "0",
+	});
 
-  document.body.appendChild(el)
+	document.body.appendChild(el);
 
-  // Small delay ensures screen readers pick up the dynamic content change
-  requestAnimationFrame(() => {
-    el.textContent = message
-    setTimeout(() => {
-      document.body.removeChild(el)
-    }, 1000)
-  })
+	// Small delay ensures screen readers pick up the dynamic content change
+	requestAnimationFrame(() => {
+		el.textContent = message;
+		setTimeout(() => {
+			document.body.removeChild(el);
+		}, 1000);
+	});
 }

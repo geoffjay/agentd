@@ -6,25 +6,25 @@
  */
 
 export interface NotificationBadgeProps {
-  count: number
-  /** When true show even if count is 0 (for testing / placeholder) */
-  showZero?: boolean
-  className?: string
+	count: number;
+	/** When true show even if count is 0 (for testing / placeholder) */
+	showZero?: boolean;
+	className?: string;
 }
 
 export function NotificationBadge({
-  count,
-  showZero = false,
-  className = '',
+	count,
+	showZero = false,
+	className = "",
 }: NotificationBadgeProps) {
-  if (count === 0 && !showZero) return null
+	if (count === 0 && !showZero) return null;
 
-  return (
-    <span
-      aria-label={`${count} pending notification${count !== 1 ? 's' : ''}`}
-      className={`inline-block h-2 w-2 rounded-full bg-red-500 ${className}`}
-    />
-  )
+	return (
+		<span
+			aria-label={`${count} pending notification${count !== 1 ? "s" : ""}`}
+			className={`inline-block h-2 w-2 rounded-full bg-red-500 ${className}`}
+		/>
+	);
 }
 
-export default NotificationBadge
+export default NotificationBadge;
