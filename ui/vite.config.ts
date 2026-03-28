@@ -60,7 +60,7 @@ export default defineConfig(({ mode }) => {
 			setupFiles: ["./src/test/setup.ts"],
 			coverage: {
 				provider: "v8",
-				reporter: ["text", "json", "html"],
+				reporter: ["text", "json", "html", "lcov"],
 				// Exclude test infrastructure, config, and generated files
 				exclude: [
 					"src/test/**",
