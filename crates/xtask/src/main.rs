@@ -627,43 +627,43 @@ pub fn build_release() -> Result<()> {
     Ok(())
 }
 
-/// Build the UI by running `npm install` and `npm run build` in the `ui/` directory.
+/// Build the UI by running `bun install` and `bun run build` in the `ui/` directory.
 ///
-/// Requires `npm` to be installed. The built output lands in `ui/dist/`.
+/// Requires `bun` to be installed. The built output lands in `ui/dist/`.
 pub fn build_ui() -> Result<()> {
     let ui_dir = Path::new("ui");
     if !ui_dir.exists() {
         anyhow::bail!("ui/ directory not found — must be run from project root");
     }
 
-    // Check npm is available
-    if Command::new("npm").arg("--version").output().is_err() {
-        eprintln!("{}", "npm not found.".red().bold());
-        eprintln!("Install Node.js and npm to build the UI.");
-        anyhow::bail!("npm is required to build the UI");
+    // Check bun is available
+    if Command::new("bun").arg("--version").output().is_err() {
+        eprintln!("{}", "bun not found.".red().bold());
+        eprintln!("Install bun: {}", "https://bun.sh".cyan());
+        anyhow::bail!("bun is required to build the UI");
     }
 
-    println!("  Running npm install...");
-    let install_status = Command::new("npm")
+    println!("  Running bun install...");
+    let install_status = Command::new("bun")
         .arg("install")
         .current_dir(ui_dir)
         .status()
-        .context("Failed to execute npm install")?;
+        .context("Failed to execute bun install")?;
 
     if !install_status.success() {
-        anyhow::bail!("npm install failed");
+        anyhow::bail!("bun install failed");
     }
 
-    println!("  Running npm run build...");
-    let build_status = Command::new("npm")
+    println!("  Running bun run build...");
+    let build_status = Command::new("bun")
         .arg("run")
         .arg("build")
         .current_dir(ui_dir)
         .status()
-        .context("Failed to execute npm run build")?;
+        .context("Failed to execute bun run build")?;
 
     if !build_status.success() {
-        anyhow::bail!("npm run build failed");
+        anyhow::bail!("bun run build failed");
     }
 
     let dist_dir = ui_dir.join("dist");
