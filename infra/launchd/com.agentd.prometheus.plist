@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Service identity -->
+  <key>Label</key>
+  <string>com.agentd.prometheus</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <!-- Path after `brew install prometheus` on Apple Silicon.
+         Intel Macs: replace /opt/homebrew with /usr/local -->
+    <string>/opt/homebrew/bin/prometheus</string>
+    <string>--config.file=/Users/Shared/agentd/infra/prometheus/prometheus.yml</string>
+    <string>--storage.tsdb.path=/opt/homebrew/var/prometheus</string>
+    <string>--web.listen-address=127.0.0.1:9090</string>
+    <string>--web.enable-lifecycle</string>
+  </array>
+
+  <!-- Start automatically at login and keep running -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Log output -->
+  <key>StandardOutPath</key>
+  <string>/Users/Shared/agentd/logs/prometheus.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/Shared/agentd/logs/prometheus.log</string>
+
+  <!-- Environment -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/var/empty</string>
+  </dict>
+</dict>
+</plist>
