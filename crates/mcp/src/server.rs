@@ -6,7 +6,7 @@
 
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
-use crate::tools::{approvals, diagnostic, lifecycle};
+use crate::tools::{approvals, diagnostic, health, lifecycle};
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     tool, ServerHandler,
@@ -215,6 +215,54 @@ impl AgentdMcp {
         model: String,
     ) -> String {
         lifecycle::run_update_agent_model(&self.client, &agent_id, &model).await
+    }
+
+    // ── Service health and system metrics ───────────────────────────────
+
+    /// Concurrently check health of all agentd services.
+    #[tool(
+        description = "Check the health of all agentd services (orchestrator, communicate, memory, notify, ask, wrap, monitor, hook) concurrently. Returns a table with status, response time, and URL for each. Uses a 3-second timeout per service."
+    )]
+    async fn check_service_health(&self) -> String {
+        health::run_check_service_health(&self.client).await
+    }
+
+    /// Check health of a single named service.
+    #[tool(
+        description = "Check health of a specific agentd service by name. Valid names: orchestrator, communicate, memory, notify, ask, wrap, monitor, hook."
+    )]
+    async fn check_single_service(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Service name: orchestrator | communicate | memory | notify | ask | wrap | monitor | hook"
+        )]
+        service: String,
+    ) -> String {
+        health::run_check_single_service(&self.client, &service).await
+    }
+
+    /// Get current system metrics from the monitor service.
+    #[tool(
+        description = "Get current system metrics from the monitor service: CPU usage, memory, disk usage, and load average. Includes active alerts if any thresholds are exceeded. Returns a degraded response if the monitor service is unavailable."
+    )]
+    async fn get_system_metrics(&self) -> String {
+        health::run_get_system_metrics(&self.client).await
+    }
+
+    /// Fetch and parse key Prometheus metrics from a service.
+    #[tool(
+        description = "Fetch raw Prometheus metrics from a service and parse key operational counters and gauges. Supports: orchestrator (agents, WebSocket, approvals), notify (notification counts). Defaults to orchestrator."
+    )]
+    async fn get_prometheus_metrics(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Service to fetch metrics from: orchestrator | notify (default: orchestrator)"
+        )]
+        service: Option<String>,
+    ) -> String {
+        health::run_get_prometheus_metrics(&self.client, service.as_deref()).await
     }
 }
 
