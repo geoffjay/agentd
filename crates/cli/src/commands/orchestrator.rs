@@ -73,6 +73,8 @@ pub enum TriggerType {
     Delay,
     Webhook,
     Manual,
+    /// Agent idle trigger — fires after the agent is idle for N seconds.
+    AgentIdle,
     /// Linear issues trigger — polls Linear for matching issues.
     LinearIssues,
 }
@@ -690,6 +692,10 @@ pub enum OrchestratorCommand {
         #[arg(long)]
         linear_assignee: Option<String>,
 
+        /// Number of idle seconds before firing (required for agent-idle trigger type)
+        #[arg(long)]
+        idle_seconds: Option<u64>,
+
         /// Prompt template with {{placeholders}} (e.g. "Fix: {{title}}\n{{body}}")
         #[arg(long, conflicts_with = "prompt_template_file")]
         prompt_template: Option<String>,
@@ -928,6 +934,7 @@ impl OrchestratorCommand {
                 linear_status,
                 linear_labels,
                 linear_assignee,
+                idle_seconds,
                 prompt_template,
                 prompt_template_file,
                 poll_interval,
@@ -951,6 +958,7 @@ impl OrchestratorCommand {
                     linear_status,
                     linear_labels,
                     linear_assignee.as_deref(),
+                    *idle_seconds,
                     prompt_template.as_deref(),
                     prompt_template_file.as_deref(),
                     *poll_interval,
@@ -2270,6 +2278,7 @@ async fn create_workflow(
     linear_status: &[String],
     linear_labels: &[String],
     linear_assignee: Option<&str>,
+    idle_seconds: Option<u64>,
     prompt_template: Option<&str>,
     prompt_template_file: Option<&std::path::Path>,
     poll_interval: u64,
@@ -2331,6 +2340,15 @@ async fn create_workflow(
             source: Default::default(),
         },
         TriggerType::Manual => TriggerConfig::Manual {},
+        TriggerType::AgentIdle => {
+            let secs = idle_seconds.ok_or_else(|| {
+                anyhow::anyhow!("--idle-seconds is required for agent-idle trigger")
+            })?;
+            if secs == 0 {
+                bail!("--idle-seconds must be greater than 0");
+            }
+            TriggerConfig::AgentIdle { idle_seconds: secs }
+        }
         TriggerType::LinearIssues => {
             // At least one filter must be provided (validated server-side too,
             // but catch obvious mistakes early with a helpful message).
@@ -2702,6 +2720,9 @@ fn display_workflow(workflow: &WorkflowResponse) {
             println!("{}: {}", "Secret".bold(), secret_display);
         }
         TriggerConfig::Manual {} => {}
+        TriggerConfig::AgentIdle { idle_seconds } => {
+            println!("{}: {}s", "Idle Timeout".bold(), idle_seconds);
+        }
         TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } => {
             if let Some(tk) = team_key {
                 println!("{}: {}", "Team Key".bold(), tk);
@@ -4039,8 +4060,9 @@ mod tests {
             &[],  // linear_status
             &[],  // linear_labels
             None, // linear_assignee
+            None, // idle_seconds
             Some("Fix: {{title}}"),
-            None,
+            None, // prompt_template_file
             60,
             true,
             false,
