@@ -1,16 +1,15 @@
 # Prometheus configuration for agentd local observability stack.
 #
 # Scrapes Prometheus /metrics endpoints from all agentd services that expose
-# them. Services run on their default development ports (170xx).
+# them. This is the development default (170xx ports).
 #
-# This file can be regenerated for different environments via:
-#   ./generate-config.sh
+# For production or custom ports, use infra/update.sh which generates an
+# environment-aware config and installs it without modifying this file:
 #
-# Usage:
+#   AGENTD_ENV=production ./infra/update.sh
+#
+# Usage (direct):
 #   prometheus --config.file=infra/prometheus/prometheus.yml
-#
-# Or via the launchd plist:
-#   launchctl load ~/Library/LaunchAgents/com.agentd.prometheus.plist
 
 global:
   scrape_interval: 15s
