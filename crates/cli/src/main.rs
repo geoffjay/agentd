@@ -81,7 +81,8 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::*;
 use commands::{
-    AskCommand, CommunicateCommand, MemoryCommand, NotifyCommand, OrchestratorCommand, WrapCommand,
+    AskCommand, CommunicateCommand, MemoryCommand, NotifyCommand, OrchestratorCommand,
+    PromptCommand, WrapCommand,
 };
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
@@ -250,6 +251,22 @@ enum Commands {
         #[command(subcommand)]
         command: Box<CommunicateCommand>,
     },
+
+    /// Send a natural-language prompt to an agent or room.
+    ///
+    /// Accepts an `@recipient message` string and routes the message to the
+    /// appropriate service (orchestrator for agents, communicate for rooms).
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent prompt send "@worker-agent summarise the last PR"
+    /// agent prompt send "@engineering deploy is complete"
+    /// ```
+    Prompt {
+        #[command(subcommand)]
+        command: PromptCommand,
+    },
 }
 
 /// Main entry point for the agent CLI.
@@ -356,6 +373,9 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "http://localhost:17010".to_string());
             let client = CommunicateClient::new(&url);
             command.execute(&client, &url, cli.json).await?;
+        }
+        Commands::Prompt { command } => {
+            command.execute().await?;
         }
     }
 
