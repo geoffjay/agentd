@@ -694,6 +694,148 @@ impl TriggerStrategy for ManualStrategy {
 }
 
 // ---------------------------------------------------------------------------
+// IdleStrategy
+// ---------------------------------------------------------------------------
+
+/// A [`TriggerStrategy`] that fires when an agent has been idle (no active
+/// dispatches) for a configurable duration.
+///
+/// The strategy subscribes to the [`EventBus`] and listens for
+/// [`SystemEvent::DispatchCompleted`] events for the configured agent. Each
+/// time such an event arrives, the idle timer resets. When the timer expires
+/// without any new activity, the strategy produces a synthetic [`Task`] with
+/// a `source_id` of `"idle:{unix_timestamp}"` for deduplication.
+///
+/// After firing, the timer resets — the strategy will fire again on the next
+/// idle period.
+///
+/// # Shutdown
+///
+/// The internal sleep is interruptible. When the shutdown signal fires, the
+/// strategy returns an empty vec immediately.
+///
+/// # Broadcast Lag
+///
+/// If the subscriber falls behind the broadcast channel capacity, the
+/// strategy logs a warning and continues — the timer is not reset on a lag
+/// event, since the missed events may or may not have been completions.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use std::time::Duration;
+/// use orchestrator::scheduler::strategy::IdleStrategy;
+/// use orchestrator::scheduler::events::EventBus;
+///
+/// let bus = EventBus::shared(256);
+/// let agent_id = uuid::Uuid::new_v4();
+/// let strategy = IdleStrategy::new(bus, agent_id, Duration::from_secs(30));
+/// ```
+pub struct IdleStrategy {
+    rx: broadcast::Receiver<SystemEvent>,
+    idle_duration: Duration,
+    agent_id: Uuid,
+}
+
+impl IdleStrategy {
+    /// Create a new idle strategy.
+    ///
+    /// * `bus` — the shared event bus to subscribe to.
+    /// * `agent_id` — only `DispatchCompleted` events for this agent reset the timer.
+    /// * `idle_duration` — how long the agent must be idle before a task fires.
+    pub fn new(bus: Arc<EventBus>, agent_id: Uuid, idle_duration: Duration) -> Self {
+        let rx = bus.subscribe();
+        Self { rx, idle_duration, agent_id }
+    }
+
+    /// Check whether a system event is a dispatch completion for our agent.
+    fn is_relevant_completion(&self, event: &SystemEvent) -> bool {
+        matches!(event, SystemEvent::DispatchCompleted { .. })
+    }
+
+    /// Build a synthetic task for an idle firing.
+    fn build_task(&self) -> Task {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let timestamp = Utc::now().to_rfc3339();
+        let mut metadata = HashMap::new();
+        metadata.insert("agent_id".to_string(), self.agent_id.to_string());
+        metadata.insert("idle_seconds".to_string(), self.idle_duration.as_secs().to_string());
+        metadata.insert("timestamp".to_string(), timestamp);
+
+        Task {
+            source_id: format!("idle:{ts}"),
+            title: "Agent idle trigger".to_string(),
+            body: String::new(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }
+    }
+}
+
+#[async_trait]
+impl TriggerStrategy for IdleStrategy {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
+        let mut shutdown = shutdown.clone();
+
+        loop {
+            // Create a fresh sleep future each iteration so the timer resets
+            // when a dispatch completion event arrives.
+            let sleep = tokio::time::sleep(self.idle_duration);
+            tokio::pin!(sleep);
+
+            tokio::select! {
+                _ = &mut sleep => {
+                    // Idle timeout elapsed — fire a synthetic task.
+                    info!(
+                        agent_id = %self.agent_id,
+                        idle_secs = self.idle_duration.as_secs(),
+                        "IdleStrategy: agent idle timeout elapsed, firing task"
+                    );
+                    return Ok(vec![self.build_task()]);
+                }
+                result = self.rx.recv() => {
+                    match result {
+                        Ok(event) => {
+                            if self.is_relevant_completion(&event) {
+                                // Dispatch completed — reset the idle timer.
+                                info!(
+                                    agent_id = %self.agent_id,
+                                    "IdleStrategy: dispatch completed, resetting idle timer"
+                                );
+                                // Continue loop to create a new sleep.
+                            }
+                            // Non-matching events are ignored; we keep waiting.
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(
+                                lagged = n,
+                                "IdleStrategy: subscriber lagged, some events may have been missed"
+                            );
+                            // Do not reset timer — we don't know if missed events
+                            // were completions for our agent. Continue waiting.
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            // Event bus shut down — return empty to signal done.
+                            return Ok(vec![]);
+                        }
+                    }
+                }
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() {
+                        return Ok(vec![]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
