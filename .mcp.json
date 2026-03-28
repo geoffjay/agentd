@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "agentd": {
+      "command": "agent",
+      "args": ["mcp"],
+      "env": {
+        "AGENTD_ORCHESTRATOR_URL": "http://127.0.0.1:7006",
+        "AGENTD_COMMUNICATE_URL": "http://127.0.0.1:7010",
+        "AGENTD_MEMORY_URL": "http://127.0.0.1:7008",
+        "AGENTD_NOTIFY_URL": "http://127.0.0.1:7004",
+        "AGENTD_ASK_URL": "http://127.0.0.1:7001",
+        "AGENTD_WRAP_URL": "http://127.0.0.1:7005",
+        "AGENTD_MONITOR_URL": "http://127.0.0.1:7003",
+        "AGENTD_HOOK_URL": "http://127.0.0.1:7002"
+      }
+    }
+  }
+}
