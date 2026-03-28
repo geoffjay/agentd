@@ -6,6 +6,10 @@ authors.workspace = true
 license.workspace = true
 description = "MCP server exposing agentd services as tools for Claude and other MCP clients"
 
+[lib]
+name = "agentd_mcp"
+path = "src/lib.rs"
+
 [[bin]]
 name = "agentd-mcp"
 path = "src/main.rs"
@@ -33,3 +37,5 @@ chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
+axum = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
