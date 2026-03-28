@@ -131,6 +131,18 @@ pub enum TriggerConfig {
     },
     /// Manual trigger — dispatched explicitly via the API.
     Manual {},
+    /// Agent idle trigger (Phase 6).
+    ///
+    /// Fires when the workflow's agent has been idle (no active dispatches) for
+    /// `idle_seconds` seconds. The timer resets each time a
+    /// [`SystemEvent::DispatchCompleted`] event is received on the event bus.
+    ///
+    /// Produces a synthetic task with `source_id: "idle:{unix_timestamp}"` for
+    /// deduplication.
+    AgentIdle {
+        /// How many seconds of inactivity trigger the workflow.
+        idle_seconds: u64,
+    },
     /// Linear issues trigger — polls Linear for issues matching the given filters.
     ///
     /// Requires `AGENTD_LINEAR_API_KEY` to be set in the environment.
@@ -183,6 +195,7 @@ impl TriggerConfig {
             TriggerConfig::DispatchResult { .. } => "dispatch_result",
             TriggerConfig::Webhook { .. } => "webhook",
             TriggerConfig::Manual { .. } => "manual",
+            TriggerConfig::AgentIdle { .. } => "agent_idle",
             TriggerConfig::LinearIssues { .. } => "linear_issues",
         }
     }
@@ -198,6 +211,7 @@ impl TriggerConfig {
             | TriggerConfig::DispatchResult { .. }
             | TriggerConfig::Webhook { .. }
             | TriggerConfig::Manual { .. }
+            | TriggerConfig::AgentIdle { .. }
             | TriggerConfig::LinearIssues { .. } => true,
         }
     }
@@ -206,6 +220,7 @@ impl TriggerConfig {
     /// the workflow after firing.
     pub fn is_one_shot(&self) -> bool {
         matches!(self, TriggerConfig::Delay { .. })
+        // AgentIdle is NOT one-shot — it fires repeatedly after each idle period.
     }
 }
 
@@ -368,6 +383,51 @@ impl From<DispatchRecord> for DispatchResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_trigger_config_agent_idle_trigger_type() {
+        let cfg = TriggerConfig::AgentIdle { idle_seconds: 30 };
+        assert_eq!(cfg.trigger_type(), "agent_idle");
+    }
+
+    #[test]
+    fn test_trigger_config_agent_idle_is_implemented() {
+        let cfg = TriggerConfig::AgentIdle { idle_seconds: 30 };
+        assert!(cfg.is_implemented());
+    }
+
+    #[test]
+    fn test_trigger_config_agent_idle_is_not_one_shot() {
+        let cfg = TriggerConfig::AgentIdle { idle_seconds: 30 };
+        assert!(!cfg.is_one_shot(), "AgentIdle should not be one-shot");
+    }
+
+    #[test]
+    fn test_trigger_config_agent_idle_serde_roundtrip() {
+        let original = TriggerConfig::AgentIdle { idle_seconds: 60 };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: TriggerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.trigger_type(), "agent_idle");
+        // Serialized tag must be snake_case.
+        assert!(json.contains(r#""type":"agent_idle""#));
+        if let TriggerConfig::AgentIdle { idle_seconds } = decoded {
+            assert_eq!(idle_seconds, 60);
+        } else {
+            panic!("Expected AgentIdle variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_agent_idle_serde_from_json() {
+        let json = r#"{"type": "agent_idle", "idle_seconds": 120}"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.trigger_type(), "agent_idle");
+        if let TriggerConfig::AgentIdle { idle_seconds } = cfg {
+            assert_eq!(idle_seconds, 120);
+        } else {
+            panic!("Expected AgentIdle variant");
+        }
+    }
 
     #[test]
     fn test_trigger_config_linear_issues_trigger_type() {

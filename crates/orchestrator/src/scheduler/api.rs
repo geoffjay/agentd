@@ -113,6 +113,13 @@ async fn create_workflow(
             // No additional validation needed; source_workflow_id and status are optional.
         }
         TriggerConfig::Webhook { .. } | TriggerConfig::Manual {} => {}
+        TriggerConfig::AgentIdle { idle_seconds } => {
+            if *idle_seconds == 0 {
+                return Err(ApiError::InvalidInput(
+                    "AgentIdle trigger requires 'idle_seconds' to be greater than 0".to_string(),
+                ));
+            }
+        }
         TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } => {
             // Require at least one filter so the scheduler does not poll the
             // entire Linear workspace indiscriminately.  All filter fields are

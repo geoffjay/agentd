@@ -4,7 +4,8 @@ use crate::scheduler::linear::LinearIssueSource;
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
 use crate::scheduler::strategy::{
-    CronStrategy, DelayStrategy, EventFilter, EventStrategy, PollingStrategy, TriggerStrategy,
+    CronStrategy, DelayStrategy, EventFilter, EventStrategy, IdleStrategy, PollingStrategy,
+    TriggerStrategy,
 };
 use crate::scheduler::template::render_template;
 use crate::scheduler::types::{
@@ -329,6 +330,12 @@ pub fn create_strategy(
                 status: status.clone(),
             };
             Ok(Box::new(EventStrategy::new(bus.clone(), filter)))
+        }
+        TriggerConfig::AgentIdle { idle_seconds } => {
+            let bus = event_bus
+                .ok_or_else(|| anyhow::anyhow!("EventBus is required for agent_idle triggers"))?;
+            let duration = std::time::Duration::from_secs(*idle_seconds);
+            Ok(Box::new(IdleStrategy::new(bus.clone(), config.agent_id, duration)))
         }
         _ => {
             let source = create_source(&config.trigger_config)?;
