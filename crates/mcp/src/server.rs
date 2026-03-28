@@ -6,7 +6,7 @@
 
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
-use crate::tools::{agents, approvals, diagnostic, health, lifecycle};
+use crate::tools::{agents, approvals, diagnostic, health, lifecycle, workflows};
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     tool, ServerHandler,
@@ -112,6 +112,63 @@ impl AgentdMcp {
     )]
     async fn get_agent_status_summary(&self) -> String {
         agents::run_get_agent_status_summary(&self.client).await
+    }
+
+    // ── Workflow and dispatch inspection ────────────────────────────────
+
+    /// List all configured workflows with status and associated agent.
+    #[tool(
+        description = "List all configured workflows with their trigger type, poll interval, enabled state, and associated agent. Use get_workflow for full details including prompt template and source config."
+    )]
+    async fn list_workflows(&self) -> String {
+        workflows::run_list_workflows(&self.client).await
+    }
+
+    /// Get full configuration of a workflow.
+    #[tool(
+        description = "Get full configuration of a workflow including trigger source config, prompt template, and tool policy. Useful for understanding what a workflow dispatches and how it is configured."
+    )]
+    async fn get_workflow(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The workflow ID (UUID) to inspect")]
+        workflow_id: String,
+    ) -> String {
+        workflows::run_get_workflow(&self.client, &workflow_id).await
+    }
+
+    /// List dispatch records for a workflow.
+    #[tool(
+        description = "List dispatch records for a specific workflow showing task execution history with status and timing. Supports optional status filter and limit."
+    )]
+    async fn list_dispatches(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The workflow ID (UUID) to list dispatches for")]
+        workflow_id: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Filter by status: pending | dispatched | completed | failed | skipped. Omit for all."
+        )]
+        status: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Maximum number of records to return (default: 20, max: 200)")]
+        limit: Option<u32>,
+    ) -> String {
+        workflows::run_list_dispatches(&self.client, &workflow_id, status.as_deref(), limit).await
+    }
+
+    /// Get all failed dispatch records across all workflows.
+    #[tool(
+        description = "Get all failed dispatch records across all workflows, useful for identifying systemic issues. Returns failures sorted by most recent first."
+    )]
+    async fn get_failed_dispatches(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Maximum number of records to return (default: 50, max: 200)")]
+        limit: Option<u32>,
+    ) -> String {
+        workflows::run_get_failed_dispatches(&self.client, limit).await
     }
 
     // ── Approval management ─────────────────────────────────────────────
