@@ -246,10 +246,10 @@ pub async fn notify_complete(
     storage: &SchedulerStorage,
     is_error: bool,
 ) {
-    let dispatch_id = {
+    let (dispatch_id, source_id) = {
         let mut busy = busy.lock().await;
-        busy.active_source_id = None;
-        busy.active_dispatch_id.take()
+        let source_id = busy.active_source_id.take();
+        (busy.active_dispatch_id.take(), source_id)
     };
 
     if let Some(id) = dispatch_id {
@@ -258,6 +258,24 @@ pub async fn notify_complete(
         metrics::counter!("workflow_dispatches_total", "status" => status_label).increment(1);
         if let Err(e) = storage.update_dispatch_status(&id, status, Some(Utc::now())).await {
             error!(%id, %e, "Failed to update dispatch status on completion");
+        }
+    }
+
+    // If the task was sourced from an internal queue, finalize the queue task record.
+    // source_id format for queue tasks: "queue:{queue_name}:{task_id}"
+    if let Some(sid) = source_id {
+        if sid.starts_with("queue:") {
+            let parts: Vec<&str> = sid.splitn(3, ':').collect();
+            if let Some(task_id) = parts.get(2) {
+                let result = if is_error {
+                    storage.fail_queue_task(task_id).await
+                } else {
+                    storage.complete_queue_task(task_id).await
+                };
+                if let Err(e) = result {
+                    error!(task_id = *task_id, %e, "Failed to finalize queue task on completion");
+                }
+            }
         }
     }
 }
