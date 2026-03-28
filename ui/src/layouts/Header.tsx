@@ -77,7 +77,11 @@ export function Header({ unreadCount }: HeaderProps) {
   return (
     <header
       className={[
-        'fixed top-0 right-0 z-30 flex h-16 items-center gap-3 bg-gray-50 px-4 transition-all duration-300 ease-in-out dark:border-gray-800 dark:bg-gray-950',
+        'fixed top-2 right-2 z-30 flex h-16 items-center gap-3 px-4 transition-all duration-300 ease-in-out rounded-t-lg',
+        'border border-gray-200 dark:border-gray-700',
+        'bg-gray-100 dark:bg-gray-800',
+        // 'shadow-xl',
+        // 'backdrop-blur-md',
         // Offset left edge by sidebar width
         sidebarOpen ? 'lg:left-60' : 'lg:left-16',
         'left-0',

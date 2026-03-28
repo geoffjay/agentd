@@ -152,7 +152,7 @@ export function Sidebar() {
       <aside
         aria-label="Sidebar navigation"
         className={[
-          'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-gray-700 bg-gray-900 transition-all duration-300 ease-in-out',
+          'fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-900 transition-all duration-300 ease-in-out',
           // Width: collapsed = 64px, expanded = 240px
           sidebarOpen ? 'w-60' : 'w-16',
           // On mobile: slide in/out from left

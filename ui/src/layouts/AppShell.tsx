@@ -72,15 +72,28 @@ export function AppShell() {
       <LayoutContext.Provider
         value={{ sidebarOpen, setSidebarOpen, toggleSidebar, searchOpen, openSearch, closeSearch }}
       >
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-150">
+        <div className="min-h-screen pt-2 pr-2 pb2 bg-gray-900 transition-colors duration-150">
           <SkipNav />
-          <Header />
           <Sidebar />
-          <ContentArea>
-            <Outlet />
-          </ContentArea>
-          <SearchPalette isOpen={searchOpen} onClose={closeSearch} />
-          <ToastContainer />
+          <div
+            className={[
+                'max-h-[calc(100vh-1rem)]',
+                'overflow-y-auto',
+                'bg-gray-100 dark:bg-gray-800',
+                'transition-all duration-300 ease-in-out',
+                'border border-gray-400 dark:border-gray-600',
+                'rounded-xl',
+                // On large screens, shift right by sidebar width
+                sidebarOpen ? 'lg:ml-60' : 'lg:ml-16',
+            ].join(' ')}
+          >
+            <Header />
+            <ContentArea>
+                <Outlet />
+            </ContentArea>
+            <SearchPalette isOpen={searchOpen} onClose={closeSearch} />
+            <ToastContainer />
+          </div>
         </div>
       </LayoutContext.Provider>
     </ThemeProvider>
