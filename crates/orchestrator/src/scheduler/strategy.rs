@@ -1022,7 +1022,7 @@ impl CompositeStrategy {
     /// is a comma-joined list of every sub-task's source ID.  The `body` is
     /// a newline-joined concatenation of non-empty sub-task bodies.  Metadata
     /// from each sub-task is copied with a `sub_` prefix.
-    fn merge_and_tasks(pending: &mut Vec<Option<Vec<Task>>>) -> Vec<Task> {
+    fn merge_and_tasks(pending: &mut [Option<Vec<Task>>]) -> Vec<Task> {
         let sub_groups: Vec<Vec<Task>> = pending.iter_mut().filter_map(|opt| opt.take()).collect();
 
         let all_source_ids: Vec<String> =
