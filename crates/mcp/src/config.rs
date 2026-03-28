@@ -23,6 +23,8 @@ pub struct AgentdMcpConfig {
     pub wrap_url: String,
     /// Monitor service URL (default: `http://127.0.0.1:17003`)
     pub monitor_url: String,
+    /// Hook service URL (default: `http://127.0.0.1:17002`)
+    pub hook_url: String,
 }
 
 impl AgentdMcpConfig {
@@ -39,6 +41,7 @@ impl AgentdMcpConfig {
     /// | `AGENTD_ASK_URL`                | `http://127.0.0.1:17001`   |
     /// | `AGENTD_WRAP_URL`               | `http://127.0.0.1:17005`   |
     /// | `AGENTD_MONITOR_URL`            | `http://127.0.0.1:17003`   |
+    /// | `AGENTD_HOOK_URL`               | `http://127.0.0.1:17002`   |
     pub fn from_env() -> Self {
         Self {
             orchestrator_url: env::var("AGENTD_ORCHESTRATOR_URL")
@@ -55,6 +58,8 @@ impl AgentdMcpConfig {
                 .unwrap_or_else(|_| "http://127.0.0.1:17005".to_string()),
             monitor_url: env::var("AGENTD_MONITOR_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:17003".to_string()),
+            hook_url: env::var("AGENTD_HOOK_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:17002".to_string()),
         }
     }
 }
@@ -73,6 +78,7 @@ mod tests {
             "AGENTD_ASK_URL",
             "AGENTD_WRAP_URL",
             "AGENTD_MONITOR_URL",
+            "AGENTD_HOOK_URL",
         ];
         let saved: Vec<_> = vars.iter().map(|k| (k, env::var(k).ok())).collect();
         for k in &vars {
@@ -87,6 +93,7 @@ mod tests {
         assert_eq!(config.ask_url, "http://127.0.0.1:17001");
         assert_eq!(config.wrap_url, "http://127.0.0.1:17005");
         assert_eq!(config.monitor_url, "http://127.0.0.1:17003");
+        assert_eq!(config.hook_url, "http://127.0.0.1:17002");
 
         for (k, v) in saved {
             if let Some(val) = v {
