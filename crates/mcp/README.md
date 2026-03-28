@@ -14,10 +14,10 @@ self-healing remediation — all without leaving the conversation.
 ## Quick Start
 
 ```bash
-# Build the server
-cargo build -p agentd-mcp --release
+# Run via the agent CLI (works from any directory)
+agent mcp
 
-# Run directly (stdio transport)
+# Or run the standalone binary directly
 cargo run -p agentd-mcp
 ```
 
@@ -32,25 +32,26 @@ All log output goes to **stderr** so it does not interfere with the protocol.
 {
   "mcpServers": {
     "agentd": {
-      "command": "cargo",
-      "args": ["run", "--release", "-p", "agentd-mcp"],
-      "env": {
-        "AGENTD_ORCHESTRATOR_URL": "http://127.0.0.1:17006",
-        "AGENTD_NOTIFY_URL": "http://127.0.0.1:17004",
-        "AGENTD_MONITOR_URL": "http://127.0.0.1:17003"
-      }
+      "command": "agent",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-For a pre-built binary, replace the `command`/`args` with the binary path:
+Environment variable overrides can be passed if your services run on non-default ports:
 
 ```json
 {
   "mcpServers": {
     "agentd": {
-      "command": "/path/to/agentd-mcp"
+      "command": "agent",
+      "args": ["mcp"],
+      "env": {
+        "AGENTD_ORCHESTRATOR_URL": "http://127.0.0.1:17006",
+        "AGENTD_NOTIFY_URL": "http://127.0.0.1:17004",
+        "AGENTD_MONITOR_URL": "http://127.0.0.1:17003"
+      }
     }
   }
 }
@@ -62,10 +63,8 @@ For a pre-built binary, replace the `command`/`args` with the binary path:
 {
   "mcpServers": {
     "agentd": {
-      "command": "/path/to/agentd-mcp",
-      "env": {
-        "AGENTD_ORCHESTRATOR_URL": "http://127.0.0.1:17006"
-      }
+      "command": "agent",
+      "args": ["mcp"]
     }
   }
 }
@@ -74,7 +73,7 @@ For a pre-built binary, replace the `command`/`args` with the binary path:
 ### Development Mode (with MCP Inspector)
 
 ```bash
-npx @modelcontextprotocol/inspector cargo run -p agentd-mcp
+npx @modelcontextprotocol/inspector agent mcp
 ```
 
 ## Configuration

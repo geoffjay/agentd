@@ -37,6 +37,7 @@ monitor = { path = "../monitor" }
 hook = { path = "../hook" }
 memory = { path = "../memory" }
 communicate = { path = "../communicate" }
+agentd-mcp = { path = "../mcp" }
 
 [dev-dependencies]
 mockito = "1.2"

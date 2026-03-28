@@ -253,6 +253,24 @@ enum Commands {
         command: Box<CommunicateCommand>,
     },
 
+    /// Start the MCP server for agent diagnostics and management.
+    ///
+    /// Launches the agentd MCP server on stdio transport, exposing tools for
+    /// inspecting agents, diagnosing failures, managing approvals, and
+    /// triggering self-healing remediation. Register this command in your MCP
+    /// client configuration to use it from any project directory.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// # Run directly
+    /// agent mcp
+    ///
+    /// # In .claude/mcp.json
+    /// # { "mcpServers": { "agentd": { "command": "agent", "args": ["mcp"] } } }
+    /// ```
+    Mcp,
+
     /// Send a natural-language prompt to an agent or room.
     ///
     /// Accepts an `@recipient message` string and routes the message to the
@@ -360,6 +378,9 @@ async fn main() -> Result<()> {
         }
         Commands::Monitor => {
             monitor::run(monitor::config::MonitorConfig::from_env()).await?;
+        }
+        Commands::Mcp => {
+            agentd_mcp::run(agentd_mcp::config::AgentdMcpConfig::from_env()).await?;
         }
         Commands::Memory { command } => {
             // Use AGENTD_MEMORY_SERVICE_URL env var, default to production port

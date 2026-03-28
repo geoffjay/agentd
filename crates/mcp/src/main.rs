@@ -28,8 +28,6 @@
 //! framing on stdout.
 
 use agentd_mcp::config::AgentdMcpConfig;
-use agentd_mcp::server::AgentdMcp;
-use tracing::info;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -42,15 +40,5 @@ async fn main() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    info!(version = env!("CARGO_PKG_VERSION"), "Starting agentd-mcp server");
-
-    let config = AgentdMcpConfig::from_env();
-    let server = AgentdMcp::new(config);
-
-    info!("Listening on stdio (MCP JSON-RPC transport)");
-    let transport = rmcp::transport::stdio();
-    let running = rmcp::serve_server(server, transport).await?;
-    running.waiting().await?;
-
-    Ok(())
+    agentd_mcp::run(AgentdMcpConfig::from_env()).await
 }

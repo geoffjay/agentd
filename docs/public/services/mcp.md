@@ -27,14 +27,14 @@ Each tool call makes direct HTTP requests to the relevant agentd services. No lo
 ## Quick Start
 
 ```bash
-# Build the server
-cargo build -p agentd-mcp --release
+# Run via the agent CLI (works from any directory)
+agent mcp
 
-# Run directly (stdio transport)
+# Or run the standalone binary
 cargo run -p agentd-mcp
 
 # Run with MCP Inspector for development
-npx @modelcontextprotocol/inspector cargo run -p agentd-mcp
+npx @modelcontextprotocol/inspector agent mcp
 ```
 
 ## MCP Client Configuration
@@ -45,25 +45,26 @@ npx @modelcontextprotocol/inspector cargo run -p agentd-mcp
 {
   "mcpServers": {
     "agentd": {
-      "command": "cargo",
-      "args": ["run", "--release", "-p", "agentd-mcp"],
-      "env": {
-        "AGENTD_ORCHESTRATOR_URL": "http://127.0.0.1:17006",
-        "AGENTD_NOTIFY_URL": "http://127.0.0.1:17004",
-        "AGENTD_MONITOR_URL": "http://127.0.0.1:17003"
-      }
+      "command": "agent",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-For a pre-built binary:
+Environment variable overrides can be passed if your services run on non-default ports:
 
 ```json
 {
   "mcpServers": {
     "agentd": {
-      "command": "/path/to/agentd-mcp"
+      "command": "agent",
+      "args": ["mcp"],
+      "env": {
+        "AGENTD_ORCHESTRATOR_URL": "http://127.0.0.1:17006",
+        "AGENTD_NOTIFY_URL": "http://127.0.0.1:17004",
+        "AGENTD_MONITOR_URL": "http://127.0.0.1:17003"
+      }
     }
   }
 }
@@ -75,10 +76,8 @@ For a pre-built binary:
 {
   "mcpServers": {
     "agentd": {
-      "command": "/path/to/agentd-mcp",
-      "env": {
-        "AGENTD_ORCHESTRATOR_URL": "http://127.0.0.1:17006"
-      }
+      "command": "agent",
+      "args": ["mcp"]
     }
   }
 }
