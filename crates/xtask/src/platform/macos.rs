@@ -13,6 +13,9 @@ impl Platform for MacOSPlatform {
     fn install(&self, bin_dir: &Path) -> Result<()> {
         install_binaries(bin_dir)?;
 
+        // Install UI assets
+        install_ui_assets()?;
+
         // Install plist files
         let plist_dir = crate::home_dir()?.join("Library/LaunchAgents");
         fs::create_dir_all(&plist_dir).context("Failed to create LaunchAgents directory")?;
@@ -397,6 +400,48 @@ fn install_plists(plist_dir: &Path) -> Result<()> {
             println!("  {} {}", "✓".green(), plist_name);
         } else {
             println!("  {} {} (not found)", "⚠".yellow(), plist_name);
+        }
+    }
+
+    Ok(())
+}
+
+fn install_ui_assets() -> Result<()> {
+    println!("{}", "Installing UI assets...".blue());
+
+    let ui_dist = Path::new("ui/dist");
+    if !ui_dist.exists() {
+        println!("  {} UI dist not found (ui/dist/) — skipping", "⚠".yellow());
+        return Ok(());
+    }
+
+    let dest = PathBuf::from("/Applications/Agent.app/Contents/Resources/ui");
+    if dest.exists() {
+        fs::remove_dir_all(&dest).context("Failed to remove old UI assets")?;
+    }
+    copy_dir_recursive(ui_dist, &dest)?;
+
+    println!("  {} UI assets installed to {}", "✓".green(), dest.display());
+    Ok(())
+}
+
+/// Recursively copy a directory tree.
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest).context(format!("Failed to create directory: {}", dest.display()))?;
+
+    for entry in
+        fs::read_dir(src).context(format!("Failed to read directory: {}", src.display()))?
+    {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let src_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dest_path)?;
+        } else {
+            fs::copy(&src_path, &dest_path)
+                .context(format!("Failed to copy {}", src_path.display()))?;
         }
     }
 

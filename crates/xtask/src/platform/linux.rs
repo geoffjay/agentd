@@ -13,6 +13,9 @@ impl Platform for LinuxPlatform {
     fn install(&self, bin_dir: &Path) -> Result<()> {
         install_binaries(bin_dir)?;
 
+        // Install UI assets
+        install_ui_assets()?;
+
         // Generate and install systemd unit files
         let unit_dir = systemd_user_dir()?;
         fs::create_dir_all(&unit_dir).context("Failed to create systemd user directory")?;
@@ -320,12 +323,72 @@ fn install_unit_files(unit_dir: &Path, bin_dir: &Path) -> Result<()> {
 
     for service in SERVICES {
         let bin_path = bin_dir.join(service.binary);
-        let unit_content = generate_unit_file(service, &bin_path);
+        let mut unit_content = generate_unit_file(service, &bin_path);
+
+        // Add AGENTD_UI_DIR for the ui service
+        if service.name == "ui" {
+            if let Ok(ui_dir) = ui_assets_dir() {
+                let env_line = format!("\nEnvironment=AGENTD_UI_DIR={}", ui_dir.display());
+                unit_content =
+                    unit_content.replace("\n\n[Install]", &format!("{env_line}\n\n[Install]"));
+            }
+        }
+
         let unit_name = format!("agentd-{}.service", service.name);
         let unit_path = unit_dir.join(&unit_name);
 
         fs::write(&unit_path, &unit_content).context(format!("Failed to write {unit_name}"))?;
         println!("  {} {}", "✓".green(), unit_name);
+    }
+
+    Ok(())
+}
+
+/// Get the UI assets directory for Linux.
+fn ui_assets_dir() -> Result<PathBuf> {
+    let data_home = std::env::var("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| crate::home_dir().unwrap_or_default().join(".local/share"));
+    Ok(data_home.join("agentd/ui"))
+}
+
+fn install_ui_assets() -> Result<()> {
+    println!("{}", "Installing UI assets...".blue());
+
+    let ui_dist = Path::new("ui/dist");
+    if !ui_dist.exists() {
+        println!("  {} UI dist not found (ui/dist/) — skipping", "⚠".yellow());
+        return Ok(());
+    }
+
+    let dest = ui_assets_dir()?;
+    if dest.exists() {
+        fs::remove_dir_all(&dest).context("Failed to remove old UI assets")?;
+    }
+    copy_dir_recursive(ui_dist, &dest)?;
+
+    println!("  {} UI assets installed to {}", "✓".green(), dest.display());
+    Ok(())
+}
+
+/// Recursively copy a directory tree.
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest).context(format!("Failed to create directory: {}", dest.display()))?;
+
+    for entry in
+        fs::read_dir(src).context(format!("Failed to read directory: {}", src.display()))?
+    {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let src_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dest_path)?;
+        } else {
+            fs::copy(&src_path, &dest_path)
+                .context(format!("Failed to copy {}", src_path.display()))?;
+        }
     }
 
     Ok(())
