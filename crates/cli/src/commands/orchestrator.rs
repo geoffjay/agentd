@@ -4206,6 +4206,9 @@ mod tests {
             &[],  // linear_labels
             None, // linear_assignee
             None, // idle_seconds
+            None, // queue_name
+            None, // queue_poll_interval
+            None, // queue_visibility_timeout
             Some("Fix: {{title}}"),
             None, // prompt_template_file
             60,
@@ -4277,6 +4280,9 @@ mod tests {
             &[],  // linear_labels
             None, // linear_assignee
             None, // idle_seconds — missing!
+            None, // queue_name
+            None, // queue_poll_interval
+            None, // queue_visibility_timeout
             Some("Do background work"),
             None, // prompt_template_file
             60,
@@ -4313,6 +4319,9 @@ mod tests {
             &[],     // linear_labels
             None,    // linear_assignee
             Some(0), // idle_seconds = 0 (invalid)
+            None,    // queue_name
+            None,    // queue_poll_interval
+            None,    // queue_visibility_timeout
             Some("Do background work"),
             None, // prompt_template_file
             60,
@@ -4327,5 +4336,128 @@ mod tests {
             msg.contains("greater than 0"),
             "expected validation error for zero idle_seconds, got: {msg}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Queue subcommand argument parsing
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_queue_stats_subcommand() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from(["test", "queue-stats", "my-queue"])
+            .expect("should parse queue-stats");
+
+        assert!(matches!(
+            cli.command,
+            OrchestratorCommand::QueueStats { name } if name == "my-queue"
+        ));
+    }
+
+    #[test]
+    fn parse_queue_peek_with_limit() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from(["test", "queue-peek", "my-queue", "--limit", "25"])
+            .expect("should parse queue-peek");
+
+        assert!(matches!(
+            cli.command,
+            OrchestratorCommand::QueuePeek { name, limit } if name == "my-queue" && limit == 25
+        ));
+    }
+
+    #[test]
+    fn parse_queue_peek_default_limit() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from(["test", "queue-peek", "reports"])
+            .expect("should parse queue-peek without limit");
+
+        assert!(matches!(
+            cli.command,
+            OrchestratorCommand::QueuePeek { name, limit } if name == "reports" && limit == 10
+        ));
+    }
+
+    #[test]
+    fn parse_queue_purge_subcommand() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from(["test", "queue-purge", "my-queue"])
+            .expect("should parse queue-purge");
+
+        assert!(matches!(
+            cli.command,
+            OrchestratorCommand::QueuePurge { name } if name == "my-queue"
+        ));
+    }
+
+    #[test]
+    fn parse_create_workflow_with_queue_trigger() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name",
+            "bg-worker",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--trigger-type",
+            "queue",
+            "--queue-name",
+            "work-items",
+            "--prompt-template",
+            "Process: {{title}}",
+        ])
+        .expect("should parse queue workflow creation");
+
+        if let OrchestratorCommand::CreateWorkflow {
+            trigger_type,
+            queue_name,
+            queue_poll_interval,
+            queue_visibility_timeout,
+            ..
+        } = cli.command
+        {
+            assert!(matches!(trigger_type, TriggerType::Queue));
+            assert_eq!(queue_name, Some("work-items".to_string()));
+            assert_eq!(queue_poll_interval, None);
+            assert_eq!(queue_visibility_timeout, None);
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
     }
 }
