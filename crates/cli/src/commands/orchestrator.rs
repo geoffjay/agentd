@@ -2742,6 +2742,17 @@ fn display_workflow(workflow: &WorkflowResponse) {
                 println!("{}: {}", "Assignee".bold(), a);
             }
         }
+        TriggerConfig::Composite { mode, triggers, correlation_window_secs } => {
+            println!("{}: {}", "Mode".bold(), mode);
+            println!("{}: {}", "Sub-triggers".bold(), triggers.len());
+            if *mode == "and" {
+                let window = correlation_window_secs.unwrap_or(60);
+                println!("{}: {}s", "Correlation Window".bold(), window);
+            }
+            for (i, sub) in triggers.iter().enumerate() {
+                println!("  {}[{}]: {}", "Sub-trigger".bold(), i, sub.trigger_type());
+            }
+        }
     }
     let template = &workflow.prompt_template;
     let display =

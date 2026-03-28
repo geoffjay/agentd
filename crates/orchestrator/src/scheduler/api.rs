@@ -138,6 +138,38 @@ async fn create_workflow(
                 ));
             }
         }
+        TriggerConfig::Composite { mode, triggers, .. } => {
+            // Validate combinator mode.
+            if mode != "or" && mode != "and" {
+                return Err(ApiError::InvalidInput(format!(
+                    "Invalid composite mode '{}'. Valid values: 'or', 'and'",
+                    mode
+                )));
+            }
+            // Require at least 2 sub-triggers.
+            if triggers.len() < 2 {
+                return Err(ApiError::InvalidInput(
+                    "Composite trigger requires at least 2 sub-triggers".to_string(),
+                ));
+            }
+            // Guard against excessive nesting (max 3 levels).
+            fn check_depth(tc: &TriggerConfig, depth: usize) -> Result<(), String> {
+                if let TriggerConfig::Composite { triggers, .. } = tc {
+                    if depth >= 3 {
+                        return Err(format!(
+                            "Composite trigger nesting exceeds maximum depth of 3"
+                        ));
+                    }
+                    for sub in triggers {
+                        check_depth(sub, depth + 1)?;
+                    }
+                }
+                Ok(())
+            }
+            if let Err(msg) = check_depth(&req.trigger_config, 0) {
+                return Err(ApiError::InvalidInput(msg));
+            }
+        }
     }
 
     // Reject trigger types that are not yet implemented.
