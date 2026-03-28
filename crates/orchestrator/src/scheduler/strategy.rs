@@ -888,6 +888,12 @@ impl Default for WatchMode {
 
 /// Internal handle keeping the active watcher alive for the duration of a
 /// [`FileWatchStrategy`].
+///
+/// The inner values are intentional drop-guards: the watcher stops watching
+/// when dropped (Native), and the polling task is cancelled when dropped
+/// (Polling). The fields are never read — they exist only for their `Drop`
+/// side effects.
+#[allow(dead_code)]
 enum FileWatchHandle {
     /// Native OS watcher — kept alive by holding the struct.
     Native(notify::RecommendedWatcher),
