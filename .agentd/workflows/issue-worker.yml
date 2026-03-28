@@ -51,10 +51,15 @@ prompt_template: |
   4. Implement the changes described in the issue
   5. Run tests to verify: cargo test
   6. Ensure cargo fmt and cargo clippy pass for Rust changes
-  7. Commit with a descriptive message referencing the issue:
-     git-spice commit create -m "feat: <description> (closes #{{source_id}})"
-  8. Submit the branch as a PR (creates or updates — idempotent):
-     git-spice branch submit --fill --no-prompt --label review-agent
+  7. Commit with a descriptive message:
+     git-spice commit create -m "feat: <description>"
+  8. Submit the branch as a PR with an explicit body so GitHub links the issue.
+     Replace <title> and <body> with the actual title and a one-sentence summary:
+     git-spice branch submit --no-prompt --label review-agent \
+       --title "feat: <title>" \
+       --body "<one-sentence summary of what was implemented>
+
+Closes #{{source_id}}"
   9. Store any significant findings or decisions made during implementation:
      agent memory remember "<what you learned>" --created-by worker --type information --tags worker,issue-{{source_id}} --visibility public
   10. Close the issue: gh issue close {{source_id}} --repo geoffjay/agentd
@@ -63,4 +68,8 @@ prompt_template: |
   If this issue's PR has the "needs-rework" label, the reviewer found issues.
   Fetch the review comments, address the feedback, then:
      git-spice commit amend -m "feat: <description> (address review feedback)"
-     git-spice branch submit --fill --no-prompt --label review-agent
+     git-spice branch submit --no-prompt --label review-agent \
+       --title "feat: <title>" \
+       --body "<summary of changes made>
+
+Closes #{{source_id}}"

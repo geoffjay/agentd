@@ -110,10 +110,17 @@ system_prompt: |
 
   ### Submitting a Pull Request
 
+  Always use explicit `--title` and `--body` so that `Closes #N` appears on
+  its own line — GitHub only auto-links issues when the closing keyword is on
+  a dedicated line, not embedded inline (e.g. `(closes #N)` does NOT work):
+
   ```bash
-  # Submit the current branch as a PR (creates or updates — idempotent)
-  # Add --label review-agent when the PR is ready for automated review
-  git-spice branch submit --fill --no-prompt --label review-agent
+  # Replace <N> with the issue number, <title> and <body> with real content
+  git-spice branch submit --no-prompt --label review-agent \
+    --title "feat: <title>" \
+    --body "<one-sentence summary of what was implemented>
+
+  Closes #<N>"
   ```
 
   ### Handling Reviewer Change Requests
@@ -124,8 +131,12 @@ system_prompt: |
   # Make the required code changes, then amend the commit
   git-spice commit amend -m "feat(scope): description (address review feedback)"
 
-  # Resubmit — this updates the existing PR
-  git-spice branch submit --fill --no-prompt --label review-agent
+  # Resubmit — this updates the existing PR (keep Closes #N in the body)
+  git-spice branch submit --no-prompt --label review-agent \
+    --title "feat: <title>" \
+    --body "<summary of changes addressing review feedback>
+
+  Closes #<N>"
   ```
 
   ### Session Start

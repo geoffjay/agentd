@@ -136,16 +136,20 @@ prompt_template: |
   6. Commit:
      ```bash
      git add <changed-files>
-     git-spice commit create -m "feat(<scope>): <description> (closes #<N>)"
+     git-spice commit create -m "feat(<scope>): <description>"
      ```
 
   ### 3c — Submit the sub-issue PR
 
-  Submit a PR for this sub-issue branch. git-spice will automatically
-  target the correct base branch (the one it was stacked on):
+  Submit a PR for this sub-issue branch with an explicit body so GitHub
+  links the issue. git-spice automatically targets the correct base branch:
 
   ```bash
-  git-spice branch submit --fill --no-prompt --label review-agent
+  git-spice branch submit --no-prompt --label review-agent \
+    --title "feat: <brief description from sub-issue title>" \
+    --body "<one-sentence summary of what was implemented>
+
+  Closes #<N>"
   ```
 
   ### 3d — Move to the next sub-issue
@@ -173,10 +177,16 @@ prompt_template: |
   ```
 
   If any PRs were not submitted during the per-issue step (e.g. due to
-  an error), submit the remaining stack:
+  an error), submit each remaining branch individually with an explicit body:
 
   ```bash
-  git-spice stack submit --fill --no-prompt --label review-agent
+  # For each unsubmitted branch (replace <N> with the sub-issue number):
+  git checkout issue-<N>
+  git-spice branch submit --no-prompt --label review-agent \
+    --title "feat: <brief description>" \
+    --body "<one-sentence summary>
+
+  Closes #<N>"
   ```
 
   ## Step 5 — Store findings and close the epic
@@ -218,7 +228,11 @@ prompt_template: |
   4. Amend and resubmit:
      ```bash
      git-spice commit amend -m "feat(<scope>): <description> (address review feedback)"
-     git-spice branch submit --fill --no-prompt --label review-agent
+     git-spice branch submit --no-prompt --label review-agent \
+       --title "feat: <description>" \
+       --body "<summary of changes addressing review feedback>
+
+     Closes #<N>"
      ```
   5. Restack any branches above:
      ```bash
