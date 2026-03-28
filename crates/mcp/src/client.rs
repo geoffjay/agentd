@@ -1,12 +1,8 @@
 //! HTTP client wrapper for agentd services.
 //!
 //! Provides a thin `AgentdClient` that holds a `reqwest::Client` and the
-//! base URLs for each agentd service. Individual tool implementations use
-//! this to make API calls without constructing ad-hoc clients.
-//!
-//! All methods are scaffold stubs — they will be called once tools are
-//! added in issues #250–#256.
-#![allow(dead_code)]
+//! base URLs for each agentd service. Tool implementations use this to make
+//! API calls without constructing ad-hoc clients.
 
 use crate::config::AgentdMcpConfig;
 use anyhow::Result;
@@ -16,7 +12,7 @@ use std::sync::Arc;
 /// Shared HTTP client for all agentd service calls.
 #[derive(Debug, Clone)]
 pub struct AgentdClient {
-    inner: Client,
+    pub(crate) inner: Client,
     config: Arc<AgentdMcpConfig>,
 }
 
@@ -56,6 +52,16 @@ impl AgentdClient {
         &self.config.wrap_url
     }
 
+    /// Returns the base URL for the monitor service.
+    pub fn monitor_url(&self) -> &str {
+        &self.config.monitor_url
+    }
+
+    /// Returns the base URL for the hook service.
+    pub fn hook_url(&self) -> &str {
+        &self.config.hook_url
+    }
+
     /// Perform a GET request against a service URL and deserialize the JSON response.
     pub async fn get<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T> {
         let resp = self.inner.get(url).send().await?.error_for_status()?;
@@ -63,6 +69,7 @@ impl AgentdClient {
     }
 
     /// Perform a POST request with a JSON body and deserialize the JSON response.
+    #[allow(dead_code)]
     pub async fn post<B: serde::Serialize, T: serde::de::DeserializeOwned>(
         &self,
         url: &str,

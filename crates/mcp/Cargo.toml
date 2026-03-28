@@ -6,6 +6,10 @@ authors.workspace = true
 license.workspace = true
 description = "MCP server exposing agentd services as tools for Claude and other MCP clients"
 
+[lib]
+name = "agentd_mcp"
+path = "src/lib.rs"
+
 [[bin]]
 name = "agentd-mcp"
 path = "src/main.rs"
@@ -25,5 +29,13 @@ schemars = "0.8"
 # HTTP client for agentd services
 reqwest = { version = "0.12", features = ["json"] }
 
+# Async utilities for concurrent health checks
+futures = "0.3"
+
+# Date/time for remediation time-window filtering
+chrono = { version = "0.4", features = ["serde"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
+axum = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
