@@ -19,7 +19,7 @@
       }
     ]
   },
-  "description": "Agent connections, dispatch activity, messaging throughput, and usage session costs",
+  "description": "Agent connections, dispatch activity, messaging throughput, approvals, and usage session costs",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -48,7 +48,7 @@
       "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "title": "Active WebSocket Connections",
       "type": "stat",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "websocket_connections_active{job=\"agentd-communicate\"}", "instant": true, "legendFormat": "" }]
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "websocket_connections_active{job=\"agentd-orchestrator\"}", "instant": true, "legendFormat": "" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
@@ -104,6 +104,97 @@
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 103,
+      "title": "Agent Lifecycle",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 20,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "title": "Agent Created vs Terminated Rate",
+      "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(agents_created_total{job=\"agentd-orchestrator\"}[5m])", "legendFormat": "created/s" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(agents_terminated_total{job=\"agentd-orchestrator\"}[5m])", "legendFormat": "terminated/s" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 21,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "title": "Agent Messages by Mode",
+      "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(agent_messages_sent_total{job=\"agentd-orchestrator\",mode=\"sdk\"}[5m])", "legendFormat": "SDK messages/s" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(agent_messages_sent_total{job=\"agentd-orchestrator\",mode=\"pty\"}[5m])", "legendFormat": "PTY messages/s" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 104,
+      "title": "Approvals",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 10 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 15 },
+      "id": 22,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Pending Approvals",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "approvals_pending{job=\"agentd-orchestrator\"}", "instant": true, "legendFormat": "" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 15 },
+      "id": 23,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "title": "Approval Decisions",
+      "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(approvals_resolved_total{job=\"agentd-orchestrator\",decision=\"approve\"}[5m])", "legendFormat": "approved/s" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(approvals_resolved_total{job=\"agentd-orchestrator\",decision=\"deny\"}[5m])", "legendFormat": "denied/s" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
       "id": 101,
       "title": "Messaging Activity",
       "type": "row"
@@ -118,15 +209,15 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "id": 10,
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "title": "Messages Delivered / Dropped / Queued",
       "type": "timeseries",
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(messages_delivered_total{job=\"agentd-communicate\"}[5m])", "legendFormat": "delivered/s" },
-        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(messages_dropped_total{job=\"agentd-communicate\"}[5m])", "legendFormat": "dropped/s" },
-        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "messages_queued{job=\"agentd-communicate\"}", "legendFormat": "queued" }
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(messages_delivered_to_agents{job=\"agentd-orchestrator\"}[5m])", "legendFormat": "delivered/s" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(messages_dropped{job=\"agentd-orchestrator\"}[5m])", "legendFormat": "dropped/s" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "messages_queued{job=\"agentd-orchestrator\"}", "legendFormat": "queued" }
       ]
     },
     {
@@ -139,7 +230,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
       "id": 11,
       "options": { "legend": { "calcs": ["mean", "sum"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "title": "Usage Session Cost Over Time",
@@ -150,9 +241,54 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
       "id": 102,
       "title": "Dispatch Activity",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 33 },
+      "id": 24,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Active Workflows",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "workflows_active{job=\"agentd-orchestrator\"}", "instant": true, "legendFormat": "" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 37 },
+      "id": 12,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "title": "Workflow Dispatches by Status",
+      "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"completed\"}[5m])", "legendFormat": "completed/s" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"failed\"}[5m])", "legendFormat": "failed/s" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"dispatched\"}[5m])", "legendFormat": "dispatched/s" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+      "id": 105,
+      "title": "Context Management",
       "type": "row"
     },
     {
@@ -165,15 +301,14 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
-      "id": 12,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 46 },
+      "id": 25,
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
-      "title": "Workflow Dispatches by Status",
+      "title": "Context Clears by Trigger",
       "type": "timeseries",
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"completed\"}[5m])", "legendFormat": "completed/s" },
-        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"failed\"}[5m])", "legendFormat": "failed/s" },
-        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"pending\"}[5m])", "legendFormat": "pending/s" }
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(context_clears_total{job=\"agentd-orchestrator\",trigger=\"manual\"}[5m])", "legendFormat": "manual/s" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(context_clears_total{job=\"agentd-orchestrator\",trigger=\"auto\"}[5m])", "legendFormat": "auto/s" }
       ]
     }
   ],
@@ -184,7 +319,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "agentd — Agent Activity",
+  "title": "agentd - Agent Activity",
   "uid": "agentd-agent-activity",
-  "version": 1
+  "version": 2
 }

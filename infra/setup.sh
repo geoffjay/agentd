@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# infra/setup.sh — One-command local observability stack setup for agentd.
+# infra/setup.sh - One-command local observability stack setup for agentd.
 #
 # Installs and configures Prometheus + Grafana on macOS, sets up the agentd
 # scrape config and dashboards, and registers both services as launchd agents
@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 INFRA_DIR="$REPO_ROOT/infra"
 
-# Shared state directory (writable by all users — avoids home-dir path issues
+# Shared state directory (writable by all users - avoids home-dir path issues
 # in launchd plists which run before user home is mounted on some macOS versions)
 STATE_DIR="/Users/Shared/agentd"
 LOG_DIR="$STATE_DIR/logs"
@@ -90,7 +90,7 @@ wait_for_port() {
     done
     echo
     if [[ $count -ge $max ]]; then
-        warn "$name did not start within ${max}s — check logs at $LOG_DIR"
+        warn "$name did not start within ${max}s - check logs at $LOG_DIR"
         return 1
     fi
     return 0
@@ -112,7 +112,7 @@ for arg in "$@"; do
     esac
 done
 
-[[ "$DRY_RUN" == true ]] && info "Dry-run mode — no changes will be made."
+[[ "$DRY_RUN" == true ]] && info "Dry-run mode - no changes will be made."
 
 # ---------------------------------------------------------------------------
 # Step 1: Homebrew check
@@ -187,7 +187,7 @@ if [[ "$DRY_RUN" == false ]]; then
 else
     info "[DRY] Would copy $PROM_CONFIG_SRC → $PROM_CONFIG_DST"
 fi
-info "Scrape targets are read from the installed config — edit the source at $PROM_CONFIG_SRC and re-run setup."
+info "Scrape targets are read from the installed config - edit the source at $PROM_CONFIG_SRC and re-run setup."
 
 # ---------------------------------------------------------------------------
 # Step 5: Configure Grafana
@@ -368,6 +368,6 @@ echo
 echo "  To remove completely: ./infra/teardown.sh"
 echo
 if [[ "$DRY_RUN" == true ]]; then
-    echo "  (Dry-run — no changes were made)"
+    echo "  (Dry-run - no changes were made)"
     echo
 fi

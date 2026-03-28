@@ -215,6 +215,8 @@ async fn terminate_agent(
 ) -> Result<impl IntoResponse, ApiError> {
     let agent = state.manager.terminate_agent(&id).await?;
 
+    metrics::counter!("agents_terminated_total").increment(1);
+
     Ok(Json(AgentResponse::from(agent)))
 }
 
@@ -241,6 +243,7 @@ async fn send_message(
             .inject_pty_prompt(&id, &req.content)
             .await
             .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+        metrics::counter!("agent_messages_sent_total", "mode" => "pty").increment(1);
     } else {
         // SDK mode: deliver via the orchestrator WebSocket protocol.
         state
@@ -248,6 +251,7 @@ async fn send_message(
             .send_user_message(&id, &req.content)
             .await
             .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+        metrics::counter!("agent_messages_sent_total", "mode" => "sdk").increment(1);
     }
 
     Ok(Json(serde_json::json!({ "status": "sent", "agent_id": id })))
@@ -405,6 +409,8 @@ async fn clear_agent_context(
 
     let response = state.manager.clear_context(&id).await?;
 
+    metrics::counter!("context_clears_total", "trigger" => "manual").increment(1);
+
     info!(agent_id = %id, new_session = response.new_session_number, "Agent context cleared via API");
 
     Ok(Json(response))
@@ -461,6 +467,10 @@ async fn approve_tool(
         .await
         .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
 
+    metrics::counter!("approvals_resolved_total", "decision" => "approve").increment(1);
+    let pending = state.registry.approvals.list(None, Some(&ApprovalStatus::Pending)).await.len();
+    metrics::gauge!("approvals_pending").set(pending as f64);
+
     info!(approval_id = %id, agent_id = %approval.agent_id, tool = %approval.tool_name, "Tool approved via API");
     Ok(Json(approval))
 }
@@ -476,6 +486,10 @@ async fn deny_tool(
         .resolve(&id, ApprovalDecision::Deny)
         .await
         .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
+
+    metrics::counter!("approvals_resolved_total", "decision" => "deny").increment(1);
+    let pending = state.registry.approvals.list(None, Some(&ApprovalStatus::Pending)).await.len();
+    metrics::gauge!("approvals_pending").set(pending as f64);
 
     info!(approval_id = %id, agent_id = %approval.agent_id, tool = %approval.tool_name, "Tool denied via API");
     Ok(Json(approval))

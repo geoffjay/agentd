@@ -1,13 +1,15 @@
 # Prometheus configuration for agentd local observability stack.
 #
 # Scrapes Prometheus /metrics endpoints from all agentd services that expose
-# them. Services run on their default development ports (170xx).
+# them. This is the development default (170xx ports).
 #
-# Usage:
+# For production or custom ports, use infra/update.sh which generates an
+# environment-aware config and installs it without modifying this file:
+#
+#   AGENTD_ENV=production ./infra/update.sh
+#
+# Usage (direct):
 #   prometheus --config.file=infra/prometheus/prometheus.yml
-#
-# Or via the launchd plist:
-#   launchctl load ~/Library/LaunchAgents/com.agentd.prometheus.plist
 
 global:
   scrape_interval: 15s
@@ -18,7 +20,7 @@ global:
     env: 'dev'
     cluster: 'agentd-local'
 
-# Alerting configuration (optional — add rules in a separate file)
+# Alerting configuration (optional - add rules in a separate file)
 # alerting:
 #   alertmanagers:
 #     - static_configs:
@@ -29,7 +31,7 @@ global:
 #   - "alert_rules.yml"
 
 scrape_configs:
-  # Orchestrator — agent management, workflow scheduling, dispatch
+  # Orchestrator - agent management, workflow scheduling, dispatch
   # Default port: 17006
   - job_name: 'agentd-orchestrator'
     static_configs:
@@ -37,7 +39,7 @@ scrape_configs:
         labels:
           service: 'orchestrator'
 
-  # Communicate — WebSocket rooms and real-time messaging
+  # Communicate - WebSocket rooms and real-time messaging
   # Default port: 17010
   - job_name: 'agentd-communicate'
     static_configs:
@@ -45,7 +47,7 @@ scrape_configs:
         labels:
           service: 'communicate'
 
-  # Notify — notification ingestion and delivery
+  # Notify - notification ingestion and delivery
   # Default port: 17004
   - job_name: 'agentd-notify'
     static_configs:
@@ -53,7 +55,7 @@ scrape_configs:
         labels:
           service: 'notify'
 
-  # Ask — approval requests and human-in-the-loop gates
+  # Ask - approval requests and human-in-the-loop gates
   # Default port: 17001
   - job_name: 'agentd-ask'
     static_configs:
@@ -61,7 +63,7 @@ scrape_configs:
         labels:
           service: 'ask'
 
-  # Wrap — PTY session and tmux agent launcher
+  # Wrap - PTY session and tmux agent launcher
   # Default port: 17005
   - job_name: 'agentd-wrap'
     static_configs:
@@ -69,10 +71,20 @@ scrape_configs:
         labels:
           service: 'wrap'
 
-  # Memory — vector-backed knowledge store
+  # Memory - vector-backed knowledge store
   # Default port: 17008
   - job_name: 'agentd-memory'
     static_configs:
       - targets: ['127.0.0.1:17008']
         labels:
           service: 'memory'
+
+  # Monitor - system monitoring and health checks
+  # Default port: 17003
+  # Uses /prom-metrics to avoid conflict with the JSON /metrics endpoint
+  - job_name: 'agentd-monitor'
+    metrics_path: '/prom-metrics'
+    static_configs:
+      - targets: ['127.0.0.1:17003']
+        labels:
+          service: 'monitor'

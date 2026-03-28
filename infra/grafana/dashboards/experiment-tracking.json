@@ -171,7 +171,7 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
       "id": 12,
       "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [] },
-      "title": "All Experiments — Side-by-Side Comparison",
+      "title": "All Experiments - Side-by-Side Comparison",
       "type": "table",
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "sum by (experiment) (experiment_dispatches_total{job=\"agentd-orchestrator\"})", "legendFormat": "", "instant": true, "format": "table" }
@@ -207,7 +207,7 @@
   "time": { "from": "now-3h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "agentd — Experiment Tracking",
+  "title": "agentd - Experiment Tracking",
   "uid": "agentd-experiment-tracking",
   "version": 1
 }

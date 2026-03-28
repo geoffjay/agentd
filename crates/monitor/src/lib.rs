@@ -74,8 +74,42 @@ pub mod state;
 pub mod types;
 
 use anyhow::Result;
+use axum::{extract::State, response::IntoResponse, routing::get};
+use metrics_exporter_prometheus::PrometheusHandle;
 use std::net::SocketAddr;
 use tracing::{info, warn};
+
+/// Initialize the Prometheus metrics recorder and return a handle for rendering.
+fn init_metrics() -> PrometheusHandle {
+    let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
+    let handle = builder.install_recorder().expect("failed to install metrics recorder");
+    metrics::gauge!("service_info", "version" => env!("CARGO_PKG_VERSION"), "service" => "monitor")
+        .set(1.0);
+    handle
+}
+
+/// Handler for `GET /prom-metrics` — renders Prometheus exposition format.
+async fn prom_metrics_handler(State(handle): State<PrometheusHandle>) -> impl IntoResponse {
+    handle.render()
+}
+
+/// Emit Prometheus gauges from a collected SystemMetrics snapshot.
+fn emit_prometheus_gauges(m: &types::SystemMetrics) {
+    metrics::gauge!("system_cpu_usage_percent").set(m.cpu.usage_percent as f64);
+    metrics::gauge!("system_memory_used_bytes").set(m.memory.used_bytes as f64);
+    metrics::gauge!("system_memory_total_bytes").set(m.memory.total_bytes as f64);
+
+    for disk in &m.disks {
+        metrics::gauge!("system_disk_usage_percent", "mountpoint" => disk.mount_point.clone())
+            .set(disk.usage_percent as f64);
+    }
+
+    metrics::gauge!("system_load_average", "period" => "1m").set(m.load_average.one);
+    metrics::gauge!("system_load_average", "period" => "5m").set(m.load_average.five);
+    metrics::gauge!("system_load_average", "period" => "15m").set(m.load_average.fifteen);
+
+    metrics::counter!("collections_total").increment(1);
+}
 
 /// Run the monitor service with the given configuration.
 ///
@@ -95,9 +129,16 @@ pub async fn run(config: config::MonitorConfig) -> Result<()> {
         "Starting agentd-monitor daemon"
     );
 
+    let prom_handle = init_metrics();
+
     let app_state = state::AppState::new(config);
     let api_state = api::ApiState { app_state: app_state.clone() };
-    let router = api::create_router_with_tracing(api_state);
+    let prom_router = axum::Router::new()
+        .route("/prom-metrics", get(prom_metrics_handler))
+        .with_state(prom_handle);
+    let router = api::create_router_with_tracing(api_state)
+        .merge(prom_router)
+        .layer(agentd_common::server::metrics_layer());
 
     // Background metrics collection task
     let bg_state = app_state.clone();
@@ -105,6 +146,7 @@ pub async fn run(config: config::MonitorConfig) -> Result<()> {
         info!("Background metrics collector starting (interval: {}s)", interval_secs);
         loop {
             let metrics = metrics_collector::collect();
+            emit_prometheus_gauges(&metrics);
             bg_state.push_metrics(metrics).await;
             tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
         }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# infra/teardown.sh — Remove agentd observability stack from macOS.
+# infra/teardown.sh - Remove agentd observability stack from macOS.
 #
 # Unloads launchd services, removes plists from ~/Library/LaunchAgents,
 # and optionally removes state data (logs, Grafana DB, Prometheus TSDB).
@@ -9,7 +9,7 @@
 #   ./infra/teardown.sh --purge      # also delete all state/data directories
 #   ./infra/teardown.sh --dry-run    # show what would be done
 #
-# This script is idempotent — safe to run multiple times.
+# This script is idempotent - safe to run multiple times.
 
 set -euo pipefail
 
@@ -95,7 +95,7 @@ for arg in "$@"; do
     esac
 done
 
-[[ "$DRY_RUN" == true ]] && info "Dry-run mode — no changes will be made."
+[[ "$DRY_RUN" == true ]] && info "Dry-run mode - no changes will be made."
 
 # ---------------------------------------------------------------------------
 # Step 1: Unload services
@@ -168,6 +168,6 @@ echo "  Prometheus and Grafana binaries are still installed."
 echo "  To uninstall them: brew uninstall prometheus grafana"
 echo
 if [[ "$DRY_RUN" == true ]]; then
-    echo "  (Dry-run — no changes were made)"
+    echo "  (Dry-run - no changes were made)"
     echo
 fi

@@ -497,6 +497,10 @@ async fn update_notification(
 ) -> Result<Json<Notification>, ApiError> {
     let mut notification = state.storage.get(&id).await?.ok_or_else(|| ApiError::NotFound)?;
 
+    // Capture flags before fields are moved
+    let has_response = req.response.is_some();
+    let is_dismissed = req.status == Some(NotificationStatus::Dismissed);
+
     // Apply updates
     if let Some(status) = req.status {
         notification.status = status;
@@ -506,6 +510,26 @@ async fn update_notification(
     }
 
     state.storage.update(&notification).await?;
+
+    // Track responded notifications
+    if has_response {
+        metrics::counter!("notifications_responded_total").increment(1);
+    }
+
+    // Track dismissed notifications
+    if is_dismissed {
+        metrics::counter!("notifications_dismissed_total").increment(1);
+    }
+
+    // Update pending gauge after update
+    if let Ok(counts) = state.storage.count().await {
+        let pending: usize = counts
+            .iter()
+            .filter(|(status, _)| matches!(status, NotificationStatus::Pending))
+            .map(|(_, count)| count)
+            .sum();
+        metrics::gauge!("notifications_pending").set(pending as f64);
+    }
 
     Ok(Json(notification))
 }
@@ -541,6 +565,7 @@ async fn delete_notification(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     state.storage.delete(&id).await?;
+    metrics::counter!("notifications_deleted_total").increment(1);
     Ok(StatusCode::NO_CONTENT)
 }
 

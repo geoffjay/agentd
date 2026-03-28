@@ -1,4 +1,4 @@
-# Grafana datasource provisioning — automatically connects to local Prometheus.
+# Grafana datasource provisioning - automatically connects to local Prometheus.
 #
 # This file is loaded by Grafana at startup when placed in the provisioning
 # datasources directory. No manual configuration in the UI is required.
@@ -18,7 +18,7 @@ datasources:
     access: proxy
     url: http://localhost:9090
     isDefault: true
-    # Unique identifier — changing this UID will break dashboard references
+    # Unique identifier - changing this UID will break dashboard references
     uid: agentd-prometheus
     editable: false
     jsonData:

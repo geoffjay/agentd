@@ -97,6 +97,8 @@ impl ConnectionRegistry {
         if let Some(bus) = &self.event_bus {
             bus.publish(SystemEvent::AgentConnected { agent_id });
         }
+        let active = self.connections.read().await.len();
+        metrics::gauge!("agents_active").set(active as f64);
         info!(%agent_id, "Agent WebSocket registered");
     }
 
@@ -131,6 +133,8 @@ impl ConnectionRegistry {
         if let Some(bus) = &self.event_bus {
             bus.publish(SystemEvent::AgentDisconnected { agent_id: *agent_id });
         }
+        let active = self.connections.read().await.len();
+        metrics::gauge!("agents_active").set(active as f64);
         info!(%agent_id, "Agent WebSocket unregistered");
     }
 

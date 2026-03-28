@@ -149,7 +149,10 @@ async fn main() -> anyhow::Result<()> {
                         None => return,
                     };
 
-                    // 1. Persist usage to DB.
+                    // 1. Persist usage to DB and emit cost metric.
+                    // Use gauge::increment for f64 cost values (counters only accept u64).
+                    metrics::gauge!("usage_session_cost_usd_total").increment(usage.total_cost_usd);
+
                     if let Err(e) = storage.record_session_usage(&info.agent_id, &usage).await {
                         error!(
                             agent_id = %info.agent_id,
@@ -217,6 +220,8 @@ async fn main() -> anyhow::Result<()> {
 
                     match manager.clear_context(&info.agent_id).await {
                         Ok(resp) => {
+                            metrics::counter!("context_clears_total", "trigger" => "auto")
+                                .increment(1);
                             info!(
                                 agent_id = %info.agent_id,
                                 new_session = resp.new_session_number,
@@ -347,6 +352,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = create_router(state)
         .merge(metrics_router)
+        .layer(agentd_common::server::metrics_layer())
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
@@ -373,6 +379,8 @@ async fn main() -> anyhow::Result<()> {
     if let Err(e) = scheduler.resume_workflows().await {
         error!(%e, "Failed to resume workflows");
     }
+    let active_wf = scheduler.running_workflows().await.len();
+    metrics::gauge!("workflows_active").set(active_wf as f64);
 
     server.await??;
 

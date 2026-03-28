@@ -1,7 +1,7 @@
-# Grafana dashboard provisioning template — auto-loads all dashboards
+# Grafana dashboard provisioning template - auto-loads all dashboards
 # from the installed dashboards directory on startup.
 #
-# This is a template — infra/setup.sh copies it to
+# This is a template - infra/setup.sh copies it to
 # ~/Library/Application Support/agentd/grafana/provisioning/dashboards/agentd.yml
 # with the placeholder path below resolved to its actual value.
 #
@@ -19,5 +19,5 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: true
     options:
-      # Placeholder — resolved by infra/setup.sh at install time
+      # Placeholder - resolved by infra/setup.sh at install time
       path: /Users/Shared/agentd/infra/grafana/dashboards

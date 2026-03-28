@@ -142,6 +142,7 @@ async fn main() -> Result<()> {
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
     let app = create_router_with_tracing(api_state)
         .merge(metrics_router)
+        .layer(agentd_common::server::metrics_layer())
         .layer(agentd_common::server::cors_layer());
 
     // Bind to address
