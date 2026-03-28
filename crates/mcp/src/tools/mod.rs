@@ -1,8 +1,10 @@
 //! MCP tool implementations for agentd services.
 //!
-//! Tools are grouped by the agentd service they interact with. Each
-//! sub-module registers its tools on the `AgentdMcp` server struct via
-//! `#[tool_router]` annotated impl blocks.
+//! Tools are grouped by the agentd service they interact with.
+//!
+//! # Tool Modules
+//!
+//! - `diagnostic` — cross-service diagnostic and connectivity tools (issue #256)
 //!
 //! # Planned Tool Modules
 //!
@@ -13,5 +15,5 @@
 //! - `ask`       — trigger and answer approval requests (issue #254)
 //! - `wrap`      — manage wrap configurations (issue #255)
 //! - `workflow`  — dispatch and monitor workflows (issue #256)
-//!
-//! Tools are added in subsequent issues once this scaffold is in place.
+
+pub mod diagnostic;
