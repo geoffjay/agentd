@@ -1,0 +1,195 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "piechart", "name": "Pie chart", "version": "" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Workflow trigger rates, dispatch status breakdown, notification activity, and latency",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Dispatch Summary",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Total Dispatches",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "sum(workflow_dispatches_total{job=\"agentd-orchestrator\"})", "instant": true, "legendFormat": "" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Failed Dispatches",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "sum(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"failed\"})", "instant": true, "legendFormat": "" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Pending Notifications",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "notifications_pending{job=\"agentd-notify\"}", "instant": true, "legendFormat": "" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 15 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Pending Approvals",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "approvals_pending{job=\"agentd-ask\"}", "instant": true, "legendFormat": "" }]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "Dispatch Rate & Status",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 6 },
+      "id": 10,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "title": "Dispatch Rate by Status",
+      "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"completed\"}[5m])", "legendFormat": "completed" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"failed\"}[5m])", "legendFormat": "failed" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "rate(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"skipped\"}[5m])", "legendFormat": "skipped" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "hideFrom": { "legend": false, "tooltip": false, "viz": false } },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
+      "id": 11,
+      "options": { "displayLabels": ["name", "value"], "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "values": ["value"] }, "pieType": "pie", "tooltip": { "mode": "single", "sort": "none" } },
+      "title": "Dispatch Status Breakdown",
+      "type": "piechart",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "sum(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"completed\"})", "legendFormat": "completed", "instant": true },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "sum(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"failed\"})", "legendFormat": "failed", "instant": true },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "sum(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"skipped\"})", "legendFormat": "skipped", "instant": true },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "sum(workflow_dispatches_total{job=\"agentd-orchestrator\",status=\"pending\"})", "legendFormat": "pending", "instant": true }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "Notification Activity",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agentd-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
+      "id": 12,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "title": "Notifications by Priority",
+      "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "notifications_total{job=\"agentd-notify\",priority=\"critical\"}", "legendFormat": "critical" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "notifications_total{job=\"agentd-notify\",priority=\"high\"}", "legendFormat": "high" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "notifications_total{job=\"agentd-notify\",priority=\"medium\"}", "legendFormat": "medium" },
+        { "datasource": { "type": "prometheus", "uid": "agentd-prometheus" }, "expr": "notifications_total{job=\"agentd-notify\",priority=\"low\"}", "legendFormat": "low" }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["agentd", "workflows"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "agentd — Workflow Execution",
+  "uid": "agentd-workflow-execution",
+  "version": 1
+}

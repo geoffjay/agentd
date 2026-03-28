@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Service identity -->
+  <key>Label</key>
+  <string>com.agentd.grafana</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <!-- Path after `brew install grafana` on Apple Silicon.
+         Intel Macs: replace /opt/homebrew with /usr/local -->
+    <string>/opt/homebrew/bin/grafana</string>
+    <string>server</string>
+    <!-- Grafana home directory (contains conf/, public/, etc.) -->
+    <string>--homepath</string>
+    <string>/opt/homebrew/share/grafana</string>
+    <!-- Override config to point provisioning at infra/grafana/provisioning -->
+    <string>--config</string>
+    <string>/Users/Shared/agentd/infra/grafana/grafana.ini</string>
+  </array>
+
+  <!-- Start automatically at login and keep running -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Log output -->
+  <key>StandardOutPath</key>
+  <string>/Users/Shared/agentd/logs/grafana.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/Shared/agentd/logs/grafana.log</string>
+
+  <!-- Working directory -->
+  <key>WorkingDirectory</key>
+  <string>/opt/homebrew/share/grafana</string>
+</dict>
+</plist>

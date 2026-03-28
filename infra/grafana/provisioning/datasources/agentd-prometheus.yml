@@ -1,0 +1,27 @@
+# Grafana datasource provisioning — automatically connects to local Prometheus.
+#
+# This file is loaded by Grafana at startup when placed in the provisioning
+# datasources directory. No manual configuration in the UI is required.
+#
+# Grafana provisioning path (Homebrew install):
+#   /opt/homebrew/share/grafana/conf/provisioning/datasources/
+#
+# Or configure via grafana.ini:
+#   [paths]
+#   provisioning = /path/to/infra/grafana/provisioning
+
+apiVersion: 1
+
+datasources:
+  - name: agentd-prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true
+    # Unique identifier — changing this UID will break dashboard references
+    uid: agentd-prometheus
+    editable: false
+    jsonData:
+      # Match Prometheus scrape interval
+      timeInterval: '15s'
+      httpMethod: GET
