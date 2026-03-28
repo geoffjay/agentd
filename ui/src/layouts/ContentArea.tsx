@@ -20,11 +20,9 @@ export function ContentArea({ children }: ContentAreaProps) {
       id="main-content"
       className={[
         'min-h-[calc(100vh-4rem)]',
-        'mt-16', // offset for fixed header (h-16)
+        'mt-12', // offset for fixed header
         'overflow-y-auto',
         'transition-all duration-300 ease-in-out',
-        // On large screens, shift right by sidebar width
-        sidebarOpen ? 'lg:ml-60' : 'lg:ml-16',
       ].join(' ')}
     >
       {/* Inner wrapper: responsive padding + max-width centering */}

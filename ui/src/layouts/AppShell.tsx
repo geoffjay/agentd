@@ -72,7 +72,7 @@ export function AppShell() {
       <LayoutContext.Provider
         value={{ sidebarOpen, setSidebarOpen, toggleSidebar, searchOpen, openSearch, closeSearch }}
       >
-        <div className="min-h-screen pt-2 pr-2 pb2 bg-gray-900 transition-colors duration-150">
+        <div className="min-h-screen pt-2 pr-2 pb-2 bg-gray-900 transition-colors duration-150">
           <SkipNav />
           <Sidebar />
           <div
