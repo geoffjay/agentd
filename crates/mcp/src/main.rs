@@ -27,13 +27,8 @@
 //! directed to **stderr** so it does not interfere with the MCP JSON-RPC
 //! framing on stdout.
 
-mod client;
-mod config;
-mod server;
-mod tools;
-
-use config::AgentdMcpConfig;
-use server::AgentdMcp;
+use agentd_mcp::config::AgentdMcpConfig;
+use agentd_mcp::server::AgentdMcp;
 use tracing::info;
 
 #[tokio::main]
