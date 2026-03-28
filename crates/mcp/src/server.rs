@@ -6,7 +6,7 @@
 
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
-use crate::tools::{agents, approvals, diagnostic, health, lifecycle, workflows};
+use crate::tools::{agents, approvals, diagnostic, health, lifecycle, notifications, workflows};
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     tool, ServerHandler,
@@ -169,6 +169,91 @@ impl AgentdMcp {
         limit: Option<u32>,
     ) -> String {
         workflows::run_get_failed_dispatches(&self.client, limit).await
+    }
+
+    // ── Notification management ─────────────────────────────────────────
+
+    /// List notifications with optional filters.
+    #[tool(
+        description = "List notifications with optional filters for status and priority. Sorted by priority (highest first). Use get_actionable_notifications for a focused view of items requiring attention."
+    )]
+    async fn list_notifications(
+        &self,
+        #[tool(param)]
+        #[schemars(
+            description = "Filter by status: pending | viewed | responded | dismissed | expired. Omit for all."
+        )]
+        status: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "Filter by priority: low | normal | high | urgent. Omit for all."
+        )]
+        priority: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Maximum number to return (default: 20, max: 200)")]
+        limit: Option<u32>,
+    ) -> String {
+        notifications::run_list_notifications(
+            &self.client,
+            status.as_deref(),
+            priority.as_deref(),
+            limit,
+        )
+        .await
+    }
+
+    /// Get full details of a specific notification.
+    #[tool(
+        description = "Get full details of a specific notification including source data, message body, and response (if any)."
+    )]
+    async fn get_notification(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The notification ID (UUID)")]
+        notification_id: String,
+    ) -> String {
+        notifications::run_get_notification(&self.client, &notification_id).await
+    }
+
+    /// Get all actionable notifications requiring a response.
+    #[tool(
+        description = "Get all notifications that are pending or viewed and have not expired. These require attention or a response. Sorted by priority (urgent first)."
+    )]
+    async fn get_actionable_notifications(&self) -> String {
+        notifications::run_get_actionable_notifications(&self.client).await
+    }
+
+    /// Create a system notification.
+    #[tool(
+        description = "Create a system notification, useful for flagging issues found during diagnostics or remediation workflows. Creates a persistent, non-response-required notification."
+    )]
+    async fn create_notification(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Short title for the notification")]
+        title: String,
+        #[tool(param)]
+        #[schemars(description = "Detailed message body with diagnostic context")]
+        message: String,
+        #[tool(param)]
+        #[schemars(description = "Priority level: low | normal | high | urgent (default: normal)")]
+        priority: Option<String>,
+    ) -> String {
+        notifications::run_create_notification(&self.client, &title, &message, priority.as_deref())
+            .await
+    }
+
+    /// Dismiss a notification.
+    #[tool(
+        description = "Dismiss a notification, marking it as reviewed and removing it from the active backlog."
+    )]
+    async fn dismiss_notification(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The notification ID (UUID) to dismiss")]
+        notification_id: String,
+    ) -> String {
+        notifications::run_dismiss_notification(&self.client, &notification_id).await
     }
 
     // ── Approval management ─────────────────────────────────────────────
