@@ -895,6 +895,15 @@ enum FileWatchHandle {
     Polling(tokio::task::JoinHandle<()>),
 }
 
+impl std::fmt::Debug for FileWatchHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Native(_) => f.write_str("FileWatchHandle::Native(..)"),
+            Self::Polling(_) => f.write_str("FileWatchHandle::Polling(..)"),
+        }
+    }
+}
+
 /// Recursively walk `root` and collect the mtime for every regular file.
 fn snapshot_mtimes(root: &Path) -> HashMap<PathBuf, SystemTime> {
     let mut map = HashMap::new();
@@ -1062,6 +1071,16 @@ pub struct FileWatchStrategy {
     watch_paths: Vec<PathBuf>,
 }
 
+impl std::fmt::Debug for FileWatchStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FileWatchStrategy")
+            .field("handle", &self._handle)
+            .field("event_kinds", &self.event_kinds)
+            .field("debounce_ms", &self.debounce_ms)
+            .finish()
+    }
+}
+
 impl FileWatchStrategy {
     /// Create a new file-watch strategy.
     ///
@@ -1078,11 +1097,7 @@ impl FileWatchStrategy {
         debounce_ms: u64,
         mode: WatchMode,
     ) -> anyhow::Result<Self> {
-        let (tx, rx) = mpsc::unbounded_channel();
-
-        let handle = Self::create_handle(paths.clone(), mode, tx)?;
-
-        // Build the optional glob set.
+        // Validate and build the optional glob set first (fail fast before spawning).
         let include_patterns = match patterns {
             None => None,
             Some(pats) if pats.is_empty() => None,
@@ -1100,6 +1115,10 @@ impl FileWatchStrategy {
                 )
             }
         };
+
+        // Spawn the watcher after glob validation succeeds.
+        let (tx, rx) = mpsc::unbounded_channel();
+        let handle = Self::create_handle(paths.clone(), mode, tx)?;
 
         Ok(Self {
             _handle: handle,
@@ -2479,5 +2498,343 @@ mod tests {
         assert_eq!(r2.len(), 1);
         assert!(r1[0].source_id.starts_with("idle:"));
         assert!(r2[0].source_id.starts_with("idle:"));
+    }
+
+    // ── FileWatchStrategy tests ───────────────────────────────────────
+
+    #[test]
+    fn file_watch_strategy_constructs_with_native_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        // Native watcher may or may not work in CI; just verify construction succeeds
+        // (or gracefully returns an error — we don't mandate native support).
+        let _ = FileWatchStrategy::new(
+            vec![dir.path().to_path_buf()],
+            None,
+            vec![],
+            200,
+            WatchMode::Native,
+        );
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_constructs_with_polling_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let strategy = FileWatchStrategy::new(
+            vec![dir.path().to_path_buf()],
+            None,
+            vec![],
+            200,
+            WatchMode::Polling { interval_secs: 1 },
+        );
+        assert!(strategy.is_ok());
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_constructs_with_auto_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let strategy = FileWatchStrategy::new(
+            vec![dir.path().to_path_buf()],
+            None,
+            vec![],
+            200,
+            WatchMode::Auto { poll_interval_secs: 5 },
+        );
+        assert!(strategy.is_ok());
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_rejects_invalid_glob_pattern() {
+        let dir = tempfile::tempdir().unwrap();
+        // Build with Native mode so no tokio::spawn is needed before validation.
+        let result = FileWatchStrategy::new(
+            vec![dir.path().to_path_buf()],
+            Some(vec!["[invalid".to_string()]),
+            vec![],
+            200,
+            WatchMode::Auto { poll_interval_secs: 1 },
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid glob pattern"));
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_accepts_valid_glob_patterns() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = FileWatchStrategy::new(
+            vec![dir.path().to_path_buf()],
+            Some(vec!["**/*.toml".to_string(), "*.rs".to_string()]),
+            vec![],
+            200,
+            WatchMode::Polling { interval_secs: 1 },
+        );
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_polling_detects_file_create() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().to_path_buf();
+
+        // Create strategy with 1-second polling interval, no debounce.
+        let mut strategy = FileWatchStrategy::new(
+            vec![dir_path.clone()],
+            None,
+            vec!["create".to_string()],
+            0, // no debounce
+            WatchMode::Polling { interval_secs: 1 },
+        )
+        .unwrap();
+        let (_tx, rx) = watch::channel(false);
+
+        // Allow the poller to start and take its initial snapshot.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Create a file inside the watched directory.
+        let file_path = dir_path.join("test.txt");
+        std::fs::write(&file_path, b"hello").unwrap();
+
+        // Wait up to 3 seconds for the polling task to detect the new file.
+        let result = tokio::time::timeout(Duration::from_secs(3), strategy.next_tasks(&rx)).await;
+
+        let tasks = result.expect("timed out waiting for file create event").unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert!(tasks[0].source_id.starts_with("file:"));
+        assert!(tasks[0].source_id.ends_with(":create"));
+        assert_eq!(tasks[0].metadata.get("event_type"), Some(&"create".to_string()));
+        assert!(tasks[0].metadata.contains_key("file_path"));
+        assert!(tasks[0].metadata.contains_key("file_name"));
+        assert!(tasks[0].metadata.contains_key("file_dir"));
+        assert!(tasks[0].metadata.contains_key("timestamp"));
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_polling_detects_file_modify() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().to_path_buf();
+
+        // Pre-create the file so the initial snapshot includes it.
+        let file_path = dir_path.join("watched.txt");
+        std::fs::write(&file_path, b"initial").unwrap();
+
+        let mut strategy = FileWatchStrategy::new(
+            vec![dir_path.clone()],
+            None,
+            vec!["modify".to_string()],
+            0,
+            WatchMode::Polling { interval_secs: 1 },
+        )
+        .unwrap();
+        let (_tx, rx) = watch::channel(false);
+
+        // Wait for poller to capture initial snapshot.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Modify the file — use a small sleep to ensure mtime changes.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        std::fs::write(&file_path, b"modified").unwrap();
+
+        let result = tokio::time::timeout(Duration::from_secs(3), strategy.next_tasks(&rx)).await;
+
+        let tasks = result.expect("timed out waiting for file modify event").unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert!(tasks[0].source_id.ends_with(":modify"));
+        assert_eq!(tasks[0].metadata.get("event_type"), Some(&"modify".to_string()));
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_polling_detects_file_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().to_path_buf();
+
+        // Pre-create the file.
+        let file_path = dir_path.join("to_delete.txt");
+        std::fs::write(&file_path, b"bye").unwrap();
+
+        let mut strategy = FileWatchStrategy::new(
+            vec![dir_path.clone()],
+            None,
+            vec!["delete".to_string()],
+            0,
+            WatchMode::Polling { interval_secs: 1 },
+        )
+        .unwrap();
+        let (_tx, rx) = watch::channel(false);
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Remove the file.
+        std::fs::remove_file(&file_path).unwrap();
+
+        let result = tokio::time::timeout(Duration::from_secs(3), strategy.next_tasks(&rx)).await;
+
+        let tasks = result.expect("timed out waiting for file delete event").unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert!(tasks[0].source_id.ends_with(":delete"));
+        assert_eq!(tasks[0].metadata.get("event_type"), Some(&"delete".to_string()));
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_filters_events_by_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().to_path_buf();
+
+        // Strategy only accepts "delete" events.
+        let mut strategy = FileWatchStrategy::new(
+            vec![dir_path.clone()],
+            None,
+            vec!["delete".to_string()],
+            0,
+            WatchMode::Polling { interval_secs: 1 },
+        )
+        .unwrap();
+        let (shutdown_tx, rx) = watch::channel(false);
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Create a new file — should NOT produce a task (create filtered out).
+        std::fs::write(dir_path.join("new.txt"), b"hi").unwrap();
+
+        // After 1.5 seconds the poll would have seen the create — fire shutdown
+        // to confirm no task was emitted.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            let _ = shutdown_tx.send(true);
+        });
+
+        let result = tokio::time::timeout(Duration::from_secs(3), strategy.next_tasks(&rx)).await;
+
+        let tasks = result.expect("timed out").unwrap();
+        // Shutdown should return empty — no "delete" event was triggered.
+        assert!(tasks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_filters_by_glob_pattern() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().to_path_buf();
+
+        // Only TOML files should match.
+        let mut strategy = FileWatchStrategy::new(
+            vec![dir_path.clone()],
+            Some(vec!["**/*.toml".to_string()]),
+            vec!["create".to_string()],
+            0,
+            WatchMode::Polling { interval_secs: 1 },
+        )
+        .unwrap();
+        let (shutdown_tx, rx) = watch::channel(false);
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Create a .txt file — should NOT match **/*.toml.
+        std::fs::write(dir_path.join("ignored.txt"), b"ignored").unwrap();
+
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            let _ = shutdown_tx.send(true);
+        });
+
+        let result = tokio::time::timeout(Duration::from_secs(3), strategy.next_tasks(&rx)).await;
+
+        let tasks = result.expect("timed out").unwrap();
+        assert!(tasks.is_empty(), "Expected txt file to be filtered out by **/*.toml pattern");
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_glob_pattern_matches_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().to_path_buf();
+
+        let mut strategy = FileWatchStrategy::new(
+            vec![dir_path.clone()],
+            Some(vec!["**/*.toml".to_string()]),
+            vec!["create".to_string()],
+            0,
+            WatchMode::Polling { interval_secs: 1 },
+        )
+        .unwrap();
+        let (_tx, rx) = watch::channel(false);
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Create a matching TOML file.
+        std::fs::write(dir_path.join("config.toml"), b"[section]").unwrap();
+
+        let result = tokio::time::timeout(Duration::from_secs(3), strategy.next_tasks(&rx)).await;
+
+        let tasks = result.expect("timed out waiting for toml create event").unwrap();
+        assert_eq!(tasks.len(), 1);
+        let file_name = tasks[0].metadata.get("file_name").unwrap();
+        assert_eq!(file_name, "config.toml");
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_respects_shutdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut strategy = FileWatchStrategy::new(
+            vec![dir.path().to_path_buf()],
+            None,
+            vec![],
+            0,
+            WatchMode::Polling { interval_secs: 60 }, // long interval — would block
+        )
+        .unwrap();
+        let (tx, rx) = watch::channel(false);
+
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(true);
+        });
+
+        let start = tokio::time::Instant::now();
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(result.is_empty());
+        assert!(elapsed < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn file_watch_strategy_is_object_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        let strategy: Box<dyn TriggerStrategy> = Box::new(
+            FileWatchStrategy::new(
+                vec![dir.path().to_path_buf()],
+                None,
+                vec![],
+                0,
+                WatchMode::Polling { interval_secs: 60 },
+            )
+            .unwrap(),
+        );
+        let (tx, rx) = watch::channel(false);
+
+        let mut strategy = strategy;
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(true);
+        });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn event_kind_to_str_returns_correct_strings() {
+        use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind};
+        assert_eq!(event_kind_to_str(&notify::EventKind::Create(CreateKind::File)), "create");
+        assert_eq!(
+            event_kind_to_str(&notify::EventKind::Modify(ModifyKind::Data(DataChange::Content))),
+            "modify"
+        );
+        assert_eq!(event_kind_to_str(&notify::EventKind::Remove(RemoveKind::File)), "delete");
+        assert_eq!(event_kind_to_str(&notify::EventKind::Other), "other");
+        assert_eq!(event_kind_to_str(&notify::EventKind::Any), "any");
+    }
+
+    #[test]
+    fn watch_mode_default_is_auto() {
+        let mode = WatchMode::default();
+        assert!(matches!(mode, WatchMode::Auto { .. }));
     }
 }

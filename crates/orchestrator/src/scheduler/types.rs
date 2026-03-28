@@ -545,4 +545,115 @@ mod tests {
         // Serialized tag must be snake_case.
         assert!(json.contains(r#""type":"linear_issues""#));
     }
+
+    // ── FileWatch TriggerConfig tests ─────────────────────────────────
+
+    fn sample_file_watch() -> TriggerConfig {
+        TriggerConfig::FileWatch {
+            paths: vec!["/tmp/watched".to_string()],
+            patterns: vec!["**/*.toml".to_string()],
+            events: vec!["create".to_string(), "modify".to_string()],
+            debounce_ms: 200,
+            mode: "auto".to_string(),
+            poll_interval_secs: 5,
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_file_watch_trigger_type() {
+        assert_eq!(sample_file_watch().trigger_type(), "file_watch");
+    }
+
+    #[test]
+    fn test_trigger_config_file_watch_is_implemented() {
+        assert!(sample_file_watch().is_implemented());
+    }
+
+    #[test]
+    fn test_trigger_config_file_watch_is_not_one_shot() {
+        assert!(!sample_file_watch().is_one_shot(), "FileWatch should not be one-shot");
+    }
+
+    #[test]
+    fn test_trigger_config_file_watch_serde_roundtrip() {
+        let original = sample_file_watch();
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: TriggerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.trigger_type(), "file_watch");
+        assert!(json.contains(r#""type":"file_watch""#));
+        if let TriggerConfig::FileWatch {
+            paths,
+            patterns,
+            events,
+            debounce_ms,
+            mode,
+            poll_interval_secs,
+        } = decoded
+        {
+            assert_eq!(paths, vec!["/tmp/watched"]);
+            assert_eq!(patterns, vec!["**/*.toml"]);
+            assert_eq!(events, vec!["create", "modify"]);
+            assert_eq!(debounce_ms, 200);
+            assert_eq!(mode, "auto");
+            assert_eq!(poll_interval_secs, 5);
+        } else {
+            panic!("Expected FileWatch variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_file_watch_serde_from_json_minimal() {
+        // Only `type` and `paths` — all other fields should use defaults.
+        let json = r#"{"type": "file_watch", "paths": ["/var/log"]}"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.trigger_type(), "file_watch");
+        if let TriggerConfig::FileWatch {
+            paths,
+            patterns,
+            events,
+            debounce_ms,
+            mode,
+            poll_interval_secs,
+        } = cfg
+        {
+            assert_eq!(paths, vec!["/var/log"]);
+            assert!(patterns.is_empty());
+            assert!(events.is_empty());
+            assert_eq!(debounce_ms, 200); // default
+            assert_eq!(mode, "auto"); // default
+            assert_eq!(poll_interval_secs, 5); // default
+        } else {
+            panic!("Expected FileWatch variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_file_watch_serde_polling_mode() {
+        let json = r#"{
+            "type": "file_watch",
+            "paths": ["/tmp/a", "/tmp/b"],
+            "events": ["delete"],
+            "mode": "polling",
+            "poll_interval_secs": 10,
+            "debounce_ms": 500
+        }"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        if let TriggerConfig::FileWatch {
+            paths,
+            events,
+            mode,
+            poll_interval_secs,
+            debounce_ms,
+            ..
+        } = cfg
+        {
+            assert_eq!(paths.len(), 2);
+            assert_eq!(events, vec!["delete"]);
+            assert_eq!(mode, "polling");
+            assert_eq!(poll_interval_secs, 10);
+            assert_eq!(debounce_ms, 500);
+        } else {
+            panic!("Expected FileWatch variant");
+        }
+    }
 }
