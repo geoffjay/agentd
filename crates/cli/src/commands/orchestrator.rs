@@ -3903,6 +3903,7 @@ mod tests {
             TriggerConfig::Webhook { secret: None, source: Default::default() }.is_implemented()
         );
         assert!(TriggerConfig::Manual {}.is_implemented());
+        assert!(TriggerConfig::AgentIdle { idle_seconds: 30 }.is_implemented());
         assert!(TriggerConfig::LinearIssues {
             team_key: Some("ENG".into()),
             project: None,
@@ -4072,5 +4073,115 @@ mod tests {
         let err = result.expect_err("should have failed with no filter");
         let msg = err.to_string();
         assert!(msg.contains("at least one filter"), "expected filter-guard error, got: {msg}");
+    }
+
+    #[test]
+    fn test_create_workflow_trigger_type_agent_idle_with_idle_seconds() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            command: OrchestratorCommand,
+        }
+
+        let cli = Cli::try_parse_from([
+            "test",
+            "create-workflow",
+            "--name",
+            "idle-background",
+            "--agent-id",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "--trigger-type",
+            "agent-idle",
+            "--idle-seconds",
+            "30",
+            "--prompt-template",
+            "Run background checks",
+        ])
+        .expect("Should parse with --trigger-type agent-idle --idle-seconds 30");
+
+        if let OrchestratorCommand::CreateWorkflow { trigger_type, idle_seconds, .. } = cli.command
+        {
+            assert!(matches!(trigger_type, TriggerType::AgentIdle));
+            assert_eq!(idle_seconds, Some(30));
+        } else {
+            panic!("Expected CreateWorkflow variant");
+        }
+    }
+
+    /// Verify that agent-idle without --idle-seconds fails at the create_workflow level.
+    #[tokio::test]
+    async fn test_create_workflow_agent_idle_no_idle_seconds_returns_error() {
+        let client = OrchestratorClient::new("http://127.0.0.1:0");
+        let result = create_workflow(
+            &client,
+            "idle-notime",
+            Some("550e8400-e29b-41d4-a716-446655440000"),
+            None,
+            &TriggerType::AgentIdle,
+            None, // owner
+            None, // repo
+            None, // labels
+            None, // state
+            None, // cron_expression
+            None, // run_at
+            None, // webhook_secret
+            None, // team_key
+            None, // linear_project
+            &[],  // linear_status
+            &[],  // linear_labels
+            None, // linear_assignee
+            None, // idle_seconds — missing!
+            Some("Do background work"),
+            None, // prompt_template_file
+            60,
+            true,
+            false,
+        )
+        .await;
+
+        let err = result.expect_err("should have failed without --idle-seconds");
+        let msg = err.to_string();
+        assert!(msg.contains("--idle-seconds"), "expected idle-seconds error, got: {msg}");
+    }
+
+    /// Verify that agent-idle with idle_seconds=0 fails validation.
+    #[tokio::test]
+    async fn test_create_workflow_agent_idle_zero_seconds_returns_error() {
+        let client = OrchestratorClient::new("http://127.0.0.1:0");
+        let result = create_workflow(
+            &client,
+            "idle-zero",
+            Some("550e8400-e29b-41d4-a716-446655440000"),
+            None,
+            &TriggerType::AgentIdle,
+            None,    // owner
+            None,    // repo
+            None,    // labels
+            None,    // state
+            None,    // cron_expression
+            None,    // run_at
+            None,    // webhook_secret
+            None,    // team_key
+            None,    // linear_project
+            &[],     // linear_status
+            &[],     // linear_labels
+            None,    // linear_assignee
+            Some(0), // idle_seconds = 0 (invalid)
+            Some("Do background work"),
+            None, // prompt_template_file
+            60,
+            true,
+            false,
+        )
+        .await;
+
+        let err = result.expect_err("should have failed with idle_seconds=0");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("greater than 0"),
+            "expected validation error for zero idle_seconds, got: {msg}"
+        );
     }
 }

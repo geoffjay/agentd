@@ -385,6 +385,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_trigger_config_agent_idle_trigger_type() {
+        let cfg = TriggerConfig::AgentIdle { idle_seconds: 30 };
+        assert_eq!(cfg.trigger_type(), "agent_idle");
+    }
+
+    #[test]
+    fn test_trigger_config_agent_idle_is_implemented() {
+        let cfg = TriggerConfig::AgentIdle { idle_seconds: 30 };
+        assert!(cfg.is_implemented());
+    }
+
+    #[test]
+    fn test_trigger_config_agent_idle_is_not_one_shot() {
+        let cfg = TriggerConfig::AgentIdle { idle_seconds: 30 };
+        assert!(!cfg.is_one_shot(), "AgentIdle should not be one-shot");
+    }
+
+    #[test]
+    fn test_trigger_config_agent_idle_serde_roundtrip() {
+        let original = TriggerConfig::AgentIdle { idle_seconds: 60 };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: TriggerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.trigger_type(), "agent_idle");
+        // Serialized tag must be snake_case.
+        assert!(json.contains(r#""type":"agent_idle""#));
+        if let TriggerConfig::AgentIdle { idle_seconds } = decoded {
+            assert_eq!(idle_seconds, 60);
+        } else {
+            panic!("Expected AgentIdle variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_agent_idle_serde_from_json() {
+        let json = r#"{"type": "agent_idle", "idle_seconds": 120}"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.trigger_type(), "agent_idle");
+        if let TriggerConfig::AgentIdle { idle_seconds } = cfg {
+            assert_eq!(idle_seconds, 120);
+        } else {
+            panic!("Expected AgentIdle variant");
+        }
+    }
+
+    #[test]
     fn test_trigger_config_linear_issues_trigger_type() {
         let cfg = TriggerConfig::LinearIssues {
             team_key: Some("ENG".into()),
