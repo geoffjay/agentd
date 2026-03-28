@@ -6,14 +6,16 @@
 //! [`crate::migration::Migrator`] that runs at startup.
 
 use crate::{
-    entity::{dispatch as dispatch_entity, workflow as workflow_entity},
+    entity::{
+        dispatch as dispatch_entity, task_queue as queue_entity, workflow as workflow_entity,
+    },
     scheduler::types::{DispatchRecord, DispatchStatus, WorkflowConfig},
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -278,6 +280,199 @@ impl SchedulerStorage {
 
         Ok(result.rows_affected)
     }
+
+    // -- Queue operations --
+
+    /// Inserts a task into the named queue and returns the task ID.
+    pub async fn enqueue(
+        &self,
+        queue_name: &str,
+        title: &str,
+        body: Option<&str>,
+        priority: i32,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let model = queue_entity::ActiveModel {
+            id: Set(id.clone()),
+            queue_name: Set(queue_name.to_string()),
+            title: Set(title.to_string()),
+            body: Set(body.map(str::to_string)),
+            priority: Set(priority),
+            status: Set(queue_entity::STATUS_PENDING.to_string()),
+            visibility_timeout_at: Set(None),
+            retry_count: Set(0),
+            max_retries: Set(3),
+            created_at: Set(now.clone()),
+            updated_at: Set(now),
+        };
+
+        queue_entity::Entity::insert(model).exec(&self.db).await?;
+        Ok(id)
+    }
+
+    /// Atomically claims the highest-priority oldest pending task from the queue.
+    ///
+    /// The task is marked as `processing` with a visibility timeout. Returns
+    /// `None` if the queue has no pending tasks.
+    pub async fn dequeue(
+        &self,
+        queue_name: &str,
+        visibility_timeout_secs: u64,
+    ) -> Result<Option<queue_entity::Model>> {
+        let timeout_at = (chrono::Utc::now()
+            + chrono::Duration::seconds(visibility_timeout_secs as i64))
+        .to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339();
+        let now_str = chrono::Utc::now().to_rfc3339();
+
+        // Use a transaction to atomically claim the next task.
+        let db = &self.db;
+        let result = db
+            .transaction::<_, Option<queue_entity::Model>, sea_orm::DbErr>(|txn| {
+                let queue_name = queue_name.to_string();
+                let timeout_at = timeout_at.clone();
+                let now = now.clone();
+
+                Box::pin(async move {
+                    // Find the best candidate (highest priority, then oldest).
+                    let candidate = queue_entity::Entity::find()
+                        .filter(queue_entity::Column::QueueName.eq(&queue_name))
+                        .filter(queue_entity::Column::Status.eq(queue_entity::STATUS_PENDING))
+                        .order_by(queue_entity::Column::Priority, Order::Desc)
+                        .order_by(queue_entity::Column::CreatedAt, Order::Asc)
+                        .one(txn)
+                        .await?;
+
+                    let Some(row) = candidate else {
+                        return Ok(None);
+                    };
+
+                    // Claim it.
+                    let mut active: queue_entity::ActiveModel = row.into();
+                    active.status = Set(queue_entity::STATUS_PROCESSING.to_string());
+                    active.visibility_timeout_at = Set(Some(timeout_at));
+                    active.updated_at = Set(now);
+                    let updated = active.update(txn).await?;
+                    Ok(Some(updated))
+                })
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Dequeue transaction failed: {}", e))?;
+
+        let _ = now_str; // suppress unused warning
+        Ok(result)
+    }
+
+    /// Marks a queue task as completed and removes it from the queue.
+    pub async fn complete_queue_task(&self, id: &str) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let result = queue_entity::Entity::update_many()
+            .col_expr(queue_entity::Column::Status, Expr::value(queue_entity::STATUS_COMPLETED))
+            .col_expr(queue_entity::Column::UpdatedAt, Expr::value(now))
+            .filter(queue_entity::Column::Id.eq(id))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
+            anyhow::bail!("Queue task not found: {}", id);
+        }
+        Ok(())
+    }
+
+    /// Increments retry count; requeues the task or moves it to dead letter.
+    pub async fn fail_queue_task(&self, id: &str) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // Load the current task to check retry count.
+        let task = queue_entity::Entity::find_by_id(id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Queue task not found: {}", id))?;
+
+        let new_retry = task.retry_count + 1;
+        let new_status = if new_retry >= task.max_retries {
+            queue_entity::STATUS_DEAD
+        } else {
+            queue_entity::STATUS_PENDING
+        };
+
+        queue_entity::Entity::update_many()
+            .col_expr(queue_entity::Column::Status, Expr::value(new_status))
+            .col_expr(queue_entity::Column::RetryCount, Expr::value(new_retry))
+            .col_expr(
+                queue_entity::Column::VisibilityTimeoutAt,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(queue_entity::Column::UpdatedAt, Expr::value(now))
+            .filter(queue_entity::Column::Id.eq(id))
+            .exec(&self.db)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Returns up to `limit` pending tasks without claiming them.
+    pub async fn peek_queue(
+        &self,
+        queue_name: &str,
+        limit: u64,
+    ) -> Result<Vec<queue_entity::Model>> {
+        let tasks = queue_entity::Entity::find()
+            .filter(queue_entity::Column::QueueName.eq(queue_name))
+            .filter(queue_entity::Column::Status.eq(queue_entity::STATUS_PENDING))
+            .order_by(queue_entity::Column::Priority, Order::Desc)
+            .order_by(queue_entity::Column::CreatedAt, Order::Asc)
+            .limit(limit)
+            .all(&self.db)
+            .await?;
+        Ok(tasks)
+    }
+
+    /// Deletes all tasks in the named queue regardless of status.
+    pub async fn purge_queue(&self, queue_name: &str) -> Result<u64> {
+        let result = queue_entity::Entity::delete_many()
+            .filter(queue_entity::Column::QueueName.eq(queue_name))
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// Returns task counts by status for the named queue.
+    pub async fn queue_stats(&self, queue_name: &str) -> Result<QueueStats> {
+        let all = queue_entity::Entity::find()
+            .filter(queue_entity::Column::QueueName.eq(queue_name))
+            .all(&self.db)
+            .await?;
+
+        let mut stats = QueueStats::default();
+        for task in &all {
+            match task.status.as_str() {
+                queue_entity::STATUS_PENDING => stats.pending += 1,
+                queue_entity::STATUS_PROCESSING => stats.processing += 1,
+                queue_entity::STATUS_COMPLETED => stats.completed += 1,
+                queue_entity::STATUS_FAILED => stats.failed += 1,
+                queue_entity::STATUS_DEAD => stats.dead += 1,
+                _ => {}
+            }
+        }
+        Ok(stats)
+    }
+}
+
+/// Counts of queue tasks by status.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct QueueStats {
+    pub pending: u64,
+    pub processing: u64,
+    pub completed: u64,
+    pub failed: u64,
+    pub dead: u64,
 }
 
 // ---------------------------------------------------------------------------
