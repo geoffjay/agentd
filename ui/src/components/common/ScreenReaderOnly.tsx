@@ -15,31 +15,31 @@
  * React element rather than a className.
  */
 
-import type { ReactNode } from 'react'
+import type { ReactNode } from "react";
 
 export interface ScreenReaderOnlyProps {
-  children: ReactNode
-  /** HTML element to render; default "span" (inline, safe inside buttons) */
-  as?: 'span' | 'div' | 'p' | 'h2' | 'h3'
-  className?: string
+	children: ReactNode;
+	/** HTML element to render; default "span" (inline, safe inside buttons) */
+	as?: "span" | "div" | "p" | "h2" | "h3";
+	className?: string;
 }
 
 export function ScreenReaderOnly({
-  children,
-  as: Tag = 'span',
-  className = '',
+	children,
+	as: Tag = "span",
+	className = "",
 }: ScreenReaderOnlyProps) {
-  return (
-    <Tag
-      className={[
-        'absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap',
-        '[clip:rect(0,0,0,0)] border-0',
-        className,
-      ].join(' ')}
-    >
-      {children}
-    </Tag>
-  )
+	return (
+		<Tag
+			className={[
+				"absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap",
+				"[clip:rect(0,0,0,0)] border-0",
+				className,
+			].join(" ")}
+		>
+			{children}
+		</Tag>
+	);
 }
 
-export default ScreenReaderOnly
+export default ScreenReaderOnly;

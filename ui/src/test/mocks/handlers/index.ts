@@ -11,18 +11,24 @@
  *   )
  */
 
-import { orchestratorHandlers } from './orchestrator'
-import { notifyHandlers } from './notify'
-import { askHandlers } from './ask'
-import { memoryHandlers } from './memory'
-import { communicateHandlers } from './communicate'
+import { askHandlers } from "./ask";
+import { communicateHandlers } from "./communicate";
+import { memoryHandlers } from "./memory";
+import { notifyHandlers } from "./notify";
+import { orchestratorHandlers } from "./orchestrator";
 
 export const handlers = [
-  ...orchestratorHandlers,
-  ...notifyHandlers,
-  ...askHandlers,
-  ...memoryHandlers,
-  ...communicateHandlers,
-]
+	...orchestratorHandlers,
+	...notifyHandlers,
+	...askHandlers,
+	...memoryHandlers,
+	...communicateHandlers,
+];
 
-export { orchestratorHandlers, notifyHandlers, askHandlers, memoryHandlers, communicateHandlers }
+export {
+	askHandlers,
+	communicateHandlers,
+	memoryHandlers,
+	notifyHandlers,
+	orchestratorHandlers,
+};

@@ -13,34 +13,34 @@
  */
 
 export interface SkipNavProps {
-  /** ID of the main content element to skip to. Default: "main-content" */
-  contentId?: string
-  /** Label text. Default: "Skip to main content" */
-  label?: string
+	/** ID of the main content element to skip to. Default: "main-content" */
+	contentId?: string;
+	/** Label text. Default: "Skip to main content" */
+	label?: string;
 }
 
 export function SkipNav({
-  contentId = 'main-content',
-  label = 'Skip to main content',
+	contentId = "main-content",
+	label = "Skip to main content",
 }: SkipNavProps) {
-  return (
-    <a
-      href={`#${contentId}`}
-      className={[
-        // Normally hidden off-screen
-        'fixed top-2 left-2 z-[9999]',
-        'translate-y-[-200%]',
-        // Revealed on focus with a smooth transition
-        'focus:translate-y-0',
-        'transition-transform duration-150',
-        // Visible styling
-        'rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-lg',
-        'focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-600',
-      ].join(' ')}
-    >
-      {label}
-    </a>
-  )
+	return (
+		<a
+			href={`#${contentId}`}
+			className={[
+				// Normally hidden off-screen
+				"fixed top-2 left-2 z-[9999]",
+				"translate-y-[-200%]",
+				// Revealed on focus with a smooth transition
+				"focus:translate-y-0",
+				"transition-transform duration-150",
+				// Visible styling
+				"rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-lg",
+				"focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-600",
+			].join(" ")}
+		>
+			{label}
+		</a>
+	);
 }
 
-export default SkipNav
+export default SkipNav;

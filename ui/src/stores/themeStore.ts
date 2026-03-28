@@ -11,21 +11,23 @@
  * - React hooks / event handlers
  */
 
-export type ThemeMode = 'light' | 'dark' | 'system'
+export type ThemeMode = "light" | "dark" | "system";
 
 /**
  * Resolve the effective (concrete) theme from a mode value.
  * 'system' → checks prefers-color-scheme media query.
  */
-export function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
-  if (mode === 'system') {
-    try {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    } catch {
-      return 'light'
-    }
-  }
-  return mode
+export function resolveTheme(mode: ThemeMode): "light" | "dark" {
+	if (mode === "system") {
+		try {
+			return window.matchMedia("(prefers-color-scheme: dark)").matches
+				? "dark"
+				: "light";
+		} catch {
+			return "light";
+		}
+	}
+	return mode;
 }
 
 /**
@@ -33,8 +35,8 @@ export function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
  * on `document.documentElement`.
  */
 export function applyTheme(mode: ThemeMode): void {
-  const resolved = resolveTheme(mode)
-  document.documentElement.classList.toggle('dark', resolved === 'dark')
+	const resolved = resolveTheme(mode);
+	document.documentElement.classList.toggle("dark", resolved === "dark");
 }
 
 /**
@@ -42,14 +44,14 @@ export function applyTheme(mode: ThemeMode): void {
  * Returns 'system' if nothing is stored or parsing fails.
  */
 export function readPersistedTheme(): ThemeMode {
-  try {
-    const raw = localStorage.getItem('agentd:settings')
-    if (!raw) return 'system'
-    const parsed = JSON.parse(raw) as { ui?: { theme?: ThemeMode } }
-    const mode = parsed?.ui?.theme
-    if (mode === 'light' || mode === 'dark' || mode === 'system') return mode
-    return 'system'
-  } catch {
-    return 'system'
-  }
+	try {
+		const raw = localStorage.getItem("agentd:settings");
+		if (!raw) return "system";
+		const parsed = JSON.parse(raw) as { ui?: { theme?: ThemeMode } };
+		const mode = parsed?.ui?.theme;
+		if (mode === "light" || mode === "dark" || mode === "system") return mode;
+		return "system";
+	} catch {
+		return "system";
+	}
 }

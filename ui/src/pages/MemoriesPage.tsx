@@ -1,7 +1,7 @@
-import { MemoryList } from './memories/MemoryList'
+import { MemoryList } from "./memories/MemoryList";
 
 export function MemoriesPage() {
-  return <MemoryList />
+	return <MemoryList />;
 }
 
-export default MemoriesPage
+export default MemoriesPage;

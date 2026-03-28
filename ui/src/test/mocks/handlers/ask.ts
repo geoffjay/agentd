@@ -4,32 +4,34 @@
  * Provides default responses for health, trigger, and answer endpoints.
  */
 
-import { http, HttpResponse } from 'msw'
-import { makeTriggerResponse, makeAnswerResponse } from '../factories'
+import { HttpResponse, http } from "msw";
+import { makeAnswerResponse, makeTriggerResponse } from "../factories";
 
-const BASE = 'http://localhost:17001'
+const BASE = "http://localhost:17001";
 
 export const askHandlers = [
-  // -------------------------------------------------------------------------
-  // Health
-  // -------------------------------------------------------------------------
+	// -------------------------------------------------------------------------
+	// Health
+	// -------------------------------------------------------------------------
 
-  http.get(`${BASE}/health`, () =>
-    HttpResponse.json({ status: 'ok', service: 'ask', version: '0.1.0' }),
-  ),
+	http.get(`${BASE}/health`, () =>
+		HttpResponse.json({ status: "ok", service: "ask", version: "0.1.0" }),
+	),
 
-  // -------------------------------------------------------------------------
-  // Trigger
-  // -------------------------------------------------------------------------
+	// -------------------------------------------------------------------------
+	// Trigger
+	// -------------------------------------------------------------------------
 
-  http.post(`${BASE}/trigger`, () => HttpResponse.json(makeTriggerResponse())),
+	http.post(`${BASE}/trigger`, () => HttpResponse.json(makeTriggerResponse())),
 
-  // -------------------------------------------------------------------------
-  // Answer
-  // -------------------------------------------------------------------------
+	// -------------------------------------------------------------------------
+	// Answer
+	// -------------------------------------------------------------------------
 
-  http.post(`${BASE}/answer`, async ({ request }) => {
-    const body = (await request.json()) as Record<string, unknown>
-    return HttpResponse.json(makeAnswerResponse({ question_id: String(body.question_id ?? '1') }))
-  }),
-]
+	http.post(`${BASE}/answer`, async ({ request }) => {
+		const body = (await request.json()) as Record<string, unknown>;
+		return HttpResponse.json(
+			makeAnswerResponse({ question_id: String(body.question_id ?? "1") }),
+		);
+	}),
+];

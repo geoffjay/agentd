@@ -1,7 +1,7 @@
-import { AgentList } from './agents/AgentList'
+import { AgentList } from "./agents/AgentList";
 
 export function AgentsPage() {
-  return <AgentList />
+	return <AgentList />;
 }
 
-export default AgentsPage
+export default AgentsPage;

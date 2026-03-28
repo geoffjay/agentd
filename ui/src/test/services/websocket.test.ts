@@ -5,196 +5,209 @@
  * These tests install a fully controllable MockWebSocket per test.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { WebSocketManager } from '@/services/websocket'
-import { MockWebSocket, installMockWebSocket } from '@/test/mocks/mockWebSocket'
-import type { ConnectionState } from '@/services/websocket'
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConnectionState } from "@/services/websocket";
+import { WebSocketManager } from "@/services/websocket";
+import {
+	installMockWebSocket,
+	type MockWebSocket,
+} from "@/test/mocks/mockWebSocket";
 
-let lastWs: MockWebSocket | undefined
-let cleanup: () => void
+let lastWs: MockWebSocket | undefined;
+let cleanup: () => void;
 
 beforeEach(() => {
-  lastWs = undefined
-  cleanup = installMockWebSocket((ws) => {
-    lastWs = ws
-  })
-})
+	lastWs = undefined;
+	cleanup = installMockWebSocket((ws) => {
+		lastWs = ws;
+	});
+});
 
 afterEach(() => {
-  vi.useRealTimers()
-  cleanup()
-})
+	vi.useRealTimers();
+	cleanup();
+});
 
-describe('WebSocketManager', () => {
-  it('starts in Disconnected state', () => {
-    const manager = new WebSocketManager('ws://localhost/test')
-    expect(manager.state).toBe('Disconnected')
-  })
+describe("WebSocketManager", () => {
+	it("starts in Disconnected state", () => {
+		const manager = new WebSocketManager("ws://localhost/test");
+		expect(manager.state).toBe("Disconnected");
+	});
 
-  it('transitions to Connecting on connect()', () => {
-    const manager = new WebSocketManager('ws://localhost/test')
-    manager.connect()
-    expect(manager.state).toBe('Connecting')
-  })
+	it("transitions to Connecting on connect()", () => {
+		const manager = new WebSocketManager("ws://localhost/test");
+		manager.connect();
+		expect(manager.state).toBe("Connecting");
+	});
 
-  it('transitions to Connected when WebSocket opens', () => {
-    const states: ConnectionState[] = []
-    const manager = new WebSocketManager('ws://localhost/test')
-    manager.onStateChange((s) => states.push(s))
-    manager.connect()
+	it("transitions to Connected when WebSocket opens", () => {
+		const states: ConnectionState[] = [];
+		const manager = new WebSocketManager("ws://localhost/test");
+		manager.onStateChange((s) => states.push(s));
+		manager.connect();
 
-    lastWs!.simulateOpen()
+		lastWs!.simulateOpen();
 
-    expect(manager.state).toBe('Connected')
-    expect(states).toContain('Connecting')
-    expect(states).toContain('Connected')
-  })
+		expect(manager.state).toBe("Connected");
+		expect(states).toContain("Connecting");
+		expect(states).toContain("Connected");
+	});
 
-  it('transitions to Reconnecting when WebSocket closes unexpectedly', () => {
-    vi.useFakeTimers()
-    const states: ConnectionState[] = []
-    const manager = new WebSocketManager('ws://localhost/test', { minReconnectDelay: 100 })
-    manager.onStateChange((s) => states.push(s))
-    manager.connect()
-    lastWs!.simulateOpen()
-    lastWs!.simulateClose()
+	it("transitions to Reconnecting when WebSocket closes unexpectedly", () => {
+		vi.useFakeTimers();
+		const states: ConnectionState[] = [];
+		const manager = new WebSocketManager("ws://localhost/test", {
+			minReconnectDelay: 100,
+		});
+		manager.onStateChange((s) => states.push(s));
+		manager.connect();
+		lastWs!.simulateOpen();
+		lastWs!.simulateClose();
 
-    expect(states).toContain('Reconnecting')
-  })
+		expect(states).toContain("Reconnecting");
+	});
 
-  it('disconnects cleanly and transitions to Disconnected', () => {
-    const states: ConnectionState[] = []
-    const manager = new WebSocketManager('ws://localhost/test')
-    manager.onStateChange((s) => states.push(s))
-    manager.connect()
-    lastWs!.simulateOpen()
-    manager.disconnect()
+	it("disconnects cleanly and transitions to Disconnected", () => {
+		const states: ConnectionState[] = [];
+		const manager = new WebSocketManager("ws://localhost/test");
+		manager.onStateChange((s) => states.push(s));
+		manager.connect();
+		lastWs!.simulateOpen();
+		manager.disconnect();
 
-    expect(manager.state).toBe('Disconnected')
-    expect(states[states.length - 1]).toBe('Disconnected')
-  })
+		expect(manager.state).toBe("Disconnected");
+		expect(states[states.length - 1]).toBe("Disconnected");
+	});
 
-  it('delivers messages to registered handlers', () => {
-    const received: string[] = []
-    const manager = new WebSocketManager('ws://localhost/test')
-    manager.onMessage((event) => received.push(String(event.data)))
-    manager.connect()
-    lastWs!.simulateOpen()
-    lastWs!.simulateMessage('hello')
-    lastWs!.simulateMessage('world')
+	it("delivers messages to registered handlers", () => {
+		const received: string[] = [];
+		const manager = new WebSocketManager("ws://localhost/test");
+		manager.onMessage((event) => received.push(String(event.data)));
+		manager.connect();
+		lastWs!.simulateOpen();
+		lastWs!.simulateMessage("hello");
+		lastWs!.simulateMessage("world");
 
-    expect(received).toEqual(['hello', 'world'])
-  })
+		expect(received).toEqual(["hello", "world"]);
+	});
 
-  it('removes message handler when cleanup is called', () => {
-    const received: string[] = []
-    const manager = new WebSocketManager('ws://localhost/test')
-    const remove = manager.onMessage((event) => received.push(String(event.data)))
-    manager.connect()
-    lastWs!.simulateOpen()
-    lastWs!.simulateMessage('before')
-    remove()
-    lastWs!.simulateMessage('after')
+	it("removes message handler when cleanup is called", () => {
+		const received: string[] = [];
+		const manager = new WebSocketManager("ws://localhost/test");
+		const remove = manager.onMessage((event) =>
+			received.push(String(event.data)),
+		);
+		manager.connect();
+		lastWs!.simulateOpen();
+		lastWs!.simulateMessage("before");
+		remove();
+		lastWs!.simulateMessage("after");
 
-    expect(received).toEqual(['before'])
-  })
+		expect(received).toEqual(["before"]);
+	});
 
-  it('buffers messages sent while disconnected and flushes on reconnect', () => {
-    const manager = new WebSocketManager('ws://localhost/test')
-    manager.connect()
-    // Don't open — send while still connecting
-    manager.send('buffered-1')
-    manager.send('buffered-2')
+	it("buffers messages sent while disconnected and flushes on reconnect", () => {
+		const manager = new WebSocketManager("ws://localhost/test");
+		manager.connect();
+		// Don't open — send while still connecting
+		manager.send("buffered-1");
+		manager.send("buffered-2");
 
-    lastWs!.simulateOpen()
+		lastWs!.simulateOpen();
 
-    expect(lastWs!.sentMessages).toEqual(['buffered-1', 'buffered-2'])
-  })
+		expect(lastWs!.sentMessages).toEqual(["buffered-1", "buffered-2"]);
+	});
 
-  it('sends messages directly when connected', () => {
-    const manager = new WebSocketManager('ws://localhost/test')
-    manager.connect()
-    lastWs!.simulateOpen()
-    manager.send('direct')
+	it("sends messages directly when connected", () => {
+		const manager = new WebSocketManager("ws://localhost/test");
+		manager.connect();
+		lastWs!.simulateOpen();
+		manager.send("direct");
 
-    expect(lastWs!.sentMessages).toEqual(['direct'])
-  })
+		expect(lastWs!.sentMessages).toEqual(["direct"]);
+	});
 
-  it('does not reconnect after intentional disconnect', () => {
-    vi.useFakeTimers()
-    let wsCount = 0
-    cleanup()
-    cleanup = installMockWebSocket((ws) => {
-      lastWs = ws
-      wsCount++
-    })
+	it("does not reconnect after intentional disconnect", () => {
+		vi.useFakeTimers();
+		let wsCount = 0;
+		cleanup();
+		cleanup = installMockWebSocket((ws) => {
+			lastWs = ws;
+			wsCount++;
+		});
 
-    const manager = new WebSocketManager('ws://localhost/test', { minReconnectDelay: 50 })
-    manager.connect()
-    lastWs!.simulateOpen()
-    manager.disconnect()
+		const manager = new WebSocketManager("ws://localhost/test", {
+			minReconnectDelay: 50,
+		});
+		manager.connect();
+		lastWs!.simulateOpen();
+		manager.disconnect();
 
-    vi.advanceTimersByTime(200)
+		vi.advanceTimersByTime(200);
 
-    expect(wsCount).toBe(1) // no reconnect attempts
-  })
+		expect(wsCount).toBe(1); // no reconnect attempts
+	});
 
-  it('schedules reconnect with exponential backoff', () => {
-    vi.useFakeTimers()
-    const wsInstances: MockWebSocket[] = []
-    cleanup()
-    cleanup = installMockWebSocket((ws) => {
-      lastWs = ws
-      wsInstances.push(ws)
-    })
+	it("schedules reconnect with exponential backoff", () => {
+		vi.useFakeTimers();
+		const wsInstances: MockWebSocket[] = [];
+		cleanup();
+		cleanup = installMockWebSocket((ws) => {
+			lastWs = ws;
+			wsInstances.push(ws);
+		});
 
-    const manager = new WebSocketManager('ws://localhost/test', {
-      minReconnectDelay: 100,
-      maxReconnectDelay: 400,
-    })
-    manager.connect()
-    lastWs!.simulateOpen()
-    lastWs!.simulateClose() // triggers first reconnect at 100ms
+		const manager = new WebSocketManager("ws://localhost/test", {
+			minReconnectDelay: 100,
+			maxReconnectDelay: 400,
+		});
+		manager.connect();
+		lastWs!.simulateOpen();
+		lastWs!.simulateClose(); // triggers first reconnect at 100ms
 
-    vi.advanceTimersByTime(100)
-    expect(wsInstances.length).toBe(2)
+		vi.advanceTimersByTime(100);
+		expect(wsInstances.length).toBe(2);
 
-    lastWs!.simulateClose() // second reconnect at 200ms
-    vi.advanceTimersByTime(200)
-    expect(wsInstances.length).toBe(3)
-  })
+		lastWs!.simulateClose(); // second reconnect at 200ms
+		vi.advanceTimersByTime(200);
+		expect(wsInstances.length).toBe(3);
+	});
 
-  it('sends heartbeat ping when connected and heartbeat is enabled', () => {
-    vi.useFakeTimers()
-    const manager = new WebSocketManager('ws://localhost/test', { heartbeatInterval: 500 })
-    manager.connect()
-    lastWs!.simulateOpen()
+	it("sends heartbeat ping when connected and heartbeat is enabled", () => {
+		vi.useFakeTimers();
+		const manager = new WebSocketManager("ws://localhost/test", {
+			heartbeatInterval: 500,
+		});
+		manager.connect();
+		lastWs!.simulateOpen();
 
-    vi.advanceTimersByTime(600)
+		vi.advanceTimersByTime(600);
 
-    expect(lastWs!.sentMessages).toContain('ping')
-  })
+		expect(lastWs!.sentMessages).toContain("ping");
+	});
 
-  it('does not send heartbeat when heartbeatInterval is 0', () => {
-    vi.useFakeTimers()
-    const manager = new WebSocketManager('ws://localhost/test', { heartbeatInterval: 0 })
-    manager.connect()
-    lastWs!.simulateOpen()
+	it("does not send heartbeat when heartbeatInterval is 0", () => {
+		vi.useFakeTimers();
+		const manager = new WebSocketManager("ws://localhost/test", {
+			heartbeatInterval: 0,
+		});
+		manager.connect();
+		lastWs!.simulateOpen();
 
-    vi.advanceTimersByTime(30_000)
+		vi.advanceTimersByTime(30_000);
 
-    expect(lastWs!.sentMessages).not.toContain('ping')
-  })
+		expect(lastWs!.sentMessages).not.toContain("ping");
+	});
 
-  it('connect() is idempotent when already connecting', () => {
-    let wsCount = 0
-    cleanup()
-    cleanup = installMockWebSocket(() => wsCount++)
+	it("connect() is idempotent when already connecting", () => {
+		let wsCount = 0;
+		cleanup();
+		cleanup = installMockWebSocket(() => wsCount++);
 
-    const manager = new WebSocketManager('ws://localhost/test')
-    manager.connect()
-    manager.connect() // second call should be no-op
+		const manager = new WebSocketManager("ws://localhost/test");
+		manager.connect();
+		manager.connect(); // second call should be no-op
 
-    expect(wsCount).toBe(1)
-  })
-})
+		expect(wsCount).toBe(1);
+	});
+});

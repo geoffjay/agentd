@@ -1,7 +1,7 @@
-import { WorkflowList } from './workflows/WorkflowList'
+import { WorkflowList } from "./workflows/WorkflowList";
 
 export function WorkflowsPage() {
-  return <WorkflowList />
+	return <WorkflowList />;
 }
 
-export default WorkflowsPage
+export default WorkflowsPage;
