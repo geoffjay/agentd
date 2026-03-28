@@ -124,6 +124,26 @@ agent teardown .agentd/               # delete in reverse order
 - **Cooldown logic** — Prevents notification spam
 - **REST API** for triggering checks and answering questions
 
+## Local Observability Stack
+
+All agentd services expose Prometheus `/metrics` endpoints. A ready-to-use
+local observability stack (Prometheus + Grafana with pre-built dashboards) is
+included in `infra/`:
+
+```bash
+# One-command install — configures and starts Prometheus + Grafana
+./infra/setup.sh
+
+# Open dashboards (default credentials: admin / admin)
+open http://localhost:3000
+```
+
+Pre-built dashboards: **Service Overview**, **Agent Activity**,
+**Workflow Execution**, and **Experiment Tracking**.
+
+See **[docs/observability/README.md](docs/observability/README.md)** for the
+full guide including manual setup, dashboard descriptions, and troubleshooting.
+
 ## Installation
 
 ### Prerequisites
