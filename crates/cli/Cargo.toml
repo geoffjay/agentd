@@ -26,6 +26,7 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 bytes = "1"
 serde_yaml = "0.9"
 urlencoding = "2.1"
+dialoguer = "0.11"
 
 # Internal dependencies
 notify = { path = "../notify" }
