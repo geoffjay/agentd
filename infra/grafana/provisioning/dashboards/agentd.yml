@@ -1,11 +1,11 @@
-# Grafana dashboard provisioning — auto-loads all dashboards from the
-# infra/grafana/dashboards directory on startup.
+# Grafana dashboard provisioning template — auto-loads all dashboards
+# from the installed dashboards directory on startup.
 #
-# Grafana provisioning path (Homebrew install):
-#   /opt/homebrew/share/grafana/conf/provisioning/dashboards/
+# This is a template — infra/setup.sh copies it to
+# ~/Library/Application Support/agentd/grafana/provisioning/dashboards/agentd.yml
+# with the placeholder path below resolved to its actual value.
 #
-# NOTE: The `options.path` below must be an absolute path on the host
-# where Grafana is running. The setup.sh script configures this automatically.
+# Do not edit the installed copy directly; edit this template and re-run setup.
 
 apiVersion: 1
 
@@ -19,5 +19,5 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: true
     options:
-      # Absolute path — updated by infra/setup.sh at install time
+      # Placeholder — resolved by infra/setup.sh at install time
       path: /Users/Shared/agentd/infra/grafana/dashboards

@@ -22,6 +22,8 @@ LOG_DIR="$STATE_DIR/logs"
 GRAFANA_DATA_DIR="$STATE_DIR/grafana-data"
 PROMETHEUS_DATA_DIR="$STATE_DIR/prometheus-data"
 
+CONFIG_DIR="$HOME/Library/Application Support/agentd"
+
 DRY_RUN=false
 PURGE=false
 
@@ -114,24 +116,18 @@ remove_plist "$PROMETHEUS_PLIST"
 remove_plist "$GRAFANA_PLIST"
 
 # ---------------------------------------------------------------------------
-# Step 3: Remove generated config files from infra/
+# Step 3: Remove installed config files
 # ---------------------------------------------------------------------------
 
-step "Removing generated config files"
+step "Removing installed config directory"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INFRA_DIR="$SCRIPT_DIR"
-
-for f in \
-    "$INFRA_DIR/grafana/grafana.ini.configured" \
-    "$INFRA_DIR/grafana/provisioning/dashboards/agentd.yml.configured"
-do
-    if [[ -f "$f" ]]; then
-        info "Removing: $f"
-        run rm -f "$f"
-        ok "Removed: $f"
-    fi
-done
+if [[ -d "$CONFIG_DIR" ]]; then
+    info "Removing: $CONFIG_DIR"
+    run rm -rf "$CONFIG_DIR"
+    ok "Removed: $CONFIG_DIR"
+else
+    ok "Not found: $CONFIG_DIR"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 4: Optionally purge state data

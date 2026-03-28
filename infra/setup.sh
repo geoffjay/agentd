@@ -34,6 +34,8 @@ LOG_DIR="$STATE_DIR/logs"
 GRAFANA_DATA_DIR="$STATE_DIR/grafana-data"
 PROMETHEUS_DATA_DIR="$STATE_DIR/prometheus-data"
 
+CONFIG_DIR="$HOME/Library/Application Support/agentd"
+
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 PROMETHEUS_PLIST="com.agentd.prometheus.plist"
 GRAFANA_PLIST="com.agentd.grafana.plist"
@@ -146,9 +148,17 @@ fi
 # Step 3: Create state directories
 # ---------------------------------------------------------------------------
 
-step "Creating state and log directories"
+step "Creating state, log, and config directories"
 
-for dir in "$LOG_DIR" "$GRAFANA_DATA_DIR" "$PROMETHEUS_DATA_DIR"; do
+for dir in \
+    "$LOG_DIR" \
+    "$GRAFANA_DATA_DIR" \
+    "$PROMETHEUS_DATA_DIR" \
+    "$CONFIG_DIR/prometheus" \
+    "$CONFIG_DIR/grafana/provisioning/datasources" \
+    "$CONFIG_DIR/grafana/provisioning/dashboards" \
+    "$CONFIG_DIR/grafana/dashboards"
+do
     if [[ -d "$dir" ]]; then
         ok "Already exists: $dir"
     else
@@ -165,13 +175,19 @@ done
 step "Configuring Prometheus"
 
 PROM_CONFIG_SRC="$INFRA_DIR/prometheus/prometheus.yml"
+PROM_CONFIG_DST="$CONFIG_DIR/prometheus/prometheus.yml"
 
 if [[ ! -f "$PROM_CONFIG_SRC" ]]; then
     error "Prometheus config not found: $PROM_CONFIG_SRC"
 fi
 
-ok "Using config: $PROM_CONFIG_SRC"
-info "Scrape targets are read from the file above — edit it to change ports."
+if [[ "$DRY_RUN" == false ]]; then
+    cp "$PROM_CONFIG_SRC" "$PROM_CONFIG_DST"
+    ok "Installed: $PROM_CONFIG_DST"
+else
+    info "[DRY] Would copy $PROM_CONFIG_SRC → $PROM_CONFIG_DST"
+fi
+info "Scrape targets are read from the installed config — edit the source at $PROM_CONFIG_SRC and re-run setup."
 
 # ---------------------------------------------------------------------------
 # Step 5: Configure Grafana
@@ -180,35 +196,56 @@ info "Scrape targets are read from the file above — edit it to change ports."
 step "Configuring Grafana"
 
 GRAFANA_INI_SRC="$INFRA_DIR/grafana/grafana.ini"
-GRAFANA_INI_TMP="$INFRA_DIR/grafana/grafana.ini.configured"
+GRAFANA_INI_DST="$CONFIG_DIR/grafana/grafana.ini"
 
 if [[ ! -f "$GRAFANA_INI_SRC" ]]; then
     error "Grafana config not found: $GRAFANA_INI_SRC"
 fi
 
-# Substitute placeholder paths with actual repo root
+# Substitute placeholder paths and install to config directory
 if [[ "$DRY_RUN" == false ]]; then
     sed \
-        -e "s|/Users/Shared/agentd/infra/grafana/provisioning|$INFRA_DIR/grafana/provisioning|g" \
+        -e "s|/Users/Shared/agentd/infra/grafana/provisioning|$CONFIG_DIR/grafana/provisioning|g" \
         -e "s|/Users/Shared/agentd/logs|$LOG_DIR|g" \
         -e "s|/Users/Shared/agentd/grafana-data|$GRAFANA_DATA_DIR|g" \
-        "$GRAFANA_INI_SRC" > "$GRAFANA_INI_TMP"
-    ok "Generated: $GRAFANA_INI_TMP"
+        "$GRAFANA_INI_SRC" > "$GRAFANA_INI_DST"
+    ok "Installed: $GRAFANA_INI_DST"
 else
-    info "[DRY] Would generate $GRAFANA_INI_TMP with repo-specific paths"
+    info "[DRY] Would install $GRAFANA_INI_DST with resolved paths"
 fi
 
-# Update dashboard provisioning path
+# Install dashboard provisioning config
 DASH_PROV_SRC="$INFRA_DIR/grafana/provisioning/dashboards/agentd.yml"
-DASH_PROV_TMP="$INFRA_DIR/grafana/provisioning/dashboards/agentd.yml.configured"
+DASH_PROV_DST="$CONFIG_DIR/grafana/provisioning/dashboards/agentd.yml"
 
 if [[ "$DRY_RUN" == false ]]; then
     sed \
-        -e "s|/Users/Shared/agentd/infra/grafana/dashboards|$INFRA_DIR/grafana/dashboards|g" \
-        "$DASH_PROV_SRC" > "$DASH_PROV_TMP"
-    ok "Generated: $DASH_PROV_TMP"
+        -e "s|/Users/Shared/agentd/infra/grafana/dashboards|$CONFIG_DIR/grafana/dashboards|g" \
+        "$DASH_PROV_SRC" > "$DASH_PROV_DST"
+    ok "Installed: $DASH_PROV_DST"
 else
-    info "[DRY] Would generate $DASH_PROV_TMP with repo-specific paths"
+    info "[DRY] Would install $DASH_PROV_DST with resolved paths"
+fi
+
+# Copy datasource provisioning config
+DATASOURCE_SRC="$INFRA_DIR/grafana/provisioning/datasources/agentd-prometheus.yml"
+DATASOURCE_DST="$CONFIG_DIR/grafana/provisioning/datasources/agentd-prometheus.yml"
+
+if [[ "$DRY_RUN" == false ]]; then
+    cp "$DATASOURCE_SRC" "$DATASOURCE_DST"
+    ok "Installed: $DATASOURCE_DST"
+else
+    info "[DRY] Would copy $DATASOURCE_SRC → $DATASOURCE_DST"
+fi
+
+# Copy dashboard JSON files
+if [[ "$DRY_RUN" == false ]]; then
+    for dashboard in "$INFRA_DIR/grafana/dashboards/"*.json; do
+        cp "$dashboard" "$CONFIG_DIR/grafana/dashboards/"
+    done
+    ok "Installed dashboards to: $CONFIG_DIR/grafana/dashboards/"
+else
+    info "[DRY] Would copy dashboard JSONs to $CONFIG_DIR/grafana/dashboards/"
 fi
 
 # ---------------------------------------------------------------------------
@@ -227,7 +264,7 @@ PROM_PLIST_DST="$LAUNCH_AGENTS_DIR/$PROMETHEUS_PLIST"
 if [[ "$DRY_RUN" == false ]]; then
     sed \
         -e "s|/opt/homebrew|$BREW_PREFIX|g" \
-        -e "s|/Users/Shared/agentd/infra/prometheus/prometheus.yml|$INFRA_DIR/prometheus/prometheus.yml|g" \
+        -e "s|/Users/Shared/agentd/infra/prometheus/prometheus.yml|$CONFIG_DIR/prometheus/prometheus.yml|g" \
         -e "s|/opt/homebrew/var/prometheus|$PROMETHEUS_DATA_DIR|g" \
         -e "s|/Users/Shared/agentd/logs/prometheus.log|$LOG_DIR/prometheus.log|g" \
         "$PROM_PLIST_SRC" > "$PROM_PLIST_DST"
@@ -242,12 +279,11 @@ GRAFANA_PLIST_SRC="$INFRA_DIR/launchd/$GRAFANA_PLIST"
 GRAFANA_PLIST_DST="$LAUNCH_AGENTS_DIR/$GRAFANA_PLIST"
 
 GRAFANA_HOME="$BREW_PREFIX/share/grafana"
-GRAFANA_INI_CONFIGURED="${GRAFANA_INI_TMP:-$GRAFANA_INI_SRC}"
 
 if [[ "$DRY_RUN" == false ]]; then
     sed \
         -e "s|/opt/homebrew|$BREW_PREFIX|g" \
-        -e "s|/Users/Shared/agentd/infra/grafana/grafana.ini|$GRAFANA_INI_TMP|g" \
+        -e "s|/Users/Shared/agentd/infra/grafana/grafana.ini|$CONFIG_DIR/grafana/grafana.ini|g" \
         -e "s|/Users/Shared/agentd/logs/grafana.log|$LOG_DIR/grafana.log|g" \
         "$GRAFANA_PLIST_SRC" > "$GRAFANA_PLIST_DST"
     ok "Installed: $GRAFANA_PLIST_DST"
@@ -323,7 +359,7 @@ echo "  Prometheus UI:  http://localhost:$PROMETHEUS_PORT"
 echo "  Grafana UI:     http://localhost:$GRAFANA_PORT  (admin / admin)"
 echo
 echo "  Logs:           $LOG_DIR"
-echo "  Config:         $INFRA_DIR"
+echo "  Config:         $CONFIG_DIR"
 echo
 echo "  To stop services:"
 echo "    launchctl unload $LAUNCH_AGENTS_DIR/$PROMETHEUS_PLIST"
