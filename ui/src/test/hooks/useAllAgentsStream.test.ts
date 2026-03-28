@@ -6,6 +6,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAllAgentsStream } from "@/hooks/useAllAgentsStream";
 import { agentEventBus } from "@/services/eventBus";
+import type { AgentStatusChangeEvent } from "@/types/orchestrator";
 import {
 	installMockWebSocket,
 	type MockWebSocket,
@@ -103,7 +104,7 @@ describe("useAllAgentsStream", () => {
 
 	it("emits events to the agentEventBus", async () => {
 		const received: string[] = [];
-		const unsub = agentEventBus.on("agent:status_change", (event) => {
+		const unsub = agentEventBus.on<AgentStatusChangeEvent>("agent:status_change", (event) => {
 			received.push(event.agentId);
 		});
 

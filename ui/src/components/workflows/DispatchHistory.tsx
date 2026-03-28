@@ -234,7 +234,8 @@ export function DispatchHistory({
 			{/* Pagination */}
 			{total > pageSize && (
 				<Pagination
-					currentPage={page}
+					page={page}
+					totalPages={Math.ceil(total / pageSize)}
 					totalItems={total}
 					pageSize={pageSize}
 					onPageChange={setPage}

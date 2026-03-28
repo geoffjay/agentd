@@ -35,7 +35,7 @@ describe("MessageInput", () => {
 			<MessageInput onSend={vi.fn()} isParticipant={false} onJoin={onJoin} />,
 		);
 		fireEvent.click(screen.getByRole("button", { name: /join room/i }));
-		expect(onJoin).toHaveBeenCalledOnce();
+		expect(onJoin).toHaveBeenCalledTimes(1);
 	});
 
 	it("shows joining state on join button", () => {

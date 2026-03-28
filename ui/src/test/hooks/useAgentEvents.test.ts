@@ -20,7 +20,7 @@ describe("useAgentEvents", () => {
 		const { result } = renderHook(() => useAgentEvents());
 
 		act(() => {
-			result.current.subscribe("agent:status_change", (event) => {
+			result.current.subscribe<AgentStatusChangeEvent>("agent:status_change", (event) => {
 				received.push(event.agentId);
 			});
 		});
@@ -29,7 +29,7 @@ describe("useAgentEvents", () => {
 			agentEventBus.emit<AgentStatusChangeEvent>({
 				type: "agent:status_change",
 				agentId: "test-agent",
-				status: "Running",
+				status: "running",
 				timestamp: new Date().toISOString(),
 			});
 		});
@@ -52,7 +52,7 @@ describe("useAgentEvents", () => {
 			agentEventBus.emit<AgentStatusChangeEvent>({
 				type: "agent:status_change",
 				agentId: "irrelevant",
-				status: "Stopped",
+				status: "stopped",
 				timestamp: new Date().toISOString(),
 			});
 		});
@@ -67,7 +67,7 @@ describe("useAgentEvents", () => {
 
 		let cleanup: (() => void) | undefined;
 		act(() => {
-			cleanup = result.current.subscribe("agent:status_change", (event) => {
+			cleanup = result.current.subscribe<AgentStatusChangeEvent>("agent:status_change", (event) => {
 				received.push(event.agentId);
 			});
 		});
@@ -77,7 +77,7 @@ describe("useAgentEvents", () => {
 			agentEventBus.emit<AgentStatusChangeEvent>({
 				type: "agent:status_change",
 				agentId: "first",
-				status: "Running",
+				status: "running",
 				timestamp: new Date().toISOString(),
 			});
 		});
@@ -92,7 +92,7 @@ describe("useAgentEvents", () => {
 			agentEventBus.emit<AgentStatusChangeEvent>({
 				type: "agent:status_change",
 				agentId: "second",
-				status: "Failed",
+				status: "failed",
 				timestamp: new Date().toISOString(),
 			});
 		});
@@ -115,7 +115,7 @@ describe("useAgentEvents", () => {
 			agentEventBus.emit<AgentStatusChangeEvent>({
 				type: "agent:status_change",
 				agentId: "after-unmount",
-				status: "Stopped",
+				status: "stopped",
 				timestamp: new Date().toISOString(),
 			});
 		});

@@ -29,10 +29,10 @@ export function makeNotification(
 	const id = nextId();
 	return {
 		id,
-		source: "System",
-		lifetime: { type: "Persistent" },
-		priority: "Normal",
-		status: "Pending",
+		source: { type: "system" },
+		lifetime: { type: "persistent" },
+		priority: "normal",
+		status: "pending",
 		title: `Test Notification ${id}`,
 		message: `This is test notification message ${id}`,
 		requires_response: false,
@@ -47,7 +47,7 @@ export function makeUrgentNotification(
 	overrides?: Partial<Notification>,
 ): Notification {
 	return makeNotification({
-		priority: "Urgent",
+		priority: "urgent",
 		requires_response: true,
 		...overrides,
 	});

@@ -78,7 +78,7 @@ export function useRooms({
 				const msg = mapApiError(err);
 				setError(msg);
 				if (!isBackground) {
-					toastRef.current.error("Failed to load rooms", msg);
+					toastRef.current.error("Failed to load rooms", { message: msg });
 				}
 			} finally {
 				setLoading(false);

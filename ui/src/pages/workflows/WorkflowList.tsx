@@ -130,7 +130,7 @@ export function WorkflowList() {
 				loading={loading}
 				onEdit={openEdit}
 				onDelete={deleteWorkflow}
-				onToggleEnabled={toggleEnabled}
+				onToggleEnabled={async (id, enabled) => { await toggleEnabled(id, enabled); }}
 			/>
 
 			{/* Pagination */}

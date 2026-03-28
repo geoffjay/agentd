@@ -49,7 +49,7 @@ describe("RoomSettingsPanel", () => {
 		const onClose = vi.fn();
 		renderPanel({ onClose });
 		fireEvent.click(screen.getByRole("button", { name: /close settings/i }));
-		expect(onClose).toHaveBeenCalledOnce();
+		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
 	it("calls onRoomUpdated after saving topic and description", async () => {
@@ -122,6 +122,6 @@ describe("RoomSettingsPanel", () => {
 			)!,
 		);
 
-		await waitFor(() => expect(onRoomDeleted).toHaveBeenCalledOnce());
+		await waitFor(() => expect(onRoomDeleted).toHaveBeenCalledTimes(1));
 	});
 });

@@ -47,10 +47,6 @@ function makeMsg(overrides: Partial<ChatMessage> = {}): ChatMessage {
 	};
 }
 
-function paginated(items: ChatMessage[]) {
-	return { items, total: items.length, limit: 50, offset: 0 };
-}
-
 const ROOM_ID = "room-test-123";
 
 // ---------------------------------------------------------------------------
@@ -65,7 +61,7 @@ describe("useChatMessages", () => {
 	it("loads latest messages on mount", async () => {
 		const messages = [makeMsg(), makeMsg(), makeMsg()];
 		vi.spyOn(communicateClient, "getLatestMessages").mockResolvedValue(
-			paginated(messages),
+			messages,
 		);
 
 		const { result } = renderHook(() => useChatMessages({ roomId: ROOM_ID }));
@@ -119,7 +115,7 @@ describe("useChatMessages", () => {
 	it("appendMessage deduplicates by id", async () => {
 		const messages = [makeMsg(), makeMsg()];
 		vi.spyOn(communicateClient, "getLatestMessages").mockResolvedValue(
-			paginated(messages),
+			messages,
 		);
 
 		const { result } = renderHook(() => useChatMessages({ roomId: ROOM_ID }));
@@ -166,7 +162,7 @@ describe("useChatMessages", () => {
 	it("sets hasMore to false when fewer messages than pageSize are returned", async () => {
 		const messages = [makeMsg(), makeMsg()];
 		vi.spyOn(communicateClient, "getLatestMessages").mockResolvedValue(
-			paginated(messages),
+			messages,
 		);
 
 		const { result } = renderHook(() =>

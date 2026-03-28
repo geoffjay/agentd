@@ -28,12 +28,12 @@ function mockFetch(status: number, body: unknown) {
 const mockAgent: Agent = {
 	id: "agent-uuid-1",
 	name: "test-agent",
-	status: "Running",
+	status: "running",
 	config: {
 		working_dir: "/tmp",
 		shell: "bash",
 		interactive: false,
-		tool_policy: { type: "AllowAll" },
+		tool_policy: { mode: "allow_all" },
 	},
 	created_at: "2024-01-01T00:00:00Z",
 	updated_at: "2024-01-01T00:00:00Z",
@@ -45,7 +45,7 @@ const mockApproval: PendingApproval = {
 	request_id: "req-1",
 	tool_name: "bash",
 	tool_input: { command: "ls" },
-	status: "Pending",
+	status: "pending",
 	created_at: "2024-01-01T00:00:00Z",
 	expires_at: "2024-01-01T00:10:00Z",
 };
@@ -93,10 +93,10 @@ describe("OrchestratorClient", () => {
 
 		it("passes status filter as query param", async () => {
 			mockFetch(200, { items: [], total: 0, limit: 20, offset: 0 });
-			await client.listAgents({ status: "Running" });
+			await client.listAgents({ status: "running" });
 
 			const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
-			expect(calledUrl).toContain("status=Running");
+			expect(calledUrl).toContain("status=running");
 		});
 	});
 
@@ -108,7 +108,7 @@ describe("OrchestratorClient", () => {
 				working_dir: "/tmp",
 				shell: "bash",
 				interactive: false,
-				tool_policy: { type: "AllowAll" as const },
+				tool_policy: { mode: "allow_all" as const },
 			};
 			const result = await client.createAgent(request);
 			expect(result.id).toBe("agent-uuid-1");
@@ -123,7 +123,7 @@ describe("OrchestratorClient", () => {
 		it("calls GET /agents/:id", async () => {
 			mockFetch(200, mockAgent);
 			const result = await client.getAgent("agent-uuid-1");
-			expect(result.status).toBe("Running");
+			expect(result.status).toBe("running");
 
 			const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
 			expect(calledUrl).toContain("/agents/agent-uuid-1");
@@ -163,16 +163,16 @@ describe("OrchestratorClient", () => {
 
 	describe("getPolicy / updatePolicy", () => {
 		it("calls GET /agents/:id/policy", async () => {
-			mockFetch(200, { type: "AllowAll" });
+			mockFetch(200, { mode: "allow_all" });
 			const policy = await client.getPolicy("agent-uuid-1");
-			expect(policy.type).toBe("AllowAll");
+			expect(policy.mode).toBe("allow_all");
 		});
 
 		it("calls PUT /agents/:id/policy", async () => {
-			const newPolicy = { type: "RequireApproval" as const };
+			const newPolicy = { mode: "require_approval" as const };
 			mockFetch(200, newPolicy);
 			const result = await client.updatePolicy("agent-uuid-1", newPolicy);
-			expect(result.type).toBe("RequireApproval");
+			expect(result.mode).toBe("require_approval");
 		});
 	});
 
@@ -233,7 +233,7 @@ describe("OrchestratorClient", () => {
 					working_dir: "",
 					shell: "",
 					interactive: false,
-					tool_policy: { type: "AllowAll" },
+					tool_policy: { mode: "allow_all" },
 				});
 			} catch (e) {
 				caught = e as ApiError;

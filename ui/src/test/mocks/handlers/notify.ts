@@ -14,7 +14,7 @@ const BASE = "http://localhost:17004";
 
 const DEFAULT_NOTIFICATIONS = makeNotificationList(3);
 const DEFAULT_PENDING = makeNotificationList(2, {
-	status: "Pending",
+	status: "pending",
 	requires_response: true,
 });
 

@@ -27,7 +27,7 @@ import { CreateAgentDialog } from "./CreateAgentDialog";
 // ---------------------------------------------------------------------------
 
 function toStatus(raw: string | null): AgentStatus | "" {
-	const valid: AgentStatus[] = ["Running", "Pending", "Stopped", "Failed"];
+	const valid: AgentStatus[] = ["running", "pending", "stopped", "failed"];
 	return valid.includes(raw as AgentStatus) ? (raw as AgentStatus) : "";
 }
 

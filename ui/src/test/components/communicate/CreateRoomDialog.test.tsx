@@ -133,7 +133,7 @@ describe("CreateRoomDialog", () => {
 			/>,
 		);
 		fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
-		expect(onClose).toHaveBeenCalledOnce();
+		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
 	it("allows selecting room type", () => {

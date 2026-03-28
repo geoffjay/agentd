@@ -22,9 +22,9 @@ describe("useAgentSummary (MSW integration)", () => {
 			http.get("http://localhost:17006/agents", () =>
 				HttpResponse.json({
 					items: [
-						...makeAgentList(2, { status: "Running" }),
-						...makeAgentList(1, { status: "Failed" }),
-						...makeAgentList(1, { status: "Stopped" }),
+						...makeAgentList(2, { status: "running" }),
+						...makeAgentList(1, { status: "failed" }),
+						...makeAgentList(1, { status: "stopped" }),
 					],
 					total: 4,
 					limit: 200,

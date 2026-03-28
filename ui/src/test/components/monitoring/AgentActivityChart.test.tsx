@@ -28,10 +28,10 @@ vi.mock("@nivo/line", () => ({
 }));
 
 const COUNTS: AgentStatusCounts = {
-	Running: 3,
-	Pending: 1,
-	Stopped: 2,
-	Failed: 0,
+	running: 3,
+	pending: 1,
+	stopped: 2,
+	failed: 0,
 };
 const TIME_SERIES: AgentTimePoint[] = [
 	{ x: "2024-01-01T00:00:00Z", y: 2 },

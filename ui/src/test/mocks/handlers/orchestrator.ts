@@ -128,15 +128,15 @@ export const orchestratorHandlers = [
 	),
 
 	http.post(`${BASE}/agents/:id/start`, ({ params }) =>
-		HttpResponse.json(makeAgent({ id: String(params.id), status: "Running" })),
+		HttpResponse.json(makeAgent({ id: String(params.id), status: "running" })),
 	),
 
 	http.post(`${BASE}/agents/:id/stop`, ({ params }) =>
-		HttpResponse.json(makeAgent({ id: String(params.id), status: "Stopped" })),
+		HttpResponse.json(makeAgent({ id: String(params.id), status: "stopped" })),
 	),
 
 	http.post(`${BASE}/agents/:id/restart`, ({ params }) =>
-		HttpResponse.json(makeAgent({ id: String(params.id), status: "Running" })),
+		HttpResponse.json(makeAgent({ id: String(params.id), status: "running" })),
 	),
 
 	// -------------------------------------------------------------------------

@@ -28,7 +28,7 @@ export function makeAgentConfig(overrides?: Partial<AgentConfig>): AgentConfig {
 		working_dir: "/tmp/agent",
 		shell: "/bin/bash",
 		interactive: false,
-		tool_policy: { type: "AllowAll" },
+		tool_policy: { mode: "allow_all" },
 		...overrides,
 	};
 }
@@ -42,7 +42,7 @@ export function makeAgent(overrides?: Partial<Agent>): Agent {
 	return {
 		id,
 		name: `test-agent-${id}`,
-		status: "Running",
+		status: "running",
 		config: makeAgentConfig(),
 		created_at: "2024-01-01T00:00:00.000Z",
 		updated_at: "2024-01-01T00:00:00.000Z",
@@ -72,7 +72,7 @@ export function makePendingApproval(
 		request_id: nextId(),
 		tool_name: "bash",
 		tool_input: { command: "ls -la" },
-		status: "Pending",
+		status: "pending",
 		created_at: "2024-01-01T00:00:00.000Z",
 		expires_at: "2024-01-01T01:00:00Z",
 		...overrides,

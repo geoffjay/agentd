@@ -27,7 +27,7 @@ function makeWorkflow(overrides: Partial<Workflow> = {}): Workflow {
 		prompt_template: "Fix: {{title}}",
 		poll_interval_secs: 900,
 		enabled: true,
-		tool_policy: { type: "AllowAll" },
+		tool_policy: { mode: "allow_all" },
 		created_at: "2024-01-01T00:00:00Z",
 		updated_at: "2024-01-01T00:00:00Z",
 		...overrides,

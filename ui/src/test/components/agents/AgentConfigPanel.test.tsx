@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { AgentConfigPanel } from "@/components/agents/AgentConfigPanel";
 import { makeAgent } from "@/test/mocks/factories";
 import type { AgentConfig } from "@/types/orchestrator";
@@ -26,7 +26,7 @@ describe("AgentConfigPanel", () => {
 				working_dir: "/tmp",
 				shell: "/bin/bash",
 				interactive: false,
-				tool_policy: { type: "AllowAll" },
+				tool_policy: { mode: "allow_all" },
 			} as import("@/types/orchestrator").AgentConfig,
 		});
 		render(<AgentConfigPanel agent={agent} />);
@@ -39,7 +39,7 @@ describe("AgentConfigPanel", () => {
 				working_dir: "/tmp",
 				shell: "/bin/bash",
 				interactive: true,
-				tool_policy: { type: "AllowAll" },
+				tool_policy: { mode: "allow_all" },
 			} as import("@/types/orchestrator").AgentConfig,
 		});
 		render(<AgentConfigPanel agent={agent} />);
@@ -58,7 +58,7 @@ describe("AgentConfigPanel", () => {
 				working_dir: "/tmp",
 				shell: "/bin/bash",
 				interactive: false,
-				tool_policy: { type: "AllowList", tools: ["bash", "read_file"] },
+				tool_policy: { mode: "allow_list", tools: ["bash", "read_file"] },
 			} as import("@/types/orchestrator").AgentConfig,
 		});
 		render(<AgentConfigPanel agent={agent} />);
@@ -92,7 +92,7 @@ describe("AgentConfigPanel", () => {
 				working_dir: "/tmp",
 				shell: "/bin/bash",
 				interactive: false,
-				tool_policy: { type: "AllowAll" },
+				tool_policy: { mode: "allow_all" },
 				system_prompt: longPrompt,
 			} as import("@/types/orchestrator").AgentConfig,
 		});
@@ -108,7 +108,7 @@ describe("AgentConfigPanel", () => {
 				working_dir: "/tmp",
 				shell: "/bin/bash",
 				interactive: false,
-				tool_policy: { type: "AllowAll" },
+				tool_policy: { mode: "allow_all" },
 				env: { SECRET: "my-secret-value" },
 			} as import("@/types/orchestrator").AgentConfig,
 		});
@@ -124,7 +124,7 @@ describe("AgentConfigPanel", () => {
 				working_dir: "/tmp",
 				shell: "/bin/bash",
 				interactive: false,
-				tool_policy: { type: "AllowAll" },
+				tool_policy: { mode: "allow_all" },
 				env: { SECRET: "my-secret-value" },
 			} as import("@/types/orchestrator").AgentConfig,
 		});

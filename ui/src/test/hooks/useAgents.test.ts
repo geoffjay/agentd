@@ -264,7 +264,7 @@ describe("useAgents", () => {
 				working_dir: "/tmp",
 				shell: "/bin/bash",
 				interactive: false,
-				tool_policy: { type: "AllowAll" },
+				tool_policy: { mode: "allow_all" },
 			});
 		});
 

@@ -170,7 +170,7 @@ export function AgentActivityChart({
 							arcLinkLabelsSkipAngle={10}
 							arcLinkLabelsThickness={1}
 							role="img"
-							ariaLabel="Agent status distribution pie chart"
+							arcLabel="value"
 						/>
 					)}
 

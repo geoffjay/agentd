@@ -142,7 +142,7 @@ describe("CommunicateClient", () => {
 		);
 
 		const result = await communicateClient.getLatestMessages("room-1");
-		expect(result.items).toHaveLength(5);
+		expect(result).toHaveLength(5);
 	});
 
 	it("listMessages returns paginated messages with params", async () => {

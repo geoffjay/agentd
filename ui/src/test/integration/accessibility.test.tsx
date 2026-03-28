@@ -48,15 +48,15 @@ function withRouter(element: React.ReactElement) {
 
 describe("Accessibility (axe-core)", () => {
 	describe("StatusBadge", () => {
-		it("has no accessibility violations (Running badge)", async () => {
-			const { container } = render(<StatusBadge status="Running" />);
+		it("has no accessibility violations (running badge)", async () => {
+			const { container } = render(<StatusBadge status="running" />);
 			const results = await axe(container);
 			expect(results).toHaveNoViolations();
 		});
 
 		it("has no accessibility violations (dot variant)", async () => {
 			const { container } = render(
-				<StatusBadge status="Failed" variant="dot" />,
+				<StatusBadge status="failed" variant="dot" />,
 			);
 			const results = await axe(container);
 			expect(results).toHaveNoViolations();

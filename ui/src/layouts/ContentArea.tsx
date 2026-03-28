@@ -13,7 +13,7 @@ interface ContentAreaProps {
 }
 
 export function ContentArea({ children }: ContentAreaProps) {
-	const { sidebarOpen } = useLayout();
+	const { sidebarOpen: _sidebarOpen } = useLayout();
 
 	return (
 		<main

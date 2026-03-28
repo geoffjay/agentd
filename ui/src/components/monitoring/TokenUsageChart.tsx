@@ -127,7 +127,7 @@ export function TokenUsageChart({ entries, loading }: TokenUsageChartProps) {
 								tickPadding: 6,
 								tickRotation: entries.length > 6 ? -35 : 0,
 							}}
-							tooltip={({ id, value, indexValue, data: rowData }) => (
+							tooltip={({ id, value, data: rowData }) => (
 								<div className="rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-xs shadow-lg">
 									<div className="font-medium text-gray-900 dark:text-white mb-1">
 										{(rowData as Record<string, unknown>).agentFull as string}

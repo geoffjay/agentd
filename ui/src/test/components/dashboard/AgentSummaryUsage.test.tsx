@@ -19,7 +19,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 const baseProps: UseAgentSummaryResult = {
-	counts: { Running: 2, Pending: 0, Stopped: 1, Failed: 0 },
+	counts: { running: 2, pending: 0, stopped: 1, failed: 0 },
 	recentAgents: [],
 	total: 3,
 	aggregateUsage: null,

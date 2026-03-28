@@ -5,7 +5,7 @@ import { AgentPolicyEditor } from "@/components/agents/AgentPolicyEditor";
 describe("AgentPolicyEditor", () => {
 	it("renders policy type dropdown", () => {
 		render(
-			<AgentPolicyEditor policy={{ type: "AllowAll" }} onSave={vi.fn()} />,
+			<AgentPolicyEditor policy={{ mode: "allow_all" }} onSave={vi.fn()} />,
 		);
 		expect(
 			screen.getByRole("combobox", { name: /policy type/i }),
@@ -14,15 +14,15 @@ describe("AgentPolicyEditor", () => {
 
 	it("shows AllowAll selected by default when policy is AllowAll", () => {
 		render(
-			<AgentPolicyEditor policy={{ type: "AllowAll" }} onSave={vi.fn()} />,
+			<AgentPolicyEditor policy={{ mode: "allow_all" }} onSave={vi.fn()} />,
 		);
 		const select = screen.getByRole("combobox", { name: /policy type/i });
-		expect(select).toHaveValue("AllowAll");
+		expect(select).toHaveValue("allow_all");
 	});
 
 	it("does not show tool list for AllowAll", () => {
 		render(
-			<AgentPolicyEditor policy={{ type: "AllowAll" }} onSave={vi.fn()} />,
+			<AgentPolicyEditor policy={{ mode: "allow_all" }} onSave={vi.fn()} />,
 		);
 		expect(
 			screen.queryByRole("textbox", { name: /tool names/i }),
@@ -32,7 +32,7 @@ describe("AgentPolicyEditor", () => {
 	it("shows tool list input when AllowList is selected", () => {
 		render(
 			<AgentPolicyEditor
-				policy={{ type: "AllowList", tools: ["bash"] }}
+				policy={{ mode: "allow_list", tools: ["bash"] }}
 				onSave={vi.fn()}
 			/>,
 		);
@@ -47,7 +47,7 @@ describe("AgentPolicyEditor", () => {
 	it("shows tool list input when DenyList is selected", () => {
 		render(
 			<AgentPolicyEditor
-				policy={{ type: "DenyList", tools: ["rm", "dd"] }}
+				policy={{ mode: "deny_list", tools: ["rm", "dd"] }}
 				onSave={vi.fn()}
 			/>,
 		);
@@ -58,10 +58,10 @@ describe("AgentPolicyEditor", () => {
 
 	it("calls onSave with correct AllowAll policy", async () => {
 		const onSave = vi.fn().mockResolvedValue(undefined);
-		render(<AgentPolicyEditor policy={{ type: "AllowAll" }} onSave={onSave} />);
+		render(<AgentPolicyEditor policy={{ mode: "allow_all" }} onSave={onSave} />);
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() =>
-			expect(onSave).toHaveBeenCalledWith({ type: "AllowAll" }),
+			expect(onSave).toHaveBeenCalledWith({ mode: "allow_all" }),
 		);
 	});
 
@@ -69,7 +69,7 @@ describe("AgentPolicyEditor", () => {
 		const onSave = vi.fn().mockResolvedValue(undefined);
 		render(
 			<AgentPolicyEditor
-				policy={{ type: "AllowList", tools: [] }}
+				policy={{ mode: "allow_list", tools: [] }}
 				onSave={onSave}
 			/>,
 		);
@@ -88,7 +88,7 @@ describe("AgentPolicyEditor", () => {
 
 	it("shows error when onSave throws", async () => {
 		const onSave = vi.fn().mockRejectedValue(new Error("Save failed"));
-		render(<AgentPolicyEditor policy={{ type: "AllowAll" }} onSave={onSave} />);
+		render(<AgentPolicyEditor policy={{ mode: "allow_all" }} onSave={onSave} />);
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() =>
 			expect(screen.getByRole("alert")).toHaveTextContent("Save failed"),
@@ -98,7 +98,7 @@ describe("AgentPolicyEditor", () => {
 	it('shows "Saving…" label when saving=true', () => {
 		render(
 			<AgentPolicyEditor
-				policy={{ type: "AllowAll" }}
+				policy={{ mode: "allow_all" }}
 				saving
 				onSave={vi.fn()}
 			/>,

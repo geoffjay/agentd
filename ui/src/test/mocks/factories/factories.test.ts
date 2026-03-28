@@ -46,7 +46,7 @@ describe("makeAgentConfig", () => {
 	it("returns a config with required fields", () => {
 		const config = makeAgentConfig();
 		expect(config.shell).toBe("/bin/bash");
-		expect(config.tool_policy).toEqual({ type: "AllowAll" });
+		expect(config.tool_policy).toEqual({ mode: "allow_all" });
 	});
 
 	it("applies overrides", () => {
@@ -66,14 +66,14 @@ describe("makeAgent", () => {
 		expect(a1.id).not.toBe(a2.id);
 	});
 
-	it("defaults to Running status", () => {
-		expect(makeAgent().status).toBe("Running");
+	it("defaults to running status", () => {
+		expect(makeAgent().status).toBe("running");
 	});
 
 	it("applies overrides", () => {
-		const agent = makeAgent({ name: "my-bot", status: "Stopped" });
+		const agent = makeAgent({ name: "my-bot", status: "stopped" });
 		expect(agent.name).toBe("my-bot");
-		expect(agent.status).toBe("Stopped");
+		expect(agent.status).toBe("stopped");
 	});
 
 	it("has an ISO 8601 created_at timestamp", () => {
@@ -94,14 +94,14 @@ describe("makeAgentList", () => {
 	});
 
 	it("applies shared overrides to every agent", () => {
-		const agents = makeAgentList(3, { status: "Failed" });
-		expect(agents.every((a) => a.status === "Failed")).toBe(true);
+		const agents = makeAgentList(3, { status: "failed" });
+		expect(agents.every((a) => a.status === "failed")).toBe(true);
 	});
 });
 
 describe("makePendingApproval", () => {
-	it("has Pending status by default", () => {
-		expect(makePendingApproval().status).toBe("Pending");
+	it("has pending status by default", () => {
+		expect(makePendingApproval().status).toBe("pending");
 	});
 
 	it("applies overrides", () => {
@@ -127,23 +127,23 @@ describe("makeNotification", () => {
 		expect(n1.id).not.toBe(n2.id);
 	});
 
-	it("defaults to Normal priority and Pending status", () => {
+	it("defaults to normal priority and pending status", () => {
 		const notif = makeNotification();
-		expect(notif.priority).toBe("Normal");
-		expect(notif.status).toBe("Pending");
+		expect(notif.priority).toBe("normal");
+		expect(notif.status).toBe("pending");
 	});
 
 	it("applies overrides", () => {
-		const notif = makeNotification({ priority: "High", title: "Custom Title" });
-		expect(notif.priority).toBe("High");
+		const notif = makeNotification({ priority: "high", title: "Custom Title" });
+		expect(notif.priority).toBe("high");
 		expect(notif.title).toBe("Custom Title");
 	});
 });
 
 describe("makeUrgentNotification", () => {
-	it("sets priority to Urgent and requires_response to true", () => {
+	it("sets priority to urgent and requires_response to true", () => {
 		const notif = makeUrgentNotification();
-		expect(notif.priority).toBe("Urgent");
+		expect(notif.priority).toBe("urgent");
 		expect(notif.requires_response).toBe(true);
 	});
 });

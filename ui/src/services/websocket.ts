@@ -72,10 +72,13 @@ export class WebSocketManager {
 	private readonly heartbeatInterval: number;
 	private readonly bufferSize: number;
 
+	private readonly url: string;
+
 	constructor(
-		private readonly url: string,
+		url: string,
 		options: WebSocketManagerOptions = {},
 	) {
+		this.url = url;
 		this.minDelay = options.minReconnectDelay ?? DEFAULT_MIN_DELAY;
 		this.maxDelay = options.maxReconnectDelay ?? DEFAULT_MAX_DELAY;
 		this.heartbeatInterval =

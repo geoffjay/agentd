@@ -222,8 +222,6 @@ function NotificationListInner() {
 	const pendingCount = notifications.filter(
 		(n) => n.status === "pending",
 	).length;
-	const someSelected = selectedIds.length > 0;
-
 	// Bulk actions
 	const bulkActions: BulkAction[] = [
 		{

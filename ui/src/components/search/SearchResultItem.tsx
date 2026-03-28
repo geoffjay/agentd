@@ -5,7 +5,7 @@
  * Supports keyboard focus highlighting.
  */
 
-import { Bell, Bot, ChevronRight, Zap } from "lucide-react";
+import { Bell, Bot, Brain, ChevronRight, Zap } from "lucide-react";
 import type { SearchResult } from "@/hooks/useSearch";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +33,12 @@ const CATEGORY_META: Record<
 		iconEl: <Zap size={16} className="text-green-400" />,
 		badgeClass:
 			"bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+	},
+	memory: {
+		label: "Memory",
+		iconEl: <Brain size={16} className="text-purple-400" />,
+		badgeClass:
+			"bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
 	},
 };
 

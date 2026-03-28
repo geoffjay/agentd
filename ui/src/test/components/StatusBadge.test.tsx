@@ -4,15 +4,15 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 
 describe("StatusBadge", () => {
 	describe("badge variant (default)", () => {
-		it("renders agent status Running", () => {
-			render(<StatusBadge status="Running" />);
-			expect(screen.getByRole("status")).toHaveTextContent("Running");
+		it("renders agent status running", () => {
+			render(<StatusBadge status="running" />);
+			expect(screen.getByRole("status")).toHaveTextContent("running");
 		});
 
-		it("renders agent status Failed", () => {
-			render(<StatusBadge status="Failed" />);
+		it("renders agent status failed", () => {
+			render(<StatusBadge status="failed" />);
 			const badge = screen.getByRole("status");
-			expect(badge).toHaveTextContent("Failed");
+			expect(badge).toHaveTextContent("failed");
 			expect(badge.className).toContain("red");
 		});
 
@@ -29,28 +29,28 @@ describe("StatusBadge", () => {
 			expect(badge.className).toContain("red");
 		});
 
-		it("renders notification status Pending", () => {
-			render(<StatusBadge status="Pending" />);
-			expect(screen.getByRole("status")).toHaveTextContent("Pending");
+		it("renders notification status pending", () => {
+			render(<StatusBadge status="pending" />);
+			expect(screen.getByRole("status")).toHaveTextContent("pending");
 		});
 	});
 
 	describe("dot variant", () => {
 		it("renders a coloured dot with aria-label", () => {
-			render(<StatusBadge status="Running" variant="dot" />);
+			render(<StatusBadge status="running" variant="dot" />);
 			const dot = screen.getByRole("status", { name: "Running" });
 			expect(dot.className).toContain("rounded-full");
 			expect(dot.className).toContain("green");
 		});
 
 		it("applies correct colour for Failed", () => {
-			render(<StatusBadge status="Failed" variant="dot" />);
+			render(<StatusBadge status="failed" variant="dot" />);
 			const dot = screen.getByRole("status", { name: "Failed" });
 			expect(dot.className).toContain("red");
 		});
 
 		it("applies custom className", () => {
-			render(<StatusBadge status="Running" variant="dot" className="ml-2" />);
+			render(<StatusBadge status="running" variant="dot" className="ml-2" />);
 			expect(screen.getByRole("status").className).toContain("ml-2");
 		});
 	});

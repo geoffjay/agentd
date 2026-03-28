@@ -25,10 +25,10 @@ export interface AgentFiltersProps {
 
 const STATUS_OPTIONS: Array<{ label: string; value: AgentStatus | "" }> = [
 	{ label: "All statuses", value: "" },
-	{ label: "Running", value: "Running" },
-	{ label: "Pending", value: "Pending" },
-	{ label: "Stopped", value: "Stopped" },
-	{ label: "Failed", value: "Failed" },
+	{ label: "Running", value: "running" },
+	{ label: "Pending", value: "pending" },
+	{ label: "Stopped", value: "stopped" },
+	{ label: "Failed", value: "failed" },
 ];
 
 export function AgentFilters({

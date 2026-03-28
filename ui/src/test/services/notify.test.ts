@@ -26,10 +26,10 @@ function mockFetch(status: number, body: unknown) {
 
 const mockNotification: Notification = {
 	id: "notif-uuid-1",
-	source: "AskService",
-	lifetime: { type: "Persistent" },
-	priority: "Normal",
-	status: "Pending",
+	source: { type: "ask_service", request_id: "req-1" },
+	lifetime: { type: "persistent" },
+	priority: "normal",
+	status: "pending",
 	title: "Test Notification",
 	message: "Something happened",
 	requires_response: false,
@@ -80,10 +80,10 @@ describe("NotifyClient", () => {
 
 		it("passes status filter", async () => {
 			mockFetch(200, { ...paginatedNotifications, items: [] });
-			await client.listNotifications({ status: "Pending" });
+			await client.listNotifications({ status: "pending" });
 
 			const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
-			expect(calledUrl).toContain("status=Pending");
+			expect(calledUrl).toContain("status=pending");
 		});
 	});
 
@@ -91,9 +91,9 @@ describe("NotifyClient", () => {
 		it("calls POST /notifications", async () => {
 			mockFetch(201, mockNotification);
 			const result = await client.createNotification({
-				source: "System",
-				lifetime: { type: "Persistent" },
-				priority: "High",
+				source: { type: "system" },
+				lifetime: { type: "persistent" },
+				priority: "high",
 				title: "Alert",
 				message: "Critical update",
 				requires_response: true,
@@ -103,7 +103,7 @@ describe("NotifyClient", () => {
 			const callInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit;
 			expect(callInit.method).toBe("POST");
 			const body = JSON.parse(callInit.body as string);
-			expect(body.priority).toBe("High");
+			expect(body.priority).toBe("high");
 		});
 	});
 
@@ -120,12 +120,12 @@ describe("NotifyClient", () => {
 
 	describe("updateNotification", () => {
 		it("calls PUT /notifications/:id", async () => {
-			const updated = { ...mockNotification, status: "Viewed" as const };
+			const updated = { ...mockNotification, status: "viewed" as const };
 			mockFetch(200, updated);
 			const result = await client.updateNotification("notif-uuid-1", {
-				status: "Viewed",
+				status: "viewed",
 			});
-			expect(result.status).toBe("Viewed");
+			expect(result.status).toBe("viewed");
 
 			const callInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit;
 			expect(callInit.method).toBe("PUT");
@@ -193,12 +193,12 @@ describe("NotifyClient", () => {
 		it("handles Ephemeral lifetime with expires_at", async () => {
 			const ephemeral: Notification = {
 				...mockNotification,
-				lifetime: { type: "Ephemeral", expires_at: "2024-12-31T23:59:59Z" },
+				lifetime: { type: "ephemeral", expires_at: "2024-12-31T23:59:59Z" },
 			};
 			mockFetch(200, ephemeral);
 			const result = await client.getNotification("notif-uuid-1");
 			expect(result.lifetime).toEqual({
-				type: "Ephemeral",
+				type: "ephemeral",
 				expires_at: "2024-12-31T23:59:59Z",
 			});
 		});
