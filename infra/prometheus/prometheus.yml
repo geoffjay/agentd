@@ -3,6 +3,9 @@
 # Scrapes Prometheus /metrics endpoints from all agentd services that expose
 # them. Services run on their default development ports (170xx).
 #
+# This file can be regenerated for different environments via:
+#   ./generate-config.sh
+#
 # Usage:
 #   prometheus --config.file=infra/prometheus/prometheus.yml
 #
@@ -76,3 +79,11 @@ scrape_configs:
       - targets: ['127.0.0.1:17008']
         labels:
           service: 'memory'
+
+  # Monitor — system monitoring and health checks
+  # Default port: 17003
+  - job_name: 'agentd-monitor'
+    static_configs:
+      - targets: ['127.0.0.1:17003']
+        labels:
+          service: 'monitor'

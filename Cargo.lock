@@ -16,6 +16,7 @@ dependencies = [
  "axum",
  "chrono",
  "directories",
+ "metrics",
  "reqwest",
  "sea-orm",
  "sea-orm-migration",

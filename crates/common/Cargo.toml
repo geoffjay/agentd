@@ -20,5 +20,6 @@ chrono = { workspace = true }
 uuid = { version = "1.11", features = ["v4", "serde"] }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
+metrics = { workspace = true }
 directories = "6.0.0"
 tempfile = "3.14"
