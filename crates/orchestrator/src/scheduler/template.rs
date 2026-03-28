@@ -19,6 +19,10 @@ use crate::scheduler::types::Task;
 /// | `status`             | dispatch_result        | Completion status (`completed` or `failed`)    |
 /// | `timestamp`          | dispatch_result        | RFC 3339 timestamp of the completion event     |
 /// | `original_source_id` | dispatch_result        | Source ID from the parent dispatch (if any)    |
+/// | `file_path`          | file_watch             | Full path of the changed file                  |
+/// | `file_name`          | file_watch             | Basename of the changed file                   |
+/// | `file_dir`           | file_watch             | Parent directory of the changed file           |
+/// | `event_type`         | file_watch             | Event kind: `"create"`, `"modify"`, `"delete"` |
 /// | `action`             | webhook (GitHub/Linear)| Event action (e.g., `"opened"`, `"create"`)    |
 /// | `github_event`       | webhook (GitHub)       | GitHub event type (e.g., `"issues"`)           |
 /// | `delivery_id`        | webhook (GitHub)       | GitHub delivery UUID (`X-GitHub-Delivery`)     |
@@ -55,6 +59,11 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "status",
     "timestamp",
     "original_source_id",
+    // Metadata-backed (file_watch trigger)
+    "file_path",
+    "file_name",
+    "file_dir",
+    "event_type",
     // Metadata-backed (webhook triggers — GitHub)
     // Note: `action` is also used by Linear webhooks as `linear_action`; the
     // GitHub `action` key and the Linear `linear_action` key are kept separate

@@ -75,6 +75,8 @@ pub enum TriggerType {
     Manual,
     /// Agent idle trigger — fires after the agent is idle for N seconds.
     AgentIdle,
+    /// Filesystem change trigger — fires when files under watched paths change.
+    FileWatch,
     /// Linear issues trigger — polls Linear for matching issues.
     LinearIssues,
 }
@@ -696,6 +698,30 @@ pub enum OrchestratorCommand {
         #[arg(long)]
         idle_seconds: Option<u64>,
 
+        /// Paths to watch for filesystem changes — file-watch trigger only (repeatable)
+        #[arg(long = "watch-path", value_name = "PATH")]
+        watch_paths: Vec<String>,
+
+        /// Glob patterns to filter watched paths — file-watch trigger only (repeatable)
+        #[arg(long = "watch-pattern", value_name = "PATTERN")]
+        watch_patterns: Vec<String>,
+
+        /// Event kinds to watch for: create, modify, delete, access — file-watch trigger only (repeatable)
+        #[arg(long = "watch-event", value_name = "EVENT")]
+        watch_events: Vec<String>,
+
+        /// Debounce window in milliseconds — file-watch trigger only (default: 200)
+        #[arg(long, default_value = "200")]
+        debounce_ms: u64,
+
+        /// Watch backend: native, polling, or auto — file-watch trigger only (default: auto)
+        #[arg(long = "watch-mode", default_value = "auto")]
+        watch_mode: String,
+
+        /// Polling interval in seconds for file-watch polling mode (default: 5)
+        #[arg(long = "watch-poll-interval", default_value = "5")]
+        watch_poll_interval: u64,
+
         /// Prompt template with {{placeholders}} (e.g. "Fix: {{title}}\n{{body}}")
         #[arg(long, conflicts_with = "prompt_template_file")]
         prompt_template: Option<String>,
@@ -935,6 +961,12 @@ impl OrchestratorCommand {
                 linear_labels,
                 linear_assignee,
                 idle_seconds,
+                watch_paths,
+                watch_patterns,
+                watch_events,
+                debounce_ms,
+                watch_mode,
+                watch_poll_interval,
                 prompt_template,
                 prompt_template_file,
                 poll_interval,
@@ -959,6 +991,12 @@ impl OrchestratorCommand {
                     linear_labels,
                     linear_assignee.as_deref(),
                     *idle_seconds,
+                    watch_paths,
+                    watch_patterns,
+                    watch_events,
+                    *debounce_ms,
+                    watch_mode,
+                    *watch_poll_interval,
                     prompt_template.as_deref(),
                     prompt_template_file.as_deref(),
                     *poll_interval,
@@ -2279,6 +2317,12 @@ async fn create_workflow(
     linear_labels: &[String],
     linear_assignee: Option<&str>,
     idle_seconds: Option<u64>,
+    watch_paths: &[String],
+    watch_patterns: &[String],
+    watch_events: &[String],
+    debounce_ms: u64,
+    watch_mode: &str,
+    watch_poll_interval: u64,
     prompt_template: Option<&str>,
     prompt_template_file: Option<&std::path::Path>,
     poll_interval: u64,
@@ -2348,6 +2392,23 @@ async fn create_workflow(
                 bail!("--idle-seconds must be greater than 0");
             }
             TriggerConfig::AgentIdle { idle_seconds: secs }
+        }
+        TriggerType::FileWatch => {
+            if watch_paths.is_empty() {
+                bail!("--watch-path is required for file-watch trigger (use --watch-path PATH)");
+            }
+            let valid_modes = ["native", "polling", "auto"];
+            if !valid_modes.contains(&watch_mode) {
+                bail!("--watch-mode must be one of: native, polling, auto (got '{}')", watch_mode);
+            }
+            TriggerConfig::FileWatch {
+                paths: watch_paths.to_vec(),
+                patterns: watch_patterns.to_vec(),
+                events: watch_events.to_vec(),
+                debounce_ms,
+                mode: watch_mode.to_string(),
+                poll_interval_secs: watch_poll_interval,
+            }
         }
         TriggerType::LinearIssues => {
             // At least one filter must be provided (validated server-side too,
@@ -2722,6 +2783,27 @@ fn display_workflow(workflow: &WorkflowResponse) {
         TriggerConfig::Manual {} => {}
         TriggerConfig::AgentIdle { idle_seconds } => {
             println!("{}: {}s", "Idle Timeout".bold(), idle_seconds);
+        }
+        TriggerConfig::FileWatch {
+            paths,
+            patterns,
+            events,
+            debounce_ms,
+            mode,
+            poll_interval_secs,
+        } => {
+            println!("{}: {}", "Paths".bold(), paths.join(", "));
+            if !patterns.is_empty() {
+                println!("{}: {}", "Patterns".bold(), patterns.join(", "));
+            }
+            if !events.is_empty() {
+                println!("{}: {}", "Events".bold(), events.join(", "));
+            }
+            println!("{}: {}ms", "Debounce".bold(), debounce_ms);
+            println!("{}: {}", "Watch Mode".bold(), mode);
+            if mode == "polling" || mode == "auto" {
+                println!("{}: {}s", "Poll Interval".bold(), poll_interval_secs);
+            }
         }
         TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } => {
             if let Some(tk) = team_key {
@@ -4049,19 +4131,25 @@ mod tests {
             Some("550e8400-e29b-41d4-a716-446655440000"),
             None,
             &TriggerType::LinearIssues,
-            None, // owner
-            None, // repo
-            None, // labels
-            None, // state
-            None, // cron_expression
-            None, // run_at
-            None, // webhook_secret
-            None, // team_key
-            None, // linear_project
-            &[],  // linear_status
-            &[],  // linear_labels
-            None, // linear_assignee
-            None, // idle_seconds
+            None,   // owner
+            None,   // repo
+            None,   // labels
+            None,   // state
+            None,   // cron_expression
+            None,   // run_at
+            None,   // webhook_secret
+            None,   // team_key
+            None,   // linear_project
+            &[],    // linear_status
+            &[],    // linear_labels
+            None,   // linear_assignee
+            None,   // idle_seconds
+            &[],    // watch_paths
+            &[],    // watch_patterns
+            &[],    // watch_events
+            200,    // debounce_ms
+            "auto", // watch_mode
+            5,      // watch_poll_interval
             Some("Fix: {{title}}"),
             None, // prompt_template_file
             60,
@@ -4120,19 +4208,25 @@ mod tests {
             Some("550e8400-e29b-41d4-a716-446655440000"),
             None,
             &TriggerType::AgentIdle,
-            None, // owner
-            None, // repo
-            None, // labels
-            None, // state
-            None, // cron_expression
-            None, // run_at
-            None, // webhook_secret
-            None, // team_key
-            None, // linear_project
-            &[],  // linear_status
-            &[],  // linear_labels
-            None, // linear_assignee
-            None, // idle_seconds — missing!
+            None,   // owner
+            None,   // repo
+            None,   // labels
+            None,   // state
+            None,   // cron_expression
+            None,   // run_at
+            None,   // webhook_secret
+            None,   // team_key
+            None,   // linear_project
+            &[],    // linear_status
+            &[],    // linear_labels
+            None,   // linear_assignee
+            None,   // idle_seconds — missing!
+            &[],    // watch_paths
+            &[],    // watch_patterns
+            &[],    // watch_events
+            200,    // debounce_ms
+            "auto", // watch_mode
+            5,      // watch_poll_interval
             Some("Do background work"),
             None, // prompt_template_file
             60,
@@ -4169,6 +4263,12 @@ mod tests {
             &[],     // linear_labels
             None,    // linear_assignee
             Some(0), // idle_seconds = 0 (invalid)
+            &[],     // watch_paths
+            &[],     // watch_patterns
+            &[],     // watch_events
+            200,     // debounce_ms
+            "auto",  // watch_mode
+            5,       // watch_poll_interval
             Some("Do background work"),
             None, // prompt_template_file
             60,

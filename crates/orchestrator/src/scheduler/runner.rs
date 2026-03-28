@@ -4,8 +4,8 @@ use crate::scheduler::linear::LinearIssueSource;
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
 use crate::scheduler::strategy::{
-    CronStrategy, DelayStrategy, EventFilter, EventStrategy, IdleStrategy, PollingStrategy,
-    TriggerStrategy,
+    CronStrategy, DelayStrategy, EventFilter, EventStrategy, FileWatchStrategy, IdleStrategy,
+    PollingStrategy, TriggerStrategy, WatchMode,
 };
 use crate::scheduler::template::render_template;
 use crate::scheduler::types::{
@@ -341,6 +341,30 @@ pub fn create_strategy(
                 .ok_or_else(|| anyhow::anyhow!("EventBus is required for agent_idle triggers"))?;
             let duration = std::time::Duration::from_secs(*idle_seconds);
             Ok(Box::new(IdleStrategy::new(bus.clone(), config.agent_id, duration)))
+        }
+        TriggerConfig::FileWatch {
+            paths,
+            patterns,
+            events,
+            debounce_ms,
+            mode,
+            poll_interval_secs,
+        } => {
+            let watch_paths: Vec<std::path::PathBuf> =
+                paths.iter().map(std::path::PathBuf::from).collect();
+            let pats = if patterns.is_empty() { None } else { Some(patterns.clone()) };
+            let watch_mode = match mode.as_str() {
+                "native" => WatchMode::Native,
+                "polling" => WatchMode::Polling { interval_secs: *poll_interval_secs },
+                _ => WatchMode::Auto { poll_interval_secs: *poll_interval_secs },
+            };
+            Ok(Box::new(FileWatchStrategy::new(
+                watch_paths,
+                pats,
+                events.clone(),
+                *debounce_ms,
+                watch_mode,
+            )?))
         }
         _ => {
             let source = create_source(&config.trigger_config)?;
