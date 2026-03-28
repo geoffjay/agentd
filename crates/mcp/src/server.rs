@@ -6,7 +6,7 @@
 
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
-use crate::tools::diagnostic;
+use crate::tools::{approvals, diagnostic};
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
     tool, ServerHandler,
@@ -74,6 +74,58 @@ impl AgentdMcp {
     )]
     async fn check_connectivity(&self) -> String {
         diagnostic::run_check_connectivity(&self.client).await
+    }
+
+    // ── Approval management ─────────────────────────────────────────────
+
+    /// List all pending tool approval requests across all agents.
+    #[tool(
+        description = "List all pending tool approval requests across all agents. Shows tool name, input summary, requesting agent, and expiry time. Use approve_tool_request or deny_tool_request to action items."
+    )]
+    async fn list_pending_approvals(&self) -> String {
+        approvals::run_list_pending_approvals(&self.client).await
+    }
+
+    /// List pending tool approval requests for a specific agent.
+    #[tool(
+        description = "List pending tool approval requests for a specific agent. Useful when diagnosing why an agent appears blocked."
+    )]
+    async fn get_agent_approvals(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The agent ID (UUID) whose approvals to list")]
+        agent_id: String,
+    ) -> String {
+        approvals::run_get_agent_approvals(&self.client, &agent_id).await
+    }
+
+    /// Approve a pending tool use request, allowing the agent to proceed.
+    #[tool(
+        description = "Approve a pending tool use request, allowing the agent to proceed with the tool invocation. The agent will resume execution once approved."
+    )]
+    async fn approve_tool_request(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The approval request ID (UUID) to approve")]
+        approval_id: String,
+    ) -> String {
+        approvals::run_approve_tool_request(&self.client, &approval_id).await
+    }
+
+    /// Deny a pending tool use request with an optional reason.
+    #[tool(
+        description = "Deny a pending tool use request, preventing the agent from using the tool. An optional reason is sent back to the agent."
+    )]
+    async fn deny_tool_request(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The approval request ID (UUID) to deny")]
+        approval_id: String,
+        #[tool(param)]
+        #[schemars(description = "Optional reason for denial, sent back to the agent")]
+        reason: Option<String>,
+    ) -> String {
+        approvals::run_deny_tool_request(&self.client, &approval_id, reason.as_deref()).await
     }
 }
 
