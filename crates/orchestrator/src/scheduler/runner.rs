@@ -213,6 +213,7 @@ impl WorkflowRunner {
                     "Failed to send prompt to agent"
                 );
                 // Mark dispatch as failed and clear busy.
+                metrics::counter!("workflow_dispatches_total", "status" => "failed").increment(1);
                 let _ = self
                     .storage
                     .update_dispatch_status(&record.id, DispatchStatus::Failed, Some(Utc::now()))
@@ -222,6 +223,8 @@ impl WorkflowRunner {
                 busy.active_source_id = None;
                 return Err(e);
             }
+
+            metrics::counter!("workflow_dispatches_total", "status" => "dispatched").increment(1);
 
             info!(
                 workflow_id = %self.config.id,
@@ -251,6 +254,8 @@ pub async fn notify_complete(
 
     if let Some(id) = dispatch_id {
         let status = if is_error { DispatchStatus::Failed } else { DispatchStatus::Completed };
+        let status_label = if is_error { "failed" } else { "completed" };
+        metrics::counter!("workflow_dispatches_total", "status" => status_label).increment(1);
         if let Err(e) = storage.update_dispatch_status(&id, status, Some(Utc::now())).await {
             error!(%id, %e, "Failed to update dispatch status on completion");
         }

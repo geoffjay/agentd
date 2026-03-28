@@ -54,6 +54,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = create_router(api_state)
         .merge(metrics_router)
+        .layer(agentd_common::server::metrics_layer())
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 

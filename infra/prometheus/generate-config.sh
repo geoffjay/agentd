@@ -169,7 +169,9 @@ scrape_configs:
           service: 'memory'
 
   # Monitor — system monitoring and health checks
+  # Uses /prom-metrics to avoid conflict with the JSON /metrics endpoint
   - job_name: 'agentd-monitor'
+    metrics_path: '/prom-metrics'
     static_configs:
       - targets: ['${TARGET_MONITOR}']
         labels:

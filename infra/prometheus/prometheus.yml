@@ -82,7 +82,9 @@ scrape_configs:
 
   # Monitor — system monitoring and health checks
   # Default port: 17003
+  # Uses /prom-metrics to avoid conflict with the JSON /metrics endpoint
   - job_name: 'agentd-monitor'
+    metrics_path: '/prom-metrics'
     static_configs:
       - targets: ['127.0.0.1:17003']
         labels:

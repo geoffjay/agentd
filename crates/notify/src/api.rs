@@ -523,7 +523,8 @@ async fn update_notification(
 
     // Update pending gauge after update
     if let Ok(counts) = state.storage.count().await {
-        let pending: usize = counts.iter()
+        let pending: usize = counts
+            .iter()
             .filter(|(status, _)| matches!(status, NotificationStatus::Pending))
             .map(|(_, count)| count)
             .sum();
