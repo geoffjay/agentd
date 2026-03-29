@@ -156,9 +156,9 @@ async fn create_workflow(
             fn check_depth(tc: &TriggerConfig, depth: usize) -> Result<(), String> {
                 if let TriggerConfig::Composite { triggers, .. } = tc {
                     if depth >= 3 {
-                        return Err(format!(
-                            "Composite trigger nesting exceeds maximum depth of 3"
-                        ));
+                        return Err(
+                            "Composite trigger nesting exceeds maximum depth of 3".to_string()
+                        );
                     }
                     for sub in triggers {
                         check_depth(sub, depth + 1)?;
