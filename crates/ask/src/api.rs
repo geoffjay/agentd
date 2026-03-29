@@ -134,7 +134,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/trigger", post(trigger_checks))
         .route("/answer", post(answer_question))
         .route("/questions", get(list_questions))
-        .route("/questions/:id", get(get_question_by_id))
+        .route("/questions/{id}", get(get_question_by_id))
         .with_state(state)
 }
 
