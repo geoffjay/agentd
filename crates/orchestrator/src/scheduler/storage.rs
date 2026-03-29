@@ -6,14 +6,16 @@
 //! [`crate::migration::Migrator`] that runs at startup.
 
 use crate::{
-    entity::{dispatch as dispatch_entity, workflow as workflow_entity},
+    entity::{
+        dispatch as dispatch_entity, task_queue as queue_entity, workflow as workflow_entity,
+    },
     scheduler::types::{DispatchRecord, DispatchStatus, WorkflowConfig},
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -278,6 +280,199 @@ impl SchedulerStorage {
 
         Ok(result.rows_affected)
     }
+
+    // -- Queue operations --
+
+    /// Inserts a task into the named queue and returns the task ID.
+    pub async fn enqueue(
+        &self,
+        queue_name: &str,
+        title: &str,
+        body: Option<&str>,
+        priority: i32,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let model = queue_entity::ActiveModel {
+            id: Set(id.clone()),
+            queue_name: Set(queue_name.to_string()),
+            title: Set(title.to_string()),
+            body: Set(body.map(str::to_string)),
+            priority: Set(priority),
+            status: Set(queue_entity::STATUS_PENDING.to_string()),
+            visibility_timeout_at: Set(None),
+            retry_count: Set(0),
+            max_retries: Set(3),
+            created_at: Set(now.clone()),
+            updated_at: Set(now),
+        };
+
+        queue_entity::Entity::insert(model).exec(&self.db).await?;
+        Ok(id)
+    }
+
+    /// Atomically claims the highest-priority oldest pending task from the queue.
+    ///
+    /// The task is marked as `processing` with a visibility timeout. Returns
+    /// `None` if the queue has no pending tasks.
+    pub async fn dequeue(
+        &self,
+        queue_name: &str,
+        visibility_timeout_secs: u64,
+    ) -> Result<Option<queue_entity::Model>> {
+        let timeout_at = (chrono::Utc::now()
+            + chrono::Duration::seconds(visibility_timeout_secs as i64))
+        .to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339();
+        let now_str = chrono::Utc::now().to_rfc3339();
+
+        // Use a transaction to atomically claim the next task.
+        let db = &self.db;
+        let result = db
+            .transaction::<_, Option<queue_entity::Model>, sea_orm::DbErr>(|txn| {
+                let queue_name = queue_name.to_string();
+                let timeout_at = timeout_at.clone();
+                let now = now.clone();
+
+                Box::pin(async move {
+                    // Find the best candidate (highest priority, then oldest).
+                    let candidate = queue_entity::Entity::find()
+                        .filter(queue_entity::Column::QueueName.eq(&queue_name))
+                        .filter(queue_entity::Column::Status.eq(queue_entity::STATUS_PENDING))
+                        .order_by(queue_entity::Column::Priority, Order::Desc)
+                        .order_by(queue_entity::Column::CreatedAt, Order::Asc)
+                        .one(txn)
+                        .await?;
+
+                    let Some(row) = candidate else {
+                        return Ok(None);
+                    };
+
+                    // Claim it.
+                    let mut active: queue_entity::ActiveModel = row.into();
+                    active.status = Set(queue_entity::STATUS_PROCESSING.to_string());
+                    active.visibility_timeout_at = Set(Some(timeout_at));
+                    active.updated_at = Set(now);
+                    let updated = active.update(txn).await?;
+                    Ok(Some(updated))
+                })
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Dequeue transaction failed: {}", e))?;
+
+        let _ = now_str; // suppress unused warning
+        Ok(result)
+    }
+
+    /// Marks a queue task as completed and removes it from the queue.
+    pub async fn complete_queue_task(&self, id: &str) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let result = queue_entity::Entity::update_many()
+            .col_expr(queue_entity::Column::Status, Expr::value(queue_entity::STATUS_COMPLETED))
+            .col_expr(queue_entity::Column::UpdatedAt, Expr::value(now))
+            .filter(queue_entity::Column::Id.eq(id))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
+            anyhow::bail!("Queue task not found: {}", id);
+        }
+        Ok(())
+    }
+
+    /// Increments retry count; requeues the task or moves it to dead letter.
+    pub async fn fail_queue_task(&self, id: &str) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // Load the current task to check retry count.
+        let task = queue_entity::Entity::find_by_id(id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Queue task not found: {}", id))?;
+
+        let new_retry = task.retry_count + 1;
+        let new_status = if new_retry >= task.max_retries {
+            queue_entity::STATUS_DEAD
+        } else {
+            queue_entity::STATUS_PENDING
+        };
+
+        queue_entity::Entity::update_many()
+            .col_expr(queue_entity::Column::Status, Expr::value(new_status))
+            .col_expr(queue_entity::Column::RetryCount, Expr::value(new_retry))
+            .col_expr(
+                queue_entity::Column::VisibilityTimeoutAt,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(queue_entity::Column::UpdatedAt, Expr::value(now))
+            .filter(queue_entity::Column::Id.eq(id))
+            .exec(&self.db)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Returns up to `limit` pending tasks without claiming them.
+    pub async fn peek_queue(
+        &self,
+        queue_name: &str,
+        limit: u64,
+    ) -> Result<Vec<queue_entity::Model>> {
+        let tasks = queue_entity::Entity::find()
+            .filter(queue_entity::Column::QueueName.eq(queue_name))
+            .filter(queue_entity::Column::Status.eq(queue_entity::STATUS_PENDING))
+            .order_by(queue_entity::Column::Priority, Order::Desc)
+            .order_by(queue_entity::Column::CreatedAt, Order::Asc)
+            .limit(limit)
+            .all(&self.db)
+            .await?;
+        Ok(tasks)
+    }
+
+    /// Deletes all tasks in the named queue regardless of status.
+    pub async fn purge_queue(&self, queue_name: &str) -> Result<u64> {
+        let result = queue_entity::Entity::delete_many()
+            .filter(queue_entity::Column::QueueName.eq(queue_name))
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// Returns task counts by status for the named queue.
+    pub async fn queue_stats(&self, queue_name: &str) -> Result<QueueStats> {
+        let all = queue_entity::Entity::find()
+            .filter(queue_entity::Column::QueueName.eq(queue_name))
+            .all(&self.db)
+            .await?;
+
+        let mut stats = QueueStats::default();
+        for task in &all {
+            match task.status.as_str() {
+                queue_entity::STATUS_PENDING => stats.pending += 1,
+                queue_entity::STATUS_PROCESSING => stats.processing += 1,
+                queue_entity::STATUS_COMPLETED => stats.completed += 1,
+                queue_entity::STATUS_FAILED => stats.failed += 1,
+                queue_entity::STATUS_DEAD => stats.dead += 1,
+                _ => {}
+            }
+        }
+        Ok(stats)
+    }
+}
+
+/// Counts of queue tasks by status.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct QueueStats {
+    pub pending: u64,
+    pub processing: u64,
+    pub completed: u64,
+    pub failed: u64,
+    pub dead: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -455,5 +650,190 @@ mod tests {
 
         let updated = storage.list_dispatches(&workflow.id).await.unwrap();
         assert_eq!(updated[0].status, DispatchStatus::Failed);
+    }
+
+    // -----------------------------------------------------------------------
+    // Queue storage tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_enqueue_dequeue_fifo() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        // Enqueue three tasks at the same priority (FIFO order expected).
+        storage.enqueue("q1", "Task A", None, 0).await.unwrap();
+        storage.enqueue("q1", "Task B", None, 0).await.unwrap();
+        storage.enqueue("q1", "Task C", None, 0).await.unwrap();
+
+        let first = storage.dequeue("q1", 60).await.unwrap().unwrap();
+        assert_eq!(first.title, "Task A");
+
+        let second = storage.dequeue("q1", 60).await.unwrap().unwrap();
+        assert_eq!(second.title, "Task B");
+
+        let third = storage.dequeue("q1", 60).await.unwrap().unwrap();
+        assert_eq!(third.title, "Task C");
+
+        // Queue is now empty.
+        assert!(storage.dequeue("q1", 60).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_priority_ordering() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        // Enqueue tasks with different priorities.
+        storage.enqueue("prio", "Low", None, 1).await.unwrap();
+        storage.enqueue("prio", "High", None, 10).await.unwrap();
+        storage.enqueue("prio", "Medium", None, 5).await.unwrap();
+
+        // Higher priority should be dequeued first.
+        let first = storage.dequeue("prio", 60).await.unwrap().unwrap();
+        assert_eq!(first.title, "High");
+        assert_eq!(first.priority, 10);
+
+        let second = storage.dequeue("prio", 60).await.unwrap().unwrap();
+        assert_eq!(second.title, "Medium");
+
+        let third = storage.dequeue("prio", 60).await.unwrap().unwrap();
+        assert_eq!(third.title, "Low");
+    }
+
+    #[tokio::test]
+    async fn test_visibility_timeout_prevents_double_processing() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        storage.enqueue("vis", "Task X", Some("body"), 0).await.unwrap();
+
+        // Dequeue with a 60-second visibility timeout.
+        let task = storage.dequeue("vis", 60).await.unwrap().unwrap();
+        assert_eq!(task.title, "Task X");
+        assert_eq!(task.status, "processing");
+
+        // A second dequeue should return None (task is still in the processing window).
+        let again = storage.dequeue("vis", 60).await.unwrap();
+        assert!(again.is_none(), "Expected None — task should be invisible while processing");
+    }
+
+    #[tokio::test]
+    async fn test_complete_queue_task() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        let id = storage.enqueue("done", "Finish me", None, 0).await.unwrap();
+        storage.dequeue("done", 60).await.unwrap().unwrap();
+
+        storage.complete_queue_task(&id).await.unwrap();
+
+        let stats = storage.queue_stats("done").await.unwrap();
+        assert_eq!(stats.completed, 1);
+        assert_eq!(stats.processing, 0);
+        assert_eq!(stats.pending, 0);
+    }
+
+    #[tokio::test]
+    async fn test_fail_task_retry_and_dead_letter() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        let id = storage.enqueue("retry", "Retry me", None, 0).await.unwrap();
+
+        // Fail 3 times — default max_retries is 3, so after 3 failures it's dead.
+        for _ in 0..3 {
+            storage.dequeue("retry", 60).await.unwrap().unwrap();
+            storage.fail_queue_task(&id).await.unwrap();
+        }
+
+        let stats = storage.queue_stats("retry").await.unwrap();
+        assert_eq!(stats.dead, 1, "Task should be dead after exceeding max_retries");
+        assert_eq!(stats.pending, 0);
+    }
+
+    #[tokio::test]
+    async fn test_peek_queue() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        storage.enqueue("peek", "First", None, 0).await.unwrap();
+        storage.enqueue("peek", "Second", None, 0).await.unwrap();
+
+        let items = storage.peek_queue("peek", 10).await.unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].title, "First");
+        assert_eq!(items[1].title, "Second");
+
+        // Peeking should not consume the tasks.
+        let items_again = storage.peek_queue("peek", 10).await.unwrap();
+        assert_eq!(items_again.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_peek_limit() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        for i in 0..5 {
+            storage.enqueue("lim", &format!("Task {i}"), None, 0).await.unwrap();
+        }
+
+        let items = storage.peek_queue("lim", 3).await.unwrap();
+        assert_eq!(items.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_purge_queue() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        storage.enqueue("purge", "A", None, 0).await.unwrap();
+        storage.enqueue("purge", "B", None, 0).await.unwrap();
+        storage.enqueue("purge", "C", None, 0).await.unwrap();
+
+        let deleted = storage.purge_queue("purge").await.unwrap();
+        assert_eq!(deleted, 3);
+
+        let stats = storage.queue_stats("purge").await.unwrap();
+        assert_eq!(stats.pending, 0);
+    }
+
+    #[tokio::test]
+    async fn test_queue_stats_all_statuses() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        // Enqueue 2 tasks.
+        let id1 = storage.enqueue("stats", "T1", None, 0).await.unwrap();
+        let id2 = storage.enqueue("stats", "T2", None, 0).await.unwrap();
+
+        // Dequeue both — now processing.
+        storage.dequeue("stats", 300).await.unwrap();
+        storage.dequeue("stats", 300).await.unwrap();
+
+        // Complete one.
+        storage.complete_queue_task(&id1).await.unwrap();
+
+        // Fail the other until it's dead.
+        for _ in 0..3 {
+            // Re-dequeue (after each fail, it goes back to pending except on final fail)
+            if let Some(row) = storage.dequeue("stats", 300).await.unwrap() {
+                let _ = row; // claim it
+            }
+            storage.fail_queue_task(&id2).await.unwrap();
+        }
+
+        let stats = storage.queue_stats("stats").await.unwrap();
+        assert_eq!(stats.completed, 1);
+        assert_eq!(stats.dead, 1);
+    }
+
+    #[tokio::test]
+    async fn test_queue_isolation() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        storage.enqueue("q-a", "From A", None, 0).await.unwrap();
+        storage.enqueue("q-b", "From B", None, 0).await.unwrap();
+
+        // Dequeue from q-a should only return q-a tasks.
+        let task = storage.dequeue("q-a", 60).await.unwrap().unwrap();
+        assert_eq!(task.queue_name, "q-a");
+        assert_eq!(task.title, "From A");
+
+        // q-b is still untouched.
+        let stats_b = storage.queue_stats("q-b").await.unwrap();
+        assert_eq!(stats_b.pending, 1);
     }
 }
