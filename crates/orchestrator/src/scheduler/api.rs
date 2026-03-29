@@ -1,5 +1,6 @@
 use crate::api::ApiError;
 use crate::manager::AgentManager;
+use crate::scheduler::storage::QueueStats;
 use crate::scheduler::template::validate_template;
 use crate::scheduler::types::{WebhookSource, *};
 use crate::scheduler::webhook;
@@ -10,11 +11,11 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use chrono::Utc;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
@@ -135,6 +136,20 @@ async fn create_workflow(
                     "Linear trigger requires at least one filter: \
                      team_key, project, status, labels, or assignee."
                         .to_string(),
+                ));
+            }
+        }
+        TriggerConfig::Queue { queue_name, .. } => {
+            if queue_name.trim().is_empty() {
+                return Err(ApiError::InvalidInput(
+                    "Queue trigger requires a non-empty 'queue_name'".to_string(),
+                ));
+            }
+            if !queue_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                || queue_name.len() > 64
+            {
+                return Err(ApiError::InvalidInput(
+                    "Queue name may only contain alphanumeric characters and hyphens (max 64 chars)".to_string(),
                 ));
             }
         }
@@ -493,4 +508,155 @@ async fn handle_webhook(
     })?;
 
     Ok(StatusCode::ACCEPTED)
+}
+
+// ---------------------------------------------------------------------------
+// Queue endpoints
+// ---------------------------------------------------------------------------
+
+/// Validates a queue name: alphanumeric + hyphens, 1–64 characters.
+fn validate_queue_name(name: &str) -> Result<(), ApiError> {
+    if name.is_empty() || name.len() > 64 {
+        return Err(ApiError::InvalidInput("Queue name must be 1–64 characters long".to_string()));
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(ApiError::InvalidInput(
+            "Queue name may only contain alphanumeric characters and hyphens".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Request body for `POST /queues/{name}/push`.
+#[derive(Deserialize)]
+struct PushQueueRequest {
+    title: String,
+    body: Option<String>,
+    #[serde(default)]
+    priority: i32,
+}
+
+/// Response for a newly enqueued task.
+#[derive(Serialize)]
+struct QueueTaskResponse {
+    id: String,
+    queue_name: String,
+    status: String,
+    created_at: String,
+}
+
+/// Query params for `GET /queues/{name}/peek`.
+#[derive(Deserialize)]
+struct PeekParams {
+    limit: Option<u64>,
+}
+
+/// Response item for a peeked queue task.
+#[derive(Serialize)]
+struct QueueTaskItem {
+    id: String,
+    queue_name: String,
+    title: String,
+    body: Option<String>,
+    priority: i32,
+    status: String,
+    retry_count: i32,
+    max_retries: i32,
+    created_at: String,
+}
+
+/// Routes for queue management endpoints.
+pub fn queue_routes(state: WorkflowState) -> Router {
+    Router::new()
+        .route("/queues/{name}/push", post(push_queue))
+        .route("/queues/{name}/stats", get(queue_stats))
+        .route("/queues/{name}/peek", get(peek_queue))
+        .route("/queues/{name}", delete(purge_queue))
+        .with_state(state)
+}
+
+/// `POST /queues/{name}/push` — enqueue a task.
+async fn push_queue(
+    State(state): State<WorkflowState>,
+    Path(name): Path<String>,
+    Json(req): Json<PushQueueRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_queue_name(&name)?;
+
+    if req.title.trim().is_empty() {
+        return Err(ApiError::InvalidInput("Task title must not be empty".to_string()));
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let id = state
+        .scheduler
+        .storage()
+        .enqueue(&name, &req.title, req.body.as_deref(), req.priority)
+        .await?;
+
+    info!(queue_name = %name, task_id = %id, "Task enqueued");
+
+    Ok((
+        StatusCode::CREATED,
+        Json(QueueTaskResponse {
+            id,
+            queue_name: name,
+            status: "pending".to_string(),
+            created_at: now,
+        }),
+    ))
+}
+
+/// `GET /queues/{name}/stats` — return counts by status.
+async fn queue_stats(
+    State(state): State<WorkflowState>,
+    Path(name): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_queue_name(&name)?;
+
+    let stats: QueueStats = state.scheduler.storage().queue_stats(&name).await?;
+    Ok(Json(stats))
+}
+
+/// `GET /queues/{name}/peek?limit=N` — view pending tasks without claiming.
+async fn peek_queue(
+    State(state): State<WorkflowState>,
+    Path(name): Path<String>,
+    Query(params): Query<PeekParams>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_queue_name(&name)?;
+
+    let limit = params.limit.unwrap_or(10).min(100);
+    let tasks = state.scheduler.storage().peek_queue(&name, limit).await?;
+
+    let items: Vec<QueueTaskItem> = tasks
+        .into_iter()
+        .map(|t| QueueTaskItem {
+            id: t.id,
+            queue_name: t.queue_name,
+            title: t.title,
+            body: t.body,
+            priority: t.priority,
+            status: t.status,
+            retry_count: t.retry_count,
+            max_retries: t.max_retries,
+            created_at: t.created_at,
+        })
+        .collect();
+
+    Ok(Json(items))
+}
+
+/// `DELETE /queues/{name}` — purge all tasks from the queue.
+async fn purge_queue(
+    State(state): State<WorkflowState>,
+    Path(name): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_queue_name(&name)?;
+
+    let deleted = state.scheduler.storage().purge_queue(&name).await?;
+
+    info!(queue_name = %name, deleted, "Queue purged");
+
+    Ok(Json(serde_json::json!({ "deleted": deleted })))
 }

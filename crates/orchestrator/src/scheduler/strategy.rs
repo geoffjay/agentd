@@ -2131,4 +2131,98 @@ mod tests {
         assert!(r1[0].source_id.starts_with("idle:"));
         assert!(r2[0].source_id.starts_with("idle:"));
     }
+
+    // -----------------------------------------------------------------------
+    // QueueStrategy tests
+    // -----------------------------------------------------------------------
+
+    use crate::scheduler::storage::SchedulerStorage;
+    use crate::storage::AgentStorage;
+    use tempfile::TempDir;
+
+    async fn create_queue_storage() -> (SchedulerStorage, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let agent_storage = AgentStorage::with_path(&db_path).await.unwrap();
+        let storage = SchedulerStorage::new(agent_storage.db().clone());
+        (storage, temp_dir)
+    }
+
+    #[tokio::test]
+    async fn queue_strategy_produces_task_from_queue() {
+        let (storage, _tmp) = create_queue_storage().await;
+
+        // Pre-populate the queue.
+        storage.enqueue("test-q", "My Task", Some("some body"), 0).await.unwrap();
+
+        let mut strategy =
+            QueueStrategy::new(storage, "test-q".to_string(), Duration::from_millis(10), 60);
+        let (_tx, rx) = watch::channel(false);
+
+        let tasks = strategy.next_tasks(&rx).await.unwrap();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].title, "My Task");
+        assert_eq!(tasks[0].body, "some body");
+        assert!(tasks[0].source_id.starts_with("queue:test-q:"));
+        assert_eq!(tasks[0].metadata.get("queue_name").map(|s| s.as_str()), Some("test-q"));
+        assert!(tasks[0].metadata.contains_key("queue_task_id"));
+        assert!(tasks[0].metadata.contains_key("queue_priority"));
+    }
+
+    #[tokio::test]
+    async fn queue_strategy_polls_when_empty_then_picks_up_task() {
+        let (storage, _tmp) = create_queue_storage().await;
+        let storage_clone = storage.clone();
+
+        let mut strategy =
+            QueueStrategy::new(storage, "delayed-q".to_string(), Duration::from_millis(20), 60);
+        let (_tx, rx) = watch::channel(false);
+
+        // Enqueue a task in a background task after a short delay.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            storage_clone.enqueue("delayed-q", "Delayed Task", None, 0).await.unwrap();
+        });
+
+        let tasks = strategy.next_tasks(&rx).await.unwrap();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].title, "Delayed Task");
+    }
+
+    #[tokio::test]
+    async fn queue_strategy_shuts_down_cleanly_when_queue_empty() {
+        let (storage, _tmp) = create_queue_storage().await;
+
+        let mut strategy =
+            QueueStrategy::new(storage, "empty-q".to_string(), Duration::from_millis(10), 60);
+
+        // Signal shutdown immediately.
+        let (tx, rx) = watch::channel(false);
+        tx.send(true).unwrap();
+
+        let result = strategy.next_tasks(&rx).await;
+        // With shutdown signalled, next_tasks may return an error or empty vec —
+        // it should not hang indefinitely.
+        let _ = result; // Just verify it returns at all.
+    }
+
+    #[tokio::test]
+    async fn queue_strategy_task_metadata_includes_priority() {
+        let (storage, _tmp) = create_queue_storage().await;
+
+        storage.enqueue("meta-q", "High Priority Task", None, 99).await.unwrap();
+
+        let mut strategy =
+            QueueStrategy::new(storage, "meta-q".to_string(), Duration::from_millis(10), 60);
+        let (_tx, rx) = watch::channel(false);
+
+        let tasks = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(tasks.len(), 1);
+
+        let priority =
+            tasks[0].metadata.get("queue_priority").expect("queue_priority should be in metadata");
+        assert_eq!(priority, "99");
+    }
 }
