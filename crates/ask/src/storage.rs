@@ -221,6 +221,7 @@ fn str_to_status(s: &str) -> Result<QuestionStatus> {
 fn str_to_check_type(s: &str) -> Result<CheckType> {
     match s {
         "tmux_sessions" => Ok(CheckType::TmuxSessions),
+        "service_health" => Ok(CheckType::ServiceHealth),
         other => anyhow::bail!("Unknown check type: {}", other),
     }
 }

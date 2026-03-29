@@ -1,5 +1,6 @@
 use ask::{
     api::{create_router, ApiState},
+    checks::CheckRegistry,
     notification_client::NotificationClient,
     state::AppState,
     types::*,
@@ -12,6 +13,7 @@ use chrono::{Duration, Utc};
 use http_body_util::BodyExt;
 use mockito::Server;
 use serde_json::Value;
+use std::sync::Arc;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -31,6 +33,7 @@ async fn test_health_endpoint() {
         app_state,
         notification_client,
         notification_service_url: "http://localhost:17004".to_string(),
+        check_registry: Arc::new(CheckRegistry::new()),
     };
 
     let app = create_router(api_state);
@@ -79,8 +82,12 @@ async fn test_trigger_with_no_sessions_sends_notification() {
 
     let app_state = AppState::new();
     let notification_client = NotificationClient::new(mock_server.url());
-    let api_state =
-        ApiState { app_state, notification_client, notification_service_url: mock_server.url() };
+    let api_state = ApiState {
+        app_state,
+        notification_client,
+        notification_service_url: mock_server.url(),
+        check_registry: Arc::new(CheckRegistry::new()),
+    };
 
     let app = create_router(api_state);
 
@@ -138,8 +145,12 @@ async fn test_trigger_respects_cooldown() {
     app_state.record_notification(CheckType::TmuxSessions).await;
 
     let notification_client = NotificationClient::new(mock_server.url());
-    let api_state =
-        ApiState { app_state, notification_client, notification_service_url: mock_server.url() };
+    let api_state = ApiState {
+        app_state,
+        notification_client,
+        notification_service_url: mock_server.url(),
+        check_registry: Arc::new(CheckRegistry::new()),
+    };
 
     let app = create_router(api_state);
 
@@ -201,8 +212,12 @@ async fn test_answer_valid_question() {
     app_state.add_question(question).await;
 
     let notification_client = NotificationClient::new(mock_server.url());
-    let api_state =
-        ApiState { app_state, notification_client, notification_service_url: mock_server.url() };
+    let api_state = ApiState {
+        app_state,
+        notification_client,
+        notification_service_url: mock_server.url(),
+        check_registry: Arc::new(CheckRegistry::new()),
+    };
 
     let app = create_router(api_state);
 
@@ -238,6 +253,7 @@ async fn test_answer_nonexistent_question() {
         app_state,
         notification_client,
         notification_service_url: "http://localhost:17004".to_string(),
+        check_registry: Arc::new(CheckRegistry::new()),
     };
 
     let app = create_router(api_state);
@@ -284,6 +300,7 @@ async fn test_answer_already_answered_question() {
         app_state,
         notification_client,
         notification_service_url: "http://localhost:17004".to_string(),
+        check_registry: Arc::new(CheckRegistry::new()),
     };
 
     let app = create_router(api_state);
@@ -338,8 +355,12 @@ async fn test_answer_notification_update_fails_but_answer_succeeds() {
     app_state.add_question(question).await;
 
     let notification_client = NotificationClient::new(mock_server.url());
-    let api_state =
-        ApiState { app_state, notification_client, notification_service_url: mock_server.url() };
+    let api_state = ApiState {
+        app_state,
+        notification_client,
+        notification_service_url: mock_server.url(),
+        check_registry: Arc::new(CheckRegistry::new()),
+    };
 
     let app = create_router(api_state);
 
@@ -395,8 +416,12 @@ async fn test_concurrent_trigger_requests() {
 
     let app_state = AppState::with_cooldown(Duration::milliseconds(100));
     let notification_client = NotificationClient::new(mock_server.url());
-    let api_state =
-        ApiState { app_state, notification_client, notification_service_url: mock_server.url() };
+    let api_state = ApiState {
+        app_state,
+        notification_client,
+        notification_service_url: mock_server.url(),
+        check_registry: Arc::new(CheckRegistry::new()),
+    };
 
     let app = create_router(api_state);
 
@@ -436,6 +461,7 @@ async fn test_health_response_structure() {
         app_state,
         notification_client,
         notification_service_url: "http://test:9999".to_string(),
+        check_registry: Arc::new(CheckRegistry::new()),
     };
 
     let app = create_router(api_state);
@@ -484,8 +510,12 @@ async fn test_trigger_response_structure() {
 
     let app_state = AppState::new();
     let notification_client = NotificationClient::new(mock_server.url());
-    let api_state =
-        ApiState { app_state, notification_client, notification_service_url: mock_server.url() };
+    let api_state = ApiState {
+        app_state,
+        notification_client,
+        notification_service_url: mock_server.url(),
+        check_registry: Arc::new(CheckRegistry::new()),
+    };
 
     let app = create_router(api_state);
 
@@ -504,7 +534,8 @@ async fn test_trigger_response_structure() {
     assert!(body.get("notifications_sent").is_some());
     assert!(body["notifications_sent"].is_array());
     assert!(body.get("results").is_some());
-    assert!(body["results"].get("tmux_sessions").is_some());
+    // With an empty registry, results.checks is an empty map
+    assert!(body["results"].get("checks").is_some());
 }
 
 // Test invalid request body to /answer endpoint
@@ -516,6 +547,7 @@ async fn test_answer_with_invalid_json() {
         app_state,
         notification_client,
         notification_service_url: "http://localhost:17004".to_string(),
+        check_registry: Arc::new(CheckRegistry::new()),
     };
 
     let app = create_router(api_state);
@@ -545,6 +577,7 @@ async fn test_wrong_http_method() {
         app_state,
         notification_client,
         notification_service_url: "http://localhost:17004".to_string(),
+        check_registry: Arc::new(CheckRegistry::new()),
     };
 
     let app = create_router(api_state);
@@ -567,6 +600,7 @@ async fn test_nonexistent_endpoint() {
         app_state,
         notification_client,
         notification_service_url: "http://localhost:17004".to_string(),
+        check_registry: Arc::new(CheckRegistry::new()),
     };
 
     let app = create_router(api_state);
