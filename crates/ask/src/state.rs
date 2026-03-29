@@ -448,6 +448,18 @@ impl AppState {
         state.questions.values().filter(|q| q.status == QuestionStatus::Pending).cloned().collect()
     }
 
+    /// Get all questions regardless of status.
+    pub async fn get_all_questions(&self) -> Vec<QuestionInfo> {
+        let state = self.inner.read().await;
+        state.questions.values().cloned().collect()
+    }
+
+    /// Get all questions with a specific status.
+    pub async fn get_questions_by_status(&self, status: QuestionStatus) -> Vec<QuestionInfo> {
+        let state = self.inner.read().await;
+        state.questions.values().filter(|q| q.status == status).cloned().collect()
+    }
+
     /// Cleans up old questions from memory.
     ///
     /// Removes questions that are older than 24 hours UNLESS they are still pending.
