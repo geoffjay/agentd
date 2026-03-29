@@ -66,7 +66,7 @@ async fn create_strategy_or_composite_succeeds() {
     let config = make_workflow(trigger);
     let bus = EventBus::shared(16);
 
-    let result = create_strategy(&config, Some(&bus), None);
+    let result = create_strategy(&config, Some(&bus));
     assert!(
         result.is_ok(),
         "Expected Ok for OR composite: {:?}",
@@ -85,7 +85,7 @@ async fn create_strategy_and_composite_succeeds() {
     let config = make_workflow(trigger);
     let bus = EventBus::shared(16);
 
-    let result = create_strategy(&config, Some(&bus), None);
+    let result = create_strategy(&config, Some(&bus));
     assert!(
         result.is_ok(),
         "Expected Ok for AND composite: {:?}",
@@ -104,7 +104,7 @@ async fn create_strategy_invalid_mode_returns_error() {
     let config = make_workflow(trigger);
     let bus = EventBus::shared(16);
 
-    let result = create_strategy(&config, Some(&bus), None);
+    let result = create_strategy(&config, Some(&bus));
     assert!(result.is_err(), "Expected error for invalid mode");
     let msg = result.err().expect("expected error").to_string();
     assert!(msg.contains("xor"), "Error should mention the bad mode: {msg}");
@@ -129,7 +129,7 @@ async fn create_strategy_nested_composite_within_depth_limit() {
     let config = make_workflow(outer);
     let bus = EventBus::shared(16);
 
-    let result = create_strategy(&config, Some(&bus), None);
+    let result = create_strategy(&config, Some(&bus));
     assert!(
         result.is_ok(),
         "Expected Ok for 2-level nesting: {:?}",
@@ -165,7 +165,7 @@ async fn create_strategy_excessive_nesting_returns_error() {
     let config = make_workflow(level0);
     let bus = EventBus::shared(16);
 
-    let result = create_strategy(&config, Some(&bus), None);
+    let result = create_strategy(&config, Some(&bus));
     assert!(result.is_err(), "Expected error for 4-level nesting");
     let msg = result.err().expect("expected error").to_string();
     assert!(msg.contains("nesting") || msg.contains("depth"), "Error should mention depth: {msg}");
