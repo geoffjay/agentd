@@ -148,6 +148,61 @@ impl AskClient {
         self.get("/health").await
     }
 
+    /// List questions stored in the ask service.
+    ///
+    /// # Arguments
+    ///
+    /// * `status` - Optional status filter: `"pending"`, `"answered"`, or `"expired"`.
+    ///   Pass `None` to retrieve all questions.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use ask::client::AskClient;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let client = AskClient::new("http://localhost:7001");
+    ///
+    /// // All questions
+    /// let all = client.list_questions(None).await?;
+    /// println!("{} questions total", all.total);
+    ///
+    /// // Only pending
+    /// let pending = client.list_questions(Some("pending")).await?;
+    /// println!("{} pending questions", pending.total);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_questions(&self, status: Option<&str>) -> Result<ListQuestionsResponse> {
+        let path = match status {
+            Some(s) => format!("/questions?status={s}"),
+            None => "/questions".to_string(),
+        };
+        self.get(&path).await
+    }
+
+    /// Retrieve a single question by UUID.
+    ///
+    /// # Arguments
+    ///
+    /// * `question_id` - The UUID of the question to fetch
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use ask::client::AskClient;
+    /// # use uuid::Uuid;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let client = AskClient::new("http://localhost:7001");
+    /// let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")?;
+    /// let question = client.get_question(&id).await?;
+    /// println!("Status: {:?}", question.status);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn get_question(&self, question_id: &uuid::Uuid) -> Result<QuestionInfo> {
+        self.get(&format!("/questions/{question_id}")).await
+    }
+
     // Internal helper methods
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {

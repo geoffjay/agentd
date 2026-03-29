@@ -50,12 +50,13 @@ use crate::{
     state::AppState,
     types::{
         AnswerRequest, AnswerResponse, CheckType, CreateNotificationRequest, HealthResponse,
-        NotificationLifetime, NotificationPriority, NotificationSource, NotificationStatus,
-        QuestionInfo, QuestionStatus, TriggerResponse, TriggerResults, UpdateNotificationRequest,
+        ListQuestionsQuery, ListQuestionsResponse, NotificationLifetime, NotificationPriority,
+        NotificationSource, NotificationStatus, QuestionInfo, QuestionStatus, TriggerResponse,
+        TriggerResults, UpdateNotificationRequest,
     },
 };
 use axum::{
-    extract::State,
+    extract::{Path, Query, State},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -132,6 +133,8 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/health", get(health_check))
         .route("/trigger", post(trigger_checks))
         .route("/answer", post(answer_question))
+        .route("/questions", get(list_questions))
+        .route("/questions/:id", get(get_question_by_id))
         .with_state(state)
 }
 
@@ -456,6 +459,80 @@ async fn answer_question(
     };
 
     Ok(Json(response))
+}
+
+/// Lists questions stored in the ask service.
+///
+/// Returns all questions, optionally filtered by status via the `?status=` query
+/// parameter.  Valid status values are `"pending"`, `"answered"`, and `"expired"`.
+/// Any other value (or no value) returns all questions regardless of status.
+///
+/// # HTTP Method
+///
+/// `GET /questions[?status=pending|answered|expired]`
+///
+/// # Returns
+///
+/// Returns HTTP 200 with [`ListQuestionsResponse`] JSON containing:
+/// - `questions` - array of [`QuestionInfo`] matching the filter
+/// - `total` - count of returned questions
+///
+/// # Examples
+///
+/// ```bash
+/// # All questions
+/// curl http://localhost:17001/questions
+///
+/// # Only pending questions
+/// curl http://localhost:17001/questions?status=pending
+/// ```
+async fn list_questions(
+    State(state): State<ApiState>,
+    Query(params): Query<ListQuestionsQuery>,
+) -> impl IntoResponse {
+    let questions = match params.status.as_deref() {
+        Some("pending") => state.app_state.get_questions_by_status(QuestionStatus::Pending).await,
+        Some("answered") => state.app_state.get_questions_by_status(QuestionStatus::Answered).await,
+        Some("expired") => state.app_state.get_questions_by_status(QuestionStatus::Expired).await,
+        _ => state.app_state.get_all_questions().await,
+    };
+    let total = questions.len();
+    Json(ListQuestionsResponse { questions, total })
+}
+
+/// Retrieves a single question by its UUID.
+///
+/// # HTTP Method
+///
+/// `GET /questions/:id`
+///
+/// # Path Parameters
+///
+/// - `id` - UUID of the question to retrieve
+///
+/// # Returns
+///
+/// Returns HTTP 200 with the [`QuestionInfo`] JSON on success.
+///
+/// # Errors
+///
+/// - [`ApiError::QuestionNotFound`] (404) if no question with the given UUID exists
+///
+/// # Examples
+///
+/// ```bash
+/// curl http://localhost:17001/questions/550e8400-e29b-41d4-a716-446655440000
+/// ```
+async fn get_question_by_id(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<QuestionInfo>, ApiError> {
+    state
+        .app_state
+        .get_question(&id)
+        .await
+        .map(Json)
+        .ok_or_else(|| ApiError::QuestionNotFound(format!("Question {id} not found")))
 }
 
 /// Creates the API router with HTTP tracing middleware.

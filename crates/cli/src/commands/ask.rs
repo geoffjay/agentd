@@ -35,7 +35,7 @@
 
 use anyhow::{Context, Result};
 use ask::client::AskClient;
-use ask::types::AnswerRequest;
+use ask::types::{AnswerRequest, QuestionStatus};
 use clap::Subcommand;
 use colored::*;
 use uuid::Uuid;
@@ -79,6 +79,32 @@ pub enum AskCommand {
         /// Answer text (can be multiple words)
         answer: String,
     },
+
+    /// List questions tracked by the ask service.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agentd ask list
+    /// agentd ask list --status pending
+    /// ```
+    List {
+        /// Filter by status: pending, answered, or expired
+        #[clap(long)]
+        status: Option<String>,
+    },
+
+    /// Get a specific question by its UUID.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agentd ask get 550e8400-e29b-41d4-a716-446655440000
+    /// ```
+    Get {
+        /// UUID of the question to retrieve
+        question_id: String,
+    },
 }
 
 impl AskCommand {
@@ -99,6 +125,8 @@ impl AskCommand {
             AskCommand::Answer { question_id, answer } => {
                 answer_question(client, question_id, answer, json).await
             }
+            AskCommand::List { status } => list_questions(client, status.as_deref(), json).await,
+            AskCommand::Get { question_id } => get_question(client, question_id, json).await,
         }
     }
 }
@@ -214,6 +242,89 @@ async fn answer_question(
     Ok(())
 }
 
+/// List questions tracked by the ask service.
+///
+/// Sends a GET request to `/questions` (with optional `?status=` filter) and
+/// displays the results in a human-readable table or as raw JSON.
+async fn list_questions(client: &AskClient, status: Option<&str>, json: bool) -> Result<()> {
+    let response = client
+        .list_questions(status)
+        .await
+        .context("Failed to list questions. Is the ask service running?")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+        return Ok(());
+    }
+
+    let label = match status {
+        Some(s) => format!(" (status: {s})"),
+        None => String::new(),
+    };
+    println!("{}", format!("Questions{label}:").bold());
+    println!();
+
+    if response.questions.is_empty() {
+        println!("{}", "  No questions found.".bright_black());
+    } else {
+        for q in &response.questions {
+            let status_str = match q.status {
+                QuestionStatus::Pending => "pending".yellow(),
+                QuestionStatus::Answered => "answered".green(),
+                QuestionStatus::Expired => "expired".bright_black(),
+            };
+            println!(
+                "  {} [{}] {}",
+                q.question_id.to_string().cyan(),
+                status_str,
+                q.check_type.as_str().bright_black()
+            );
+            if let Some(ref answer) = q.answer {
+                println!("    Answer: {answer}");
+            }
+        }
+        println!();
+        println!("{}: {}", "Total".bold(), response.total.to_string().cyan());
+    }
+
+    Ok(())
+}
+
+/// Retrieve a single question by UUID.
+///
+/// Sends a GET request to `/questions/:id` and displays the question details.
+async fn get_question(client: &AskClient, question_id: &str, json: bool) -> Result<()> {
+    let uuid = Uuid::parse_str(question_id).context("Invalid question UUID format")?;
+
+    let question = client
+        .get_question(&uuid)
+        .await
+        .context("Failed to get question. Is the ask service running?")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&question)?);
+        return Ok(());
+    }
+
+    let status_str = match question.status {
+        QuestionStatus::Pending => "pending".yellow(),
+        QuestionStatus::Answered => "answered".green(),
+        QuestionStatus::Expired => "expired".bright_black(),
+    };
+
+    println!("{}", "Question Details:".bold());
+    println!();
+    println!("  {}: {}", "ID".bold(), question.question_id.to_string().cyan());
+    println!("  {}: {}", "Status".bold(), status_str);
+    println!("  {}: {}", "Check Type".bold(), question.check_type.as_str());
+    println!("  {}: {}", "Asked At".bold(), question.asked_at);
+    if let Some(ref answer) = question.answer {
+        println!("  {}: {}", "Answer".bold(), answer);
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,9 +336,11 @@ mod tests {
             "checks_run": ["tmux_sessions"],
             "notifications_sent": [],
             "results": {
-                "tmux_sessions": {
-                    "running": true,
-                    "session_count": 2
+                "checks": {
+                    "tmux_sessions": {
+                        "running": true,
+                        "session_count": 2
+                    }
                 }
             }
         }"#;
@@ -235,8 +348,9 @@ mod tests {
         let response: TriggerResponse = serde_json::from_str(json).unwrap();
         assert_eq!(response.checks_run, vec!["tmux_sessions"]);
         assert!(response.notifications_sent.is_empty());
-        assert!(response.results.tmux_sessions.running);
-        assert_eq!(response.results.tmux_sessions.session_count, 2);
+        let tmux = response.results.checks.get("tmux_sessions").unwrap();
+        assert!(tmux["running"].as_bool().unwrap());
+        assert_eq!(tmux["session_count"].as_u64().unwrap(), 2);
     }
 
     #[test]
