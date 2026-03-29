@@ -26,6 +26,7 @@
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde_json;
 use uuid::Uuid;
 
 use crate::scheduler::types::{
@@ -301,6 +302,40 @@ impl OrchestratorClient {
         request: &TriggerWorkflowRequest,
     ) -> Result<DispatchResponse> {
         self.post(&format!("/workflows/{}/trigger", id), request).await
+    }
+
+    // -- Queue operations --
+
+    /// Push a task onto a named queue.
+    pub async fn queue_push(
+        &self,
+        queue_name: &str,
+        request: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        self.post(&format!("/queues/{}/push", queue_name), request).await
+    }
+
+    /// Get statistics for a named queue.
+    pub async fn queue_stats(&self, queue_name: &str) -> Result<serde_json::Value> {
+        self.get(&format!("/queues/{}/stats", queue_name)).await
+    }
+
+    /// Peek at pending tasks in a named queue.
+    pub async fn queue_peek(
+        &self,
+        queue_name: &str,
+        limit: Option<u64>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let path = match limit {
+            Some(n) => format!("/queues/{}/peek?limit={}", queue_name, n),
+            None => format!("/queues/{}/peek", queue_name),
+        };
+        self.get(&path).await
+    }
+
+    /// Purge all tasks from a named queue.
+    pub async fn queue_purge(&self, queue_name: &str) -> Result<serde_json::Value> {
+        self.delete_with_response(&format!("/queues/{}", queue_name)).await
     }
 
     // -- Private HTTP helpers --

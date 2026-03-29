@@ -101,7 +101,7 @@ impl Scheduler {
                 manual_tx = Some(tx);
                 Box::new(ManualStrategy::new(rx))
             } else {
-                create_strategy(&config, self.event_bus.as_ref())?
+                create_strategy(&config, self.event_bus.as_ref(), Some(&self.storage))?
             };
         let runner =
             WorkflowRunner::new(config, self.storage.clone(), self.registry.clone(), strategy);
