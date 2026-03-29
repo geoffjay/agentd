@@ -1022,7 +1022,7 @@ impl CompositeStrategy {
     /// is a comma-joined list of every sub-task's source ID.  The `body` is
     /// a newline-joined concatenation of non-empty sub-task bodies.  Metadata
     /// from each sub-task is copied with a `sub_` prefix.
-    fn merge_and_tasks(pending: &mut Vec<Option<Vec<Task>>>) -> Vec<Task> {
+    fn merge_and_tasks(pending: &mut [Option<Vec<Task>>]) -> Vec<Task> {
         let sub_groups: Vec<Vec<Task>> = pending.iter_mut().filter_map(|opt| opt.take()).collect();
 
         let all_source_ids: Vec<String> =
@@ -2644,5 +2644,68 @@ mod tests {
         // Body should contain both sub-bodies.
         assert!(merged.body.contains("body-a"), "body: {}", merged.body);
         assert!(merged.body.contains("body-b"), "body: {}", merged.body);
+    }
+
+    // ── Nested composites ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn nested_or_of_ors_fires_when_any_inner_fires() {
+        // Inner composite A: OR of two slow strategies
+        let inner_a_s1 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_secs(60),
+            vec![sample_task("inner-a1")],
+        ));
+        let inner_a_s2 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_secs(60),
+            vec![sample_task("inner-a2")],
+        ));
+        let inner_a: Box<dyn TriggerStrategy> =
+            Box::new(CompositeStrategy::new_or(vec![inner_a_s1, inner_a_s2]));
+
+        // Inner composite B: OR where one strategy fires quickly
+        let inner_b_s1 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(20),
+            vec![sample_task("inner-b-fast")],
+        ));
+        let inner_b_s2 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_secs(60),
+            vec![sample_task("inner-b-slow")],
+        ));
+        let inner_b: Box<dyn TriggerStrategy> =
+            Box::new(CompositeStrategy::new_or(vec![inner_b_s1, inner_b_s2]));
+
+        // Outer OR: fires when any inner fires.
+        let mut outer = CompositeStrategy::new_or(vec![inner_a, inner_b]);
+        let (_tx, rx) = watch::channel(false);
+
+        let start = tokio::time::Instant::now();
+        let result = outer.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        // The fast sub-strategy in inner_b should win.
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source_id, "inner-b-fast");
+        assert!(elapsed < Duration::from_secs(2), "elapsed: {elapsed:?}");
+    }
+
+    // ── CombineMode enum tests ──────────────────────────────────────────
+
+    #[test]
+    fn combine_mode_or_and_are_distinct() {
+        assert_ne!(CombineMode::Or, CombineMode::And { window_secs: 60 });
+        assert_eq!(CombineMode::Or, CombineMode::Or);
+        assert_eq!(CombineMode::And { window_secs: 60 }, CombineMode::And { window_secs: 60 });
+    }
+
+    #[test]
+    #[should_panic(expected = "CompositeStrategy requires at least one sub-strategy")]
+    fn composite_or_panics_on_empty_strategies() {
+        let _: CompositeStrategy = CompositeStrategy::new_or(vec![]);
+    }
+
+    #[test]
+    #[should_panic(expected = "CompositeStrategy requires at least one sub-strategy")]
+    fn composite_and_panics_on_empty_strategies() {
+        let _: CompositeStrategy = CompositeStrategy::new_and(vec![], 60);
     }
 }
