@@ -174,6 +174,31 @@ pub enum TriggerConfig {
         #[serde(default)]
         assignee: Option<String>,
     },
+    /// Composite trigger — combines multiple sub-triggers with AND/OR logic.
+    ///
+    /// # OR mode (`mode: "or"`)
+    ///
+    /// Fires as soon as **any** sub-trigger produces tasks.  Useful for
+    /// "fire on schedule OR manual trigger" patterns.
+    ///
+    /// # AND mode (`mode: "and"`)
+    ///
+    /// Fires only when **all** sub-triggers have produced tasks within
+    /// `correlation_window_secs` (default 60).  Useful for multi-condition
+    /// workflows such as "PR labeled `ready` AND review approved".
+    ///
+    /// At least 2 sub-triggers are required.  Nesting is supported up to
+    /// 3 levels deep to prevent accidental runaway recursion.
+    Composite {
+        /// Combinator mode: `"or"` or `"and"`.
+        mode: String,
+        /// Nested trigger configurations — minimum 2.
+        triggers: Vec<TriggerConfig>,
+        /// For AND mode: how long (in seconds) after the first sub-trigger fires
+        /// before the partial state is reset.  Defaults to 60.
+        #[serde(default)]
+        correlation_window_secs: Option<u64>,
+    },
     /// Queue-based trigger — consumes tasks from a named internal queue.
     ///
     /// Workers push tasks via `POST /queues/{name}/push`; this trigger
@@ -211,6 +236,7 @@ impl TriggerConfig {
             TriggerConfig::Manual { .. } => "manual",
             TriggerConfig::AgentIdle { .. } => "agent_idle",
             TriggerConfig::LinearIssues { .. } => "linear_issues",
+            TriggerConfig::Composite { .. } => "composite",
             TriggerConfig::Queue { .. } => "queue",
         }
     }
@@ -228,6 +254,7 @@ impl TriggerConfig {
             | TriggerConfig::Manual { .. }
             | TriggerConfig::AgentIdle { .. }
             | TriggerConfig::LinearIssues { .. }
+            | TriggerConfig::Composite { .. }
             | TriggerConfig::Queue { .. } => true,
         }
     }

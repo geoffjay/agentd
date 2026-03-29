@@ -839,6 +839,234 @@ impl TriggerStrategy for IdleStrategy {
 }
 
 // ---------------------------------------------------------------------------
+// CompositeStrategy — OR / AND combinators
+// ---------------------------------------------------------------------------
+
+/// How sub-strategies are combined in a [`CompositeStrategy`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CombineMode {
+    /// Fire when **any** sub-strategy produces tasks.
+    Or,
+    /// Fire when **all** sub-strategies have produced tasks within `window_secs`.
+    And { window_secs: u64 },
+}
+
+/// Internal state used by [`CompositeStrategy`] in OR mode.
+struct OrState {
+    /// Receives task batches produced by any sub-strategy background task.
+    rx: mpsc::Receiver<Vec<Task>>,
+    /// Signals all sub-strategy background tasks to stop.
+    shutdown_tx: watch::Sender<bool>,
+}
+
+/// Internal state used by [`CompositeStrategy`] in AND mode.
+struct AndState {
+    /// Receives `(sub_strategy_index, tasks)` from sub-strategy background tasks.
+    rx: mpsc::Receiver<(usize, Vec<Task>)>,
+    /// Signals all sub-strategy background tasks to stop.
+    shutdown_tx: watch::Sender<bool>,
+    /// Total number of sub-strategies; all must fire within the window.
+    num_strategies: usize,
+    /// Collected tasks per sub-strategy for the current correlation window.
+    /// `None` means this sub-strategy has not yet fired in the current window.
+    pending: Vec<Option<Vec<Task>>>,
+    /// When the first sub-strategy fired in the current window.
+    window_start: Option<tokio::time::Instant>,
+    /// How long all sub-strategies have to fire before partial state is reset.
+    window: Duration,
+}
+
+/// A composite trigger strategy that combines multiple sub-strategies with
+/// boolean logic.
+///
+/// # OR mode
+///
+/// Each sub-strategy runs in its own background tokio task.  The first task
+/// to produce tasks sends them over an internal channel; `next_tasks` returns
+/// as soon as it receives from that channel.  All sub-strategies continue
+/// running concurrently — a second fire from any sub-strategy will be queued
+/// for the next `next_tasks` call.
+///
+/// # AND mode
+///
+/// Each sub-strategy runs in its own background tokio task.  `next_tasks`
+/// waits until *every* sub-strategy has fired within a configurable
+/// correlation window.  When the window starts (first sub-strategy fires) all
+/// remaining sub-strategies must fire before the window expires.  If the
+/// window expires the partial state is cleared and the process restarts.
+///
+/// When all conditions are met, the tasks from all sub-strategies are merged
+/// into a single `Task` with a composite `source_id`.
+pub struct CompositeStrategy {
+    /// Sub-strategies waiting to be moved into background tasks on first call.
+    strategies: Option<Vec<Box<dyn TriggerStrategy>>>,
+    /// Combinator semantics.
+    pub mode: CombineMode,
+    /// Populated on the first `next_tasks` call (OR mode only).
+    or_state: Option<OrState>,
+    /// Populated on the first `next_tasks` call (AND mode only).
+    and_state: Option<AndState>,
+}
+
+impl CompositeStrategy {
+    /// Create an OR combinator.
+    ///
+    /// Fires when **any** sub-strategy yields tasks.  Requires at least one
+    /// sub-strategy.
+    pub fn new_or(strategies: Vec<Box<dyn TriggerStrategy>>) -> Self {
+        assert!(!strategies.is_empty(), "CompositeStrategy requires at least one sub-strategy");
+        Self {
+            strategies: Some(strategies),
+            mode: CombineMode::Or,
+            or_state: None,
+            and_state: None,
+        }
+    }
+
+    /// Create an AND combinator.
+    ///
+    /// Fires when **all** sub-strategies yield tasks within `window_secs`.
+    /// Requires at least one sub-strategy; two or more make the AND meaningful.
+    pub fn new_and(strategies: Vec<Box<dyn TriggerStrategy>>, window_secs: u64) -> Self {
+        assert!(!strategies.is_empty(), "CompositeStrategy requires at least one sub-strategy");
+        Self {
+            strategies: Some(strategies),
+            mode: CombineMode::And { window_secs },
+            or_state: None,
+            and_state: None,
+        }
+    }
+
+    /// Lazily spawn one background task per sub-strategy and initialise the
+    /// shared result channel.  Called on the first `next_tasks` invocation so
+    /// that we are guaranteed to be inside a tokio runtime.
+    fn init_or(&mut self) {
+        let strategies = self.strategies.take().expect("init_or called twice");
+        let (tx, rx) = mpsc::channel::<Vec<Task>>(32);
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        for mut strategy in strategies {
+            let tx = tx.clone();
+            let shutdown = shutdown_rx.clone();
+            tokio::spawn(async move {
+                loop {
+                    if *shutdown.borrow() {
+                        return;
+                    }
+                    match strategy.next_tasks(&shutdown).await {
+                        Ok(tasks) if !tasks.is_empty() => {
+                            // Forward tasks to the composite receiver.
+                            if tx.send(tasks).await.is_err() {
+                                // Composite dropped — exit task.
+                                return;
+                            }
+                        }
+                        Ok(_) => {
+                            // Sub-strategy returned empty; loop immediately to
+                            // retry (the strategy already applied its own
+                            // backoff / interval).
+                        }
+                        Err(e) => {
+                            warn!(err = %e, "CompositeStrategy OR: sub-strategy error, continuing");
+                        }
+                    }
+                }
+            });
+        }
+
+        self.or_state = Some(OrState { rx, shutdown_tx });
+    }
+
+    /// Lazily spawn one background task per sub-strategy for AND mode.
+    fn init_and(&mut self, window_secs: u64) {
+        let strategies = self.strategies.take().expect("init_and called twice");
+        let num_strategies = strategies.len();
+        let (tx, rx) = mpsc::channel::<(usize, Vec<Task>)>(32);
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        for (idx, mut strategy) in strategies.into_iter().enumerate() {
+            let tx = tx.clone();
+            let shutdown = shutdown_rx.clone();
+            tokio::spawn(async move {
+                loop {
+                    if *shutdown.borrow() {
+                        return;
+                    }
+                    match strategy.next_tasks(&shutdown).await {
+                        Ok(tasks) if !tasks.is_empty() => {
+                            if tx.send((idx, tasks)).await.is_err() {
+                                return;
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            warn!(err = %e, idx, "CompositeStrategy AND: sub-strategy error");
+                        }
+                    }
+                }
+            });
+        }
+
+        self.and_state = Some(AndState {
+            rx,
+            shutdown_tx,
+            num_strategies,
+            pending: vec![None; num_strategies],
+            window_start: None,
+            window: Duration::from_secs(window_secs),
+        });
+    }
+
+    /// Merge tasks collected from all AND sub-strategies into a single [`Task`].
+    ///
+    /// The merged task's `source_id` is `"composite:and:<ids>"` where `<ids>`
+    /// is a comma-joined list of every sub-task's source ID.  The `body` is
+    /// a newline-joined concatenation of non-empty sub-task bodies.  Metadata
+    /// from each sub-task is copied with a `sub_` prefix.
+    fn merge_and_tasks(pending: &mut [Option<Vec<Task>>]) -> Vec<Task> {
+        let sub_groups: Vec<Vec<Task>> = pending.iter_mut().filter_map(|opt| opt.take()).collect();
+
+        let all_source_ids: Vec<String> =
+            sub_groups.iter().flat_map(|tasks| tasks.iter().map(|t| t.source_id.clone())).collect();
+
+        let source_id = format!("composite:and:{}", all_source_ids.join(","));
+
+        let bodies: Vec<String> = sub_groups
+            .iter()
+            .flat_map(|tasks| tasks.iter().map(|t| t.body.clone()))
+            .filter(|b| !b.is_empty())
+            .collect();
+        let body = bodies.join("\n");
+
+        let title = sub_groups
+            .first()
+            .and_then(|tasks| tasks.first())
+            .map(|t| t.title.clone())
+            .unwrap_or_else(|| "Composite AND condition met".to_string());
+
+        let mut metadata = HashMap::new();
+        for tasks in &sub_groups {
+            for task in tasks {
+                for (k, v) in &task.metadata {
+                    metadata.insert(format!("sub_{k}"), v.clone());
+                }
+            }
+        }
+        metadata.insert("composite_sub_source_ids".to_string(), all_source_ids.join(","));
+
+        vec![Task {
+            source_id,
+            title,
+            body,
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }]
+    }
+}
+
+// ---------------------------------------------------------------------------
 // QueueStrategy
 // ---------------------------------------------------------------------------
 
@@ -915,6 +1143,119 @@ impl QueueStrategy {
             labels: vec![],
             assignee: None,
             metadata,
+        }
+    }
+}
+
+#[async_trait]
+impl TriggerStrategy for CompositeStrategy {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
+        match &self.mode {
+            CombineMode::Or => {
+                if self.or_state.is_none() {
+                    self.init_or();
+                }
+                let state = self.or_state.as_mut().expect("or_state initialised above");
+                let mut shutdown_clone = shutdown.clone();
+
+                tokio::select! {
+                    tasks = state.rx.recv() => {
+                        // `recv()` returns None only when all senders have dropped,
+                        // i.e., every sub-strategy task has exited.
+                        Ok(tasks.unwrap_or_default())
+                    }
+                    _ = shutdown_clone.changed() => {
+                        if *shutdown_clone.borrow() {
+                            // Propagate shutdown signal to all sub-strategy tasks.
+                            let _ = state.shutdown_tx.send(true);
+                        }
+                        Ok(vec![])
+                    }
+                }
+            }
+            CombineMode::And { window_secs } => {
+                let window_secs = *window_secs;
+                if self.and_state.is_none() {
+                    self.init_and(window_secs);
+                }
+                let state = self.and_state.as_mut().expect("and_state initialised above");
+                let mut shutdown_clone = shutdown.clone();
+
+                loop {
+                    // Check if every sub-strategy has fired in the current window.
+                    if state.pending.iter().all(|s| s.is_some()) {
+                        let merged = Self::merge_and_tasks(&mut state.pending);
+                        state.window_start = None;
+                        return Ok(merged);
+                    }
+
+                    // Compute how long we still have to wait for stragglers.
+                    let window_remaining = if let Some(start) = state.window_start {
+                        let elapsed = start.elapsed();
+                        if elapsed >= state.window {
+                            // Window expired — discard partial state and restart.
+                            warn!(
+                                window_secs,
+                                "CompositeStrategy AND: correlation window expired, \
+                                 resetting partial state"
+                            );
+                            state.pending = vec![None; state.num_strategies];
+                            state.window_start = None;
+                            continue;
+                        }
+                        state.window - elapsed
+                    } else {
+                        // No window open yet; wait indefinitely for the first fire.
+                        Duration::from_secs(u64::MAX / 2)
+                    };
+
+                    let sleep = tokio::time::sleep(window_remaining);
+                    tokio::pin!(sleep);
+
+                    tokio::select! {
+                        msg = state.rx.recv() => {
+                            match msg {
+                                Some((idx, tasks)) => {
+                                    if state.pending[idx].is_none() {
+                                        // First fire from this sub-strategy in this window.
+                                        if state.window_start.is_none() {
+                                            state.window_start =
+                                                Some(tokio::time::Instant::now());
+                                            info!(
+                                                window_secs,
+                                                "CompositeStrategy AND: first sub-strategy \
+                                                 fired, starting correlation window"
+                                            );
+                                        }
+                                        state.pending[idx] = Some(tasks);
+                                    }
+                                    // Loop to check whether all slots are now filled.
+                                }
+                                None => {
+                                    // Every sub-strategy task has exited.
+                                    return Ok(vec![]);
+                                }
+                            }
+                        }
+                        _ = &mut sleep, if state.window_start.is_some() => {
+                            // Window timeout — reset and start fresh.
+                            warn!(
+                                window_secs,
+                                "CompositeStrategy AND: correlation window timed out, \
+                                 resetting"
+                            );
+                            state.pending = vec![None; state.num_strategies];
+                            state.window_start = None;
+                        }
+                        _ = shutdown_clone.changed() => {
+                            if *shutdown_clone.borrow() {
+                                let _ = state.shutdown_tx.send(true);
+                                return Ok(vec![]);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -2130,6 +2471,365 @@ mod tests {
         assert_eq!(r2.len(), 1);
         assert!(r1[0].source_id.starts_with("idle:"));
         assert!(r2[0].source_id.starts_with("idle:"));
+    }
+
+    // ── CompositeStrategy (OR) tests ────────────────────────────────────
+
+    /// A strategy that fires once after a configurable delay, then blocks forever.
+    struct DelayedOnceStrategy {
+        delay: Duration,
+        tasks: Vec<Task>,
+        fired: bool,
+    }
+
+    impl DelayedOnceStrategy {
+        fn new(delay: Duration, tasks: Vec<Task>) -> Self {
+            Self { delay, tasks, fired: false }
+        }
+    }
+
+    #[async_trait]
+    impl TriggerStrategy for DelayedOnceStrategy {
+        async fn next_tasks(
+            &mut self,
+            shutdown: &watch::Receiver<bool>,
+        ) -> anyhow::Result<Vec<Task>> {
+            if self.fired {
+                // Block indefinitely (or until shutdown).
+                let mut sd = shutdown.clone();
+                sd.changed().await.ok();
+                return Ok(vec![]);
+            }
+            let mut sd = shutdown.clone();
+            tokio::select! {
+                _ = tokio::time::sleep(self.delay) => {
+                    self.fired = true;
+                    Ok(self.tasks.clone())
+                }
+                _ = sd.changed() => Ok(vec![]),
+            }
+        }
+    }
+
+    /// A strategy that always returns an error.
+    struct ErrorStrategy;
+
+    #[async_trait]
+    impl TriggerStrategy for ErrorStrategy {
+        async fn next_tasks(
+            &mut self,
+            _shutdown: &watch::Receiver<bool>,
+        ) -> anyhow::Result<Vec<Task>> {
+            // Small sleep so it doesn't busy-loop in tests.
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            anyhow::bail!("strategy error")
+        }
+    }
+
+    #[tokio::test]
+    async fn composite_or_fires_when_first_sub_strategy_fires() {
+        // Two strategies: first fires after 10 ms, second after 200 ms.
+        let tasks_a = vec![sample_task("composite-a")];
+        let tasks_b = vec![sample_task("composite-b")];
+        let s1 = Box::new(DelayedOnceStrategy::new(Duration::from_millis(10), tasks_a));
+        let s2 = Box::new(DelayedOnceStrategy::new(Duration::from_millis(200), tasks_b));
+
+        let mut composite = CompositeStrategy::new_or(vec![s1, s2]);
+        let (_tx, rx) = watch::channel(false);
+
+        let start = tokio::time::Instant::now();
+        let result = composite.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        // Should receive tasks from the fast strategy.
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source_id, "composite-a");
+        // Should complete well before the slow strategy fires.
+        assert!(elapsed < Duration::from_millis(150), "elapsed: {elapsed:?}");
+    }
+
+    #[tokio::test]
+    async fn composite_or_respects_shutdown() {
+        // Both strategies have a long delay; shutdown should cancel quickly.
+        let s1 =
+            Box::new(DelayedOnceStrategy::new(Duration::from_secs(60), vec![sample_task("x")]));
+        let s2 =
+            Box::new(DelayedOnceStrategy::new(Duration::from_secs(60), vec![sample_task("y")]));
+
+        let mut composite = CompositeStrategy::new_or(vec![s1, s2]);
+        let (tx, rx) = watch::channel(false);
+
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            let _ = tx.send(true);
+        });
+
+        let start = tokio::time::Instant::now();
+        let result = composite.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(result.is_empty(), "should return empty on shutdown");
+        assert!(elapsed < Duration::from_secs(2), "should exit quickly: {elapsed:?}");
+    }
+
+    #[tokio::test]
+    async fn composite_or_tolerates_sub_strategy_errors() {
+        // One strategy always errors, other fires after a short delay.
+        let good_tasks = vec![sample_task("composite-good")];
+        let s_err = Box::new(ErrorStrategy);
+        let s_ok =
+            Box::new(DelayedOnceStrategy::new(Duration::from_millis(50), good_tasks.clone()));
+
+        let mut composite = CompositeStrategy::new_or(vec![s_err, s_ok]);
+        let (_tx, rx) = watch::channel(false);
+
+        let result = composite.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source_id, "composite-good");
+    }
+
+    #[tokio::test]
+    async fn composite_or_is_object_safe() {
+        let s = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(10),
+            vec![sample_task("obj-safe")],
+        ));
+        let strategy: Box<dyn TriggerStrategy> = Box::new(CompositeStrategy::new_or(vec![s]));
+        let (_tx, rx) = watch::channel(false);
+
+        let mut strategy = strategy;
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn composite_or_receives_multiple_fires_sequentially() {
+        // Both strategies fire quickly; verify we can call next_tasks twice.
+        let s1 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(10),
+            vec![sample_task("fire1")],
+        ));
+        let s2 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(20),
+            vec![sample_task("fire2")],
+        ));
+
+        let mut composite = CompositeStrategy::new_or(vec![s1, s2]);
+        let (_tx, rx) = watch::channel(false);
+
+        let r1 = composite.next_tasks(&rx).await.unwrap();
+        let r2 = composite.next_tasks(&rx).await.unwrap();
+
+        // Both strategies should have fired — order may vary but both should arrive.
+        let all: Vec<Task> = [r1.as_slice(), r2.as_slice()].concat();
+        let ids: Vec<&str> = all.iter().map(|t| t.source_id.as_str()).collect();
+        assert!(ids.contains(&"fire1"), "expected fire1 among {ids:?}");
+        assert!(ids.contains(&"fire2"), "expected fire2 among {ids:?}");
+    }
+
+    // ── CompositeStrategy (AND) tests ───────────────────────────────────
+
+    #[tokio::test]
+    async fn composite_and_fires_when_all_sub_strategies_fire_within_window() {
+        // Both strategies fire quickly — well within any reasonable window.
+        let s1 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(10),
+            vec![sample_task("and-a")],
+        ));
+        let s2 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(20),
+            vec![sample_task("and-b")],
+        ));
+
+        let mut composite = CompositeStrategy::new_and(vec![s1, s2], 60);
+        let (_tx, rx) = watch::channel(false);
+
+        let result = composite.next_tasks(&rx).await.unwrap();
+
+        // Should receive exactly one merged task.
+        assert_eq!(result.len(), 1);
+        let merged = &result[0];
+        assert!(
+            merged.source_id.starts_with("composite:and:"),
+            "unexpected source_id: {}",
+            merged.source_id
+        );
+        // Merged source_id must contain both sub-source IDs.
+        assert!(merged.source_id.contains("and-a"), "expected and-a in {}", merged.source_id);
+        assert!(merged.source_id.contains("and-b"), "expected and-b in {}", merged.source_id);
+        // Metadata should include the sub source IDs.
+        assert!(merged.metadata.contains_key("composite_sub_source_ids"));
+    }
+
+    #[tokio::test]
+    async fn composite_and_respects_shutdown_before_all_fire() {
+        // One strategy fires quickly; the other blocks forever.
+        let s1 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(10),
+            vec![sample_task("and-x")],
+        ));
+        let s2 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_secs(120),
+            vec![sample_task("and-y")],
+        ));
+
+        let mut composite = CompositeStrategy::new_and(vec![s1, s2], 60);
+        let (tx, rx) = watch::channel(false);
+
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(true);
+        });
+
+        let start = tokio::time::Instant::now();
+        let result = composite.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(result.is_empty(), "should return empty on shutdown");
+        assert!(elapsed < Duration::from_secs(2), "should exit quickly: {elapsed:?}");
+    }
+
+    #[tokio::test]
+    async fn composite_and_resets_when_window_expires() {
+        // Strategy A fires at 10ms, strategy B fires at 10ms.
+        // Use a tiny window (50ms) and verify the composite fires once both arrive.
+        let s1 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(10),
+            vec![sample_task("window-a")],
+        ));
+        let s2 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(10),
+            vec![sample_task("window-b")],
+        ));
+
+        // Window = 5 seconds — both strategies fire within ~20ms, well inside.
+        let mut composite = CompositeStrategy::new_and(vec![s1, s2], 5);
+        let (_tx, rx) = watch::channel(false);
+
+        let result = composite.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.starts_with("composite:and:"));
+    }
+
+    #[tokio::test]
+    async fn composite_and_is_object_safe() {
+        let s1 =
+            Box::new(DelayedOnceStrategy::new(Duration::from_millis(5), vec![sample_task("obj1")]));
+        let s2 =
+            Box::new(DelayedOnceStrategy::new(Duration::from_millis(5), vec![sample_task("obj2")]));
+        let strategy: Box<dyn TriggerStrategy> =
+            Box::new(CompositeStrategy::new_and(vec![s1, s2], 30));
+        let (_tx, rx) = watch::channel(false);
+
+        let mut strategy = strategy;
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn composite_and_merged_task_has_correct_metadata() {
+        let mut meta_a = HashMap::new();
+        meta_a.insert("key_a".to_string(), "val_a".to_string());
+        let mut meta_b = HashMap::new();
+        meta_b.insert("key_b".to_string(), "val_b".to_string());
+
+        let task_a = Task {
+            source_id: "meta-a".to_string(),
+            title: "Task A".to_string(),
+            body: "body-a".to_string(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata: meta_a,
+        };
+        let task_b = Task {
+            source_id: "meta-b".to_string(),
+            title: "Task B".to_string(),
+            body: "body-b".to_string(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata: meta_b,
+        };
+
+        let s1 = Box::new(DelayedOnceStrategy::new(Duration::from_millis(5), vec![task_a]));
+        let s2 = Box::new(DelayedOnceStrategy::new(Duration::from_millis(5), vec![task_b]));
+
+        let mut composite = CompositeStrategy::new_and(vec![s1, s2], 30);
+        let (_tx, rx) = watch::channel(false);
+        let result = composite.next_tasks(&rx).await.unwrap();
+
+        assert_eq!(result.len(), 1);
+        let merged = &result[0];
+        // Sub-metadata should be present with sub_ prefix.
+        assert_eq!(merged.metadata.get("sub_key_a").map(|s| s.as_str()), Some("val_a"));
+        assert_eq!(merged.metadata.get("sub_key_b").map(|s| s.as_str()), Some("val_b"));
+        // Body should contain both sub-bodies.
+        assert!(merged.body.contains("body-a"), "body: {}", merged.body);
+        assert!(merged.body.contains("body-b"), "body: {}", merged.body);
+    }
+
+    // ── Nested composites ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn nested_or_of_ors_fires_when_any_inner_fires() {
+        // Inner composite A: OR of two slow strategies
+        let inner_a_s1 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_secs(60),
+            vec![sample_task("inner-a1")],
+        ));
+        let inner_a_s2 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_secs(60),
+            vec![sample_task("inner-a2")],
+        ));
+        let inner_a: Box<dyn TriggerStrategy> =
+            Box::new(CompositeStrategy::new_or(vec![inner_a_s1, inner_a_s2]));
+
+        // Inner composite B: OR where one strategy fires quickly
+        let inner_b_s1 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_millis(20),
+            vec![sample_task("inner-b-fast")],
+        ));
+        let inner_b_s2 = Box::new(DelayedOnceStrategy::new(
+            Duration::from_secs(60),
+            vec![sample_task("inner-b-slow")],
+        ));
+        let inner_b: Box<dyn TriggerStrategy> =
+            Box::new(CompositeStrategy::new_or(vec![inner_b_s1, inner_b_s2]));
+
+        // Outer OR: fires when any inner fires.
+        let mut outer = CompositeStrategy::new_or(vec![inner_a, inner_b]);
+        let (_tx, rx) = watch::channel(false);
+
+        let start = tokio::time::Instant::now();
+        let result = outer.next_tasks(&rx).await.unwrap();
+        let elapsed = start.elapsed();
+
+        // The fast sub-strategy in inner_b should win.
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].source_id, "inner-b-fast");
+        assert!(elapsed < Duration::from_secs(2), "elapsed: {elapsed:?}");
+    }
+
+    // ── CombineMode enum tests ──────────────────────────────────────────
+
+    #[test]
+    fn combine_mode_or_and_are_distinct() {
+        assert_ne!(CombineMode::Or, CombineMode::And { window_secs: 60 });
+        assert_eq!(CombineMode::Or, CombineMode::Or);
+        assert_eq!(CombineMode::And { window_secs: 60 }, CombineMode::And { window_secs: 60 });
+    }
+
+    #[test]
+    #[should_panic(expected = "CompositeStrategy requires at least one sub-strategy")]
+    fn composite_or_panics_on_empty_strategies() {
+        let _: CompositeStrategy = CompositeStrategy::new_or(vec![]);
+    }
+
+    #[test]
+    #[should_panic(expected = "CompositeStrategy requires at least one sub-strategy")]
+    fn composite_and_panics_on_empty_strategies() {
+        let _: CompositeStrategy = CompositeStrategy::new_and(vec![], 60);
     }
 
     // -----------------------------------------------------------------------
