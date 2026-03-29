@@ -370,6 +370,7 @@ impl NotificationClient {
     /// # Ok(())
     /// # }
     /// ```
+    #[allow(dead_code)]
     pub async fn create_tmux_session_question(
         &self,
         request_id: Uuid,

@@ -42,19 +42,26 @@
 //! ```
 
 mod api;
+mod checks;
+mod entity;
 mod error;
+mod migration;
 mod notification_client;
 mod state;
+mod storage;
 mod tmux_check;
 mod types;
 
 use anyhow::Result;
 use api::{create_router_with_tracing, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
+use checks::default_registry;
 use metrics_exporter_prometheus::PrometheusHandle;
 use notification_client::NotificationClient;
 use state::AppState;
 use std::env;
+use std::sync::Arc;
+use storage::QuestionStorage;
 use tracing::{error, info, warn};
 
 fn init_metrics() -> PrometheusHandle {
@@ -111,8 +118,20 @@ async fn main() -> Result<()> {
         info!("tmux is installed");
     }
 
+    // Initialize persistent storage
+    let storage = match QuestionStorage::new().await {
+        Ok(s) => {
+            info!("Question storage initialized");
+            s
+        }
+        Err(e) => {
+            error!("Failed to initialize question storage: {}", e);
+            return Err(e);
+        }
+    };
+
     // Initialize application state
-    let app_state = AppState::new();
+    let app_state = AppState::new_with_storage(storage);
 
     // Initialize notification client
     let notification_client = NotificationClient::new(notify_service_url.clone());
@@ -127,11 +146,16 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Build check registry from environment configuration
+    let registry = default_registry();
+    info!("Check registry initialized with {} check(s)", registry.len());
+
     // Create API state
     let api_state = ApiState {
         app_state: app_state.clone(),
         notification_client,
         notification_service_url: notify_service_url,
+        check_registry: Arc::new(registry),
     };
 
     // Initialize Prometheus metrics
@@ -162,7 +186,9 @@ async fn main() -> Result<()> {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
             info!("Running cleanup of old questions");
-            cleanup_state.cleanup_old_questions().await;
+            if let Err(e) = cleanup_state.cleanup_old_questions().await {
+                error!("Cleanup failed: {}", e);
+            }
         }
     });
 
