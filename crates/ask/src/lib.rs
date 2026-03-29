@@ -96,9 +96,16 @@
 //! status.
 
 pub mod api;
+pub mod checks;
 pub mod client;
+pub mod entity;
 pub mod error;
+pub mod migration;
 pub mod notification_client;
 pub mod state;
+pub mod storage;
 pub mod tmux_check;
 pub mod types;
+
+// Re-export commonly used items
+pub use checks::{default_registry, CheckRegistry};

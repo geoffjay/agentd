@@ -44,23 +44,27 @@
 //! ```
 
 use crate::{
+    checks::CheckRegistry,
     error::ApiError,
     notification_client::NotificationClient,
     state::AppState,
-    tmux_check,
     types::{
-        AnswerRequest, AnswerResponse, CheckType, HealthResponse, NotificationStatus, QuestionInfo,
-        QuestionStatus, TriggerResponse, TriggerResults, UpdateNotificationRequest,
+        AnswerRequest, AnswerResponse, CheckType, CreateNotificationRequest, HealthResponse,
+        ListQuestionsQuery, ListQuestionsResponse, NotificationLifetime, NotificationPriority,
+        NotificationSource, NotificationStatus, QuestionInfo, QuestionStatus, TriggerResponse,
+        TriggerResults, UpdateNotificationRequest,
     },
 };
 use axum::{
-    extract::State,
+    extract::{Path, Query, State},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use chrono::Utc;
-use tracing::{debug, error, info, warn};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// Shared state for API handlers.
@@ -91,6 +95,8 @@ pub struct ApiState {
     pub app_state: AppState,
     pub notification_client: NotificationClient,
     pub notification_service_url: String,
+    /// Registry of all enabled checks, shared via Arc for cheap clone.
+    pub check_registry: Arc<CheckRegistry>,
 }
 
 /// Creates the API router without middleware.
@@ -127,6 +133,8 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/health", get(health_check))
         .route("/trigger", post(trigger_checks))
         .route("/answer", post(answer_question))
+        .route("/questions", get(list_questions))
+        .route("/questions/{id}", get(get_question_by_id))
         .with_state(state)
 }
 
@@ -237,76 +245,84 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
 /// }
 /// ```
 async fn trigger_checks(State(state): State<ApiState>) -> Result<Json<TriggerResponse>, ApiError> {
-    info!("Running trigger checks");
+    info!("Running trigger checks ({} registered)", state.check_registry.len());
 
     let mut checks_run = Vec::new();
     let mut notifications_sent = Vec::new();
+    let mut results: HashMap<String, serde_json::Value> = HashMap::new();
 
-    // Check tmux sessions
-    checks_run.push(CheckType::TmuxSessions.as_str().to_string());
+    for check in state.check_registry.checks() {
+        let check_name = check.name().to_string();
+        let check_type = check.check_type();
+        checks_run.push(check_name.clone());
 
-    let tmux_result = match tmux_check::check_tmux_sessions() {
-        Ok(result) => {
-            debug!(
-                "tmux check succeeded: running={}, count={}",
-                result.running, result.session_count
-            );
-            result
-        }
-        Err(e) => {
-            warn!("tmux check failed: {}", e);
-            // For all errors (including tmux not installed), assume no sessions running
-            // This allows the service to operate gracefully in environments without tmux
-            crate::types::TmuxCheckResult {
-                running: false,
-                session_count: 0,
-                sessions: Some(Vec::new()),
-            }
-        }
-    };
-
-    // If no sessions running and we can send a notification, do it
-    if !tmux_result.running && state.app_state.can_send_notification(CheckType::TmuxSessions).await
-    {
-        info!("No tmux sessions running, sending notification");
-
-        let question_id = Uuid::new_v4();
-
-        match state.notification_client.create_tmux_session_question(question_id).await {
-            Ok(notification) => {
-                info!("Created notification {} for question {}", notification.id, question_id);
-
-                // Record the notification
-                state.app_state.record_notification(CheckType::TmuxSessions).await;
-
-                // Store the question
-                let question = QuestionInfo {
-                    question_id,
-                    notification_id: notification.id,
-                    check_type: CheckType::TmuxSessions,
-                    asked_at: Utc::now(),
-                    status: QuestionStatus::Pending,
-                    answer: None,
-                };
-                state.app_state.add_question(question).await;
-
-                notifications_sent.push(notification.id);
-            }
+        // Run the check, treating errors as "no action needed" with a warning.
+        let check_result = match check.run().await {
+            Ok(r) => r,
             Err(e) => {
-                error!("Failed to create notification: {}", e);
-                return Err(ApiError::NotificationError(e));
+                warn!(check = %check_name, "Check failed: {}", e);
+                // Gracefully degrade: record an empty result and move on.
+                results.insert(check_name.clone(), serde_json::json!({ "error": e.to_string() }));
+                continue;
             }
+        };
+
+        results.insert(check_name.clone(), check_result.detail.clone());
+
+        if check_result.needs_action && state.app_state.can_send_notification(check_type).await {
+            info!(check = %check_name, "Check needs action, sending notification");
+
+            let question_id = Uuid::new_v4();
+            let template = check.question_template();
+
+            let notification_request = CreateNotificationRequest {
+                source: NotificationSource::AskService { request_id: question_id },
+                lifetime: NotificationLifetime::ephemeral(chrono::Duration::minutes(5)),
+                priority: NotificationPriority::Normal,
+                title: template.title,
+                message: template.message,
+                requires_response: true,
+            };
+
+            match state.notification_client.create_notification(notification_request).await {
+                Ok(notification) => {
+                    info!(
+                        check = %check_name,
+                        notification_id = %notification.id,
+                        "Created notification for question {}",
+                        question_id
+                    );
+
+                    state.app_state.record_notification(check_type).await;
+
+                    let question = QuestionInfo {
+                        question_id,
+                        notification_id: notification.id,
+                        check_type,
+                        asked_at: Utc::now(),
+                        status: QuestionStatus::Pending,
+                        answer: None,
+                    };
+                    state.app_state.add_question(question).await;
+                    notifications_sent.push(notification.id);
+                }
+                Err(e) => {
+                    error!(check = %check_name, "Failed to create notification: {}", e);
+                    return Err(ApiError::NotificationError(e));
+                }
+            }
+        } else if check_result.needs_action {
+            warn!(
+                check = %check_name,
+                "Check needs action but notification is in cooldown"
+            );
         }
-    } else if !tmux_result.running {
-        debug!(
-            "No tmux sessions running, but notification was sent recently (within cooldown period)"
-        );
     }
 
     let response = TriggerResponse {
         checks_run,
         notifications_sent,
-        results: TriggerResults { tmux_sessions: tmux_result },
+        results: TriggerResults { checks: results },
     };
 
     Ok(Json(response))
@@ -430,8 +446,9 @@ async fn answer_question(
     match question.check_type {
         CheckType::TmuxSessions => {
             info!("User answered '{}' to tmux session question", request.answer);
-            // In a real implementation, we could trigger an action here
-            // For now, we just log it
+        }
+        CheckType::ServiceHealth => {
+            info!("User answered '{}' to service health question", request.answer);
         }
     }
 
@@ -442,6 +459,80 @@ async fn answer_question(
     };
 
     Ok(Json(response))
+}
+
+/// Lists questions stored in the ask service.
+///
+/// Returns all questions, optionally filtered by status via the `?status=` query
+/// parameter.  Valid status values are `"pending"`, `"answered"`, and `"expired"`.
+/// Any other value (or no value) returns all questions regardless of status.
+///
+/// # HTTP Method
+///
+/// `GET /questions[?status=pending|answered|expired]`
+///
+/// # Returns
+///
+/// Returns HTTP 200 with [`ListQuestionsResponse`] JSON containing:
+/// - `questions` - array of [`QuestionInfo`] matching the filter
+/// - `total` - count of returned questions
+///
+/// # Examples
+///
+/// ```bash
+/// # All questions
+/// curl http://localhost:17001/questions
+///
+/// # Only pending questions
+/// curl http://localhost:17001/questions?status=pending
+/// ```
+async fn list_questions(
+    State(state): State<ApiState>,
+    Query(params): Query<ListQuestionsQuery>,
+) -> impl IntoResponse {
+    let questions = match params.status.as_deref() {
+        Some("pending") => state.app_state.get_questions_by_status(QuestionStatus::Pending).await,
+        Some("answered") => state.app_state.get_questions_by_status(QuestionStatus::Answered).await,
+        Some("expired") => state.app_state.get_questions_by_status(QuestionStatus::Expired).await,
+        _ => state.app_state.get_all_questions().await,
+    };
+    let total = questions.len();
+    Json(ListQuestionsResponse { questions, total })
+}
+
+/// Retrieves a single question by its UUID.
+///
+/// # HTTP Method
+///
+/// `GET /questions/:id`
+///
+/// # Path Parameters
+///
+/// - `id` - UUID of the question to retrieve
+///
+/// # Returns
+///
+/// Returns HTTP 200 with the [`QuestionInfo`] JSON on success.
+///
+/// # Errors
+///
+/// - [`ApiError::QuestionNotFound`] (404) if no question with the given UUID exists
+///
+/// # Examples
+///
+/// ```bash
+/// curl http://localhost:17001/questions/550e8400-e29b-41d4-a716-446655440000
+/// ```
+async fn get_question_by_id(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<QuestionInfo>, ApiError> {
+    state
+        .app_state
+        .get_question(&id)
+        .await
+        .map(Json)
+        .ok_or_else(|| ApiError::QuestionNotFound(format!("Question {id} not found")))
 }
 
 /// Creates the API router with HTTP tracing middleware.
@@ -502,6 +593,7 @@ mod tests {
             app_state,
             notification_client,
             notification_service_url: "http://localhost:17004".to_string(),
+            check_registry: Arc::new(CheckRegistry::new()),
         };
 
         assert_eq!(api_state.notification_service_url, "http://localhost:17004");

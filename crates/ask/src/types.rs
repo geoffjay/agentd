@@ -50,6 +50,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 // Re-export notification types from the notify crate
@@ -89,6 +90,8 @@ pub struct QuestionInfo {
 pub enum CheckType {
     /// Check for running tmux sessions
     TmuxSessions,
+    /// Check that an agentd service is reachable via HTTP health endpoint
+    ServiceHealth,
 }
 
 impl CheckType {
@@ -102,10 +105,12 @@ impl CheckType {
     /// use ask::types::CheckType;
     ///
     /// assert_eq!(CheckType::TmuxSessions.as_str(), "tmux_sessions");
+    /// assert_eq!(CheckType::ServiceHealth.as_str(), "service_health");
     /// ```
     pub fn as_str(&self) -> &'static str {
         match self {
             CheckType::TmuxSessions => "tmux_sessions",
+            CheckType::ServiceHealth => "service_health",
         }
     }
 }
@@ -167,12 +172,50 @@ pub struct TriggerResponse {
 
 /// Detailed results from each check type.
 ///
-/// Currently only contains tmux session check results, but structured to allow
-/// adding more check types in the future.
+/// Maps check name (e.g. `"tmux_sessions"`) to its JSON detail payload.
+/// Using a flexible map allows the registry to grow without changing this type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerResults {
-    /// Result of the tmux session check
-    pub tmux_sessions: TmuxCheckResult,
+    /// Per-check detail payloads, keyed by check name.
+    pub checks: HashMap<String, serde_json::Value>,
+}
+
+/// Query parameters for the `GET /questions` list endpoint.
+///
+/// All fields are optional. When omitted, no filtering is applied.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ListQuestionsQuery {
+    /// Optional status filter: `"pending"`, `"answered"`, or `"expired"`.
+    pub status: Option<String>,
+}
+
+/// Response from the `GET /questions` endpoint.
+///
+/// Returns all questions stored in the service, optionally filtered by status.
+///
+/// # JSON Example
+///
+/// ```json
+/// {
+///   "questions": [
+///     {
+///       "question_id": "550e8400-e29b-41d4-a716-446655440000",
+///       "notification_id": "660e8400-e29b-41d4-a716-446655440000",
+///       "check_type": "TmuxSessions",
+///       "asked_at": "2025-03-28T00:00:00Z",
+///       "status": "Pending",
+///       "answer": null
+///     }
+///   ],
+///   "total": 1
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListQuestionsResponse {
+    /// The list of questions matching the query filter.
+    pub questions: Vec<QuestionInfo>,
+    /// Total number of questions returned.
+    pub total: usize,
 }
 
 /// Request to submit an answer to a question.
@@ -292,16 +335,15 @@ mod tests {
 
     #[test]
     fn test_trigger_response_serialization() {
+        let mut checks = HashMap::new();
+        checks.insert(
+            "tmux_sessions".to_string(),
+            serde_json::json!({ "running": false, "session_count": 0, "sessions": [] }),
+        );
         let response = TriggerResponse {
             checks_run: vec!["tmux_sessions".to_string()],
             notifications_sent: vec![Uuid::new_v4()],
-            results: TriggerResults {
-                tmux_sessions: TmuxCheckResult {
-                    running: false,
-                    session_count: 0,
-                    sessions: Some(vec![]),
-                },
-            },
+            results: TriggerResults { checks },
         };
 
         let json = serde_json::to_string(&response).unwrap();
