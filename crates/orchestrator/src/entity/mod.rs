@@ -2,5 +2,6 @@
 
 pub mod agent;
 pub mod dispatch;
+pub mod task_queue;
 pub mod usage_session;
 pub mod workflow;
