@@ -28,9 +28,19 @@
 //! ```
 
 use crate::types::TmuxLayout;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 use tracing::{debug, warn};
+
+/// Maximum number of bytes allowed in a `tmux send-keys` argument.
+///
+/// tmux has an internal limit on the length of arguments passed to `send-keys`.
+/// Empirically, commands up to ~12 KB work reliably, but ~18 KB fails.  We use
+/// a conservative 8 KB threshold so that commands with large system prompts
+/// (e.g. the conductor agent at ~6 KB after trimming) still have headroom,
+/// while anything larger falls back to the temp-script strategy.
+const TMUX_SEND_KEYS_MAX_LEN: usize = 8 * 1024; // 8 KB
 
 /// Get the tmux binary path.
 ///
@@ -248,7 +258,22 @@ impl TmuxManager {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn send_command(&self, session_name: &str, command: &str) -> anyhow::Result<()> {
-        debug!("Sending command to session {}: {}", session_name, command);
+        debug!(
+            "Sending command to session {}: {}",
+            session_name,
+            &command[..command.len().min(120)]
+        );
+
+        if command.len() > TMUX_SEND_KEYS_MAX_LEN {
+            // The command is too long for tmux send-keys.  Write it to a
+            // self-deleting temp script and send the script invocation instead.
+            debug!(
+                "Command length {} exceeds tmux send-keys limit ({}); using temp-script fallback",
+                command.len(),
+                TMUX_SEND_KEYS_MAX_LEN,
+            );
+            return self.send_command_via_script(session_name, command);
+        }
 
         let output = Command::new(get_tmux_command())
             .args(["send-keys", "-t", session_name, command, "Enter"])
@@ -257,6 +282,33 @@ impl TmuxManager {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(anyhow::anyhow!("Failed to send command: {}", stderr));
+        }
+
+        Ok(())
+    }
+
+    /// Writes `command` to a self-deleting temporary shell script and sends
+    /// `sh <script_path>` to the tmux session via `send-keys`.
+    ///
+    /// This is the fallback path for commands that exceed
+    /// [`TMUX_SEND_KEYS_MAX_LEN`].  The generated script uses a `trap` to
+    /// remove itself on exit so no cleanup is required by the caller.
+    fn send_command_via_script(&self, session_name: &str, command: &str) -> anyhow::Result<()> {
+        let script_path = write_temp_script(command)?;
+        let script_str = script_path.to_string_lossy();
+        let send_cmd = format!("sh {script_str}");
+
+        debug!("Sending temp-script command to session {}: {}", session_name, send_cmd);
+
+        let output = Command::new(get_tmux_command())
+            .args(["send-keys", "-t", session_name, &send_cmd, "Enter"])
+            .output()?;
+
+        if !output.status.success() {
+            // Best-effort cleanup if send-keys itself fails
+            let _ = std::fs::remove_file(&script_path);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow::anyhow!("Failed to send command via script: {}", stderr));
         }
 
         Ok(())
@@ -387,6 +439,49 @@ impl TmuxManager {
     }
 }
 
+/// Writes `command` to a self-deleting temporary shell script.
+///
+/// The generated script:
+/// 1. Registers a `trap` to remove itself (`rm -f "$0"`) on exit so no
+///    external cleanup is required.
+/// 2. Contains the original command verbatim on the next line.
+///
+/// # Returns
+///
+/// The path to the newly created script file.
+///
+/// # Errors
+///
+/// Returns an error if the temp directory cannot be located or the file
+/// cannot be written.
+pub(crate) fn write_temp_script(command: &str) -> anyhow::Result<std::path::PathBuf> {
+    let mut path = std::env::temp_dir();
+    // Unique filename using a UUID-like timestamp + random component
+    let name = format!(
+        "agentd-cmd-{}-{}.sh",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+        std::process::id(),
+    );
+    path.push(name);
+
+    let script = format!("#!/bin/sh\ntrap 'rm -f \"$0\"' EXIT\n{command}\n");
+
+    let mut file = std::fs::File::create(&path)?;
+    file.write_all(script.as_bytes())?;
+
+    // Make the script executable (rwx for owner, rx for group/others)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+    }
+
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,5 +498,69 @@ mod tests {
         let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
         let session_name = format!("{}-my-project-{}", tmux.prefix(), timestamp);
         assert!(session_name.starts_with("agentd-my-project-"));
+    }
+
+    // -------------------------------------------------------------------------
+    // write_temp_script tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_write_temp_script_creates_file() {
+        let path = write_temp_script("echo hello").expect("should create temp script");
+        assert!(path.exists(), "temp script file should exist");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_write_temp_script_contains_shebang_and_trap() {
+        let path = write_temp_script("echo hello").expect("should create temp script");
+        let contents = std::fs::read_to_string(&path).expect("should read temp script");
+        assert!(contents.starts_with("#!/bin/sh\n"), "should have sh shebang");
+        assert!(contents.contains("trap 'rm -f \"$0\"' EXIT"), "should self-delete via trap");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_write_temp_script_contains_command() {
+        let cmd = "claude --system-prompt 'x' --some-flag value";
+        let path = write_temp_script(cmd).expect("should create temp script");
+        let contents = std::fs::read_to_string(&path).expect("should read temp script");
+        assert!(contents.contains(cmd), "script should contain the original command");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_write_temp_script_unique_paths() {
+        // Two calls must not collide (different PIDs can't be guaranteed here,
+        // but the nanosecond timestamp ensures uniqueness in practice).
+        let p1 = write_temp_script("echo 1").expect("should create first script");
+        let p2 = write_temp_script("echo 2").expect("should create second script");
+        assert_ne!(p1, p2, "temp script paths should be unique");
+        std::fs::remove_file(&p1).ok();
+        std::fs::remove_file(&p2).ok();
+    }
+
+    #[test]
+    fn test_send_keys_max_len_constant() {
+        // Sanity check: the limit must be positive and within a reasonable range.
+        assert!(TMUX_SEND_KEYS_MAX_LEN >= 4 * 1024, "limit should be at least 4 KB");
+        assert!(TMUX_SEND_KEYS_MAX_LEN <= 32 * 1024, "limit should be at most 32 KB");
+    }
+
+    #[test]
+    fn test_short_command_does_not_need_script() {
+        // A command well under the limit should not need the script fallback.
+        let cmd = "echo hello";
+        assert!(
+            cmd.len() <= TMUX_SEND_KEYS_MAX_LEN,
+            "short command should be within send-keys limit"
+        );
+    }
+
+    #[test]
+    fn test_long_command_needs_script() {
+        // A command exceeding the limit should trigger the script fallback.
+        let cmd = "x".repeat(TMUX_SEND_KEYS_MAX_LEN + 1);
+        assert!(cmd.len() > TMUX_SEND_KEYS_MAX_LEN, "long command should exceed send-keys limit");
     }
 }
