@@ -78,6 +78,10 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "linear_id",
     // Metadata-backed (composite triggers)
     "composite_sub_source_ids",
+    // Metadata-backed (queue trigger)
+    "queue_name",
+    "queue_task_id",
+    "queue_priority",
 ];
 
 /// Validate a prompt template, returning any warnings or errors.

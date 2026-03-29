@@ -21,6 +21,7 @@ mod m20260316_000007_rename_trigger_columns;
 mod m20260319_000008_add_rooms_to_agents;
 mod m20260323_000009_add_launch_command_to_agents;
 mod m20260324_000010_add_system_prompt_fields_to_agents;
+mod m20260328_000011_add_task_queue;
 
 /// The migration runner — applies all known migrations in order.
 pub struct Migrator;
@@ -39,6 +40,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260319_000008_add_rooms_to_agents::Migration),
             Box::new(m20260323_000009_add_launch_command_to_agents::Migration),
             Box::new(m20260324_000010_add_system_prompt_fields_to_agents::Migration),
+            Box::new(m20260328_000011_add_task_queue::Migration),
         ]
     }
 }

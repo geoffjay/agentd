@@ -7,6 +7,7 @@
 
 use crate::scheduler::events::{EventBus, SystemEvent};
 use crate::scheduler::source::TaskSource;
+use crate::scheduler::storage::SchedulerStorage;
 use crate::scheduler::types::{DispatchStatus, Task};
 use async_trait::async_trait;
 use chrono::Utc;
@@ -1065,6 +1066,87 @@ impl CompositeStrategy {
     }
 }
 
+// ---------------------------------------------------------------------------
+// QueueStrategy
+// ---------------------------------------------------------------------------
+
+/// A [`TriggerStrategy`] that consumes tasks from a persistent internal queue.
+///
+/// The strategy polls the named queue via [`SchedulerStorage::dequeue`] at a
+/// configurable interval. Each dequeued item is converted to a [`Task`] and
+/// returned for dispatch. While the task is being processed it is invisible to
+/// other consumers (visibility timeout). On dispatch completion the runner
+/// should call [`SchedulerStorage::complete_queue_task`] or
+/// [`SchedulerStorage::fail_queue_task`] to finalize the record.
+///
+/// # Ordering
+///
+/// Tasks are dequeued in FIFO order within each priority level — higher
+/// priority tasks are always preferred over lower ones, and equal-priority
+/// tasks are delivered oldest-first.
+///
+/// # Polling
+///
+/// When the queue is empty the strategy sleeps for `poll_interval` before
+/// retrying. The sleep is interruptible via the shutdown signal.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use orchestrator::scheduler::strategy::QueueStrategy;
+/// use orchestrator::scheduler::storage::SchedulerStorage;
+/// use std::time::Duration;
+///
+/// let strategy = QueueStrategy::new(
+///     storage.clone(),
+///     "my-queue".to_string(),
+///     Duration::from_secs(5),
+///     300, // 5-minute visibility timeout
+/// );
+/// ```
+pub struct QueueStrategy {
+    storage: SchedulerStorage,
+    queue_name: String,
+    poll_interval: Duration,
+    visibility_timeout_secs: u64,
+}
+
+impl QueueStrategy {
+    /// Create a new queue strategy.
+    ///
+    /// * `storage` — shared scheduler storage.
+    /// * `queue_name` — the named queue to consume from.
+    /// * `poll_interval` — how long to wait when the queue is empty before retrying.
+    /// * `visibility_timeout_secs` — seconds a dequeued task remains invisible to
+    ///   other consumers while being processed.
+    pub fn new(
+        storage: SchedulerStorage,
+        queue_name: String,
+        poll_interval: Duration,
+        visibility_timeout_secs: u64,
+    ) -> Self {
+        Self { storage, queue_name, poll_interval, visibility_timeout_secs }
+    }
+
+    /// Convert a raw queue entity model to a workflow [`Task`].
+    fn build_task(&self, row: crate::entity::task_queue::Model) -> Task {
+        let mut metadata = HashMap::new();
+        metadata.insert("queue_name".to_string(), self.queue_name.clone());
+        metadata.insert("queue_task_id".to_string(), row.id.clone());
+        metadata.insert("queue_priority".to_string(), row.priority.to_string());
+
+        Task {
+            source_id: format!("queue:{}:{}", self.queue_name, row.id),
+            title: row.title,
+            body: row.body.unwrap_or_default(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }
+    }
+}
+
 #[async_trait]
 impl TriggerStrategy for CompositeStrategy {
     async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
@@ -1171,6 +1253,47 @@ impl TriggerStrategy for CompositeStrategy {
                                 return Ok(vec![]);
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl TriggerStrategy for QueueStrategy {
+    async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>> {
+        let mut shutdown = shutdown.clone();
+
+        loop {
+            // Attempt to dequeue the next task.
+            match self.storage.dequeue(&self.queue_name, self.visibility_timeout_secs).await {
+                Ok(Some(row)) => {
+                    let task = self.build_task(row);
+                    info!(
+                        queue = %self.queue_name,
+                        source_id = %task.source_id,
+                        "QueueStrategy: dequeued task"
+                    );
+                    return Ok(vec![task]);
+                }
+                Ok(None) => {
+                    // Queue is empty — sleep for poll_interval then retry.
+                }
+                Err(e) => {
+                    warn!(%e, queue = %self.queue_name, "QueueStrategy: dequeue error, will retry");
+                    // Treat errors like empty queue — sleep and retry.
+                }
+            }
+
+            // Sleep for poll_interval, respecting shutdown.
+            let sleep = tokio::time::sleep(self.poll_interval);
+            tokio::pin!(sleep);
+            tokio::select! {
+                _ = &mut sleep => {}
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() {
+                        return Ok(vec![]);
                     }
                 }
             }
@@ -2707,5 +2830,99 @@ mod tests {
     #[should_panic(expected = "CompositeStrategy requires at least one sub-strategy")]
     fn composite_and_panics_on_empty_strategies() {
         let _: CompositeStrategy = CompositeStrategy::new_and(vec![], 60);
+    }
+
+    // -----------------------------------------------------------------------
+    // QueueStrategy tests
+    // -----------------------------------------------------------------------
+
+    use crate::scheduler::storage::SchedulerStorage;
+    use crate::storage::AgentStorage;
+    use tempfile::TempDir;
+
+    async fn create_queue_storage() -> (SchedulerStorage, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let agent_storage = AgentStorage::with_path(&db_path).await.unwrap();
+        let storage = SchedulerStorage::new(agent_storage.db().clone());
+        (storage, temp_dir)
+    }
+
+    #[tokio::test]
+    async fn queue_strategy_produces_task_from_queue() {
+        let (storage, _tmp) = create_queue_storage().await;
+
+        // Pre-populate the queue.
+        storage.enqueue("test-q", "My Task", Some("some body"), 0).await.unwrap();
+
+        let mut strategy =
+            QueueStrategy::new(storage, "test-q".to_string(), Duration::from_millis(10), 60);
+        let (_tx, rx) = watch::channel(false);
+
+        let tasks = strategy.next_tasks(&rx).await.unwrap();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].title, "My Task");
+        assert_eq!(tasks[0].body, "some body");
+        assert!(tasks[0].source_id.starts_with("queue:test-q:"));
+        assert_eq!(tasks[0].metadata.get("queue_name").map(|s| s.as_str()), Some("test-q"));
+        assert!(tasks[0].metadata.contains_key("queue_task_id"));
+        assert!(tasks[0].metadata.contains_key("queue_priority"));
+    }
+
+    #[tokio::test]
+    async fn queue_strategy_polls_when_empty_then_picks_up_task() {
+        let (storage, _tmp) = create_queue_storage().await;
+        let storage_clone = storage.clone();
+
+        let mut strategy =
+            QueueStrategy::new(storage, "delayed-q".to_string(), Duration::from_millis(20), 60);
+        let (_tx, rx) = watch::channel(false);
+
+        // Enqueue a task in a background task after a short delay.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            storage_clone.enqueue("delayed-q", "Delayed Task", None, 0).await.unwrap();
+        });
+
+        let tasks = strategy.next_tasks(&rx).await.unwrap();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].title, "Delayed Task");
+    }
+
+    #[tokio::test]
+    async fn queue_strategy_shuts_down_cleanly_when_queue_empty() {
+        let (storage, _tmp) = create_queue_storage().await;
+
+        let mut strategy =
+            QueueStrategy::new(storage, "empty-q".to_string(), Duration::from_millis(10), 60);
+
+        // Signal shutdown immediately.
+        let (tx, rx) = watch::channel(false);
+        tx.send(true).unwrap();
+
+        let result = strategy.next_tasks(&rx).await;
+        // With shutdown signalled, next_tasks may return an error or empty vec —
+        // it should not hang indefinitely.
+        let _ = result; // Just verify it returns at all.
+    }
+
+    #[tokio::test]
+    async fn queue_strategy_task_metadata_includes_priority() {
+        let (storage, _tmp) = create_queue_storage().await;
+
+        storage.enqueue("meta-q", "High Priority Task", None, 99).await.unwrap();
+
+        let mut strategy =
+            QueueStrategy::new(storage, "meta-q".to_string(), Duration::from_millis(10), 60);
+        let (_tx, rx) = watch::channel(false);
+
+        let tasks = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(tasks.len(), 1);
+
+        let priority =
+            tasks[0].metadata.get("queue_priority").expect("queue_priority should be in metadata");
+        assert_eq!(priority, "99");
     }
 }
