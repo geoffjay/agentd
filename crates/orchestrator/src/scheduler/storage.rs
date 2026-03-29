@@ -651,4 +651,189 @@ mod tests {
         let updated = storage.list_dispatches(&workflow.id).await.unwrap();
         assert_eq!(updated[0].status, DispatchStatus::Failed);
     }
+
+    // -----------------------------------------------------------------------
+    // Queue storage tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_enqueue_dequeue_fifo() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        // Enqueue three tasks at the same priority (FIFO order expected).
+        storage.enqueue("q1", "Task A", None, 0).await.unwrap();
+        storage.enqueue("q1", "Task B", None, 0).await.unwrap();
+        storage.enqueue("q1", "Task C", None, 0).await.unwrap();
+
+        let first = storage.dequeue("q1", 60).await.unwrap().unwrap();
+        assert_eq!(first.title, "Task A");
+
+        let second = storage.dequeue("q1", 60).await.unwrap().unwrap();
+        assert_eq!(second.title, "Task B");
+
+        let third = storage.dequeue("q1", 60).await.unwrap().unwrap();
+        assert_eq!(third.title, "Task C");
+
+        // Queue is now empty.
+        assert!(storage.dequeue("q1", 60).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_priority_ordering() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        // Enqueue tasks with different priorities.
+        storage.enqueue("prio", "Low", None, 1).await.unwrap();
+        storage.enqueue("prio", "High", None, 10).await.unwrap();
+        storage.enqueue("prio", "Medium", None, 5).await.unwrap();
+
+        // Higher priority should be dequeued first.
+        let first = storage.dequeue("prio", 60).await.unwrap().unwrap();
+        assert_eq!(first.title, "High");
+        assert_eq!(first.priority, 10);
+
+        let second = storage.dequeue("prio", 60).await.unwrap().unwrap();
+        assert_eq!(second.title, "Medium");
+
+        let third = storage.dequeue("prio", 60).await.unwrap().unwrap();
+        assert_eq!(third.title, "Low");
+    }
+
+    #[tokio::test]
+    async fn test_visibility_timeout_prevents_double_processing() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        storage.enqueue("vis", "Task X", Some("body"), 0).await.unwrap();
+
+        // Dequeue with a 60-second visibility timeout.
+        let task = storage.dequeue("vis", 60).await.unwrap().unwrap();
+        assert_eq!(task.title, "Task X");
+        assert_eq!(task.status, "processing");
+
+        // A second dequeue should return None (task is still in the processing window).
+        let again = storage.dequeue("vis", 60).await.unwrap();
+        assert!(again.is_none(), "Expected None — task should be invisible while processing");
+    }
+
+    #[tokio::test]
+    async fn test_complete_queue_task() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        let id = storage.enqueue("done", "Finish me", None, 0).await.unwrap();
+        storage.dequeue("done", 60).await.unwrap().unwrap();
+
+        storage.complete_queue_task(&id).await.unwrap();
+
+        let stats = storage.queue_stats("done").await.unwrap();
+        assert_eq!(stats.completed, 1);
+        assert_eq!(stats.processing, 0);
+        assert_eq!(stats.pending, 0);
+    }
+
+    #[tokio::test]
+    async fn test_fail_task_retry_and_dead_letter() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        let id = storage.enqueue("retry", "Retry me", None, 0).await.unwrap();
+
+        // Fail 3 times — default max_retries is 3, so after 3 failures it's dead.
+        for _ in 0..3 {
+            storage.dequeue("retry", 60).await.unwrap().unwrap();
+            storage.fail_queue_task(&id).await.unwrap();
+        }
+
+        let stats = storage.queue_stats("retry").await.unwrap();
+        assert_eq!(stats.dead, 1, "Task should be dead after exceeding max_retries");
+        assert_eq!(stats.pending, 0);
+    }
+
+    #[tokio::test]
+    async fn test_peek_queue() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        storage.enqueue("peek", "First", None, 0).await.unwrap();
+        storage.enqueue("peek", "Second", None, 0).await.unwrap();
+
+        let items = storage.peek_queue("peek", 10).await.unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].title, "First");
+        assert_eq!(items[1].title, "Second");
+
+        // Peeking should not consume the tasks.
+        let items_again = storage.peek_queue("peek", 10).await.unwrap();
+        assert_eq!(items_again.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_peek_limit() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        for i in 0..5 {
+            storage.enqueue("lim", &format!("Task {i}"), None, 0).await.unwrap();
+        }
+
+        let items = storage.peek_queue("lim", 3).await.unwrap();
+        assert_eq!(items.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_purge_queue() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        storage.enqueue("purge", "A", None, 0).await.unwrap();
+        storage.enqueue("purge", "B", None, 0).await.unwrap();
+        storage.enqueue("purge", "C", None, 0).await.unwrap();
+
+        let deleted = storage.purge_queue("purge").await.unwrap();
+        assert_eq!(deleted, 3);
+
+        let stats = storage.queue_stats("purge").await.unwrap();
+        assert_eq!(stats.pending, 0);
+    }
+
+    #[tokio::test]
+    async fn test_queue_stats_all_statuses() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        // Enqueue 2 tasks.
+        let id1 = storage.enqueue("stats", "T1", None, 0).await.unwrap();
+        let id2 = storage.enqueue("stats", "T2", None, 0).await.unwrap();
+
+        // Dequeue both — now processing.
+        storage.dequeue("stats", 300).await.unwrap();
+        storage.dequeue("stats", 300).await.unwrap();
+
+        // Complete one.
+        storage.complete_queue_task(&id1).await.unwrap();
+
+        // Fail the other until it's dead.
+        for _ in 0..3 {
+            // Re-dequeue (after each fail, it goes back to pending except on final fail)
+            if let Some(row) = storage.dequeue("stats", 300).await.unwrap() {
+                let _ = row; // claim it
+            }
+            storage.fail_queue_task(&id2).await.unwrap();
+        }
+
+        let stats = storage.queue_stats("stats").await.unwrap();
+        assert_eq!(stats.completed, 1);
+        assert_eq!(stats.dead, 1);
+    }
+
+    #[tokio::test]
+    async fn test_queue_isolation() {
+        let (storage, _tmp) = create_test_storage().await;
+
+        storage.enqueue("q-a", "From A", None, 0).await.unwrap();
+        storage.enqueue("q-b", "From B", None, 0).await.unwrap();
+
+        // Dequeue from q-a should only return q-a tasks.
+        let task = storage.dequeue("q-a", 60).await.unwrap().unwrap();
+        assert_eq!(task.queue_name, "q-a");
+        assert_eq!(task.title, "From A");
+
+        // q-b is still untouched.
+        let stats_b = storage.queue_stats("q-b").await.unwrap();
+        assert_eq!(stats_b.pending, 1);
+    }
 }

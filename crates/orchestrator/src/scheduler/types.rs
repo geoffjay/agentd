@@ -174,6 +174,20 @@ pub enum TriggerConfig {
         #[serde(default)]
         assignee: Option<String>,
     },
+    /// Queue-based trigger — consumes tasks from a named internal queue.
+    ///
+    /// Workers push tasks via `POST /queues/{name}/push`; this trigger
+    /// dequeues them one at a time with an atomic visibility timeout.
+    Queue {
+        /// The named queue to consume from.
+        queue_name: String,
+        /// How often to poll when the queue is empty (seconds, default 5).
+        #[serde(default)]
+        poll_interval_secs: Option<u64>,
+        /// Visibility timeout for dequeued tasks (seconds, default 300).
+        #[serde(default)]
+        visibility_timeout_secs: Option<u64>,
+    },
 }
 
 fn default_issue_state() -> String {
@@ -197,6 +211,7 @@ impl TriggerConfig {
             TriggerConfig::Manual { .. } => "manual",
             TriggerConfig::AgentIdle { .. } => "agent_idle",
             TriggerConfig::LinearIssues { .. } => "linear_issues",
+            TriggerConfig::Queue { .. } => "queue",
         }
     }
 
@@ -212,7 +227,8 @@ impl TriggerConfig {
             | TriggerConfig::Webhook { .. }
             | TriggerConfig::Manual { .. }
             | TriggerConfig::AgentIdle { .. }
-            | TriggerConfig::LinearIssues { .. } => true,
+            | TriggerConfig::LinearIssues { .. }
+            | TriggerConfig::Queue { .. } => true,
         }
     }
 
