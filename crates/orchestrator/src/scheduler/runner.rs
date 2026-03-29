@@ -4,8 +4,8 @@ use crate::scheduler::linear::LinearIssueSource;
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
 use crate::scheduler::strategy::{
-    CronStrategy, DelayStrategy, EventFilter, EventStrategy, IdleStrategy, PollingStrategy,
-    TriggerStrategy,
+    CompositeStrategy, CronStrategy, DelayStrategy, EventFilter, EventStrategy, IdleStrategy,
+    PollingStrategy, TriggerStrategy,
 };
 use crate::scheduler::template::render_template;
 use crate::scheduler::types::{
@@ -300,12 +300,37 @@ fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> 
 /// Poll-based workflows (GitHub triggers) use [`PollingStrategy`].
 /// Cron workflows use [`CronStrategy`]. Delay workflows use [`DelayStrategy`].
 /// Event-driven workflows (agent lifecycle, dispatch result) use [`EventStrategy`].
+/// Composite workflows use [`CompositeStrategy`] with recursive sub-strategy creation.
 /// Returns an error for trigger types that are not yet implemented.
 pub fn create_strategy(
     config: &WorkflowConfig,
     event_bus: Option<&Arc<EventBus>>,
 ) -> anyhow::Result<Box<dyn TriggerStrategy>> {
-    match &config.trigger_config {
+    create_trigger_strategy(
+        &config.trigger_config,
+        event_bus,
+        config.poll_interval_secs,
+        config.agent_id,
+        config.id,
+        0,
+    )
+}
+
+/// Recursively create a [`TriggerStrategy`] from a [`TriggerConfig`].
+///
+/// The `depth` parameter guards against runaway nesting — a maximum of
+/// [`MAX_COMPOSITE_DEPTH`] levels of nested composites is permitted.
+const MAX_COMPOSITE_DEPTH: usize = 3;
+
+fn create_trigger_strategy(
+    trigger: &TriggerConfig,
+    event_bus: Option<&Arc<EventBus>>,
+    poll_interval_secs: u64,
+    agent_id: Uuid,
+    workflow_id: Uuid,
+    depth: usize,
+) -> anyhow::Result<Box<dyn TriggerStrategy>> {
+    match trigger {
         TriggerConfig::Cron { expression } => {
             let strategy = CronStrategy::new(expression)?;
             Ok(Box::new(strategy))
@@ -315,15 +340,14 @@ pub fn create_strategy(
                 .map(|dt| dt.with_timezone(&Utc))
                 .or_else(|_| run_at.parse::<chrono::DateTime<Utc>>())
                 .map_err(|e| anyhow::anyhow!("Invalid run_at datetime '{}': {}", run_at, e))?;
-            let strategy = DelayStrategy::new(dt, config.id);
+            let strategy = DelayStrategy::new(dt, workflow_id);
             Ok(Box::new(strategy))
         }
         TriggerConfig::AgentLifecycle { event } => {
             let bus = event_bus.ok_or_else(|| {
                 anyhow::anyhow!("EventBus is required for agent_lifecycle triggers")
             })?;
-            let filter =
-                EventFilter::AgentLifecycle { event: event.clone(), agent_id: config.agent_id };
+            let filter = EventFilter::AgentLifecycle { event: event.clone(), agent_id };
             Ok(Box::new(EventStrategy::new(bus.clone(), filter)))
         }
         TriggerConfig::DispatchResult { source_workflow_id, status } => {
@@ -340,11 +364,41 @@ pub fn create_strategy(
             let bus = event_bus
                 .ok_or_else(|| anyhow::anyhow!("EventBus is required for agent_idle triggers"))?;
             let duration = std::time::Duration::from_secs(*idle_seconds);
-            Ok(Box::new(IdleStrategy::new(bus.clone(), config.agent_id, duration)))
+            Ok(Box::new(IdleStrategy::new(bus.clone(), agent_id, duration)))
+        }
+        TriggerConfig::Composite { mode, triggers, correlation_window_secs } => {
+            if depth >= MAX_COMPOSITE_DEPTH {
+                anyhow::bail!(
+                    "Composite trigger nesting exceeds maximum depth of {}",
+                    MAX_COMPOSITE_DEPTH
+                );
+            }
+            let sub_strategies: Vec<Box<dyn TriggerStrategy>> = triggers
+                .iter()
+                .map(|tc| {
+                    create_trigger_strategy(
+                        tc,
+                        event_bus,
+                        poll_interval_secs,
+                        agent_id,
+                        workflow_id,
+                        depth + 1,
+                    )
+                })
+                .collect::<anyhow::Result<_>>()?;
+
+            let window = correlation_window_secs.unwrap_or(60);
+            match mode.as_str() {
+                "or" => Ok(Box::new(CompositeStrategy::new_or(sub_strategies))),
+                "and" => Ok(Box::new(CompositeStrategy::new_and(sub_strategies, window))),
+                other => {
+                    anyhow::bail!("Invalid composite mode '{}'. Valid modes: 'or', 'and'", other)
+                }
+            }
         }
         _ => {
-            let source = create_source(&config.trigger_config)?;
-            Ok(Box::new(PollingStrategy::new(source, config.poll_interval_secs)))
+            let source = create_source(trigger)?;
+            Ok(Box::new(PollingStrategy::new(source, poll_interval_secs)))
         }
     }
 }

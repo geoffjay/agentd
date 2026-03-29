@@ -76,6 +76,8 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "team_name",
     "project",
     "linear_id",
+    // Metadata-backed (composite triggers)
+    "composite_sub_source_ids",
 ];
 
 /// Validate a prompt template, returning any warnings or errors.
