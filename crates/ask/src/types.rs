@@ -180,6 +180,44 @@ pub struct TriggerResults {
     pub checks: HashMap<String, serde_json::Value>,
 }
 
+/// Query parameters for the `GET /questions` list endpoint.
+///
+/// All fields are optional. When omitted, no filtering is applied.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ListQuestionsQuery {
+    /// Optional status filter: `"pending"`, `"answered"`, or `"expired"`.
+    pub status: Option<String>,
+}
+
+/// Response from the `GET /questions` endpoint.
+///
+/// Returns all questions stored in the service, optionally filtered by status.
+///
+/// # JSON Example
+///
+/// ```json
+/// {
+///   "questions": [
+///     {
+///       "question_id": "550e8400-e29b-41d4-a716-446655440000",
+///       "notification_id": "660e8400-e29b-41d4-a716-446655440000",
+///       "check_type": "TmuxSessions",
+///       "asked_at": "2025-03-28T00:00:00Z",
+///       "status": "Pending",
+///       "answer": null
+///     }
+///   ],
+///   "total": 1
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListQuestionsResponse {
+    /// The list of questions matching the query filter.
+    pub questions: Vec<QuestionInfo>,
+    /// Total number of questions returned.
+    pub total: usize,
+}
+
 /// Request to submit an answer to a question.
 ///
 /// Used by the `/answer` endpoint.
