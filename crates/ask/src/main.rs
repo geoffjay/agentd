@@ -42,6 +42,7 @@
 //! ```
 
 mod api;
+mod checks;
 mod entity;
 mod error;
 mod migration;
@@ -54,10 +55,12 @@ mod types;
 use anyhow::Result;
 use api::{create_router_with_tracing, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
+use checks::default_registry;
 use metrics_exporter_prometheus::PrometheusHandle;
 use notification_client::NotificationClient;
 use state::AppState;
 use std::env;
+use std::sync::Arc;
 use storage::QuestionStorage;
 use tracing::{error, info, warn};
 
@@ -143,11 +146,16 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Build check registry from environment configuration
+    let registry = default_registry();
+    info!("Check registry initialized with {} check(s)", registry.len());
+
     // Create API state
     let api_state = ApiState {
         app_state: app_state.clone(),
         notification_client,
         notification_service_url: notify_service_url,
+        check_registry: Arc::new(registry),
     };
 
     // Initialize Prometheus metrics
