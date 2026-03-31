@@ -332,6 +332,16 @@ impl ExecutionBackend for TmuxBackend {
     }
 
     async fn send_command(&self, session_name: &str, command: &str) -> anyhow::Result<()> {
+        // Wait for the shell to finish initializing (direnv, asdf, etc.)
+        // before sending the command. Without this, commands can be lost or
+        // mangled by shell startup scripts.
+        let tmux_ready = self.tmux.clone();
+        let name_ready = session_name.to_string();
+        tokio::task::spawn_blocking(move || {
+            tmux_ready.wait_for_shell_ready(&name_ready, std::time::Duration::from_secs(15))
+        })
+        .await??;
+
         let tmux = self.tmux.clone();
         let name = session_name.to_string();
         let cmd = command.to_string();

@@ -105,7 +105,7 @@ async fn main() -> Result<()> {
         .unwrap_or(17001);
 
     let notify_service_url = env::var("AGENTD_NOTIFY_SERVICE_URL")
-        .unwrap_or_else(|_| "http://localhost:7004".to_string());
+        .unwrap_or_else(|_| "http://localhost:17004".to_string());
 
     info!("Configuration:");
     info!("  Port: {}", port);

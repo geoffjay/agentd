@@ -375,6 +375,56 @@ async fn main() -> anyhow::Result<()> {
         error!(%e, "Agent reconciliation failed");
     }
 
+    // Periodic reconciliation: detect agents whose processes died after startup.
+    {
+        let manager_reconcile = manager.clone();
+        let interval_secs: u64 = env::var("AGENTD_RECONCILE_INTERVAL_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30);
+        info!(interval_secs, "Starting periodic reconciliation loop");
+        tokio::spawn(async move {
+            let mut interval =
+                tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
+            interval.tick().await; // skip immediate tick (just ran reconcile above)
+            loop {
+                interval.tick().await;
+                if let Err(e) = manager_reconcile.reconcile().await {
+                    error!(%e, "Periodic reconciliation failed");
+                }
+            }
+        });
+    }
+
+    // Reactive disconnect handler: when an agent's WebSocket closes, check
+    // whether its backend session is still alive after a short grace period.
+    {
+        let mut disconnect_rx = event_bus.subscribe();
+        let manager_disconnect = manager.clone();
+        tokio::spawn(async move {
+            loop {
+                match disconnect_rx.recv().await {
+                    Ok(scheduler::events::SystemEvent::AgentDisconnected { agent_id }) => {
+                        let mgr = manager_disconnect.clone();
+                        tokio::spawn(async move {
+                            // Grace period: allow intentional restarts to re-register
+                            // before we mark the agent as failed.
+                            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                            if let Err(e) = mgr.reconcile_single(&agent_id).await {
+                                error!(%agent_id, %e, "Reactive reconcile after disconnect failed");
+                            }
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        warn!("Disconnect handler lagged by {} events", n);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
     // Resume any enabled workflows from the database.
     if let Err(e) = scheduler.resume_workflows().await {
         error!(%e, "Failed to resume workflows");

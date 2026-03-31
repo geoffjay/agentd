@@ -252,88 +252,112 @@ impl AgentManager {
         }
 
         for agent in agents {
-            let session_name = match agent.session_id.clone() {
-                Some(s) => s,
-                None => {
-                    // No session ID — mark as Failed.
-                    let mut agent = agent;
-                    warn!(agent_id = %agent.id, "Agent marked running but has no session ID, marking failed");
-                    agent.status = AgentStatus::Failed;
-                    agent.updated_at = Utc::now();
-                    let _ = self.storage.update(&agent).await;
-                    continue;
-                }
-            };
-
-            let session_alive = self.backend.session_exists(&session_name).await.unwrap_or(false);
-
-            if !session_alive {
-                // Case 1: session is gone — check exit info for diagnostics.
-                let mut agent = agent;
-                let exit_info = self.backend.session_exit_info(&session_name).await.ok().flatten();
-
-                let new_status = match &exit_info {
-                    Some(info) if info.exit_code == 0 => {
-                        info!(
-                            agent_id = %agent.id,
-                            session = %session_name,
-                            "Agent session exited cleanly (exit code 0), marking stopped"
-                        );
-                        AgentStatus::Stopped
-                    }
-                    Some(info) => {
-                        warn!(
-                            agent_id = %agent.id,
-                            session = %session_name,
-                            exit_code = info.exit_code,
-                            error = ?info.error,
-                            "Agent session exited with error, marking failed"
-                        );
-                        AgentStatus::Failed
-                    }
-                    None => {
-                        warn!(
-                            agent_id = %agent.id,
-                            session = %session_name,
-                            "Agent marked running but session is gone, marking failed"
-                        );
-                        AgentStatus::Failed
-                    }
-                };
-
-                agent.status = new_status;
-                agent.updated_at = Utc::now();
-                if let Err(e) = self.storage.update(&agent).await {
-                    error!(agent_id = %agent.id, %e, "Failed to update agent status");
-                }
-            } else if !self.registry.is_connected(&agent.id).await {
-                // Case 2: session alive but WebSocket connection is stale.
-                // Fetch health for observability/logging only — the restart is
-                // unconditional because the stale WebSocket must be replaced
-                // regardless of container health status.
-                let health = self
-                    .backend
-                    .session_health(&session_name)
-                    .await
-                    .unwrap_or(wrap::backend::SessionHealth::Unknown);
-
-                warn!(
-                    agent_id = %agent.id,
-                    session = %session_name,
-                    health = %health,
-                    "Agent has live session but is not connected to registry, restarting"
-                );
-
-                if let Err(e) = self.restart_agent(&agent).await {
-                    error!(agent_id = %agent.id, %e, "Failed to restart stale agent during reconcile");
-                }
+            if let Err(e) = self.reconcile_agent(agent).await {
+                error!(%e, "Failed to reconcile agent");
             }
-            // Case 3: alive and connected — nothing to do.
         }
 
         // Clean up orphaned backend sessions (sessions with our prefix but
         // no matching DB record).
         self.cleanup_orphaned_sessions(&known_sessions).await;
+
+        Ok(())
+    }
+
+    /// Reconcile a single agent by ID.
+    ///
+    /// Loads the agent from storage and checks whether its backend session
+    /// and WebSocket connection are still alive. Updates status accordingly.
+    /// This is called reactively when an `AgentDisconnected` event fires.
+    pub async fn reconcile_single(&self, agent_id: &Uuid) -> anyhow::Result<()> {
+        let agent = match self.storage.get(agent_id).await? {
+            Some(a) => a,
+            None => return Ok(()),
+        };
+        if agent.status != AgentStatus::Running {
+            return Ok(());
+        }
+        self.reconcile_agent(agent).await
+    }
+
+    /// Reconcile a single agent record against its backend session state.
+    async fn reconcile_agent(&self, agent: Agent) -> anyhow::Result<()> {
+        let session_name = match agent.session_id.clone() {
+            Some(s) => s,
+            None => {
+                let mut agent = agent;
+                warn!(agent_id = %agent.id, "Agent marked running but has no session ID, marking failed");
+                agent.status = AgentStatus::Failed;
+                agent.updated_at = Utc::now();
+                let _ = self.storage.update(&agent).await;
+                return Ok(());
+            }
+        };
+
+        let session_alive = self.backend.session_exists(&session_name).await.unwrap_or(false);
+
+        if !session_alive {
+            // Case 1: session is gone -- check exit info for diagnostics.
+            let mut agent = agent;
+            let exit_info = self.backend.session_exit_info(&session_name).await.ok().flatten();
+
+            let new_status = match &exit_info {
+                Some(info) if info.exit_code == 0 => {
+                    info!(
+                        agent_id = %agent.id,
+                        session = %session_name,
+                        "Agent session exited cleanly (exit code 0), marking stopped"
+                    );
+                    AgentStatus::Stopped
+                }
+                Some(info) => {
+                    warn!(
+                        agent_id = %agent.id,
+                        session = %session_name,
+                        exit_code = info.exit_code,
+                        error = ?info.error,
+                        "Agent session exited with error, marking failed"
+                    );
+                    AgentStatus::Failed
+                }
+                None => {
+                    warn!(
+                        agent_id = %agent.id,
+                        session = %session_name,
+                        "Agent marked running but session is gone, marking failed"
+                    );
+                    AgentStatus::Failed
+                }
+            };
+
+            agent.status = new_status;
+            agent.updated_at = Utc::now();
+            if let Err(e) = self.storage.update(&agent).await {
+                error!(agent_id = %agent.id, %e, "Failed to update agent status");
+            }
+        } else if !self.registry.is_connected(&agent.id).await {
+            // Case 2: session alive but WebSocket connection is stale.
+            // Fetch health for observability/logging only -- the restart is
+            // unconditional because the stale WebSocket must be replaced
+            // regardless of container health status.
+            let health = self
+                .backend
+                .session_health(&session_name)
+                .await
+                .unwrap_or(wrap::backend::SessionHealth::Unknown);
+
+            warn!(
+                agent_id = %agent.id,
+                session = %session_name,
+                health = %health,
+                "Agent has live session but is not connected to registry, restarting"
+            );
+
+            if let Err(e) = self.restart_agent(&agent).await {
+                error!(agent_id = %agent.id, %e, "Failed to restart stale agent during reconcile");
+            }
+        }
+        // Case 3: alive and connected -- nothing to do.
 
         Ok(())
     }

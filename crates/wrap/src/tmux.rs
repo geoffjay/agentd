@@ -30,7 +30,8 @@
 use crate::types::TmuxLayout;
 use std::path::Path;
 use std::process::Command;
-use tracing::{debug, warn};
+use std::time::{Duration, Instant};
+use tracing::{debug, info, warn};
 
 /// Get the tmux binary path.
 ///
@@ -260,6 +261,60 @@ impl TmuxManager {
         }
 
         Ok(())
+    }
+
+    /// Waits for the shell in a tmux session to finish initializing.
+    ///
+    /// Polls `#{pane_current_command}` until it reports a known shell name,
+    /// indicating that direnv, asdf, and other shell init scripts have finished.
+    ///
+    /// Returns `Ok(true)` if the shell became ready, `Ok(false)` on timeout.
+    pub fn wait_for_shell_ready(
+        &self,
+        session_name: &str,
+        timeout: Duration,
+    ) -> anyhow::Result<bool> {
+        const POLL_INTERVAL: Duration = Duration::from_millis(200);
+        const KNOWN_SHELLS: &[&str] = &["zsh", "bash", "fish", "sh", "dash", "ash"];
+
+        let start = Instant::now();
+
+        loop {
+            let output = Command::new(get_tmux_command())
+                .args(["display-message", "-p", "-t", session_name, "#{pane_current_command}"])
+                .output()?;
+
+            if output.status.success() {
+                let current_cmd = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+                if KNOWN_SHELLS.iter().any(|s| current_cmd.ends_with(s)) {
+                    info!(
+                        session = %session_name,
+                        command = %current_cmd,
+                        elapsed_ms = start.elapsed().as_millis(),
+                        "Shell is ready"
+                    );
+                    return Ok(true);
+                }
+
+                debug!(
+                    session = %session_name,
+                    command = %current_cmd,
+                    "Shell not ready yet"
+                );
+            }
+
+            if start.elapsed() >= timeout {
+                warn!(
+                    session = %session_name,
+                    elapsed_ms = start.elapsed().as_millis(),
+                    "Timed out waiting for shell readiness, proceeding anyway"
+                );
+                return Ok(false);
+            }
+
+            std::thread::sleep(POLL_INTERVAL);
+        }
     }
 
     /// Checks if a tmux session exists.
