@@ -1,6 +1,6 @@
 # Research Agent
 
-The research agent investigates topics before implementation begins — crate ecosystems,
+The research agent investigates topics before implementation begins - crate ecosystems,
 external protocols, architectural patterns, feasibility questions, and library tradeoffs.
 It posts structured findings as a GitHub issue comment and optionally commits a planning
 document to `docs/planning/`.
@@ -17,7 +17,7 @@ The research-worker workflow polls for this label every 60 seconds. Once the age
 finishes, it removes the label automatically.
 
 !!! note "Label color"
-    `research-agent` is indigo (`#6366f1`) — a specialist dispatch label, distinct
+    `research-agent` is indigo (`#6366f1`) - a specialist dispatch label, distinct
     from the green implementation-agent labels.
 
 ## When to use it
@@ -36,7 +36,7 @@ research dispatch adds latency without benefit.
 
 ## Pipeline position
 
-Research is an optional early step — it feeds findings into planning before implementation
+Research is an optional early step - it feeds findings into planning before implementation
 starts.
 
 ```mermaid
@@ -47,7 +47,7 @@ flowchart TD
     C --> D[Research agent posts findings]
     D --> E([plan-agent label])
     E --> F[Planner breaks down issue]
-    F --> G([work-agent label])
+    F --> G([agent label])
     G --> H[Worker implements]
     H --> I([review-agent label])
     I --> J{Approved?}
@@ -105,7 +105,7 @@ The agent posts findings using this structure:
 ```
 
 !!! tip "Reading findings"
-    The **Summary** section is the fastest read — check it first to decide whether
+    The **Summary** section is the fastest read - check it first to decide whether
     the full findings are relevant to what you're working on. **Recommendations**
     contains the actionable output that typically feeds directly into a planning or
     implementation issue.
@@ -126,7 +126,7 @@ the issue comment.
 ## Shared memory
 
 The research agent stores key findings in the shared memory service under its actor
-identity `research`. Other agents — particularly the planner and worker — can
+identity `research`. Other agents - particularly the planner and worker - can
 retrieve this context before starting related work:
 
 ```bash
@@ -136,7 +136,7 @@ agent memory search "<topic>" --as-actor research --limit 5 --json
 
 ## Related
 
-- [Pipeline State Machine](../pipeline-state-machine.md) — full label reference and lifecycle diagram
-- [Templates](../templates.md) — how to write issue descriptions that guide research effectively
-- `docs/planning/` — archived research planning documents
-- `.agentd/workflows/research-worker.yml` — workflow definition that drives dispatch
+- [Pipeline State Machine](../pipeline-state-machine.md) - full label reference and lifecycle diagram
+- [Templates](../templates.md) - how to write issue descriptions that guide research effectively
+- `docs/planning/` - archived research planning documents
+- `.agentd/workflows/research-worker.yml` - workflow definition that drives dispatch

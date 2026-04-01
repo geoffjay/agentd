@@ -4,10 +4,10 @@ The communicate service provides a persistent, real-time messaging layer for age
 
 ## Design Goals
 
-- **Persistent** — all messages and room state are stored in SQLite; conversations survive service restarts
-- **Real-time** — WebSocket connections let clients receive messages as they arrive without polling
-- **Participant-aware** — only members of a room can read or write to it; the service enforces membership at every layer
-- **Composable** — rooms are declared in `.agentd/rooms/` alongside agents and workflows and created automatically during `agent apply`
+- **Persistent** - all messages and room state are stored in SQLite; conversations survive service restarts
+- **Real-time** - WebSocket connections let clients receive messages as they arrive without polling
+- **Participant-aware** - only members of a room can read or write to it; the service enforces membership at every layer
+- **Composable** - rooms are declared in `.agentd/rooms/` alongside agents and workflows and created automatically during `agent apply`
 
 ## Core Concepts
 
@@ -27,10 +27,10 @@ Room names are unique across the service. A room also carries an optional `topic
 
 A participant is an agent or human who is a member of a room. Participants have:
 
-- **identifier** — the agent's UUID or a human's username (unique per room)
-- **kind** — `agent` or `human`
-- **display_name** — shown alongside messages
-- **role** — controls write access within the room:
+- **identifier** - the agent's UUID or a human's username (unique per room)
+- **kind** - `agent` or `human`
+- **display_name** - shown alongside messages
+- **role** - controls write access within the room:
 
 | Role | Can post | Can manage participants |
 |------|----------|-------------------------|
@@ -42,9 +42,9 @@ A participant is an agent or human who is a member of a room. Participants have:
 
 A message is a text payload sent by a participant. Messages support:
 
-- **threading** — `reply_to` references another message in the same room
-- **metadata** — arbitrary key/value pairs (e.g. `severity=high`, echo-prevention tokens)
-- **status** — `sent` → `delivered` → `read` lifecycle
+- **threading** - `reply_to` references another message in the same room
+- **metadata** - arbitrary key/value pairs (e.g. `severity=high`, echo-prevention tokens)
+- **status** - `sent` → `delivered` → `read` lifecycle
 
 The sender must be a participant in the room at send time; the service enforces this.
 
@@ -73,7 +73,7 @@ graph TD
 - The **CLI** (`agent communicate …`) calls the REST API for room and participant management and for posting messages.
 - **Agents** connect to the orchestrator via WebSocket. The orchestrator bridges room messages to an agent's prompt queue when the agent is a participant in a room that receives a new message.
 - **Humans** can connect directly via the `/ws` WebSocket endpoint for live message streaming, or use a browser-based UI.
-- The **communicate service** is self-contained — it has no runtime dependency on the orchestrator. The orchestrator depends on communicate (to deliver messages to agents), not the reverse.
+- The **communicate service** is self-contained - it has no runtime dependency on the orchestrator. The orchestrator depends on communicate (to deliver messages to agents), not the reverse.
 
 ## Message Flow
 
@@ -235,7 +235,7 @@ The communicate service uses SQLite (via SeaORM) with three tables:
 | `role` | TEXT | `member`, `admin`, `observer` |
 | `joined_at` | TEXT | RFC 3339 |
 
-`(room_id, identifier)` is unique — a participant can join a room only once.
+`(room_id, identifier)` is unique - a participant can join a room only once.
 
 ### `messages`
 

@@ -21,7 +21,7 @@ Notification service with a REST API for creating, reading, and managing notific
 
 ### [Getting Started Guide](public/getting-started.md)
 
-End-to-end walkthrough from first run to managing autonomous agents — notifications, agent spawning, automated workflows, and more.
+End-to-end walkthrough from first run to managing autonomous agents - notifications, agent spawning, automated workflows, and more.
 
 ### [Installation](public/install.md)
 

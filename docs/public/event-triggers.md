@@ -63,13 +63,13 @@ graph LR
 The bus uses `tokio::sync::broadcast` with a **capacity of 256**. Key behaviours:
 
 - **Fan-out:** Every active `EventStrategy` subscriber receives every event.
-- **Lag:** A subscriber that falls behind loses events older than the channel capacity. `EventStrategy` logs a warning and continues — it will not miss future events. See [Handling broadcast lag](#handling-broadcast-lag).
+- **Lag:** A subscriber that falls behind loses events older than the channel capacity. `EventStrategy` logs a warning and continues - it will not miss future events. See [Handling broadcast lag](#handling-broadcast-lag).
 - **No persistence:** Events are not stored. A workflow that is not running when an event fires will not receive it.
 - **No-op publish:** Publishing when no workflows are subscribed is safe and silent.
 
 ### Event ordering
 
-Events are delivered to each subscriber in the order they were published. There are **no ordering guarantees** between different subscribers — two workflows may react to the same event at different times depending on their processing speed.
+Events are delivered to each subscriber in the order they were published. There are **no ordering guarantees** between different subscribers - two workflows may react to the same event at different times depending on their processing speed.
 
 ---
 
@@ -105,7 +105,7 @@ The API validates `event` at creation time and returns `400 Invalid Input` for a
 
 An `agent_lifecycle` workflow only fires for its **own assigned agent**. If multiple agents are running and one of them connects, only the workflow whose `agent_id` matches the connecting agent produces a task. Events for other agents are silently ignored.
 
-This makes `agent_lifecycle` safe to use in multi-agent deployments — each workflow responds only to its own agent.
+This makes `agent_lifecycle` safe to use in multi-agent deployments - each workflow responds only to its own agent.
 
 ### Synthetic task structure
 
@@ -128,7 +128,7 @@ When the trigger fires, a synthetic `Task` is produced with these fields:
 | `agent_id` | UUID of the agent | `550e8400-...` |
 | `timestamp` | RFC 3339 timestamp of the event | `2026-04-01T09:00:00Z` |
 
-Because `source_id` includes both the agent UUID and the timestamp, each firing produces a unique identifier — the dedup check will never suppress a legitimate re-connection.
+Because `source_id` includes both the agent UUID and the timestamp, each firing produces a unique identifier - the dedup check will never suppress a legitimate re-connection.
 
 ### Template variables
 
@@ -348,7 +348,7 @@ curl -s -X POST http://127.0.0.1:17006/workflows \
 
 ### Create a `dispatch_result` workflow (chained pipeline)
 
-**Step 1 — Create the upstream workflow (lint):**
+**Step 1 - Create the upstream workflow (lint):**
 
 ```bash
 curl -s -X POST http://127.0.0.1:17006/workflows \
@@ -368,7 +368,7 @@ curl -s -X POST http://127.0.0.1:17006/workflows \
 # → note the workflow ID from the response: LINT_WF_ID
 ```
 
-**Step 2 — Create the downstream workflow (test), triggered when lint completes:**
+**Step 2 - Create the downstream workflow (test), triggered when lint completes:**
 
 ```bash
 curl -s -X POST http://127.0.0.1:17006/workflows \
@@ -387,7 +387,7 @@ curl -s -X POST http://127.0.0.1:17006/workflows \
 # → note the workflow ID: TEST_WF_ID
 ```
 
-**Step 3 — Create the deploy workflow, triggered when test completes:**
+**Step 3 - Create the deploy workflow, triggered when test completes:**
 
 ```bash
 curl -s -X POST http://127.0.0.1:17006/workflows \
@@ -429,7 +429,7 @@ The event bus channel has a fixed capacity of **256 events**. If an `EventStrate
 
 When lag occurs:
 - The `EventStrategy` logs a warning: `EventStrategy: subscriber lagged, some events may have been missed`
-- The subscriber **resumes** from the oldest available event — it does **not** stop or crash
+- The subscriber **resumes** from the oldest available event - it does **not** stop or crash
 - Events that fell off the end of the channel are **permanently lost**
 
 In a typical deployment (events fire at human timescales), the 256-event buffer is more than sufficient. High-frequency automation that fires hundreds of dispatches per second may need to reduce event-driven workflow complexity to avoid lag.
@@ -438,8 +438,8 @@ In a typical deployment (events fire at human timescales), the 256-event buffer 
 
 Both event trigger types include a timestamp in `source_id`, making each firing unique:
 
-- Lifecycle: `event:{event_type}:{agent_id}:{timestamp}` — unique per connect/disconnect
-- Dispatch result: `event:dispatch:{dispatch_id}:{timestamp}` — unique per dispatch completion
+- Lifecycle: `event:{event_type}:{agent_id}:{timestamp}` - unique per connect/disconnect
+- Dispatch result: `event:dispatch:{dispatch_id}:{timestamp}` - unique per dispatch completion
 
 The dedup check in the scheduler prevents re-dispatching the same event, which provides safety across orchestrator restarts if the same event happens to fire again quickly.
 

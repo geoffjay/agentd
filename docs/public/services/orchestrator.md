@@ -68,7 +68,7 @@ GET /agents?status={status}&limit={limit}&offset={offset}
 ```
 
 **Query Parameters:**
-- `status` (optional): Filter by status — `pending`, `running`, `stopped`, `failed`
+- `status` (optional): Filter by status - `pending`, `running`, `stopped`, `failed`
 - `limit` (optional): Page size (default: 50, max: 200)
 - `offset` (optional): Number of records to skip (default: 0)
 
@@ -128,8 +128,8 @@ Content-Type: application/json
 | `worktree` | bool | no | `false` | Start with `--worktree` for isolated git worktree |
 | `system_prompt` | string | no | | System prompt passed via `--system-prompt` |
 | `tool_policy` | object | no | `{"mode":"allow_all"}` | Tool use restrictions (see [Tool Policy](#tool-policy)) |
-| `model` | string | no | | Model to use — accepts aliases (`sonnet`, `opus`, `haiku`) or full names (`claude-sonnet-4-6`). Maps to the `--model` flag. |
-| `env` | object | no | `{}` | Environment variables set when launching the agent. Commonly used for `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`. Values are write-only — the API returns `"***"` in responses. |
+| `model` | string | no | | Model to use - accepts aliases (`sonnet`, `opus`, `haiku`) or full names (`claude-sonnet-4-6`). Maps to the `--model` flag. |
+| `env` | object | no | `{}` | Environment variables set when launching the agent. Commonly used for `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`. Values are write-only - the API returns `"***"` in responses. |
 | `additional_dirs` | array | no | `[]` | Extra directories the agent can read and write, in addition to `working_dir`. Each entry maps to a `--add-dir` flag. See [Additional Directories](../additional-dirs.md). |
 | `auto_clear_threshold` | integer | no | | Automatically clear context when cumulative input tokens for the session exceeds this value. |
 | `network_policy` | string | no | | Network policy for Docker-backed agents (`internet`, `isolated`, `host`). Ignored for tmux backends. |
@@ -289,8 +289,8 @@ Content-Type: application/json
 ```
 
 **Errors:**
-- `404` — agent not found
-- `422` — path does not exist or is not a directory
+- `404` - agent not found
+- `422` - path does not exist or is not a directory
 
 Adding a path that is already present is a no-op (idempotent).
 
@@ -325,7 +325,7 @@ Content-Type: application/json
 ```
 
 **Errors:**
-- `404` — agent not found
+- `404` - agent not found
 
 Removing a path that is not in the list is a no-op (idempotent).
 
@@ -366,14 +366,14 @@ Content-Type: application/json
 - `404` if the agent doesn't exist
 - `400` if the agent is not running or not connected via WebSocket
 
-**Example — send a follow-up task to a running agent:**
+**Example - send a follow-up task to a running agent:**
 ```bash
 curl -s -X POST http://127.0.0.1:17006/agents/{id}/message \
   -H 'Content-Type: application/json' \
   -d '{"content": "Now create issues for the documentation gaps you identified"}'
 ```
 
-This is the primary way to interact with SDK-mode agents. You can send multiple messages over the agent's lifetime — each one starts a new conversation turn.
+This is the primary way to interact with SDK-mode agents. You can send multiple messages over the agent's lifetime - each one starts a new conversation turn.
 
 ---
 
@@ -459,7 +459,7 @@ Content-Type: application/json
 !!! note "Backwards compatibility"
     The field name `source_config` is accepted as an alias for `trigger_config`. New integrations should use `trigger_config`.
 
-**`trigger_config` — GitHub Issues:**
+**`trigger_config` - GitHub Issues:**
 ```json
 {
   "type": "github_issues",
@@ -470,7 +470,7 @@ Content-Type: application/json
 }
 ```
 
-**`trigger_config` — GitHub Pull Requests:**
+**`trigger_config` - GitHub Pull Requests:**
 ```json
 {
   "type": "github_pull_requests",
@@ -609,7 +609,7 @@ GET /approvals?status={status}&limit={limit}&offset={offset}
 ```
 
 **Query Parameters:**
-- `status` (optional): Filter by status — `pending`, `approved`, `denied`, `timed_out`
+- `status` (optional): Filter by status - `pending`, `approved`, `denied`, `timed_out`
 - `limit` (optional): Page size (default: 50, max: 200)
 - `offset` (optional): Records to skip (default: 0)
 
@@ -730,8 +730,8 @@ GET /debug/agents
 |-------|-------------|
 | `agents` | All agents in the database with their current WebSocket connection state |
 | `orphan_connections` | Agent IDs that have a live WebSocket connection but no database record |
-| `summary.running_but_disconnected` | Agents marked `running` in DB whose WebSocket disconnected — likely crashed |
-| `summary.connected_but_not_running` | WebSocket-connected agents not marked `running` in DB — transient state |
+| `summary.running_but_disconnected` | Agents marked `running` in DB whose WebSocket disconnected - likely crashed |
+| `summary.connected_but_not_running` | WebSocket-connected agents not marked `running` in DB - transient state |
 
 ---
 

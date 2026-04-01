@@ -4,8 +4,8 @@ Schedule triggers let a workflow run on a time-based schedule rather than in res
 
 | Type | When it fires | Repeats? |
 |------|--------------|----------|
-| `cron` | On a recurring schedule defined by a cron expression | Yes — indefinitely |
-| `delay` | Once at a specific datetime | No — auto-disables after firing |
+| `cron` | On a recurring schedule defined by a cron expression | Yes - indefinitely |
+| `delay` | Once at a specific datetime | No - auto-disables after firing |
 
 Both types synthesise a `Task` internally rather than fetching tasks from an external source. The runner dispatches this synthetic task to the connected agent using the workflow's prompt template.
 
@@ -67,10 +67,10 @@ Supported special characters:
 
 | Character | Meaning | Example |
 |-----------|---------|---------|
-| `*` | Any value | `* * * * *` — every minute |
-| `,` | List of values | `0,30 * * * *` — at :00 and :30 |
-| `-` | Range | `MON-FRI` — Monday through Friday |
-| `/` | Step | `*/5 * * * *` — every 5 minutes |
+| `*` | Any value | `* * * * *` - every minute |
+| `,` | List of values | `0,30 * * * *` - at :00 and :30 |
+| `-` | Range | `MON-FRI` - Monday through Friday |
+| `/` | Step | `*/5 * * * *` - every 5 minutes |
 
 ### Common expressions
 
@@ -197,7 +197,7 @@ agent orchestrator create-workflow \
   --prompt-template "Generate the daily status report for {{fire_time}}."
 ```
 
-The `--cron-expression` argument is **required** when `--trigger-type cron` is used. Supplying an invalid expression returns an error immediately — the expression is validated by the API at creation time.
+The `--cron-expression` argument is **required** when `--trigger-type cron` is used. Supplying an invalid expression returns an error immediately - the expression is validated by the API at creation time.
 
 ### Create a delay workflow
 
@@ -220,7 +220,7 @@ After creating a workflow, watch its status:
 # Show workflow details (enabled status, trigger config)
 agent orchestrator get-workflow <WORKFLOW_ID>
 
-# Watch dispatch history — new entries appear after each firing
+# Watch dispatch history - new entries appear after each firing
 agent orchestrator dispatch-history <WORKFLOW_ID>
 ```
 
@@ -246,7 +246,7 @@ agent orchestrator get-workflow <WORKFLOW_ID>
 
 ## YAML Template Examples
 
-### Cron workflow — daily report
+### Cron workflow - daily report
 
 `.agentd/workflows/daily-report.yml`:
 
@@ -269,7 +269,7 @@ prompt_template: |
 enabled: true
 ```
 
-### Cron workflow — hourly health check
+### Cron workflow - hourly health check
 
 `.agentd/workflows/health-check.yml`:
 
@@ -294,7 +294,7 @@ tool_policy:
 enabled: true
 ```
 
-### Delay workflow — one-shot deployment
+### Delay workflow - one-shot deployment
 
 `.agentd/workflows/scheduled-deploy.yml`:
 
@@ -398,7 +398,7 @@ Both trigger types are designed to be safe across orchestrator restarts:
 
 ### Auto-disable after delay fires
 
-When a `delay` workflow fires, the orchestrator sets `enabled = false` in the database automatically (via `RunOutcome::AutoDisable`). The workflow is not deleted — it stays in storage so you can inspect its dispatch history. To re-run a one-shot task, either create a new workflow or re-enable the existing one with:
+When a `delay` workflow fires, the orchestrator sets `enabled = false` in the database automatically (via `RunOutcome::AutoDisable`). The workflow is not deleted - it stays in storage so you can inspect its dispatch history. To re-run a one-shot task, either create a new workflow or re-enable the existing one with:
 
 ```bash
 agent orchestrator update-workflow <WORKFLOW_ID> --enabled true

@@ -48,11 +48,11 @@ Create a new room.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `name` | string | Yes | — | Unique room name |
+| `name` | string | Yes | - | Unique room name |
 | `topic` | string | No | null | Short label |
 | `description` | string | No | null | Longer description |
 | `room_type` | string | No | `"group"` | `"direct"`, `"group"`, or `"broadcast"` |
-| `created_by` | string | Yes | — | Creator identifier (agent UUID or username) |
+| `created_by` | string | Yes | - | Creator identifier (agent UUID or username) |
 
 **Response `201 Created`:**
 ```json
@@ -87,7 +87,7 @@ List rooms with optional type filter and pagination.
 |-----------|------|---------|-------------|
 | `limit` | integer | 50 | Results per page (max 200) |
 | `offset` | integer | 0 | Pagination offset |
-| `room_type` | string | — | Filter by type: `direct`, `group`, or `broadcast` |
+| `room_type` | string | - | Filter by type: `direct`, `group`, or `broadcast` |
 
 **Response `200 OK`:**
 ```json
@@ -189,9 +189,9 @@ Add a participant to a room.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `identifier` | string | Yes | — | Agent UUID or username |
-| `kind` | string | Yes | — | `"agent"` or `"human"` |
-| `display_name` | string | Yes | — | Display name |
+| `identifier` | string | Yes | - | Agent UUID or username |
+| `kind` | string | Yes | - | `"agent"` or `"human"` |
+| `display_name` | string | Yes | - | Display name |
 | `role` | string | No | `"member"` | `"member"`, `"admin"`, or `"observer"` |
 
 **Response `201 Created`:** `ParticipantResponse`
@@ -275,7 +275,7 @@ Send a message to a room.
   "sender_id": "agent-abc",
   "sender_name": "Worker Agent",
   "sender_kind": "agent",
-  "content": "Task complete — PR #42 created.",
+  "content": "Task complete - PR #42 created.",
   "metadata": { "pr_url": "https://github.com/org/repo/pull/42" },
   "reply_to": null
 }
@@ -283,10 +283,10 @@ Send a message to a room.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `sender_id` | string | Yes | — | Must match an existing participant's identifier |
-| `sender_name` | string | Yes | — | Display name captured at send time |
-| `sender_kind` | string | Yes | — | `"agent"` or `"human"` |
-| `content` | string | Yes | — | Message text (must be non-empty) |
+| `sender_id` | string | Yes | - | Must match an existing participant's identifier |
+| `sender_name` | string | Yes | - | Display name captured at send time |
+| `sender_kind` | string | Yes | - | `"agent"` or `"human"` |
+| `content` | string | Yes | - | Message text (must be non-empty) |
 | `metadata` | object | No | `{}` | Arbitrary key/value pairs |
 | `reply_to` | UUID | No | null | ID of a message in the same room |
 
@@ -314,8 +314,8 @@ List messages in a room with optional timestamp filters.
 |-----------|------|---------|-------------|
 | `limit` | integer | 50 | Results per page (max 200) |
 | `offset` | integer | 0 | Pagination offset |
-| `before` | RFC 3339 | — | Only messages created strictly before this timestamp |
-| `after` | RFC 3339 | — | Only messages created strictly after this timestamp |
+| `before` | RFC 3339 | - | Only messages created strictly before this timestamp |
+| `after` | RFC 3339 | - | Only messages created strictly after this timestamp |
 
 Messages are returned in ascending creation order.
 

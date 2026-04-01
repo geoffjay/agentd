@@ -8,14 +8,17 @@ This page is a consolidated quick-reference for all workflow trigger types. For 
 
 | Trigger | When it fires | Repeats? | Requires public endpoint? | CLI support? | YAML support? |
 |---------|--------------|----------|--------------------------|-------------|--------------|
-| `github_issues` | New or updated GitHub issues matching filters | Yes — polls continuously | No | Yes | Yes |
-| `github_pull_requests` | New or updated GitHub PRs matching filters | Yes — polls continuously | No | Yes | Yes |
-| `linear_issues` | New or updated Linear issues matching filters | Yes — polls continuously | No | Yes | Yes |
-| `cron` | On a recurring cron schedule | Yes — indefinitely | No | Yes | Yes |
-| `delay` | Once at a specific datetime | No — auto-disables | No | Yes | Yes |
-| `agent_lifecycle` | When the agent connects, disconnects, or clears context | Yes | No | No — API only | No — API only |
-| `dispatch_result` | When another workflow dispatch completes | Yes | No | No — API only | No — API only |
+| `github_issues` | New or updated GitHub issues matching filters | Yes - polls continuously | No | Yes | Yes |
+| `github_pull_requests` | New or updated GitHub PRs matching filters | Yes - polls continuously | No | Yes | Yes |
+| `linear_issues` | New or updated Linear issues matching filters | Yes - polls continuously | No | Yes | Yes |
+| `cron` | On a recurring cron schedule | Yes - indefinitely | No | Yes | Yes |
+| `delay` | Once at a specific datetime | No - auto-disables | No | Yes | Yes |
+| `agent_lifecycle` | When the agent connects, disconnects, or clears context | Yes | No | No - API only | No - API only |
+| `dispatch_result` | When another workflow dispatch completes | Yes | No | No - API only | No - API only |
 | `webhook` | On inbound HTTP POST to a dedicated endpoint | Yes | Yes (or tunnel) | Yes | Yes |
+| `agent_idle` | When the agent has been idle for a configured duration | Yes - repeats on each idle period | No | Yes | Yes |
+| `composite` | When sub-triggers fire (AND/OR logic) | Yes | Depends on sub-triggers | No - API only | No - API only |
+| `queue` | When a task is available in a named internal queue | Yes - polls continuously | No | Yes | Yes |
 | `manual` | Only when explicitly triggered via CLI or API | On demand | No | Yes | Yes |
 
 ---
@@ -91,6 +94,46 @@ Do not use when:
 
 - You want parallel execution (each workflow must have its own trigger)
 
+### `agent_idle`
+
+Use when:
+
+- You want to run background tasks when an agent has no work to do
+- You need periodic health checks or maintenance that only run during idle periods
+- You want to implement a "keep alive" or background monitoring pattern
+
+Do not use when:
+
+- You need a fixed schedule (use `cron` instead)
+- You want the task to run regardless of agent activity
+
+### `composite`
+
+Use when:
+
+- You need to combine multiple trigger conditions with AND/OR logic
+- A workflow should only fire when multiple conditions are met simultaneously (AND mode)
+- A workflow should fire when any one of several conditions is met (OR mode)
+
+Do not use when:
+
+- A single trigger type is sufficient
+- You need `webhook` or `manual` as a sub-trigger (not supported in composites)
+
+### `queue`
+
+Use when:
+
+- You want a producer/consumer pattern where external systems or other agents push work items
+- You need priority-based task ordering
+- You want to decouple task production from task consumption
+- Multiple producers need to feed a single agent workflow
+
+Do not use when:
+
+- The trigger source is a known external system (use polling or webhook triggers instead)
+- You need immediate dispatch without queuing
+
 ### `webhook`
 
 Use when:
@@ -126,6 +169,9 @@ All trigger types use the `trigger_config` field with a `"type"` discriminant:
 { "type": "delay",                "run_at": "2026-04-01T09:00:00Z" }
 { "type": "agent_lifecycle",      "event": "session_start" }
 { "type": "dispatch_result",      "source_workflow_id": "<UUID>", "status": "completed" }
+{ "type": "agent_idle",           "idle_seconds": 30 }
+{ "type": "composite",           "mode": "or", "triggers": [{ "type": "cron", "expression": "0 9 * * *" }, { "type": "agent_lifecycle", "event": "session_start" }] }
+{ "type": "queue",               "queue_name": "work-items", "poll_interval_secs": 5, "visibility_timeout_secs": 300 }
 { "type": "webhook",              "secret": "my-hmac-secret" }
 { "type": "manual" }
 ```
@@ -167,6 +213,18 @@ source:
   type: delay
   run_at: "2026-04-01T09:00:00Z"
 
+# Agent Idle
+source:
+  type: agent_idle
+  idle_seconds: 30
+
+# Queue
+source:
+  type: queue
+  queue_name: work-items
+  poll_interval_secs: 5          # optional, default 5
+  visibility_timeout_secs: 300   # optional, default 300
+
 # Webhook
 source:
   type: webhook
@@ -178,7 +236,7 @@ source:
 ```
 
 !!! note
-    `agent_lifecycle` and `dispatch_result` are not available in YAML templates. Create them via the REST API.
+    `agent_lifecycle`, `dispatch_result`, and `composite` are not available in YAML templates. Create them via the REST API.
 
 ### CLI (`create-workflow`)
 
@@ -203,6 +261,20 @@ agent orchestrator create-workflow --name wf --agent-name agent \
   --trigger-type delay \
   --run-at "2026-04-01T09:00:00Z" \
   --prompt-template "Scheduled task: {{run_at}}"
+
+# Agent Idle
+agent orchestrator create-workflow --name wf --agent-name agent \
+  --trigger-type agent-idle \
+  --idle-seconds 30 \
+  --prompt-template "Agent idle for {{idle_seconds}}s. Run background check."
+
+# Queue
+agent orchestrator create-workflow --name wf --agent-name agent \
+  --trigger-type queue \
+  --queue-name work-items \
+  --queue-poll-interval 5 \
+  --queue-visibility-timeout 300 \
+  --prompt-template "Process: {{title}}\n{{body}}"
 
 # Webhook
 agent orchestrator create-workflow --name wf --agent-name agent \
@@ -311,26 +383,55 @@ agent orchestrator create-workflow --name wf --agent-name agent \
 | `{{pr_number}}` | PR number (pull_request events only) | `99` |
 | `{{source_id}}` | `webhook:<delivery_id>:<timestamp>` | |
 
+### `agent_idle`
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{agent_id}}` | UUID of the idle agent | `550e8400-...` |
+| `{{idle_seconds}}` | Configured idle timeout | `30` |
+| `{{timestamp}}` | RFC 3339 timestamp when idle fired | `2026-04-01T09:00:00Z` |
+| `{{source_id}}` | `idle:<unix_timestamp>` | `idle:1751234567` |
+
+### `composite`
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{source_id}}` | `composite:or:<sub-source-id>` or `composite:and:<id1>,<id2>,...` | |
+| `{{composite_sub_source_ids}}` | Comma-joined sub-source IDs (AND mode) | `cron:...,event:...` |
+
+In addition, all template variables from the sub-trigger that fired are available. In AND mode, variables from all sub-triggers are merged.
+
+### `queue`
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{title}}` | Task title from the queue item | `"Process report"` |
+| `{{body}}` | Task body from the queue item | |
+| `{{queue_name}}` | Name of the queue | `work-items` |
+| `{{queue_task_id}}` | Internal UUID of the queue task | `abc-uuid-...` |
+| `{{queue_priority}}` | Priority value assigned at push time | `10` |
+| `{{source_id}}` | Queue task source ID | |
+
 ### `manual`
 
 | Variable | Description |
 |----------|-------------|
 | `{{title}}` | From request `title` field (default: `"Manual trigger"`) |
 | `{{body}}` | From request `body` field (default: empty) |
-| `{{source_id}}` | `manual:<uuid>` — random per trigger call |
+| `{{source_id}}` | `manual:<uuid>` - random per trigger call |
 | `{{<key>}}` | Any key from the request `metadata` object |
 
 ---
 
 ## Performance Considerations
 
-| Aspect | Polling (`github_issues`, `github_pull_requests`) | Polling (`linear_issues`) | Schedule (`cron`, `delay`) | Event (`agent_lifecycle`, `dispatch_result`) | Webhook | Manual |
-|--------|--------------------------------------------------|--------------------------|---------------------------|----------------------------------------------|---------|--------|
-| Latency | Up to `poll_interval_secs` (default 60 s) | Up to `poll_interval_secs` (default 60 s) | Zero — wakes exactly at fire time | Near-zero — in-process event bus | Sub-second | Immediate |
-| External API calls | Yes — GitHub API per poll | Yes — Linear API per poll | None | None | One inbound HTTP request per event | None |
-| Missed events on restart | No — deduplication by issue/PR number | No — deduplication by issue identifier (e.g. `ENG-123`) | No — dedup by fire time / workflow ID | Yes — events not stored | Depends on sender retry policy | N/A |
-| Network requirements | Outbound to GitHub | Outbound to Linear | None | None | Inbound HTTP (public endpoint or tunnel) | None |
-| Rate limits | GitHub API rate limits apply | Linear API rate limits apply | None | None | Depends on sender volume | None |
+| Aspect | Polling (`github_issues`, `github_pull_requests`) | Polling (`linear_issues`) | Schedule (`cron`, `delay`) | Event (`agent_lifecycle`, `dispatch_result`, `agent_idle`) | Webhook | Queue | Composite | Manual |
+|--------|--------------------------------------------------|--------------------------|---------------------------|----------------------------------------------|---------|-------|-----------|--------|
+| Latency | Up to `poll_interval_secs` (default 60 s) | Up to `poll_interval_secs` (default 60 s) | Zero - wakes exactly at fire time | Near-zero - in-process event bus | Sub-second | Up to `poll_interval_secs` (default 5 s) | Depends on sub-triggers | Immediate |
+| External API calls | Yes - GitHub API per poll | Yes - Linear API per poll | None | None | One inbound HTTP request per event | None | Depends on sub-triggers | None |
+| Missed events on restart | No - deduplication by issue/PR number | No - deduplication by issue identifier (e.g. `ENG-123`) | No - dedup by fire time / workflow ID | Yes - events not stored | Depends on sender retry policy | No - tasks persist in database | Depends on sub-triggers | N/A |
+| Network requirements | Outbound to GitHub | Outbound to Linear | None | None | Inbound HTTP (public endpoint or tunnel) | None | Depends on sub-triggers | None |
+| Rate limits | GitHub API rate limits apply | Linear API rate limits apply | None | None | Depends on sender volume | None | Depends on sub-triggers | None |
 
 ### Polling vs. webhooks for GitHub
 
@@ -338,8 +439,8 @@ agent orchestrator create-workflow --name wf --agent-name agent \
 |----------|----------------|
 | Behind a firewall, no public endpoint | Use `github_issues` / `github_pull_requests` polling |
 | Need sub-second latency | Use `webhook` |
-| Network unreliable | Use polling — catches up automatically on next poll |
-| High-volume GitHub events | Use `webhook` — polling may miss events between polls |
+| Network unreliable | Use polling - catches up automatically on next poll |
+| High-volume GitHub events | Use `webhook` - polling may miss events between polls |
 
 ---
 
@@ -367,16 +468,16 @@ This bypasses the workflow's normal trigger strategy and dispatches immediately.
 
 ### Workflow is enabled but not firing
 
-1. **Check the trigger config** — `agent orchestrator get-workflow <ID>` shows the active `trigger_config`.
-2. **Check dispatch history** — `agent orchestrator workflow-history <ID>` shows recent dispatches. A new entry should appear after each firing.
-3. **Check agent connectivity** — `agent orchestrator get-agent <AGENT_ID>` must show `status: running`. Workflows skip dispatch if the agent is not connected.
-4. **Check logs** — the orchestrator logs at `INFO` level for each trigger event and dispatch attempt.
+1. **Check the trigger config** - `agent orchestrator get-workflow <ID>` shows the active `trigger_config`.
+2. **Check dispatch history** - `agent orchestrator workflow-history <ID>` shows recent dispatches. A new entry should appear after each firing.
+3. **Check agent connectivity** - `agent orchestrator get-agent <AGENT_ID>` must show `status: running`. Workflows skip dispatch if the agent is not connected.
+4. **Check logs** - the orchestrator logs at `INFO` level for each trigger event and dispatch attempt.
 
 ### Cron workflow not firing at the expected time
 
 - All cron expressions are evaluated in **UTC**. Convert your local time to UTC.
 - Validate your expression with an external tool like [crontab.guru](https://crontab.guru/).
-- Check that `enabled: true` — a disabled workflow's runner is not started and the cron strategy is never executed.
+- Check that `enabled: true` - a disabled workflow's runner is not started and the cron strategy is never executed.
 
 ### Delay workflow fired immediately (not at scheduled time)
 
@@ -385,7 +486,7 @@ This bypasses the workflow's normal trigger strategy and dispatches immediately.
 ### Webhook returning 404
 
 - The workflow UUID in the URL must match exactly.
-- The workflow must be `enabled: true` — a disabled workflow's runner is not started, so the webhook channel does not exist.
+- The workflow must be `enabled: true` - a disabled workflow's runner is not started, so the webhook channel does not exist.
 - Verify with `agent orchestrator get-workflow <ID>`.
 
 ### Webhook returning 401
@@ -396,13 +497,31 @@ This bypasses the workflow's normal trigger strategy and dispatches immediately.
 ### `dispatch_result` workflow not chaining
 
 - The `source_workflow_id` must exactly match the upstream workflow's UUID.
-- The upstream workflow must complete (not just dispatch) — `dispatch_result` fires on `DispatchCompleted`, which is published after the agent finishes.
+- The upstream workflow must complete (not just dispatch) - `dispatch_result` fires on `DispatchCompleted`, which is published after the agent finishes.
 - Check that `status` in the trigger config matches the upstream's actual completion status (`completed` vs `failed`).
+
+### Agent idle workflow not firing
+
+- The agent must have completed at least one dispatch before the idle timer starts. The timer resets on each `DispatchCompleted` event.
+- Verify `idle_seconds` is set to a reasonable value - too short may cause rapid re-firing, too long may never trigger during a session.
+- Events are not stored - if the orchestrator restarts, the idle timer resets.
+
+### Composite AND trigger never fires
+
+- Verify `correlation_window_secs` is long enough for all sub-triggers to fire within the window (default: 60 seconds).
+- Check that all sub-triggers are configured correctly and producing tasks individually.
+- `webhook` and `manual` cannot be used as sub-triggers inside a composite.
+
+### Queue workflow not consuming tasks
+
+- Verify the `queue_name` in the trigger config matches the name used in `POST /queues/{name}/push`.
+- Check that the workflow is enabled and the agent is connected.
+- Monitor queue depth with `agent orchestrator queue-stats <name>`.
 
 ### Agent lifecycle workflow not firing on `session_start`
 
 - The workflow must be created and enabled **before** the agent connects. If the agent was already connected when the workflow was created, the `session_start` event has already fired and will not be re-delivered.
-- Events are not stored — a missed event cannot be replayed.
+- Events are not stored - a missed event cannot be replayed.
 
 ---
 
@@ -415,6 +534,8 @@ This bypasses the workflow's normal trigger strategy and dispatches immediately.
 | Agent lifecycle and dispatch result triggers | [Event-Driven Triggers](event-triggers.md) |
 | Webhook trigger and GitHub setup | [Webhook Triggers](webhook-triggers.md) |
 | Linear trigger setup and filter options | [Linear Triggers](linear-triggers.md) |
+| Composite triggers (AND/OR logic) | [Composite Triggers](composite-triggers.md) |
+| Queue-based trigger and producer/consumer patterns | [Queue Trigger](queue-trigger.md) |
 | Manual trigger and on-demand dispatch | [Manual Triggers](manual-trigger.md) |
 | YAML template schema | [Templates](templates.md) |
 | Migration from `source_config` | [Migration Guide](migration-trigger.md) |

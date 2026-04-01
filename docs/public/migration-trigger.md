@@ -12,7 +12,7 @@ Phase 1 of the workflow refactor (#326) introduced the `TriggerStrategy` trait a
 | `source_type` column in DB | `trigger_type` |
 | `TaskSourceConfig` Rust type | `TriggerConfig` |
 
-The semantics are identical — only the names changed.
+The semantics are identical - only the names changed.
 
 ---
 
@@ -39,7 +39,7 @@ The semantics are identical — only the names changed.
     }
     ```
 
-=== "Old (source_config) — still accepted"
+=== "Old (source_config) - still accepted"
 
     ```json
     {
@@ -98,7 +98,7 @@ This means:
 
 - **Existing API clients sending `source_config`** continue to work without any changes.
 - **Existing stored workflow JSON** (e.g. in `.agentd/` template files) that uses `source_config` is still deserialised correctly.
-- **Responses** always use `trigger_config` — if your client parses response bodies by field name, update it.
+- **Responses** always use `trigger_config` - if your client parses response bodies by field name, update it.
 
 ---
 
@@ -129,7 +129,7 @@ The output should show `trigger_type` and `trigger_config` (not `source_type` / 
 
 ### Manual rollback
 
-The migration includes a `DOWN` path that reverses the rename. To trigger it you would need to roll back via the SeaORM migration CLI (`sea-orm-cli migrate down`) — this is not exposed as a regular `agentd` command and should only be used during development.
+The migration includes a `DOWN` path that reverses the rename. To trigger it you would need to roll back via the SeaORM migration CLI (`sea-orm-cli migrate down`) - this is not exposed as a regular `agentd` command and should only be used during development.
 
 !!! warning
     Rolling back the migration on an installation that has already upgraded will cause the orchestrator to fail to start until the migration is re-applied.
@@ -180,7 +180,7 @@ If you have `.agentd/workflows/*.yml` template files using `source_config`, they
 
 ## CLI
 
-The CLI `create-workflow` command already uses the new naming — it passes `trigger_config` in the JSON body it sends to the orchestrator. No CLI changes are required.
+The CLI `create-workflow` command already uses the new naming - it passes `trigger_config` in the JSON body it sends to the orchestrator. No CLI changes are required.
 
 ```bash
 agent orchestrator create-workflow \
@@ -197,8 +197,8 @@ agent orchestrator create-workflow \
 
 ## Summary Checklist
 
-- [x] API responses use `trigger_config` — update any response-parsing code
-- [x] `source_config` in request bodies still works — no urgent client changes needed
+- [x] API responses use `trigger_config` - update any response-parsing code
+- [x] `source_config` in request bodies still works - no urgent client changes needed
 - [x] DB migration runs automatically on orchestrator startup
 - [x] `.agentd/` YAML templates using `source_config` still load correctly
 - [ ] Optionally rename `source_config` → `trigger_config` in your YAML templates for consistency

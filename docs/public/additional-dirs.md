@@ -4,9 +4,9 @@ By default, an agent can only read and write within its `working_dir`. The **add
 
 Common use cases:
 
-- **Monorepo access** — agent works in one package but needs to read sibling packages
-- **Shared config or libraries** — company-wide configs, shared scripts, or tooling directories
-- **Reference repositories** — read a related repo without making it the working directory
+- **Monorepo access** - agent works in one package but needs to read sibling packages
+- **Shared config or libraries** - company-wide configs, shared scripts, or tooling directories
+- **Reference repositories** - read a related repo without making it the working directory
 
 ---
 
@@ -31,7 +31,7 @@ additional_dirs:
 | Absolute | `/opt/configs` | Used as-is |
 | Tilde | `~/other-project` | Expanded to home directory |
 
-Relative paths are resolved at `agent apply` time, relative to the directory containing the YAML file — not relative to `working_dir` or `$PWD`.
+Relative paths are resolved at `agent apply` time, relative to the directory containing the YAML file - not relative to `working_dir` or `$PWD`.
 
 ```yaml
 # .agentd/agents/worker.yml
@@ -117,10 +117,10 @@ Content-Type: application/json
 ```
 
 **Errors:**
-- `404` — agent not found
-- `422` — path does not exist or is not a directory
+- `404` - agent not found
+- `422` - path does not exist or is not a directory
 
-The operation is **idempotent** — adding a path that is already present is a no-op.
+The operation is **idempotent** - adding a path that is already present is a no-op.
 
 **curl example:**
 
@@ -156,9 +156,9 @@ Content-Type: application/json
 ```
 
 **Errors:**
-- `404` — agent not found
+- `404` - agent not found
 
-The operation is **idempotent** — removing a path that is not in the list is a no-op.
+The operation is **idempotent** - removing a path that is not in the list is a no-op.
 
 **curl example:**
 
@@ -206,6 +206,6 @@ Ensure the paths exist on the **host** before starting the agent; the orchestrat
 !!! warning "Agents can read and write"
     An agent has full read and write access to every directory in `additional_dirs`. Only add directories that the agent legitimately needs.
 
-- Validate that paths point to the intended directories — avoid accidentally adding sensitive parent directories (e.g., `/home/user` instead of `/home/user/project`).
+- Validate that paths point to the intended directories - avoid accidentally adding sensitive parent directories (e.g., `/home/user` instead of `/home/user/project`).
 - For agents with broad filesystem access, consider pairing with a restrictive [tool policy](tool-policies.md) that limits which tools the agent can use.
 - In Docker environments the bind-mounts are read-write; there is no current support for read-only additional directories.

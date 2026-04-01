@@ -7,10 +7,10 @@ This guide walks you through a complete workflow from first run to managing auto
 Before starting, make sure you have:
 
 - **macOS 14+** or **Linux** with systemd
-- **Rust 1.75+** — install from [rustup.rs](https://rustup.rs/)
-- **tmux** — `brew install tmux` (macOS) or `apt install tmux` (Linux)
-- **curl** and **jq** — for testing API endpoints
-- **Claude Code** — install from [claude.ai/download](https://claude.ai/download) (required for agent orchestration)
+- **Rust 1.75+** - install from [rustup.rs](https://rustup.rs/)
+- **tmux** - `brew install tmux` (macOS) or `apt install tmux` (Linux)
+- **curl** and **jq** - for testing API endpoints
+- **Claude Code** - install from [claude.ai/download](https://claude.ai/download) (required for agent orchestration)
 
 ## 1. First Run (~5 minutes)
 
@@ -27,17 +27,17 @@ cargo build --workspace
 Open three terminal windows (or tmux panes) and start the services:
 
 ```bash
-# Terminal 1 — Notification service (port 17004)
+# Terminal 1 - Notification service (port 17004)
 cargo run -p agentd-notify
 ```
 
 ```bash
-# Terminal 2 — Ask service (port 17001)
+# Terminal 2 - Ask service (port 17001)
 cargo run -p agentd-ask
 ```
 
 ```bash
-# Terminal 3 — Orchestrator (port 17006)
+# Terminal 3 - Orchestrator (port 17006)
 cargo run -p agentd-orchestrator
 ```
 
@@ -95,7 +95,7 @@ If all three respond, you're ready to go!
 
 ---
 
-## 2. Notifications — Your First Workflow
+## 2. Notifications - Your First Workflow
 
 The notification system is the simplest starting point. It stores and manages messages between services and users.
 
@@ -309,7 +309,7 @@ echo "Review all files in src/ for security issues" | \
   agent orchestrator send-message <agent-id> --stdin
 ```
 
-SDK-mode agents stay alive between tasks — you can keep sending messages.
+SDK-mode agents stay alive between tasks - you can keep sending messages.
 
 ### Check agent status
 
@@ -366,7 +366,7 @@ Workflows connect an agent to a task source (like GitHub Issues) so the agent au
 
 ### Create a worker agent
 
-Create an agent without an initial prompt — the workflow will send tasks:
+Create an agent without an initial prompt - the workflow will send tasks:
 
 ```bash
 AGENT=$(curl -s -X POST http://localhost:17006/agents \
@@ -482,8 +482,8 @@ cargo run -p cli -- ask answer <QUESTION_ID> "yes"
 
 ### API Documentation
 
-- [Orchestrator API](services/orchestrator.md) — Full REST and WebSocket endpoint reference
-- [Notify API](services/notify.md) — Notification CRUD endpoints
+- [Orchestrator API](services/orchestrator.md) - Full REST and WebSocket endpoint reference
+- [Notify API](services/notify.md) - Notification CRUD endpoints
 
 ### Production Deployment
 
@@ -533,7 +533,7 @@ agentd uses a dual-port scheme: **dev ports (17xxx)** when running with `cargo r
 | agentd-notify | 17004 | 7004 |
 | agentd-wrap | 17005 | 7005 |
 | agentd-orchestrator | 17006 | 7006 |
-| agentd-memory | — | 7008 |
+| agentd-memory | - | 7008 |
 | agentd-communicate | 17010 | 7010 |
 
 The `agent` CLI defaults to **production ports** (7xxx). If your services are running on dev ports, set the URL overrides:
@@ -577,7 +577,7 @@ source .env
 agent status
 ```
 
-See [issue #536](https://github.com/geoffjay/agentd/issues/536) — a code fix is in progress to make `agent status` port-scheme-aware.
+See [issue #536](https://github.com/geoffjay/agentd/issues/536) - a code fix is in progress to make `agent status` port-scheme-aware.
 
 ### "Connection refused" when hitting health endpoints
 

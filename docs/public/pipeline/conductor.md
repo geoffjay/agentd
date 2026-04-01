@@ -2,7 +2,7 @@
 
 The conductor is the pipeline's central orchestrator. It runs on a 5-minute cron
 (`conductor-sync` workflow) and is also dispatched directly when a PR receives the
-`merge-ready` label (`merge-worker` workflow). It never modifies source code — its
+`merge-ready` label (`merge-worker` workflow). It never modifies source code - its
 tool policy blocks all writes to `crates/`, `ui/`, `docs/`, and `.agentd/`.
 
 ## Sync Protocol
@@ -10,7 +10,7 @@ tool policy blocks all writes to `crates/`, `ui/`, `docs/`, and `.agentd/`.
 Each cron run executes these steps in order. The conductor stops on the first
 unrecoverable error (rebase conflict, gate block) and escalates to engineering.
 
-### Step 1 — Sync repository state
+### Step 1 - Sync repository state
 
 ```bash
 git-spice repo sync   # detect merged PRs, clean branches, rebase dependents
@@ -21,7 +21,7 @@ If `git-spice repo sync` exits with a rebase conflict, the conductor aborts the
 rebase, identifies the conflicting branch, adds `needs-restack` to the affected PR,
 and posts to `#engineering` before stopping. See [Restack conflicts](troubleshooting.md#restack-conflict).
 
-### Step 2 — Triage unlabeled issues
+### Step 2 - Triage unlabeled issues
 
 Find open issues with no labels and apply `needs-triage` so the `triage-worker`
 workflow picks them up:
@@ -34,16 +34,16 @@ gh issue list --repo geoffjay/agentd --state open \
 gh issue edit <number> --repo geoffjay/agentd --add-label "needs-triage"
 ```
 
-### Step 3 — Dispatch triaged issues
+### Step 3 - Dispatch triaged issues
 
-Find issues with `triaged` that have no agent dispatch label and apply `work-agent`:
+Find issues with `triaged` that have no agent dispatch label and apply `agent`:
 
 ```bash
 gh issue list --repo geoffjay/agentd --label triaged --state open \
   --json number,title,labels \
   --jq '[.[] | select(
     ([.labels[] | select(.name | IN(
-      "agent","plan-agent","docs-agent","work-agent",
+      "agent","plan-agent","docs-agent",
       "enrich-agent","test-agent","refactor-agent",
       "research-agent","security-agent"
     ))] | length == 0)
@@ -54,13 +54,13 @@ The conductor only dispatches issues that are well-scoped. Issues with
 `complexity:large` are held unless they also have a `plan` label indicating they
 have been broken down into sub-issues.
 
-### Step 4 — Nudge stalled reviews
+### Step 4 - Nudge stalled reviews
 
 Find PRs with `review-agent` that have no reviewer activity after 30 minutes and
 post a nudge to `#engineering`. The conductor checks shared memory before nudging
 to avoid repeat messages within the same hour.
 
-### Step 5 — Promote approved PRs
+### Step 5 - Promote approved PRs
 
 Find approved PRs that lack `merge-ready`, `needs-rework`, and `needs-restack` and
 apply `merge-ready`:
@@ -69,25 +69,25 @@ apply `merge-ready`:
 gh pr edit <number> --repo geoffjay/agentd --add-label "merge-ready"
 ```
 
-The `review-merge-chain` workflow can automate this promotion when enabled — see
+The `review-merge-chain` workflow can automate this promotion when enabled - see
 [Workflow chaining](#workflow-chaining).
 
-### Step 6 — Merge eligible PRs
+### Step 6 - Merge eligible PRs
 
 Process `merge-ready` PRs in stack order (bottom of stack first) using the full
 merge flow. See [Merge queue](#merge-queue) below.
 
-### Step 7 — Re-dispatch needs-rework
+### Step 7 - Re-dispatch needs-rework
 
 Find PRs with `needs-rework` that have been waiting >15 minutes, find the linked
-issue, remove `needs-rework` from the PR, and re-apply `work-agent` to the issue:
+issue, remove `needs-rework` from the PR, and re-apply `agent` to the issue:
 
 ```bash
 gh pr edit <pr-number> --repo geoffjay/agentd --remove-label "needs-rework"
-gh issue edit <issue-number> --repo geoffjay/agentd --add-label "work-agent"
+gh issue edit <issue-number> --repo geoffjay/agentd --add-label "agent"
 ```
 
-### Step 8 — Detect stale items
+### Step 8 - Detect stale items
 
 Flag issues and PRs with no activity for >3 days and post to `#operations`:
 
@@ -101,7 +101,7 @@ gh pr list --repo geoffjay/agentd --state open \
 The conductor checks memory before posting to avoid repeated stale alerts for the
 same item.
 
-### Step 9 — Post status digest
+### Step 9 - Post status digest
 
 If any state transitions occurred, post a digest to `#operations`:
 
@@ -115,7 +115,7 @@ If any state transitions occurred, post a digest to `#operations`:
 • Transitions this run: triaged #682, merged PR #700
 ```
 
-### Step 10 — Store run state in memory
+### Step 10 - Store run state in memory
 
 ```bash
 agent memory remember "Conductor sync at <timestamp>. \
@@ -137,7 +137,7 @@ A PR is eligible to merge when **all** of the following are true:
 
 1. Has the `merge-ready` label
 2. At least one approving review; zero change requests (per reviewer's latest review)
-3. All CI checks are `SUCCESS` or `SKIPPED` — no `FAILURE`, `ERROR`, or `PENDING`
+3. All CI checks are `SUCCESS` or `SKIPPED` - no `FAILURE`, `ERROR`, or `PENDING`
 4. GitHub reports `MERGEABLE` (no conflict with base)
 5. No `needs-restack` or `needs-rework` label present
 6. All PRs below it in the stack are already merged
@@ -282,7 +282,7 @@ curl -s -X PATCH http://127.0.0.1:17006/workflows/$CHAIN_ID \
 
 !!! warning "Enable only after setting `source_workflow_id`"
     Without the scope filter, `triage-enrich-chain` fires on **every** dispatch
-    completion in the system — including its own — creating an infinite loop that
+    completion in the system - including its own - creating an infinite loop that
     repeatedly re-applies `enrich-agent`. Always complete the setup steps above
     before enabling.
 
@@ -340,10 +340,10 @@ The conductor removes the label when done.
 
 ## Related
 
-- [Pipeline Overview](index.md) — Architecture diagram and agent roster
-- [State Machine](../pipeline-state-machine.md) — Full label reference
-- [Human Approval Gates](../../planning/autonomous-pipeline-gates.md) — Gate reference
-- [Troubleshooting](troubleshooting.md) — Common failure modes
-- `.agentd/agents/conductor.yml` — Conductor system prompt (authoritative)
-- `.agentd/workflows/conductor-sync.yml` — Cron sync workflow
-- `.agentd/workflows/merge-worker.yml` — Label-triggered merge workflow
+- [Pipeline Overview](index.md) - Architecture diagram and agent roster
+- [State Machine](../pipeline-state-machine.md) - Full label reference
+- [Human Approval Gates](../../planning/autonomous-pipeline-gates.md) - Gate reference
+- [Troubleshooting](troubleshooting.md) - Common failure modes
+- `.agentd/agents/conductor.yml` - Conductor system prompt (authoritative)
+- `.agentd/workflows/conductor-sync.yml` - Cron sync workflow
+- `.agentd/workflows/merge-worker.yml` - Label-triggered merge workflow

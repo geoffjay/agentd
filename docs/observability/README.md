@@ -53,15 +53,15 @@ The setup script:
 4. Registers both services as macOS launchd agents (start at login, stay alive)
 5. Waits for services to start and prints status
 
-Default credentials: `admin` / `admin` — change after first login.
+Default credentials: `admin` / `admin` - change after first login.
 
 ## Manual Setup
 
 If you prefer to configure services manually or need to understand the
 individual components:
 
-- **[Prometheus setup](prometheus-setup.md)** — installation, configuration, launchd plist
-- **[Grafana setup](grafana-setup.md)** — installation, provisioning, launchd plist, troubleshooting
+- **[Prometheus setup](prometheus-setup.md)** - installation, configuration, launchd plist
+- **[Grafana setup](grafana-setup.md)** - installation, provisioning, launchd plist, troubleshooting
 
 ## Pre-Built Dashboards
 
@@ -177,7 +177,7 @@ When an experiment is active, Prometheus metrics are tagged with an
 ### Changing scrape intervals
 
 Edit `infra/prometheus/prometheus.yml`:
-- `global.scrape_interval` — default for all jobs
+- `global.scrape_interval` - default for all jobs
 - Per-job override: add `scrape_interval: 5s` inside a `scrape_configs` entry
 
 ## Troubleshooting

@@ -27,7 +27,7 @@ When the embedding provider is set to `"none"`, memories are stored without embe
 | `AGENTD_PORT` | `17008` | HTTP listen port |
 | `AGENTD_MEMORY_EMBEDDING_PROVIDER` | `none` | Embedding provider: `openai` or `none` |
 | `AGENTD_MEMORY_EMBEDDING_MODEL` | `text-embedding-3-small` | Model name for the embedding provider |
-| `AGENTD_MEMORY_EMBEDDING_API_KEY` | — | API key (required for remote OpenAI calls) |
+| `AGENTD_MEMORY_EMBEDDING_API_KEY` | - | API key (required for remote OpenAI calls) |
 | `AGENTD_MEMORY_EMBEDDING_ENDPOINT` | `https://api.openai.com/v1` | Base URL; set to `http://localhost:11434/v1` for Ollama |
 | `AGENTD_MEMORY_LANCE_PATH` | XDG data dir / `agentd-memory/lancedb` | Filesystem path to the LanceDB directory |
 | `AGENTD_MEMORY_LANCE_TABLE` | `memories` | LanceDB table name |
@@ -189,10 +189,10 @@ GET /memories
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `type` | string | — | Filter by memory type: `information`, `question`, `request` |
-| `tag` | string | — | Filter by tag (comma-separated for multiple) |
-| `created_by` | string | — | Filter by creator identity |
-| `visibility` | string | — | Filter by visibility level |
+| `type` | string | - | Filter by memory type: `information`, `question`, `request` |
+| `tag` | string | - | Filter by tag (comma-separated for multiple) |
+| `created_by` | string | - | Filter by creator identity |
+| `visibility` | string | - | Filter by visibility level |
 | `limit` | integer | 50 | Max items per page (max: 200) |
 | `offset` | integer | 0 | Pagination offset |
 
@@ -437,12 +437,12 @@ agent memory remember "Paris is the capital of France." \
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--created-by` | yes | — | Actor identity |
+| `--created-by` | yes | - | Actor identity |
 | `--type` | no | `information` | Memory type: `information`, `question`, `request` |
-| `--tags` | no | — | Comma-separated tags |
+| `--tags` | no | - | Comma-separated tags |
 | `--visibility` | no | `public` | Visibility: `public`, `shared`, `private` |
-| `--share-with` | no | — | Comma-separated actor IDs (for `shared` visibility) |
-| `--references` | no | — | Comma-separated related memory IDs |
+| `--share-with` | no | - | Comma-separated actor IDs (for `shared` visibility) |
+| `--references` | no | - | Comma-separated related memory IDs |
 
 ### Recall a Memory
 
@@ -460,12 +460,12 @@ agent memory search "recent events" --since 2024-01-01T00:00:00Z --until 2024-12
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--as-actor` | — | Actor performing the search (visibility filtering) |
-| `--type` | — | Filter by memory type |
-| `--tags` | — | Comma-separated tags to filter by |
+| `--as-actor` | - | Actor performing the search (visibility filtering) |
+| `--type` | - | Filter by memory type |
+| `--tags` | - | Comma-separated tags to filter by |
 | `--limit` | `10` | Maximum results |
-| `--since` | — | Only memories created on or after this date (RFC 3339) |
-| `--until` | — | Only memories created on or before this date (RFC 3339) |
+| `--since` | - | Only memories created on or after this date (RFC 3339) |
+| `--until` | - | Only memories created on or before this date (RFC 3339) |
 
 ### Delete a Memory
 
@@ -483,10 +483,10 @@ agent memory list --created-by agent-1 --tag auth --offset 10
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--type` | — | Filter by memory type |
-| `--tag` | — | Filter by tag |
-| `--created-by` | — | Filter by creator |
-| `--visibility` | — | Filter by visibility level |
+| `--type` | - | Filter by memory type |
+| `--tag` | - | Filter by tag |
+| `--created-by` | - | Filter by creator |
+| `--visibility` | - | Filter by visibility level |
 | `--limit` | `50` | Max items to return |
 | `--offset` | `0` | Pagination offset |
 

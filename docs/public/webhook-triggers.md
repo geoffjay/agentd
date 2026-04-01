@@ -1,6 +1,6 @@
 # Webhook Triggers
 
-A webhook workflow fires every time an HTTP `POST` arrives at its dedicated endpoint. Unlike schedule triggers (which run on a timer) or event triggers (which react to internal events), webhooks are driven by external systems — GitHub, CI pipelines, monitoring tools, or any HTTP client.
+A webhook workflow fires every time an HTTP `POST` arrives at its dedicated endpoint. Unlike schedule triggers (which run on a timer) or event triggers (which react to internal events), webhooks are driven by external systems - GitHub, CI pipelines, monitoring tools, or any HTTP client.
 
 ```
 External system                          agentd
@@ -90,9 +90,9 @@ Where `{workflow_id}` is the UUID returned when the workflow was created.
 |-----------|-------|
 | Method | `POST` |
 | Content-Type | `application/json` (recommended) or any body |
-| `X-Hub-Signature-256` | `sha256=<hex>` — required only when a `secret` is configured |
-| `X-GitHub-Event` | Optional — triggers GitHub-specific payload parsing |
-| `X-GitHub-Delivery` | Optional — used as the deduplication `delivery_id` |
+| `X-Hub-Signature-256` | `sha256=<hex>` - required only when a `secret` is configured |
+| `X-GitHub-Event` | Optional - triggers GitHub-specific payload parsing |
+| `X-GitHub-Delivery` | Optional - used as the deduplication `delivery_id` |
 
 ### Response codes
 
@@ -102,7 +102,7 @@ Where `{workflow_id}` is the UUID returned when the workflow was created.
 | `401 Unauthorized` | Signature verification failed (wrong secret or missing header) |
 | `404 Not Found` | Workflow not found or not currently running |
 | `422 Unprocessable Entity` | Workflow exists but is not a webhook trigger type |
-| `503 Service Unavailable` | Webhook channel full — the runner cannot keep up |
+| `503 Service Unavailable` | Webhook channel full - the runner cannot keep up |
 
 !!! tip "404 vs 422"
     A `404` means the workflow UUID doesn't exist **or** the workflow runner is not started (e.g. `enabled: false`). A `422` means the workflow exists and is running, but it uses a different trigger type.
@@ -111,7 +111,7 @@ Where `{workflow_id}` is the UUID returned when the workflow was created.
 
 ## HMAC-SHA256 Signature Verification
 
-When a `secret` is configured, the orchestrator verifies every inbound request using HMAC-SHA256 — the same scheme used by GitHub, Slack, and most major webhook providers.
+When a `secret` is configured, the orchestrator verifies every inbound request using HMAC-SHA256 - the same scheme used by GitHub, Slack, and most major webhook providers.
 
 ### Verification flow
 
@@ -204,7 +204,7 @@ When `X-GitHub-Event` is absent, the orchestrator parses the body as generic JSO
 - `body` → the raw request body (UTF-8 string)
 - `url`, `labels`, `assignee` → empty
 
-Non-JSON bodies are accepted — the raw bytes are stored as the `body` string.
+Non-JSON bodies are accepted - the raw bytes are stored as the `body` string.
 
 ### `source_id` and deduplication
 
@@ -217,7 +217,7 @@ webhook:{delivery_id}:{timestamp}
 - `delivery_id` comes from the `X-GitHub-Delivery` header if present; otherwise a random UUID is generated.
 - `timestamp` is the RFC 3339 time the request was received.
 
-Because both components vary, each delivery produces a unique `source_id` — duplicate deliveries (GitHub retries on timeout) are dispatched again.
+Because both components vary, each delivery produces a unique `source_id` - duplicate deliveries (GitHub retries on timeout) are dispatched again.
 
 ### Metadata fields
 
@@ -500,18 +500,18 @@ DEBUG orchestrator::scheduler::runner workflow_id=... "Agent busy, skipping disp
 DEBUG orchestrator::scheduler::runner workflow_id=... "Agent not connected, skipping dispatch"
 ```
 
-Note: "skipping dispatch" here means the runner will try again on the next `next_tasks()` call — the task remains in the channel and is not dropped.
+Note: "skipping dispatch" here means the runner will try again on the next `next_tasks()` call - the task remains in the channel and is not dropped.
 
 ### Observing webhook activity in logs
 
 ```
 INFO  orchestrator::scheduler::api  workflow_id=... source_id=webhook:delivery-001:... title="Fix login bug" "Webhook payload received"
 INFO  orchestrator::scheduler::runner workflow_id=... source_id=webhook:... "Dispatched task to agent"
-WARN  orchestrator::scheduler::api  "Webhook channel full — workflow runner cannot keep up"
+WARN  orchestrator::scheduler::api  "Webhook channel full - workflow runner cannot keep up"
 ```
 
 ### Networking considerations
 
-- agentd binds to `127.0.0.1` — for production, place it behind a reverse proxy that terminates TLS.
+- agentd binds to `127.0.0.1` - for production, place it behind a reverse proxy that terminates TLS.
 - Always use HTTPS for webhook endpoints in production. Without TLS, the payload body (and HMAC signature) are visible to network observers.
 - Validate that your reverse proxy forwards the raw (unmodified) request body. HMAC verification fails if the body is transformed (e.g. by re-encoding JSON with different whitespace).

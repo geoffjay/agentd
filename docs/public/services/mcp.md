@@ -2,7 +2,7 @@
 
 The MCP (Model Context Protocol) server exposes agentd's agent management, workflow, notification, approval, and diagnostic services as tools for Claude and other MCP clients. It enables a self-healing loop: Claude can query system state, diagnose problems, and take corrective action through structured MCP tool calls.
 
-Unlike other agentd services, agentd-mcp is not an HTTP daemon — it communicates over **stdio** using the MCP JSON-RPC transport and acts as a stateless bridge to the rest of the agentd fleet.
+Unlike other agentd services, agentd-mcp is not an HTTP daemon - it communicates over **stdio** using the MCP JSON-RPC transport and acts as a stateless bridge to the rest of the agentd fleet.
 
 ## Architecture
 
@@ -406,7 +406,7 @@ Retry failed dispatch records for a workflow by re-sending their prompts to the 
 
 #### `cleanup_stale_dispatches`
 
-Identify dispatch records stuck in "dispatched" state longer than the staleness threshold. This is a reporting-only tool — use `restart_agent` on the associated agent to unblock.
+Identify dispatch records stuck in "dispatched" state longer than the staleness threshold. This is a reporting-only tool - use `restart_agent` on the associated agent to unblock.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -482,7 +482,7 @@ Fetch and parse key Prometheus counters and gauges from a service. Supports orch
 3. diagnose_agent {id}           → identify root cause (approvals? usage?)
 4. get_agent_approvals {id}      → check for pending approval blocks
 5. approve_tool_request {id}     → unblock if approval-gated
-   — or —
+   - or -
 6. restart_agent {id}            → restart if crashed/failed
 ```
 
@@ -494,7 +494,7 @@ Fetch and parse key Prometheus counters and gauges from a service. Supports orch
 3. diagnose_workflow {id}        → analyze dispatch success rate
 4. list_dispatches {id} status=failed  → inspect failure details
 5. retry_failed_dispatches {id}  → re-send failed prompts
-   — or —
+   - or -
 6. cleanup_stale_dispatches      → identify and unblock stuck dispatches
 ```
 
@@ -516,7 +516,7 @@ Fetch and parse key Prometheus counters and gauges from a service. Supports orch
 2. list_notifications priority=urgent  → prioritize urgent items
 3. get_notification {id}         → read full details
 4. dismiss_notification {id}     → clear resolved items
-   — or —
+   - or -
 5. resolve_notification_backlog hours=24  → bulk-dismiss old low-priority
 ```
 
@@ -542,7 +542,7 @@ Claude:
 
 - **Destructive tools** (`restart_agent`, `terminate_agent`, `restart_failed_agents`) only operate on agents already in a terminal/failed state.
 - **`auto_approve_safe_tools`** uses a conservative default list of read-only tools (Read, Glob, Grep, WebFetch, etc.). Additional tools require explicit opt-in.
-- **`cleanup_stale_dispatches`** is reporting-only — it identifies stuck dispatches but does not update their status. Use `restart_agent` on the associated agent to unblock.
+- **`cleanup_stale_dispatches`** is reporting-only - it identifies stuck dispatches but does not update their status. Use `restart_agent` on the associated agent to unblock.
 - All remediation tools produce detailed audit reports of every action taken.
 
 ### Escalation Pattern
@@ -570,4 +570,4 @@ cargo fmt -p agentd-mcp
 cargo clippy -p agentd-mcp
 ```
 
-Integration tests in `tests/` use lightweight axum mock servers — no running agentd services are required.
+Integration tests in `tests/` use lightweight axum mock servers - no running agentd services are required.

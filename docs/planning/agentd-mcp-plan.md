@@ -1,4 +1,4 @@
-# MCP Observability Server (agentd-mcp) — Detailed Plan
+# MCP Observability Server (agentd-mcp) - Detailed Plan
 
 ## Overview
 
@@ -11,7 +11,7 @@ APIs over HTTP.
 The primary use-case is a **self-healing loop**: an MCP client can call
 `diagnose_system`, discover which agents have failed or which dispatches are
 stale, invoke the appropriate remediation tools, and verify that the system
-returned to a healthy state — all through structured MCP tool calls without
+returned to a healthy state - all through structured MCP tool calls without
 human intervention.
 
 ## Design Decisions
@@ -19,15 +19,15 @@ human intervention.
 See **[ADR 0001](./decisions/0001-agentd-mcp-stdio-transport.md)** for the
 architectural decision record. Key choices:
 
-- **stdio transport** — required for zero-configuration registration with Claude
+- **stdio transport** - required for zero-configuration registration with Claude
   Code (`claude mcp add agentd-mcp`) and Claude Desktop. No HTTP server, no port
   allocation.
-- **Pass-through architecture** — agentd-mcp is a stateless aggregation layer. It
+- **Pass-through architecture** - agentd-mcp is a stateless aggregation layer. It
   holds no database and persists nothing locally; all state lives in the existing
   services.
-- **`rmcp` SDK** — the primary Rust implementation of the MCP protocol; provides
+- **`rmcp` SDK** - the primary Rust implementation of the MCP protocol; provides
   server scaffolding, tool registration, and JSON schema generation.
-- **Deliberately breaks the standard service template** — no `axum`, no SeaORM,
+- **Deliberately breaks the standard service template** - no `axum`, no SeaORM,
   no `ApiError`, no `init_tracing()`. This is intentional and documented.
 
 ## Technology Stack
@@ -36,7 +36,7 @@ architectural decision record. Key choices:
 - **HTTP Client**: `reqwest` (workspace dependency)
 - **Schema Generation**: `schemars` 0.8 (for MCP tool parameter JSON schemas)
 - **Async Runtime**: `tokio` (workspace dependency)
-- **Tracing**: `tracing` + `tracing-subscriber` — output to **stderr only**;
+- **Tracing**: `tracing` + `tracing-subscriber` - output to **stderr only**;
   stdout is reserved for MCP protocol messages
 - **Shared Types**: `agentd-common` (`PaginatedResponse`, `HealthResponse`)
 
@@ -79,7 +79,7 @@ tokio-test = "0.4"
 
 ### Crate Location
 
-`crates/mcp/` — binary-only crate (no `lib.rs`). The binary name is
+`crates/mcp/` - binary-only crate (no `lib.rs`). The binary name is
 `agentd-mcp`.
 
 ### Project Structure
@@ -89,7 +89,7 @@ crates/mcp/
 ├── Cargo.toml
 └── src/
     ├── main.rs              # Entry point: initialise tracing, build server, run stdio
-    ├── client.rs            # ServiceClient — HTTP client for all agentd services
+    ├── client.rs            # ServiceClient - HTTP client for all agentd services
     ├── error.rs             # MCP-compatible error type
     ├── server.rs            # AgentdMcpServer struct + rmcp ServerHandler impl
     └── tools/
@@ -114,7 +114,7 @@ crates/mcp/
 
 ### Tracing Initialisation
 
-agentd-mcp **must not** call `agentd_common::server::init_tracing()` — that
+agentd-mcp **must not** call `agentd_common::server::init_tracing()` - that
 function writes JSON to stdout, which would corrupt the MCP protocol stream.
 
 Instead, configure a stderr-only subscriber directly in `main.rs`:
@@ -202,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
 
 ## Tool Inventory (28 tools)
 
-### Category 1 — Inspection (read-only, 12 tools)
+### Category 1 - Inspection (read-only, 12 tools)
 
 All tools in this category issue `GET` requests to the orchestrator or notify
 service.
@@ -244,7 +244,7 @@ pub struct GetAgentInput {
 
 ---
 
-### Category 2 — Health & Metrics (4 tools)
+### Category 2 - Health & Metrics (4 tools)
 
 | Tool | HTTP calls | Description |
 |------|-----------|-------------|
@@ -267,7 +267,7 @@ pub struct GetAgentInput {
 
 ---
 
-### Category 3 — Management (write, 9 tools)
+### Category 3 - Management (write, 9 tools)
 
 These tools issue POST/PUT/DELETE requests and have side effects. Tool
 descriptions must include a `⚠️ write operation` annotation so MCP clients can
@@ -287,7 +287,7 @@ surface appropriate caution.
 
 ---
 
-### Category 4 — Diagnostics & Self-Healing (composite, 9 tools)
+### Category 4 - Diagnostics & Self-Healing (composite, 9 tools)
 
 These tools compose multiple API calls into higher-level operations.
 
@@ -348,54 +348,54 @@ Tasks:
 
 These sub-issues can be developed in parallel once #249 is merged.
 
-**#250 — Agent inspection tools**
+**#250 - Agent inspection tools**
 - `list_agents`, `get_agent`, `get_agent_status_summary`
 - Input: `ListAgentsInput`, `GetAgentInput`
 - Output: formatted agent details as MCP text content
 
-**#251 — Workflow and dispatch inspection tools**
+**#251 - Workflow and dispatch inspection tools**
 - `list_workflows`, `get_workflow`, `list_dispatches`, `get_failed_dispatches`
 - Aggregates dispatch history across all workflows for `get_failed_dispatches`
 
-**#252 — Notification and approval inspection tools**
+**#252 - Notification and approval inspection tools**
 - `list_notifications`, `get_notification`, `get_actionable_notifications`
 - `list_pending_approvals`, `get_agent_approvals`
 
-**#253 — Service health and system metrics tools**
+**#253 - Service health and system metrics tools**
 - `check_service_health` (concurrent tokio::join! across 6 services)
 - `check_single_service`, `get_system_metrics`, `get_prometheus_metrics`
 
 ### Phase 3: Management Tools (#254–#255, parallelizable)
 
-**#254 — Agent lifecycle management**
+**#254 - Agent lifecycle management**
 - `restart_agent`, `send_agent_message`, `update_agent_tool_policy`
 - `terminate_agent`, `update_agent_model`
 - All require `⚠️ write operation` in tool description
 
-**#255 — Approval and notification management**
+**#255 - Approval and notification management**
 - `approve_tool_request`, `deny_tool_request`
 - `create_notification`, `dismiss_notification`
 
 ### Phase 4: Intelligence Layer (#256–#257, sequential)
 
-**#256 — Diagnostic tools** (depends on #250–#253)
+**#256 - Diagnostic tools** (depends on #250–#253)
 - `diagnose_agent`, `diagnose_workflow`, `diagnose_system`, `check_connectivity`
 - Each composes multiple inspection calls into a structured analysis
 
-**#257 — Self-healing remediation tools** (depends on #254–#256)
+**#257 - Self-healing remediation tools** (depends on #254–#256)
 - `restart_failed_agents`, `retry_failed_dispatches`, `cleanup_stale_dispatches`
 - `auto_approve_safe_tools`, `resolve_notification_backlog`
 - All return structured summaries of actions taken
 
 ### Phase 5: Quality & Documentation (#258–#259)
 
-**#258 — Integration tests**
+**#258 - Integration tests**
 - Mock `ServiceClient` with `mockito` or `wiremock`
 - Test each tool with success and error responses
 - Test concurrent health check logic
 - Test diagnostic aggregation logic
 
-**#259 — Documentation and client configuration guide**
+**#259 - Documentation and client configuration guide**
 - `docs/public/mcp-guide.md`: Claude Code registration, Claude Desktop config
 - Update `docs/public/install.md` to list `agentd-mcp` (stdio, no port)
 - Tool descriptions with examples for each of the 28 tools
@@ -515,7 +515,7 @@ match client.list_agents(input).await {
 }
 ```
 
-Never panic or return an `Err` from `call_tool` — always return a
+Never panic or return an `Err` from `call_tool` - always return a
 `CallToolResult` with `isError: true` for client errors.
 
 ---
@@ -549,6 +549,6 @@ The following are explicitly **out of scope** for agentd-mcp:
 
 ## Milestone
 
-All sub-issues (#249–#259) are assigned to **v0.4.1 — MCP Observability Server**.
+All sub-issues (#249–#259) are assigned to **v0.4.1 - MCP Observability Server**.
 
 The tracking issue for this plan is **#248**.

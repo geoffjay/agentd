@@ -38,9 +38,9 @@ storage code.
 agentd uses **SeaORM 1.1** with the `sqlx-sqlite` + `runtime-tokio-rustls`
 feature set.  Every service that persists state follows the same pattern:
 
-1. **Entity** — a `DeriveEntityModel` struct that maps directly to a table row.
-2. **Migration** — a `MigrationTrait` implementation that creates / alters tables.
-3. **Storage struct** — a `Clone`-able wrapper around `DatabaseConnection` that
+1. **Entity** - a `DeriveEntityModel` struct that maps directly to a table row.
+2. **Migration** - a `MigrationTrait` implementation that creates / alters tables.
+3. **Storage struct** - a `Clone`-able wrapper around `DatabaseConnection` that
    exposes typed CRUD methods to the rest of the crate.
 
 The workspace dependencies are declared once in the root `Cargo.toml`:
@@ -60,7 +60,7 @@ crates/<service>/src/
     mod.rs                  # re-exports one sub-module per table
     <table_name>.rs         # one file per table
   migration/
-    mod.rs                  # MigratorTrait impl — registers migrations in order
+    mod.rs                  # MigratorTrait impl - registers migrations in order
     m<YYYYMMDD>_<seq>_<name>.rs   # one file per migration
   storage.rs                # public Storage struct + CRUD methods
   lib.rs                    # declares `pub mod entity; pub(crate) mod migration;`
@@ -83,9 +83,9 @@ crates/<service>/src/
 
 An entity file contains exactly three items:
 
-1. `Model` — the column definitions (`DeriveEntityModel`).
-2. `Relation` — foreign-key relations (`DeriveRelation`).
-3. `impl ActiveModelBehavior for ActiveModel {}` — required boilerplate.
+1. `Model` - the column definitions (`DeriveEntityModel`).
+2. `Relation` - foreign-key relations (`DeriveRelation`).
+3. `impl ActiveModelBehavior for ActiveModel {}` - required boilerplate.
 
 ```rust
 // crates/notify/src/entity/notification.rs
@@ -96,7 +96,7 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "notifications")]
 pub struct Model {
-    /// UUID stored as TEXT — primary key.
+    /// UUID stored as TEXT - primary key.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
 
@@ -189,7 +189,7 @@ impl MigrationTrait for Migration {
     }
 }
 
-/// Column Iden enum — must list every column used in the migration.
+/// Column Iden enum - must list every column used in the migration.
 #[derive(DeriveIden)]
 enum Notifications {
     Table,
@@ -595,7 +595,7 @@ impl MigratorTrait for Migrator {
 ```
 
 **Important**: migrations are applied in the order returned by `migrations()`.
-Always append new migrations at the end — never reorder existing entries.
+Always append new migrations at the end - never reorder existing entries.
 
 ### 5. Add storage methods and wire up in service code
 
@@ -820,7 +820,7 @@ mod tests {
 
 **Key points:**
 
-- Each test gets its own `TempDir` + database — tests never interfere with each other.
+- Each test gets its own `TempDir` + database - tests never interfere with each other.
 - `_tmp` keeps the `TempDir` alive; the database file is deleted when it is dropped.
 - `with_path()` runs migrations automatically, so tests always see the current schema.
 - Test helper functions (`create_test_storage`, `make_test_notification`) reduce
@@ -902,5 +902,5 @@ cargo xtask generate-entities --service notify
 ```
 
 `migrate` and `migrate-status` work even when the database file does not yet
-exist — they create it on the fly.  `generate-entities` requires the database
+exist - they create it on the fly.  `generate-entities` requires the database
 to exist (start the service once first, or run `migrate`).

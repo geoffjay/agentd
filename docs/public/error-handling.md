@@ -6,10 +6,10 @@ This guide documents the standard patterns for error handling and logging across
 
 ### Principles
 
-1. **Use `thiserror` for domain errors** — all service crates define their `ApiError` enum with `#[derive(Debug, thiserror::Error)]`
-2. **Use `anyhow` for internal propagation** — internal helpers and storage operations return `anyhow::Result`
-3. **Map errors to HTTP status codes** — every `ApiError` variant has a defined HTTP status via `IntoResponse`
-4. **Error responses are JSON** — all errors return `{"error": "message"}` format
+1. **Use `thiserror` for domain errors** - all service crates define their `ApiError` enum with `#[derive(Debug, thiserror::Error)]`
+2. **Use `anyhow` for internal propagation** - internal helpers and storage operations return `anyhow::Result`
+3. **Map errors to HTTP status codes** - every `ApiError` variant has a defined HTTP status via `IntoResponse`
+4. **Error responses are JSON** - all errors return `{"error": "message"}` format
 
 ### Standard ApiError Pattern
 
@@ -62,7 +62,7 @@ impl IntoResponse for ApiError {
 
 ### Error Propagation
 
-- Use `?` operator with `anyhow::Error` in handlers — it automatically converts via `#[from]`
+- Use `?` operator with `anyhow::Error` in handlers - it automatically converts via `#[from]`
 - For cross-service errors, wrap the upstream error with context:
 
 ```rust
@@ -148,10 +148,10 @@ Follow these conventions:
 Use structured fields in log messages:
 
 ```rust
-// Good — structured
+// Good - structured
 info!(agent_id = %id, status = %agent.status, "Agent state changed");
 
-// Avoid — unstructured
+// Avoid - unstructured
 info!("Agent {} changed to {}", id, agent.status);
 ```
 

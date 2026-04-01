@@ -180,7 +180,7 @@ working_dir: "."
 
 # Rooms this agent automatically joins when it connects.
 rooms:
-  - engineering                # plain name — defaults to member role
+  - engineering                # plain name - defaults to member role
   - name: announcements
     role: observer             # join as observer
 ```
@@ -191,9 +191,9 @@ The orchestrator adds the agent as a participant in each listed room when the ag
 
 `agent apply .agentd/` processes resources in this order:
 
-1. **Rooms** — `.agentd/rooms/*.yml` created first
-2. **Agents** — `.agentd/agents/*.yml` started next (can reference rooms by name)
-3. **Workflows** — `.agentd/workflows/*.yml` created last (reference agents by name)
+1. **Rooms** - `.agentd/rooms/*.yml` created first
+2. **Agents** - `.agentd/agents/*.yml` started next (can reference rooms by name)
+3. **Workflows** - `.agentd/workflows/*.yml` created last (reference agents by name)
 
 Teardown reverses the order: workflows → agents → rooms.
 

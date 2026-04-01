@@ -14,7 +14,7 @@ docker build -t agentd-claude:latest docker/claude-code/
 ```
 
 - API keys available as environment variables on the host (they are forwarded
-  into containers at runtime — nothing is baked into the image):
+  into containers at runtime - nothing is baked into the image):
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -65,11 +65,11 @@ agent orchestrator delete-agent <ID>
 | `AGENTD_BACKEND` | `tmux` | Execution backend: `tmux` or `docker` |
 | `AGENTD_DOCKER_IMAGE` | `agentd-claude:latest` | Default container image |
 | `AGENTD_SHUTDOWN_LEAVE_RUNNING` | `false` | If `true`, leave containers running on orchestrator shutdown |
-| `ANTHROPIC_API_KEY` | — | Forwarded into containers automatically |
-| `OPENAI_API_KEY` | — | Forwarded into containers automatically |
-| `GEMINI_API_KEY` | — | Forwarded into containers automatically |
-| `ANTHROPIC_BASE_URL` | — | Forwarded into containers automatically |
-| `OPENAI_BASE_URL` | — | Forwarded into containers automatically |
+| `ANTHROPIC_API_KEY` | - | Forwarded into containers automatically |
+| `OPENAI_API_KEY` | - | Forwarded into containers automatically |
+| `GEMINI_API_KEY` | - | Forwarded into containers automatically |
+| `ANTHROPIC_BASE_URL` | - | Forwarded into containers automatically |
+| `OPENAI_BASE_URL` | - | Forwarded into containers automatically |
 
 ### CLI Flags (create-agent)
 

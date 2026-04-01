@@ -10,7 +10,7 @@ Common failure modes in the autonomous pipeline and how to resolve them.
 activity.
 
 **What should happen:** The conductor's 5-minute sync re-dispatches the worker after
-15 minutes by removing `needs-rework` from the PR and re-applying `work-agent` to
+15 minutes by removing `needs-rework` from the PR and re-applying `agent` to
 the linked issue.
 
 **Check:**
@@ -32,7 +32,7 @@ If the conductor hasn't re-dispatched, manually re-dispatch:
 
 ```bash
 gh pr edit <pr-number> --repo geoffjay/agentd --remove-label "needs-rework"
-gh issue edit <issue-number> --repo geoffjay/agentd --add-label "work-agent"
+gh issue edit <issue-number> --repo geoffjay/agentd --add-label "agent"
 ```
 
 If the worker keeps producing the same issue, read the review comments and address
@@ -51,7 +51,7 @@ gh pr review list <pr-number> --repo geoffjay/agentd
 
 **What happened:** After a parent PR was merged, `git-spice repo sync` tried to
 rebase the stacked branch but hit a conflict it could not resolve automatically.
-The conductor never resolves merge conflicts — it always escalates.
+The conductor never resolves merge conflicts - it always escalates.
 
 **Diagnose:**
 
@@ -86,7 +86,7 @@ gh pr edit <number> --repo geoffjay/agentd --remove-label "needs-restack"
 
 ---
 
-## Stale PR — no activity for days
+## Stale PR - no activity for days
 
 **Symptom:** The conductor posted to `#operations` that a PR or issue has had no
 activity for >3 days.
@@ -116,8 +116,8 @@ gh issue view <number> --repo geoffjay/agentd --json labels,updatedAt
     agent apply .agentd/
 
     # Then re-trigger by removing and re-adding the dispatch label
-    gh issue edit <number> --repo geoffjay/agentd --remove-label "work-agent"
-    gh issue edit <number> --repo geoffjay/agentd --add-label "work-agent"
+    gh issue edit <number> --repo geoffjay/agentd --remove-label "agent"
+    gh issue edit <number> --repo geoffjay/agentd --add-label "agent"
     ```
 
 === "CI broken"
@@ -144,7 +144,7 @@ gh issue view <number> --repo geoffjay/agentd --json labels,updatedAt
 failure. The merge queue is blocked.
 
 **What happened:** One of the CI checks (`FAILURE`, `ERROR`, or `TIMED_OUT`) was
-detected during the merge flow. The conductor removes `merge-ready` and stops — it
+detected during the merge flow. The conductor removes `merge-ready` and stops - it
 does not retry automatically.
 
 **Check:**
@@ -170,9 +170,9 @@ gh pr edit <number> --repo geoffjay/agentd --add-label "merge-ready"
 
 ---
 
-## Dispatch deduplication — re-triggering an agent
+## Dispatch deduplication - re-triggering an agent
 
-**Symptom:** You applied a dispatch label (`work-agent`, `research-agent`, etc.) but
+**Symptom:** You applied a dispatch label (`agent`, `research-agent`, etc.) but
 the agent never picked up the issue. Re-applying the label has no effect.
 
 **What happened:** The orchestrator's scheduler deduplicates on
@@ -207,7 +207,7 @@ agent orchestrator clear-dispatch --workflow <workflow-id> --source <issue-numbe
 
 ---
 
-## Merge conflict — base branch diverged
+## Merge conflict - base branch diverged
 
 **Symptom:** GitHub shows `CONFLICTING` on a `merge-ready` PR. The conductor added
 `needs-restack` and escalated to `#engineering`.
@@ -239,7 +239,7 @@ gh pr edit <number> --repo geoffjay/agentd --remove-label "needs-restack"
 
 ## Agent dispatched but never responded
 
-**Symptom:** An issue has a dispatch label (`work-agent`, etc.) applied over 6 hours
+**Symptom:** An issue has a dispatch label (`agent`, etc.) applied over 6 hours
 ago but the agent has posted nothing and opened no PR.
 
 **Check:**
@@ -348,7 +348,7 @@ gh issue edit <any-open-issue> --repo geoffjay/agentd --add-label "conductor-syn
 
 ## Related
 
-- [Pipeline Overview](index.md) — Architecture and agent roster
-- [Conductor Behavior](conductor.md) — Sync protocol and merge queue
-- [State Machine](../pipeline-state-machine.md) — Label reference
-- [Human Approval Gates](../../planning/autonomous-pipeline-gates.md) — Gate reference
+- [Pipeline Overview](index.md) - Architecture and agent roster
+- [Conductor Behavior](conductor.md) - Sync protocol and merge queue
+- [State Machine](../pipeline-state-machine.md) - Label reference
+- [Human Approval Gates](../../planning/autonomous-pipeline-gates.md) - Gate reference

@@ -1,6 +1,6 @@
 # Linear Triggers
 
-A `linear_issues` workflow polls the Linear API at a configurable interval and dispatches a task to your agent for every matching issue it has not seen before. Unlike webhook triggers, no public endpoint is required — agentd reaches out to Linear rather than waiting for Linear to push events.
+A `linear_issues` workflow polls the Linear API at a configurable interval and dispatches a task to your agent for every matching issue it has not seen before. Unlike webhook triggers, no public endpoint is required - agentd reaches out to Linear rather than waiting for Linear to push events.
 
 ```
 agentd                                     Linear
@@ -20,7 +20,7 @@ Dispatch new issues as Tasks          ──▶  Agent processes each issue
 1. Open Linear and go to **Settings** → **API** → **Personal API keys**
 2. Click **Create key**
 3. Give it a descriptive label (e.g. `agentd-worker`)
-4. Copy the generated key — it is shown only once
+4. Copy the generated key - it is shown only once
 
 !!! warning "Key scope"
     Personal API keys have the same permissions as your Linear account. Use a dedicated service account or a limited-scope key for production deployments.
@@ -80,7 +80,7 @@ If `AGENTD_LINEAR_API_KEY` is not set when a `linear_issues` workflow is created
 | `team_key` | string | No* | Linear team key (e.g. `ENG`). Filter to issues in this team only |
 | `project` | string | No* | Linear project name filter. Issues must belong to this project |
 | `status` | array of strings | No* | Issue state names to match (e.g. `["Triage", "Todo"]`) |
-| `labels` | array of strings | No* | Label names — issue must carry **all** listed labels |
+| `labels` | array of strings | No* | Label names - issue must carry **all** listed labels |
 | `assignee` | string | No* | Assignee display name or email address |
 
 \* At least one filter field must be provided. A config with no filters is rejected to prevent accidentally polling all issues in your workspace.
@@ -313,20 +313,20 @@ In Linear's webhook settings, click **Send test** and confirm agentd responds wi
 
 ### Workflow not picking up new Linear issues
 
-1. **Check the API key** — verify `AGENTD_LINEAR_API_KEY` is set and valid:
+1. **Check the API key** - verify `AGENTD_LINEAR_API_KEY` is set and valid:
    ```bash
    curl -s -X POST https://api.linear.app/graphql \
      -H "Authorization: $AGENTD_LINEAR_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{"query": "{ viewer { id name } }"}' | jq .
    ```
-2. **Check filter values** — team keys and state names are case-sensitive. Run:
+2. **Check filter values** - team keys and state names are case-sensitive. Run:
    ```bash
    agent orchestrator get-workflow <WORKFLOW_ID>
    ```
    and verify `trigger_config` matches your Linear team's actual keys and state names.
-3. **Check dispatch history** — `agent orchestrator workflow-history <WORKFLOW_ID>` shows recent dispatches.
-4. **Check logs** — the orchestrator logs each Linear poll at `DEBUG` level and each dispatch at `INFO`.
+3. **Check dispatch history** - `agent orchestrator workflow-history <WORKFLOW_ID>` shows recent dispatches.
+4. **Check logs** - the orchestrator logs each Linear poll at `DEBUG` level and each dispatch at `INFO`.
 
 ### Issues dispatched multiple times
 
@@ -335,7 +335,7 @@ In Linear's webhook settings, click **Send test** and confirm agentd responds wi
 
 ### `AGENTD_LINEAR_API_KEY` not found error
 
-The environment variable must be set in the same environment where the orchestrator process runs. If using a process manager (systemd, launchd), set it in the service's environment configuration — not just your shell.
+The environment variable must be set in the same environment where the orchestrator process runs. If using a process manager (systemd, launchd), set it in the service's environment configuration - not just your shell.
 
 ### State name mismatch
 

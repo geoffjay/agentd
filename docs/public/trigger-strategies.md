@@ -47,7 +47,7 @@ pub trait TriggerStrategy: Send + Sync {
     /// promptly (with an empty vec or an error) when the signal fires.
     ///
     /// Returning an empty `Vec<Task>` is valid and indicates that no work
-    /// is available at this time — the runner may call `next_tasks` again.
+    /// is available at this time - the runner may call `next_tasks` again.
     async fn next_tasks(&mut self, shutdown: &watch::Receiver<bool>) -> anyhow::Result<Vec<Task>>;
 }
 ```
@@ -56,10 +56,10 @@ pub trait TriggerStrategy: Send + Sync {
 
 | Aspect | Behaviour |
 |--------|-----------|
-| **Return: tasks** | A non-empty `Vec<Task>` — the runner dispatches each task to the agent in sequence |
+| **Return: tasks** | A non-empty `Vec<Task>` - the runner dispatches each task to the agent in sequence |
 | **Return: empty vec** | No work available; the runner calls `next_tasks()` again on the next iteration |
 | **Return: `Err`** | Transient failure; the runner logs the error, applies backoff, and retries |
-| **Shutdown** | When `*shutdown.borrow() == true` the implementation must return promptly — `Ok(vec![])` is the correct response |
+| **Shutdown** | When `*shutdown.borrow() == true` the implementation must return promptly - `Ok(vec![])` is the correct response |
 | **Thread safety** | Implementors must be `Send + Sync` so they can be boxed and moved across task boundaries |
 
 ### Runner loop integration
@@ -79,7 +79,7 @@ The loop exits when the shutdown channel fires or `next_tasks` returns an unreco
 
 ---
 
-## `PollingStrategy` — Reference Implementation
+## `PollingStrategy` - Reference Implementation
 
 `PollingStrategy` is the built-in implementation used by all poll-based workflows (currently GitHub Issues and GitHub Pull Requests).
 
@@ -140,7 +140,7 @@ pub enum TriggerConfig {
         state: String,                  // default: "open"
     },
     Cron { expression: String },        // Phase 2
-    Delay { run_at: String },           // Phase 2 — ISO 8601
+    Delay { run_at: String },           // Phase 2 - ISO 8601
     AgentLifecycle { event: String },   // Phase 3
     DispatchResult {                    // Phase 3
         source_workflow_id: Option<Uuid>,
@@ -161,7 +161,7 @@ pub enum TriggerConfig {
 
 ### JSON tagged-union format
 
-`TriggerConfig` uses `#[serde(tag = "type")]` — the discriminant is the `type` key:
+`TriggerConfig` uses `#[serde(tag = "type")]` - the discriminant is the `type` key:
 
 ```json
 { "type": "github_issues", "owner": "myorg", "repo": "myrepo", "labels": ["agent"] }
@@ -182,8 +182,8 @@ pub enum TriggerConfig {
 
 | Trait | Responsibility |
 |-------|---------------|
-| `TriggerStrategy` | *When* to run — owns timing, backoff, shutdown |
-| `TaskSource` | *What* to fetch — owns the external API call |
+| `TriggerStrategy` | *When* to run - owns timing, backoff, shutdown |
+| `TaskSource` | *What* to fetch - owns the external API call |
 
 ```rust
 #[async_trait]

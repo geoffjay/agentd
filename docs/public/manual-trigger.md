@@ -1,6 +1,6 @@
 # Manual Triggers
 
-A manual workflow fires only when explicitly told to — there is no polling, no schedule, and no event subscription. You dispatch tasks on demand via the API or CLI, and the agent runs immediately.
+A manual workflow fires only when explicitly told to - there is no polling, no schedule, and no event subscription. You dispatch tasks on demand via the API or CLI, and the agent runs immediately.
 
 ```
 Operator / CI / script
@@ -19,7 +19,7 @@ Manual workflows are the simplest trigger type: create once, fire whenever you n
 | Scenario | Recommended trigger |
 |----------|---------------------|
 | Testing a workflow before enabling its normal trigger | Manual (bypass any trigger type) |
-| Ad-hoc one-off task — "run this now" | `manual` trigger type |
+| Ad-hoc one-off task - "run this now" | `manual` trigger type |
 | Operator-initiated task from a script or CI job | `manual` trigger type or bypass |
 | Recurring schedule | `cron` |
 | Event-driven reaction | `agent_lifecycle` or `dispatch_result` |
@@ -79,13 +79,13 @@ enabled: true
 ### CLI
 
 ```bash
-# Minimal — uses default title "Manual trigger"
+# Minimal - uses default title "Manual trigger"
 agent orchestrator trigger-workflow <WORKFLOW_ID>
 
 # With title and body
 agent orchestrator trigger-workflow <WORKFLOW_ID> \
   --title "Deploy hotfix" \
-  --body "Review and merge PR #123 — customer-impacting regression"
+  --body "Review and merge PR #123 - customer-impacting regression"
 
 # Output as JSON
 agent orchestrator trigger-workflow <WORKFLOW_ID> \
@@ -93,7 +93,7 @@ agent orchestrator trigger-workflow <WORKFLOW_ID> \
   --json
 ```
 
-`trigger-workflow` works on **any** workflow type, not just `manual` — see [Bypass trigger semantics](#bypass-trigger-semantics).
+`trigger-workflow` works on **any** workflow type, not just `manual` - see [Bypass trigger semantics](#bypass-trigger-semantics).
 
 ### API
 
@@ -115,7 +115,7 @@ Content-Type: application/json
 }
 ```
 
-An empty body (`{}` or no body at all) is valid — defaults are applied.
+An empty body (`{}` or no body at all) is valid - defaults are applied.
 
 **Field reference:**
 
@@ -145,7 +145,7 @@ An empty body (`{}` or no body at all) is valid — defaults are applied.
 | Code | Meaning |
 |------|---------|
 | `200 OK` | Task queued or dispatched successfully |
-| `400 Bad Request` | Workflow is disabled — enable it first |
+| `400 Bad Request` | Workflow is disabled - enable it first |
 | `404 Not Found` | Workflow does not exist |
 | `409 Conflict` | Agent is currently busy processing another task |
 | `503 Service Unavailable` | Agent is not connected |
@@ -164,20 +164,20 @@ watch -n 5 'agent orchestrator workflow-history <WORKFLOW_ID>'
 
 ## Bypass Trigger Semantics
 
-`POST /workflows/{id}/trigger` works on **any** workflow type, not just `manual`-type workflows. This is called a *bypass trigger* — it dispatches a task immediately, bypassing whatever the workflow's normal trigger strategy is.
+`POST /workflows/{id}/trigger` works on **any** workflow type, not just `manual`-type workflows. This is called a *bypass trigger* - it dispatches a task immediately, bypassing whatever the workflow's normal trigger strategy is.
 
 **Manual-type workflow** (runner path):
 
 1. Task pushed to the workflow's internal `mpsc` channel
 2. The running `WorkflowRunner` dequeues it and dispatches normally
 3. Dispatch record created with `status: "pending"` before dispatch
-4. Busy-state tracking applies — returns `409` if agent is already busy
+4. Busy-state tracking applies - returns `409` if agent is already busy
 
 **Any other trigger type** (direct path):
 
 1. Task rendered and sent directly to the agent, bypassing the strategy
 2. Dispatch record created with `status: "dispatched"`
-3. Agent must be connected — returns `503` if not
+3. Agent must be connected - returns `503` if not
 
 The result looks identical to the caller. The difference is internal: Manual workflows use the runner's queue (ordered, tracked), while bypass dispatches go straight to the agent.
 
@@ -207,7 +207,7 @@ Manual trigger tasks support all standard task template variables:
 | `{{metadata}}` | All metadata as `key: value` lines | From request `metadata` object |
 | `{{<key>}}` | Metadata value for `<key>` | Any key from the `metadata` object |
 
-**Example — using metadata in a prompt template:**
+**Example - using metadata in a prompt template:**
 
 ```yaml
 prompt_template: |
@@ -233,7 +233,7 @@ curl -X POST http://127.0.0.1:17006/workflows/<ID>/trigger \
 
 ## Usage Patterns
 
-### Pattern 1 — On-demand task dispatch
+### Pattern 1 - On-demand task dispatch
 
 Create a permanent workflow that you fire manually whenever needed:
 
@@ -259,7 +259,7 @@ TMPL
 agent orchestrator trigger-workflow <WORKFLOW_ID> --title "v1.4.2"
 ```
 
-### Pattern 2 — CI/CD integration
+### Pattern 2 - CI/CD integration
 
 Trigger an agent from a CI pipeline:
 
@@ -284,7 +284,7 @@ curl -s -X POST \
   }"
 ```
 
-### Pattern 3 — Scripted batch dispatch
+### Pattern 3 - Scripted batch dispatch
 
 Run the same workflow against a list of inputs:
 
@@ -302,12 +302,12 @@ for repo in "${REPOS[@]}"; do
 done
 ```
 
-### Pattern 4 — Combining manual and another trigger type
+### Pattern 4 - Combining manual and another trigger type
 
 A `manual` workflow and a `cron` workflow can target the same agent. The manual workflow gives you an override path while the cron workflow runs on its normal schedule:
 
 ```bash
-# Cron workflow — runs at 9 AM on weekdays
+# Cron workflow - runs at 9 AM on weekdays
 agent orchestrator create-workflow \
   --name daily-standup-cron \
   --agent-name standup-bot \
@@ -315,7 +315,7 @@ agent orchestrator create-workflow \
   --cron-expression "0 9 * * MON-FRI" \
   --prompt-template "Run the daily standup summary for {{fire_time}}"
 
-# Manual workflow — for immediate on-demand run
+# Manual workflow - for immediate on-demand run
 agent orchestrator create-workflow \
   --name daily-standup-manual \
   --agent-name standup-bot \
@@ -329,7 +329,7 @@ agent orchestrator trigger-workflow <MANUAL_WORKFLOW_ID> \
 ```
 
 !!! note
-    Two workflows targeting the same agent will queue behind each other — the agent processes one task at a time. If you trigger a manual workflow while the agent is busy, you get `409 Conflict`.
+    Two workflows targeting the same agent will queue behind each other - the agent processes one task at a time. If you trigger a manual workflow while the agent is busy, you get `409 Conflict`.
 
 ---
 
@@ -343,7 +343,7 @@ Each manual trigger generates a unique `source_id`:
 manual:<uuid>
 ```
 
-The UUID is random and generated at trigger time. Manual triggers are never deduplicated — each `POST /workflows/{id}/trigger` call always produces a new dispatch record. This differs from polling triggers (which track seen issue numbers) and delay triggers (which fire only once).
+The UUID is random and generated at trigger time. Manual triggers are never deduplicated - each `POST /workflows/{id}/trigger` call always produces a new dispatch record. This differs from polling triggers (which track seen issue numbers) and delay triggers (which fire only once).
 
 ### Agent busy
 

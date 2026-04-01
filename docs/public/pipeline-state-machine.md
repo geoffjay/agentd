@@ -9,11 +9,11 @@ drive the end-to-end lifecycle.
 
 | Color family | Hex prefix | Purpose |
 |---|---|---|
-| Blue | `0ea5e9`, `2563eb`, `1d4ed8` | Pipeline states — where an issue is right now |
-| Amber / yellow | `f59e0b`, `e4e669`, `fbbf24` | Status warnings — something needs attention |
-| Green | `4ade80`, `22c55e`, `16a34a`, `5bdc3b`, `d1f8a4` | Agent dispatch — triggers a specialized agent |
-| Orange / indigo | `f97316`, `818cf8`, `6366f1` | Specialist dispatch — security, research, orchestration |
-| Red | `e11d48`, `d93f0b` | Blocking states — must be resolved before proceeding |
+| Blue | `0ea5e9`, `2563eb`, `1d4ed8` | Pipeline states - where an issue is right now |
+| Amber / yellow | `f59e0b`, `e4e669`, `fbbf24` | Status warnings - something needs attention |
+| Green | `4ade80`, `22c55e`, `16a34a`, `5bdc3b`, `d1f8a4` | Agent dispatch - triggers a specialized agent |
+| Orange / indigo | `f97316`, `818cf8`, `6366f1` | Specialist dispatch - security, research, orchestration |
+| Red | `e11d48`, `d93f0b` | Blocking states - must be resolved before proceeding |
 
 ## State Diagram
 
@@ -58,8 +58,8 @@ PR Created + [review-agent] ──► Reviewer Agent
 |-------|-----------|---------|
 | `needs-triage` | Human / automation | New issue awaiting triage |
 | `triaged` | Planner / triage agent | Issue scope and labels assigned |
-| `merge-ready` | Reviewer agent | PR approved + CI passing; ready for merge |
-| `merge-queue` | Conductor | Acknowledged by conductor, actively queued |
+| `merge-queue` | Reviewer agent | PR approved; queued for conductor review |
+| `merge-ready` | Conductor | Conductor verified merge criteria; ready for merge |
 
 ### Status / Warning Labels (amber + red labels)
 
@@ -77,7 +77,7 @@ dispatch the matching agent. The agent removes the label when done.
 
 | Label | Workflow | Agent | Trigger target |
 |-------|----------|-------|---------------|
-| `work-agent` | issue-worker | worker | Issue |
+| `agent` | issue-worker | worker | Issue |
 | `review-agent` | pull-request-reviewer | reviewer | Pull request |
 | `plan-agent` | plan-worker | planner | Issue |
 | `docs-agent` | docs-worker | documenter | Issue / PR |
@@ -109,7 +109,7 @@ dispatch the matching agent. The agent removes the label when done.
 
 The orchestrator's scheduler tracks every `(workflow_id, source_id)` pair in a
 dispatch record store. Re-applying a label to an already-dispatched issue does
-not trigger a second dispatch — the `storage.is_dispatched()` check in
+not trigger a second dispatch - the `storage.is_dispatched()` check in
 `crates/orchestrator/src/scheduler/runner.rs` prevents duplicates.
 
 To re-trigger an agent on the same issue/PR, the label must first be removed
@@ -118,8 +118,8 @@ when the previous dispatch is marked complete or failed).
 
 ## Related Files
 
-- `.agentd/agents/conductor.yml` — Conductor agent system prompt and dispatch logic
-- `.agentd/agents/*.yml` — Individual agent definitions
-- `.agentd/workflows/*.yml` — Workflow definitions (one per dispatch label)
-- `.github/labels.yml` — Authoritative label configuration for this repository
-- `crates/orchestrator/src/scheduler/runner.rs` — Dispatch dedup logic
+- `.agentd/agents/conductor.yml` - Conductor agent system prompt and dispatch logic
+- `.agentd/agents/*.yml` - Individual agent definitions
+- `.agentd/workflows/*.yml` - Workflow definitions (one per dispatch label)
+- `.github/labels.yml` - Authoritative label configuration for this repository
+- `crates/orchestrator/src/scheduler/runner.rs` - Dispatch dedup logic

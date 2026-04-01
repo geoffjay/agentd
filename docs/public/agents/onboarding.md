@@ -9,11 +9,11 @@ label-driven pipeline, and use git-spice for stacked branch management.
 - Services running locally (see [Getting Started](../getting-started.md))
 - `gh` CLI authenticated: `gh auth login`
 - git-spice installed: `brew install abhinav/tap/git-spice`
-- git-spice initialized in your clone (one-time, human step — see [git-spice setup](#one-time-setup))
+- git-spice initialized in your clone (one-time, human step - see [git-spice setup](#one-time-setup))
 
 ---
 
-## 1. Quick start — deploy the agent stack
+## 1. Quick start - deploy the agent stack
 
 The project ships a complete agent stack in `.agentd/`. One command creates every room,
 agent, and workflow in the correct order:
@@ -56,7 +56,7 @@ agent teardown .agentd/
 │   ├── security.yml        # Security auditing
 │   └── architect.yml       # Architecture review
 └── workflows/
-    ├── issue-worker.yml    # Dispatches on work-agent label
+    ├── issue-worker.yml    # Dispatches on agent label
     ├── plan-worker.yml     # Dispatches on plan-agent label
     ├── pull-request-reviewer.yml
     ├── docs-worker.yml
@@ -77,7 +77,7 @@ agent teardown .agentd/
 Agent definitions live in `.agentd/agents/<name>.yml`.
 
 !!! warning "Human approval required"
-    Changes to `.agentd/agents/*.yml` are gated — they alter agent behavior for all future
+    Changes to `.agentd/agents/*.yml` are gated - they alter agent behavior for all future
     runs. A human must review and merge these changes. Do not modify existing agent YAML
     files autonomously.
 
@@ -97,32 +97,32 @@ system_prompt: |
 # Required
 name: my-agent                 # Unique agent name
 
-# Optional — sensible defaults shown
+# Optional - sensible defaults shown
 working_dir: "."               # Resolved relative to YAML file at apply time
 shell: /bin/zsh                # Shell for the tmux session
 worktree: false                # Isolated git worktree per task
 model: claude-sonnet-4-6       # Claude model (omit to use default)
 
-# Optional — directories outside working_dir the agent can access
+# Optional - directories outside working_dir the agent can access
 additional_dirs:
   - ../other-repo              # Relative to YAML file
   - /opt/shared/configs        # Absolute path
 
-# Optional — initial prompt sent once after the agent connects
+# Optional - initial prompt sent once after the agent connects
 prompt: "Read CLAUDE.md and summarize this project."
 
-# Optional — system prompt for the Claude session
+# Optional - system prompt for the Claude session
 system_prompt: |
   You are a ...
 
-# Optional — tool restrictions (default: allow_all)
+# Optional - tool restrictions (default: allow_all)
 tool_policy:
   mode: deny_list
   tools:
     - "Write(crates/**)"       # Block writes to production source
     - "Edit(.agentd/**)"       # Block modification of agent configs
 
-# Optional — rooms the agent auto-joins at startup
+# Optional - rooms the agent auto-joins at startup
 rooms:
   - engineering                # Plain name = member role
   - name: announcements
@@ -136,11 +136,11 @@ rooms:
 The system prompt defines what the agent is and how it behaves. Look at the existing agents
 in `.agentd/agents/` for patterns. Key things to include:
 
-1. **Role statement** — one sentence describing what the agent does and for which project
-2. **Process section** — numbered steps the agent follows for each task
-3. **Scope constraints** — what the agent must NOT do (as important as what it should do)
-4. **Branch/PR workflow** — how to use git-spice (copy the pattern from `worker.yml`)
-5. **Memory Protocol** — how the agent reads and writes shared memory (see below)
+1. **Role statement** - one sentence describing what the agent does and for which project
+2. **Process section** - numbered steps the agent follows for each task
+3. **Scope constraints** - what the agent must NOT do (as important as what it should do)
+4. **Branch/PR workflow** - how to use git-spice (copy the pattern from `worker.yml`)
+5. **Memory Protocol** - how the agent reads and writes shared memory (see below)
 
 ### Memory Protocol
 
@@ -184,7 +184,7 @@ show two common patterns:
 
 === "Allow list (safest)"
     ```yaml
-    # Only these tools are permitted — everything else is denied
+    # Only these tools are permitted - everything else is denied
     tool_policy:
       mode: allow_list
       tools:
@@ -319,13 +319,13 @@ agent orchestrator validate-template "Fix #{{source_id}}: {{title}}\n{{body}}"
 
 The prompt template is the entire instruction set the agent receives per task. It should:
 
-1. **Repeat key context** — include issue number, URL, and body so the agent doesn't need
+1. **Repeat key context** - include issue number, URL, and body so the agent doesn't need
    to re-fetch them
-2. **Include a memory step** — have the agent search memory before starting work (see the
+2. **Include a memory step** - have the agent search memory before starting work (see the
    `issue-worker.yml` pattern)
-3. **Give explicit instructions** — numbered steps, not vague guidance
-4. **Specify the branch naming** — tell the agent exactly how to create the branch
-5. **Specify the completion step** — how to remove the dispatch label when done
+3. **Give explicit instructions** - numbered steps, not vague guidance
+4. **Specify the branch naming** - tell the agent exactly how to create the branch
+5. **Specify the completion step** - how to remove the dispatch label when done
 
 Look at `.agentd/workflows/issue-worker.yml` and `.agentd/workflows/research-worker.yml`
 for complete, production-tested examples.
@@ -364,7 +364,7 @@ dispatch it to the corresponding agent. **The agent removes the label when it fi
 
 | Label | Workflow | Agent dispatched | Target |
 |-------|----------|-----------------|--------|
-| `work-agent` | `issue-worker` | worker | Issue |
+| `agent` | `issue-worker` | worker | Issue |
 | `docs-agent` | `docs-worker` | documenter | Issue |
 | `plan-agent` | `plan-worker` | planner | Issue |
 | `enrich-agent` | `enrichment-worker` | enricher | Issue |
@@ -376,7 +376,7 @@ dispatch it to the corresponding agent. **The agent removes the label when it fi
 | `conductor-sync` | conductor sync | conductor | Manual trigger |
 
 !!! tip "Re-triggering an agent"
-    Dispatch is deduplicated — re-applying a label to an already-dispatched issue has no
+    Dispatch is deduplicated - re-applying a label to an already-dispatched issue has no
     effect. To re-trigger, remove the label first, then re-add it. This creates a new event
     that the scheduler treats as a fresh task.
 
@@ -394,7 +394,7 @@ When adding a new agent to the pipeline, you need:
 ## 5. git-spice for agents
 
 All branch management in this project uses git-spice. Raw `git checkout -b` and
-`gh pr create` are not used — use the git-spice equivalents.
+`gh pr create` are not used - use the git-spice equivalents.
 
 ### One-time setup
 
@@ -448,7 +448,7 @@ git-spice branch create issue-NNN -m "feat: brief description"
 # 3. Make changes, then commit
 git-spice commit create -m "feat(scope): description (closes #NNN)"
 
-# 4. Submit as a PR — idempotent (creates or updates)
+# 4. Submit as a PR - idempotent (creates or updates)
 git-spice branch submit --fill --no-prompt --label review-agent
 ```
 
@@ -466,7 +466,7 @@ The issue body should declare this with a `## Blocked By` section:
 
 ```markdown
 ## Blocked By
-- #A — description of why B needs A first
+- #A - description of why B needs A first
 
 ## Stack Base
 Branch off `feature/autonomous-pipeline`. PR back into it.
@@ -480,7 +480,7 @@ When a PR receives `needs-rework`:
 # Make fixes, then amend the commit
 git-spice commit amend -m "feat(scope): description (address review feedback)"
 
-# Resubmit — updates the existing PR
+# Resubmit - updates the existing PR
 git-spice branch submit --fill --no-prompt --label review-agent
 ```
 
@@ -571,7 +571,7 @@ participants:
 
 ### Adding an agent to a room
 
-**In the agent YAML** (preferred — the agent joins automatically at startup):
+**In the agent YAML** (preferred - the agent joins automatically at startup):
 
 ```yaml
 # .agentd/agents/my-agent.yml
@@ -598,7 +598,7 @@ agent communicate add-participant \
 3. Running `agent apply .agentd/rooms/<name>.yml` (or `agent apply .agentd/`)
 
 !!! note "Idempotent creation"
-    If a room already exists, `agent apply` skips creation — it does not update the
+    If a room already exists, `agent apply` skips creation - it does not update the
     topic, description, or participants. To modify an existing room, use the CLI directly.
 
 ---
@@ -656,10 +656,10 @@ agent orchestrator attach --name my-agent
 For agents with `require_approval` policy, approve tool calls as they come in:
 
 ```bash
-# In one terminal — watch for permission requests
+# In one terminal - watch for permission requests
 agent orchestrator stream "$AGENT_ID"
 
-# In another — approve or deny
+# In another - approve or deny
 agent orchestrator list-approvals
 agent orchestrator approve <APPROVAL_ID>
 agent orchestrator deny <APPROVAL_ID>
@@ -702,7 +702,7 @@ Full reference: `docs/planning/autonomous-pipeline-gates.md`.
 
 | Operation | Why |
 |-----------|-----|
-| `git-spice auth login` | Interactive OAuth — cannot be scripted |
+| `git-spice auth login` | Interactive OAuth - cannot be scripted |
 | Modifying `.agentd/agents/*.yml` | Changes agent behavior for all future runs |
 | Modifying `crates/orchestrator/src/` core | Risk of breaking the pipeline |
 | `git push --force` to trunk branches | Destructive, irreversible |
@@ -714,9 +714,9 @@ Full reference: `docs/planning/autonomous-pipeline-gates.md`.
 
 ## Related
 
-- [Pipeline State Machine](../pipeline-state-machine.md) — full label reference and lifecycle
-- [Research Agent](research.md) — example of a specialist agent
-- [Templates Reference](../templates.md) — complete YAML schema with all fields
-- [Tool Policies](../tool-policies.md) — tool restriction modes and approval flow
-- [Communication Guide](../communication-guide.md) — rooms, messages, and participants
-- `CLAUDE.md` — authoritative project conventions for all contributors
+- [Pipeline State Machine](../pipeline-state-machine.md) - full label reference and lifecycle
+- [Research Agent](research.md) - example of a specialist agent
+- [Templates Reference](../templates.md) - complete YAML schema with all fields
+- [Tool Policies](../tool-policies.md) - tool restriction modes and approval flow
+- [Communication Guide](../communication-guide.md) - rooms, messages, and participants
+- `CLAUDE.md` - authoritative project conventions for all contributors

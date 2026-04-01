@@ -55,7 +55,7 @@ tasks. It is the simplest combinator and is useful for "either/or" scenarios.
 1. Each sub-trigger runs in its own background task.
 2. The first sub-trigger to produce tasks sends them over an internal channel.
 3. `next_tasks()` returns immediately when it receives from the channel.
-4. Other sub-triggers continue running — their results are queued for future
+4. Other sub-triggers continue running - their results are queued for future
    `next_tasks()` calls.
 
 ---
@@ -120,10 +120,10 @@ When an AND composite fires, all sub-tasks are merged into a single task:
 Template variables available in AND composite prompts:
 
 ```
-{{title}}                        — from first sub-task
-{{body}}                         — merged bodies
-{{source_id}}                    — composite:and:...
-{{composite_sub_source_ids}}     — all sub-source IDs
+{{title}}                        - from first sub-task
+{{body}}                         - merged bodies
+{{source_id}}                    - composite:and:...
+{{composite_sub_source_ids}}     - all sub-source IDs
 ```
 
 ---
@@ -165,8 +165,8 @@ This example fires when either:
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `mode` | `"or"` \| `"and"` | ✓ | — | Combinator logic |
-| `triggers` | array of trigger configs | ✓ | — | Sub-triggers (minimum 2) |
+| `mode` | `"or"` \| `"and"` | ✓ | - | Combinator logic |
+| `triggers` | array of trigger configs | ✓ | - | Sub-triggers (minimum 2) |
 | `correlation_window_secs` | integer | AND only | `60` | How long all sub-triggers must fire within |
 
 ### Validation rules
@@ -199,7 +199,7 @@ This example fires when either:
 
 - Check that all sub-triggers can actually produce tasks.
 - Verify `correlation_window_secs` is long enough for all sub-triggers to fire.
-- Check orchestrator logs for `"AND: correlation window expired"` messages —
+- Check orchestrator logs for `"AND: correlation window expired"` messages -
   this means one or more sub-triggers fired but others did not within the window.
 
 ### Unexpected duplicate dispatches from OR composite

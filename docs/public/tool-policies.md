@@ -4,12 +4,12 @@ Tool policies control which tools an AI agent can use during execution. They pro
 
 ## Why Tool Policies Matter
 
-Without restrictions, an agent has full access to all Claude Code tools — including `Bash` (arbitrary command execution), `Write` (file modification), and `Edit`. For production workflows, you want to:
+Without restrictions, an agent has full access to all Claude Code tools - including `Bash` (arbitrary command execution), `Write` (file modification), and `Edit`. For production workflows, you want to:
 
-- **Limit blast radius** — a code review agent only needs `Read` and `Grep`, not `Bash`
-- **Prevent accidental damage** — block `Write` for analysis-only tasks
-- **Require human oversight** — hold every tool use for approval during sensitive operations
-- **Audit tool usage** — log which tools were requested and the policy decision
+- **Limit blast radius** - a code review agent only needs `Read` and `Grep`, not `Bash`
+- **Prevent accidental damage** - block `Write` for analysis-only tasks
+- **Require human oversight** - hold every tool use for approval during sensitive operations
+- **Audit tool usage** - log which tools were requested and the policy decision
 
 ## The Five Policy Modes
 
@@ -67,7 +67,7 @@ Every tool request is held pending until a human approves or denies it. The agen
 {"mode": "require_approval"}
 ```
 
-**Use when:** Maximum oversight is needed — security audits, untrusted tasks, learning what an agent does before granting broader access.
+**Use when:** Maximum oversight is needed - security audits, untrusted tasks, learning what an agent does before granting broader access.
 
 ## Setting Policies
 
@@ -144,7 +144,7 @@ When an agent runs with `require_approval` policy, the orchestrator holds each t
 2. Orchestrator detects `RequireApproval` policy
 3. Request is stored in the `ApprovalRegistry` with a unique ID
 4. A `pending_approval` event is broadcast on the `/stream` WebSocket
-5. The WebSocket response is **held** — the agent blocks waiting
+5. The WebSocket response is **held** - the agent blocks waiting
 6. A human calls `approve` or `deny` via CLI or API
 7. The decision is sent to the agent, which proceeds or adapts
 8. If no decision within **5 minutes**, the request is auto-denied
@@ -191,7 +191,7 @@ GET  /agents/{id}/approvals        # per-agent approvals
 
 ### Timeout behavior
 
-Unanswered approvals are automatically denied after 5 minutes. The agent receives a deny response with the message: `"approval timeout — no human decision within 5 minutes"`.
+Unanswered approvals are automatically denied after 5 minutes. The agent receives a deny response with the message: `"approval timeout - no human decision within 5 minutes"`.
 
 ## Recommended Policies by Use Case
 
@@ -214,7 +214,7 @@ WARN agent_id=550e8400 tool_name=Bash decision=deny policy_mode=deny_list
 ```
 
 Log fields include:
-- `agent_id` — which agent
-- `tool_name` — which tool was requested
-- `decision` — `allow` or `deny`
-- `policy_mode` — which policy mode drove the decision
+- `agent_id` - which agent
+- `tool_name` - which tool was requested
+- `decision` - `allow` or `deny`
+- `policy_mode` - which policy mode drove the decision

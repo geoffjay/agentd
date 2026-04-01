@@ -1,4 +1,4 @@
-# Autonomous Pipeline — Human Approval Gates
+# Autonomous Pipeline - Human Approval Gates
 
 This document defines which operations in the agentd autonomous pipeline require
 human approval, which are configurable, and which always run without intervention.
@@ -16,7 +16,7 @@ instruction. No tool policy override exists.
 
 | Operation | Reason |
 |---|---|
-| `git-spice auth login` | Interactive OAuth — one-time per environment; cannot be scripted |
+| `git-spice auth login` | Interactive OAuth - one-time per environment; cannot be scripted |
 | Changes to `.agentd/agents/*.yml` | Alters agent behavior and permissions for all future runs |
 | Changes to `crates/orchestrator/src/` core | Risk of breaking the pipeline itself |
 | Production deployments | Risk threshold requires human sign-off |
@@ -80,7 +80,7 @@ These operations are safe and reversible enough that no approval gate is needed.
 Tool policies are declared in each agent's YAML under the `tool_policy` key.
 They use glob/regex pattern matching against the command being executed.
 
-### Example — Conductor
+### Example - Conductor
 
 ```yaml
 tool_policy:
@@ -94,11 +94,11 @@ tool_policy:
   - pattern: "gh * --remove-label *"
     mode: allow
 
-  # Block all force pushes — always human
+  # Block all force pushes - always human
   - pattern: "git push --force*"
     mode: deny
 
-  # Block deletions of issues or milestones — always human
+  # Block deletions of issues or milestones - always human
   - pattern: "gh issue delete *"
     mode: deny
   - pattern: "gh api repos/*/milestones/* --method DELETE"
@@ -109,11 +109,11 @@ tool_policy:
     mode: ask
 ```
 
-### Example — Worker
+### Example - Worker
 
 ```yaml
 tool_policy:
-  # Block modification of agent YAML files — always human
+  # Block modification of agent YAML files - always human
   - pattern: "* .agentd/agents/*"
     mode: deny
 

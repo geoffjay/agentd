@@ -18,7 +18,7 @@ Port defaults to `17001` (dev) or `7001` (production), configurable via the `AGE
 4. The user responds via `POST /answer` with a question ID and answer text
 5. The ask service updates the notification in the notify service and processes the answer
 
-Questions have a cooldown period — the same check won't create duplicate notifications within the cooldown window.
+Questions have a cooldown period - the same check won't create duplicate notifications within the cooldown window.
 
 ## Environment Variables
 
@@ -86,7 +86,7 @@ POST /trigger
 | `notifications_sent` | UUID[] | IDs of notifications created in the notify service |
 | `results` | object | Detailed results keyed by check name |
 
-**Check Results — `tmux_sessions`:**
+**Check Results - `tmux_sessions`:**
 
 | Field | Type | Description |
 |-------|------|-------------|

@@ -8,7 +8,7 @@ service (`agentd-wrap`).
 ## Selecting a Backend
 
 ```bash
-# tmux (default — no env var needed)
+# tmux (default - no env var needed)
 cargo run -p agentd-orchestrator
 
 # PTY backend (in-process, supports web terminal)
@@ -40,8 +40,8 @@ additional infrastructure.
 - `tmux` binary on `$PATH`
 
 **Limitations:**
-- No health checks — session status is always reported as `Unknown`
-- No PTY streaming — the web Terminal tab is not available
+- No health checks - session status is always reported as `Unknown`
+- No PTY streaming - the web Terminal tab is not available
 - Requires a local tmux installation on the host
 
 **When to use:** Development, local experimentation, or when you already use tmux.
@@ -66,7 +66,7 @@ network policy enforcement, and container health checks.
 | `AGENTD_DOCKER_IMAGE` | `ghcr.io/geoffjay/agentd-agent:latest`    | Container image for agents     |
 
 **Limitations:**
-- No PTY streaming — the web Terminal tab is not available
+- No PTY streaming - the web Terminal tab is not available
 - Docker daemon must be running at service startup; startup fails with a clear
   error if Docker is unreachable
 
@@ -84,12 +84,12 @@ terminal). Provides full terminal I/O streaming via WebSocket, enabling the
 **Capabilities:** `terminal`, `interactive`
 
 **Requirements:**
-- None — no external dependencies
+- None - no external dependencies
 
 **Limitations:**
 - Sessions are in-process; restarting the service terminates all agents
 - No container isolation or resource limits
-- No structured health checks — process liveness is not reported via the `health-check` capability
+- No structured health checks - process liveness is not reported via the `health-check` capability
 
 **When to use:** Web terminal access, demos, local development without tmux, or
 environments where you cannot install tmux or Docker.
@@ -147,5 +147,5 @@ immediately with a descriptive error:
 Error: Unknown AGENTD_BACKEND value 'badvalue'. Valid options: tmux, docker, pty
 ```
 
-This prevents silent degradation — an explicit configuration error is always
+This prevents silent degradation - an explicit configuration error is always
 surfaced at startup rather than at runtime.

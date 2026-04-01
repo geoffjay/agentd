@@ -38,8 +38,8 @@ grafana --version
    Default credentials: `admin` / `admin` (change on first login)
 
 3. **Verify provisioning:**
-   - Navigate to **Connections → Data sources** — `agentd-prometheus` should appear
-   - Navigate to **Dashboards → Browse → agentd** — all four dashboards should load
+   - Navigate to **Connections → Data sources** - `agentd-prometheus` should appear
+   - Navigate to **Dashboards → Browse → agentd** - all four dashboards should load
 
 ## Pre-Built Dashboards
 

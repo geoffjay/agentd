@@ -185,10 +185,10 @@ LaunchAgent plist files are installed to `~/Library/LaunchAgents/` and define ho
 
 Each plist configures:
 
-- **Label**: `com.geoffjay.agentd-{service}` — unique identifier for launchd
+- **Label**: `com.geoffjay.agentd-{service}` - unique identifier for launchd
 - **ProgramArguments**: Path to the binary in `/Applications/Agent.app/Contents/MacOS/`
-- **RunAtLoad**: `true` — service starts automatically at login
-- **KeepAlive/SuccessfulExit**: `false` — automatically restarts on crash
+- **RunAtLoad**: `true` - service starts automatically at login
+- **KeepAlive/SuccessfulExit**: `false` - automatically restarts on crash
 - **StandardOutPath/StandardErrorPath**: Log file locations
 - **EnvironmentVariables**: `AGENTD_PORT`, `RUST_LOG`, and any service-specific vars
 - **WorkingDirectory**: `/usr/local`
@@ -230,11 +230,11 @@ On Linux, `cargo xtask install-user` generates systemd user unit files in `~/.co
 
 Each unit file configures:
 
-- **Type**: `simple` — the process is the main service
+- **Type**: `simple` - the process is the main service
 - **ExecStart**: Path to the installed binary
 - **Restart**: `on-failure` with 5-second delay
 - **Environment**: `AGENTD_PORT`, `RUST_LOG`, and service-specific vars
-- **WantedBy**: `default.target` — starts when the user session begins
+- **WantedBy**: `default.target` - starts when the user session begins
 
 ### Managing Services
 

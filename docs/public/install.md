@@ -222,7 +222,7 @@ and a production port (7xxx) when running as a LaunchAgent:
 | agentd-notify | 17004 | 7004 |
 | agentd-wrap | 17005 | 7005 |
 | agentd-orchestrator | 17006 | 7006 |
-| agentd-memory | — | 7008 |
+| agentd-memory | - | 7008 |
 | agentd-communicate | 17010 | 7010 |
 
 All ports are configurable via the `AGENTD_PORT` environment variable.

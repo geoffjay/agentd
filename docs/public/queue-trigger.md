@@ -45,7 +45,7 @@ While a task is processing, it is invisible to other consumers for
 
 | Field                    | Type     | Required | Default | Description                                         |
 |--------------------------|----------|----------|---------|-----------------------------------------------------|
-| `queue_name`             | `string` | yes      | —       | Name of the queue to consume from                   |
+| `queue_name`             | `string` | yes      | -       | Name of the queue to consume from                   |
 | `poll_interval_secs`     | `u64`    | no       | `5`     | How often to poll when the queue is empty (seconds) |
 | `visibility_timeout_secs`| `u64`    | no       | `300`   | Visibility timeout for dequeued tasks (seconds)     |
 
@@ -115,7 +115,7 @@ curl -X POST http://localhost:7006/queues/reports/push \
 
 | Field      | Type     | Required | Default | Description                          |
 |------------|----------|----------|---------|--------------------------------------|
-| `title`    | `string` | yes      | —       | Short description of the task        |
+| `title`    | `string` | yes      | -       | Short description of the task        |
 | `body`     | `string` | no       | `""`    | Task payload (JSON, text, etc.)      |
 | `priority` | `i32`    | no       | `0`     | Higher values processed first        |
 
