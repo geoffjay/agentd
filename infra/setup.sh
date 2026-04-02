@@ -41,7 +41,7 @@ PROMETHEUS_PLIST="com.agentd.prometheus.plist"
 GRAFANA_PLIST="com.agentd.grafana.plist"
 
 PROMETHEUS_PORT=9090
-GRAFANA_PORT=3000
+GRAFANA_PORT=3999
 
 DRY_RUN=false
 

@@ -33,7 +33,7 @@ grafana --version
    > Replace `$(pwd)` with the absolute path to your repo root if running
    > from a different directory.
 
-2. **Open Grafana** at <http://localhost:3000>
+2. **Open Grafana** at <http://localhost:3999>
 
    Default credentials: `admin` / `admin` (change on first login)
 
@@ -108,7 +108,7 @@ automatically at login.
 
    ```bash
    launchctl list | grep grafana
-   curl -s http://localhost:3000/api/health | python3 -m json.tool
+   curl -s http://localhost:3999/api/health | python3 -m json.tool
    ```
 
 ### Stopping the service
@@ -173,10 +173,10 @@ Grafana logs will show provisioning errors:
 grep -i "provision\|error" /Users/Shared/agentd/logs/grafana.log | tail -20
 ```
 
-### Port 3000 already in use
+### Port 3999 already in use
 
 ```bash
-lsof -i :3000
+lsof -i :3999
 ```
 
 Change `http_port` in `infra/grafana/grafana.ini` if needed.

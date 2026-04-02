@@ -136,7 +136,7 @@ included in `infra/`:
 ./infra/setup.sh
 
 # Open dashboards (default credentials: admin / admin)
-open http://localhost:3000
+open http://localhost:3999
 ```
 
 Pre-built dashboards: **Service Overview**, **Agent Activity**,

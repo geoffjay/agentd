@@ -25,7 +25,7 @@ visualization.
                     │ PromQL
                     ▼
            ┌─────────────────┐
-           │     Grafana     │  :3000
+           │     Grafana     │  :3999
            │  (dashboards +  │
            │  provisioning)  │
            └─────────────────┘
@@ -43,7 +43,7 @@ pre-built dashboards that are auto-provisioned from this repository.
 ./infra/setup.sh
 
 # Open the dashboards
-open http://localhost:3000
+open http://localhost:3999
 ```
 
 The setup script:
@@ -187,7 +187,7 @@ Edit `infra/prometheus/prometheus.yml`:
 | Grafana shows "No data" | Prometheus not running | `curl http://localhost:9090/-/healthy` |
 | Prometheus target is DOWN | agentd service not running | `cargo run -p agentd-orchestrator` |
 | Grafana dashboards not loading | Wrong provisioning path | Check `provisioning` in `grafana.ini` |
-| Port 9090 / 3000 in use | Another process | `lsof -i :9090` or `lsof -i :3000` |
+| Port 9090 / 3999 in use | Another process | `lsof -i :9090` or `lsof -i :3999` |
 | Service not starting at login | Plist not loaded | `launchctl list \| grep agentd` |
 
 For detailed troubleshooting, see the individual setup guides:
