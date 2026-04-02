@@ -191,7 +191,11 @@ export class ApiClient {
 		path: string,
 		params?: Record<string, string | number | boolean | undefined>,
 	): string {
-		const url = new URL(`${this.baseUrl}${path}`);
+		// Support both absolute URLs (http://...) and relative proxy paths (/api/...)
+		const base = this.baseUrl.startsWith("/")
+			? `${window.location.origin}${this.baseUrl}`
+			: this.baseUrl;
+		const url = new URL(`${base}${path}`);
 
 		if (params) {
 			for (const [key, value] of Object.entries(params)) {
@@ -240,7 +244,11 @@ export class ApiClient {
 	 * http → ws, https → wss
 	 */
 	protected openWebSocket(path: string): WebSocket {
-		const wsBase = this.baseUrl.replace(/^http/, "ws");
+		// Convert http(s) → ws(s), or relative /api/... → ws(s)://host/api/...
+		const absBase = this.baseUrl.startsWith("/")
+			? `${window.location.origin}${this.baseUrl}`
+			: this.baseUrl;
+		const wsBase = absBase.replace(/^http/, "ws");
 		return new WebSocket(`${wsBase}${path}`);
 	}
 }

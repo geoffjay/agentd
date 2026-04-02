@@ -192,7 +192,10 @@ function capLines(prev: LogLine[], incoming: LogLine[]): LogLine[] {
 }
 
 function agentStreamUrl(agentId: string): string {
-	const wsBase = serviceConfig.orchestratorServiceUrl.replace(/^http/, "ws");
+	const absBase = serviceConfig.orchestratorServiceUrl.startsWith("/")
+		? `${window.location.origin}${serviceConfig.orchestratorServiceUrl}`
+		: serviceConfig.orchestratorServiceUrl;
+	const wsBase = absBase.replace(/^http/, "ws");
 	return `${wsBase}/stream/${agentId}`;
 }
 

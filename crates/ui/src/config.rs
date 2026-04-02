@@ -10,6 +10,10 @@ pub struct UiConfig {
     pub notify_service_url: String,
     /// URL of the orchestrator service.
     pub orchestrator_service_url: String,
+    /// URL of the memory service.
+    pub memory_service_url: String,
+    /// URL of the communicate service.
+    pub communicate_service_url: String,
 }
 
 impl UiConfig {
@@ -20,6 +24,8 @@ impl UiConfig {
     /// - `AGENTD_ASK_SERVICE_URL` — ask service URL (default: `http://localhost:7001`)
     /// - `AGENTD_NOTIFY_SERVICE_URL` — notify service URL (default: `http://localhost:7004`)
     /// - `AGENTD_ORCHESTRATOR_SERVICE_URL` — orchestrator service URL (default: `http://localhost:7006`)
+    /// - `AGENTD_MEMORY_SERVICE_URL` — memory service URL (default: `http://localhost:7008`)
+    /// - `AGENTD_COMMUNICATE_SERVICE_URL` — communicate service URL (default: `http://localhost:7010`)
     pub fn from_env() -> Self {
         Self {
             port: std::env::var("AGENTD_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(17009),
@@ -30,6 +36,10 @@ impl UiConfig {
                 .unwrap_or_else(|_| "http://localhost:7004".to_string()),
             orchestrator_service_url: std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7006".to_string()),
+            memory_service_url: std::env::var("AGENTD_MEMORY_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7008".to_string()),
+            communicate_service_url: std::env::var("AGENTD_COMMUNICATE_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7010".to_string()),
         }
     }
 }

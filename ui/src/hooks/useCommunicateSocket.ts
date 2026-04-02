@@ -44,7 +44,10 @@ export interface UseCommunicateSocketOptions {
 // ---------------------------------------------------------------------------
 
 function communicateWsUrl(participantId: string, displayName: string): string {
-	const base = serviceConfig.communicateServiceUrl.replace(/^http/, "ws");
+	const absBase = serviceConfig.communicateServiceUrl.startsWith("/")
+		? `${window.location.origin}${serviceConfig.communicateServiceUrl}`
+		: serviceConfig.communicateServiceUrl;
+	const base = absBase.replace(/^http/, "ws");
 	const params = new URLSearchParams({
 		identifier: participantId,
 		kind: "human",
