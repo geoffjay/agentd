@@ -352,13 +352,16 @@ async fn list_memories(
     // (A future MemoryStorage with SQL will support server-side filtering.)
     let all = state.store.list_all().await.map_err(ApiError::from)?;
 
-    let filtered: Vec<Memory> = all
+    let mut filtered: Vec<Memory> = all
         .into_iter()
         .filter(|m| memory_type_filter.as_ref().is_none_or(|t| m.memory_type == *t))
         .filter(|m| visibility_filter.as_ref().is_none_or(|v| m.visibility == *v))
         .filter(|m| tag_filter.is_empty() || tag_filter.iter().any(|t| m.tags.contains(t)))
         .filter(|m| params.created_by.as_ref().is_none_or(|c| m.created_by == *c))
         .collect();
+
+    // Newest first so the first page of results shows the most recent memories.
+    filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
     let total = filtered.len();
     let items: Vec<Memory> = filtered.into_iter().skip(offset).take(limit).collect();
