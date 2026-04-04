@@ -1,4 +1,4 @@
-//! SeaORM-based persistent storage for questions.
+//! SeaORM-based persistent storage for questions (agent-driven Q&A).
 //!
 //! Provides the [`QuestionStorage`] backend that persists questions to
 //! an SQLite database using SeaORM entities and a migration-managed schema.
@@ -7,72 +7,23 @@
 //!
 //! - Linux: `~/.local/share/agentd-ask/ask.db`
 //! - macOS: `~/Library/Application Support/agentd-ask/ask.db`
-//!
-//! # Schema
-//!
-//! Managed by [`crate::migration::Migrator`]. See
-//! `migration/m20250328_000001_create_questions_table.rs` for the full
-//! column list.
-//!
-//! # Examples
-//!
-//! ```no_run
-//! use ask::storage::QuestionStorage;
-//! use ask::types::{QuestionInfo, CheckType, QuestionStatus};
-//! use chrono::Utc;
-//! use uuid::Uuid;
-//!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
-//!     let storage = QuestionStorage::new().await?;
-//!
-//!     let question = QuestionInfo {
-//!         question_id: Uuid::new_v4(),
-//!         notification_id: Uuid::new_v4(),
-//!         check_type: CheckType::TmuxSessions,
-//!         asked_at: Utc::now(),
-//!         status: QuestionStatus::Pending,
-//!         answer: None,
-//!     };
-//!
-//!     storage.add(&question).await?;
-//!     println!("Stored question: {}", question.question_id);
-//!     Ok(())
-//! }
-//! ```
 
 use crate::{
     entity::question as question_entity,
     migration::Migrator,
-    types::{CheckType, QuestionInfo, QuestionStatus},
+    types::{CreateQuestionRequest, Question, QuestionStatus},
 };
 use anyhow::Result;
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use sea_orm_migration::prelude::MigratorTrait;
 use std::path::Path;
 use uuid::Uuid;
 
 /// Persistent storage backend for questions using SeaORM + SQLite.
-///
-/// This struct provides a thread-safe, async interface to a SQLite database.
-/// [`DatabaseConnection`] is `Clone + Send + Sync`.
-///
-/// # Examples
-///
-/// ```no_run
-/// use ask::storage::QuestionStorage;
-///
-/// #[tokio::main]
-/// async fn main() -> anyhow::Result<()> {
-///     let storage = QuestionStorage::new().await?;
-///     let storage_clone = storage.clone();
-///     tokio::spawn(async move { let _ = storage_clone; });
-///     Ok(())
-/// }
-/// ```
 #[derive(Clone)]
 pub struct QuestionStorage {
     db: DatabaseConnection,
@@ -80,9 +31,6 @@ pub struct QuestionStorage {
 
 impl QuestionStorage {
     /// Gets the platform-specific database file path.
-    ///
-    /// - **Linux**: `~/.local/share/agentd-ask/ask.db`
-    /// - **macOS**: `~/Library/Application Support/agentd-ask/ask.db`
     pub fn get_db_path() -> Result<std::path::PathBuf> {
         agentd_common::storage::get_db_path("agentd-ask", "ask.db")
     }
@@ -94,17 +42,17 @@ impl QuestionStorage {
     }
 
     /// Creates a new storage instance connected to `db_path`.
-    ///
-    /// The file is created if it does not exist, and all pending SeaORM
-    /// migrations are applied before returning.
     pub async fn with_path(db_path: &Path) -> Result<Self> {
         let db = agentd_common::storage::create_connection(db_path).await?;
         Migrator::up(&db, None).await?;
         Ok(Self { db })
     }
 
-    /// Creates an in-memory storage instance for testing.
-    #[cfg(test)]
+    /// Creates an in-memory storage instance (for testing).
+    ///
+    /// Connects to `sqlite::memory:` — data is lost when the connection closes.
+    /// Suitable for unit tests, integration tests, and one-shot tooling.
+    #[allow(dead_code)]
     pub async fn in_memory() -> Result<Self> {
         use sea_orm::Database;
         let db = Database::connect("sqlite::memory:").await?;
@@ -112,60 +60,95 @@ impl QuestionStorage {
         Ok(Self { db })
     }
 
-    /// Inserts a question and returns its UUID.
-    pub async fn add(&self, question: &QuestionInfo) -> Result<Uuid> {
+    /// Inserts a new question and returns its UUID.
+    pub async fn create(&self, req: &CreateQuestionRequest) -> Result<Question> {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+        let priority = req.priority.unwrap_or_default();
+        let expires_at =
+            req.expires_in_seconds.map(|secs| now + chrono::Duration::seconds(secs as i64));
+
         let model = question_entity::ActiveModel {
-            id: Set(question.question_id.to_string()),
-            notification_id: Set(question.notification_id.to_string()),
-            check_type: Set(question.check_type.as_str().to_string()),
-            asked_at: Set(question.asked_at.to_rfc3339()),
-            status: Set(status_to_str(question.status).to_string()),
-            answer: Set(question.answer.clone()),
+            id: Set(id.to_string()),
+            agent_id: Set(req.agent_id.clone()),
+            workflow_id: Set(req.workflow_id.map(|u| u.to_string())),
+            dispatch_id: Set(req.dispatch_id.map(|u| u.to_string())),
+            category: Set(req.category.clone()),
+            question: Set(req.question.clone()),
+            context: Set(req.context.clone()),
+            priority: Set(priority.as_str().to_string()),
+            status: Set(QuestionStatus::Pending.as_str().to_string()),
+            answer: Set(None),
+            asked_at: Set(now.to_rfc3339()),
+            answered_at: Set(None),
+            expires_at: Set(expires_at.map(|t| t.to_rfc3339())),
         };
 
         question_entity::Entity::insert(model).exec(&self.db).await?;
-        Ok(question.question_id)
+
+        Ok(Question {
+            id,
+            agent_id: req.agent_id.clone(),
+            workflow_id: req.workflow_id,
+            dispatch_id: req.dispatch_id,
+            category: req.category.clone(),
+            question: req.question.clone(),
+            context: req.context.clone(),
+            priority,
+            status: QuestionStatus::Pending,
+            answer: None,
+            asked_at: now,
+            answered_at: None,
+            expires_at,
+        })
     }
 
     /// Retrieves a question by its UUID.
-    #[allow(dead_code)]
-    pub async fn get(&self, question_id: &Uuid) -> Result<Option<QuestionInfo>> {
+    pub async fn get(&self, question_id: &Uuid) -> Result<Option<Question>> {
         let model =
             question_entity::Entity::find_by_id(question_id.to_string()).one(&self.db).await?;
         model.map(model_to_question).transpose()
     }
 
-    /// Retrieves all questions, ordered by asked_at descending.
-    #[allow(dead_code)]
-    pub async fn list_all(&self) -> Result<Vec<QuestionInfo>> {
-        let models = question_entity::Entity::find()
-            .order_by(question_entity::Column::AskedAt, Order::Desc)
-            .all(&self.db)
-            .await?;
+    /// Lists questions with optional filters.
+    pub async fn list(
+        &self,
+        status: Option<QuestionStatus>,
+        agent_id: Option<&str>,
+        category: Option<&str>,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<Question>> {
+        let mut query =
+            question_entity::Entity::find().order_by(question_entity::Column::AskedAt, Order::Desc);
 
+        if let Some(s) = status {
+            query = query.filter(question_entity::Column::Status.eq(s.as_str()));
+        }
+        if let Some(a) = agent_id {
+            query = query.filter(question_entity::Column::AgentId.eq(a));
+        }
+        if let Some(c) = category {
+            query = query.filter(question_entity::Column::Category.eq(c));
+        }
+        if let Some(lim) = limit {
+            query = query.limit(lim);
+        }
+        if let Some(off) = offset {
+            query = query.offset(off);
+        }
+
+        let models = query.all(&self.db).await?;
         models.into_iter().map(model_to_question).collect()
     }
 
-    /// Retrieves all questions with a given status.
-    #[allow(dead_code)]
-    pub async fn list_by_status(&self, status: QuestionStatus) -> Result<Vec<QuestionInfo>> {
-        let status_str = status_to_str(status);
-        let models = question_entity::Entity::find()
-            .filter(question_entity::Column::Status.eq(status_str))
-            .order_by(question_entity::Column::AskedAt, Order::Desc)
-            .all(&self.db)
-            .await?;
-
-        models.into_iter().map(model_to_question).collect()
-    }
-
-    /// Updates a question's status and optional answer.
+    /// Updates a question's status, answer, and answered_at timestamp.
     pub async fn update_status(
         &self,
         question_id: &Uuid,
         status: QuestionStatus,
         answer: Option<String>,
-    ) -> Result<()> {
+    ) -> Result<Question> {
         use sea_orm::ActiveModelTrait;
 
         let model = question_entity::Entity::find_by_id(question_id.to_string())
@@ -173,102 +156,117 @@ impl QuestionStorage {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Question {} not found", question_id))?;
 
+        // Validate transition: only Pending questions can be answered/dismissed.
+        let current_status: QuestionStatus = model.status.parse()?;
+        if current_status != QuestionStatus::Pending {
+            anyhow::bail!(
+                "Question {} is already {} and cannot be updated",
+                question_id,
+                current_status
+            );
+        }
+
+        let now = Utc::now();
         let mut active: question_entity::ActiveModel = model.into();
-        active.status = Set(status_to_str(status).to_string());
-        active.answer = Set(answer);
+        active.status = Set(status.as_str().to_string());
+        active.answer = Set(answer.clone());
+        active.answered_at = Set(Some(now.to_rfc3339()));
         active.save(&self.db).await?;
 
-        Ok(())
+        self.get(question_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Question {} not found after update", question_id))
     }
 
-    /// Deletes questions that are older than 24 hours and not pending.
-    pub async fn cleanup_old(&self) -> Result<u64> {
-        let cutoff = chrono::Utc::now() - chrono::Duration::hours(24);
-        let cutoff_str = cutoff.to_rfc3339();
+    /// Expires questions whose `expires_at` timestamp has passed.
+    pub async fn expire_old(&self) -> Result<u64> {
+        use sea_orm::{ActiveModelTrait, IntoActiveModel};
 
-        let result = question_entity::Entity::delete_many()
-            .filter(question_entity::Column::AskedAt.lt(cutoff_str))
-            .filter(question_entity::Column::Status.ne(status_to_str(QuestionStatus::Pending)))
-            .exec(&self.db)
+        let now = Utc::now().to_rfc3339();
+
+        let expired = question_entity::Entity::find()
+            .filter(question_entity::Column::Status.eq(QuestionStatus::Pending.as_str()))
+            .filter(question_entity::Column::ExpiresAt.is_not_null())
+            .filter(question_entity::Column::ExpiresAt.lt(now))
+            .all(&self.db)
             .await?;
 
-        Ok(result.rows_affected)
+        let count = expired.len() as u64;
+        for model in expired {
+            let mut active = model.into_active_model();
+            active.status = Set(QuestionStatus::Expired.as_str().to_string());
+            active.save(&self.db).await?;
+        }
+
+        Ok(count)
     }
 }
 
-/// Converts a [`QuestionStatus`] to its string representation for storage.
-fn status_to_str(status: QuestionStatus) -> &'static str {
-    match status {
-        QuestionStatus::Pending => "Pending",
-        QuestionStatus::Answered => "Answered",
-        QuestionStatus::Expired => "Expired",
-    }
-}
-
-/// Parses a status string from storage back to [`QuestionStatus`].
-#[allow(dead_code)]
-fn str_to_status(s: &str) -> Result<QuestionStatus> {
-    match s {
-        "Pending" => Ok(QuestionStatus::Pending),
-        "Answered" => Ok(QuestionStatus::Answered),
-        "Expired" => Ok(QuestionStatus::Expired),
-        other => anyhow::bail!("Unknown question status: {}", other),
-    }
-}
-
-/// Parses a check_type string from storage back to [`CheckType`].
-#[allow(dead_code)]
-fn str_to_check_type(s: &str) -> Result<CheckType> {
-    match s {
-        "tmux_sessions" => Ok(CheckType::TmuxSessions),
-        "service_health" => Ok(CheckType::ServiceHealth),
-        other => anyhow::bail!("Unknown check type: {}", other),
-    }
-}
-
-/// Converts a database model row to a [`QuestionInfo`].
-#[allow(dead_code)]
-fn model_to_question(model: question_entity::Model) -> Result<QuestionInfo> {
-    Ok(QuestionInfo {
-        question_id: Uuid::parse_str(&model.id)?,
-        notification_id: Uuid::parse_str(&model.notification_id)?,
-        check_type: str_to_check_type(&model.check_type)?,
-        asked_at: DateTime::parse_from_rfc3339(&model.asked_at)?.with_timezone(&chrono::Utc),
-        status: str_to_status(&model.status)?,
+/// Converts a database model row to a [`Question`].
+fn model_to_question(model: question_entity::Model) -> Result<Question> {
+    Ok(Question {
+        id: Uuid::parse_str(&model.id)?,
+        agent_id: model.agent_id,
+        workflow_id: model.workflow_id.as_deref().map(Uuid::parse_str).transpose()?,
+        dispatch_id: model.dispatch_id.as_deref().map(Uuid::parse_str).transpose()?,
+        category: model.category,
+        question: model.question,
+        context: model.context,
+        priority: model.priority.parse()?,
+        status: model.status.parse()?,
         answer: model.answer,
+        asked_at: DateTime::parse_from_rfc3339(&model.asked_at)?.with_timezone(&Utc),
+        answered_at: model
+            .answered_at
+            .as_deref()
+            .map(DateTime::parse_from_rfc3339)
+            .transpose()?
+            .map(|t| t.with_timezone(&Utc)),
+        expires_at: model
+            .expires_at
+            .as_deref()
+            .map(DateTime::parse_from_rfc3339)
+            .transpose()?
+            .map(|t| t.with_timezone(&Utc)),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use crate::types::QuestionPriority;
 
     async fn make_storage() -> QuestionStorage {
         QuestionStorage::in_memory().await.unwrap()
     }
 
-    fn make_question() -> QuestionInfo {
-        QuestionInfo {
-            question_id: Uuid::new_v4(),
-            notification_id: Uuid::new_v4(),
-            check_type: CheckType::TmuxSessions,
-            asked_at: Utc::now(),
-            status: QuestionStatus::Pending,
-            answer: None,
+    fn make_request() -> CreateQuestionRequest {
+        CreateQuestionRequest {
+            agent_id: "test-agent".to_string(),
+            workflow_id: None,
+            dispatch_id: None,
+            category: Some("health".to_string()),
+            question: "What did you eat yesterday?".to_string(),
+            context: None,
+            priority: Some(QuestionPriority::Normal),
+            expires_in_seconds: None,
         }
     }
 
     #[tokio::test]
-    async fn test_add_and_get() {
+    async fn test_create_and_get() {
         let storage = make_storage().await;
-        let q = make_question();
-        storage.add(&q).await.unwrap();
-        let retrieved = storage.get(&q.question_id).await.unwrap().unwrap();
-        assert_eq!(retrieved.question_id, q.question_id);
-        assert_eq!(retrieved.check_type, q.check_type);
-        assert_eq!(retrieved.status, q.status);
-        assert!(retrieved.answer.is_none());
+        let req = make_request();
+        let q = storage.create(&req).await.unwrap();
+
+        assert_eq!(q.agent_id, "test-agent");
+        assert_eq!(q.status, QuestionStatus::Pending);
+        assert_eq!(q.priority, QuestionPriority::Normal);
+        assert!(q.answer.is_none());
+
+        let retrieved = storage.get(&q.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.id, q.id);
+        assert_eq!(retrieved.question, q.question);
     }
 
     #[tokio::test]
@@ -281,74 +279,124 @@ mod tests {
     #[tokio::test]
     async fn test_list_all() {
         let storage = make_storage().await;
-        let q1 = make_question();
-        let q2 = make_question();
-        storage.add(&q1).await.unwrap();
-        storage.add(&q2).await.unwrap();
-        let all = storage.list_all().await.unwrap();
+        let mut req1 = make_request();
+        req1.agent_id = "agent-1".to_string();
+        let mut req2 = make_request();
+        req2.agent_id = "agent-2".to_string();
+
+        storage.create(&req1).await.unwrap();
+        storage.create(&req2).await.unwrap();
+
+        let all = storage.list(None, None, None, None, None).await.unwrap();
         assert_eq!(all.len(), 2);
     }
 
     #[tokio::test]
     async fn test_list_by_status() {
         let storage = make_storage().await;
-        let q1 = make_question();
-        let mut q2 = make_question();
-        q2.status = QuestionStatus::Answered;
-        q2.answer = Some("yes".to_string());
-        storage.add(&q1).await.unwrap();
-        storage.add(&q2).await.unwrap();
-
-        let pending = storage.list_by_status(QuestionStatus::Pending).await.unwrap();
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].question_id, q1.question_id);
-
-        let answered = storage.list_by_status(QuestionStatus::Answered).await.unwrap();
-        assert_eq!(answered.len(), 1);
-        assert_eq!(answered[0].question_id, q2.question_id);
-    }
-
-    #[tokio::test]
-    async fn test_update_status() {
-        let storage = make_storage().await;
-        let q = make_question();
-        storage.add(&q).await.unwrap();
+        let req = make_request();
+        let q = storage.create(&req).await.unwrap();
 
         storage
-            .update_status(&q.question_id, QuestionStatus::Answered, Some("yes".to_string()))
+            .update_status(&q.id, QuestionStatus::Answered, Some("oatmeal".to_string()))
             .await
             .unwrap();
 
-        let updated = storage.get(&q.question_id).await.unwrap().unwrap();
-        assert_eq!(updated.status, QuestionStatus::Answered);
-        assert_eq!(updated.answer, Some("yes".to_string()));
+        let pending =
+            storage.list(Some(QuestionStatus::Pending), None, None, None, None).await.unwrap();
+        assert_eq!(pending.len(), 0);
+
+        let answered =
+            storage.list(Some(QuestionStatus::Answered), None, None, None, None).await.unwrap();
+        assert_eq!(answered.len(), 1);
     }
 
     #[tokio::test]
-    async fn test_cleanup_old() {
+    async fn test_list_by_agent_id() {
+        let storage = make_storage().await;
+        let mut req1 = make_request();
+        req1.agent_id = "dietician".to_string();
+        let mut req2 = make_request();
+        req2.agent_id = "assistant".to_string();
+
+        storage.create(&req1).await.unwrap();
+        storage.create(&req2).await.unwrap();
+
+        let results = storage.list(None, Some("dietician"), None, None, None).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].agent_id, "dietician");
+    }
+
+    #[tokio::test]
+    async fn test_update_status_answer() {
+        let storage = make_storage().await;
+        let req = make_request();
+        let q = storage.create(&req).await.unwrap();
+
+        let updated = storage
+            .update_status(&q.id, QuestionStatus::Answered, Some("oatmeal".to_string()))
+            .await
+            .unwrap();
+
+        assert_eq!(updated.status, QuestionStatus::Answered);
+        assert_eq!(updated.answer, Some("oatmeal".to_string()));
+        assert!(updated.answered_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_update_status_dismiss() {
+        let storage = make_storage().await;
+        let req = make_request();
+        let q = storage.create(&req).await.unwrap();
+
+        let updated = storage.update_status(&q.id, QuestionStatus::Dismissed, None).await.unwrap();
+
+        assert_eq!(updated.status, QuestionStatus::Dismissed);
+        assert!(updated.answer.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_already_answered_fails() {
+        let storage = make_storage().await;
+        let req = make_request();
+        let q = storage.create(&req).await.unwrap();
+
+        storage
+            .update_status(&q.id, QuestionStatus::Answered, Some("yes".to_string()))
+            .await
+            .unwrap();
+
+        let result =
+            storage.update_status(&q.id, QuestionStatus::Answered, Some("no".to_string())).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_expire_old() {
         let storage = make_storage().await;
 
-        // Add an old answered question
-        let mut old_answered = make_question();
-        old_answered.asked_at = Utc::now() - chrono::Duration::hours(25);
-        old_answered.status = QuestionStatus::Answered;
-        old_answered.answer = Some("yes".to_string());
-        storage.add(&old_answered).await.unwrap();
+        // Create a question that expires in -1 second (already expired).
+        let req = CreateQuestionRequest {
+            agent_id: "test-agent".to_string(),
+            workflow_id: None,
+            dispatch_id: None,
+            category: None,
+            question: "Expired question?".to_string(),
+            context: None,
+            priority: None,
+            expires_in_seconds: Some(0), // expires immediately
+        };
+        storage.create(&req).await.unwrap();
 
-        // Add a recent pending question (should be kept)
-        let recent_pending = make_question();
-        storage.add(&recent_pending).await.unwrap();
+        // Wait a moment to ensure expiry.
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        // Add an old pending question (should be kept — still actionable)
-        let mut old_pending = make_question();
-        old_pending.asked_at = Utc::now() - chrono::Duration::hours(25);
-        storage.add(&old_pending).await.unwrap();
+        let expired = storage.expire_old().await.unwrap();
+        assert_eq!(expired, 1);
 
-        let removed = storage.cleanup_old().await.unwrap();
-        assert_eq!(removed, 1);
-
-        let all = storage.list_all().await.unwrap();
-        assert_eq!(all.len(), 2);
-        assert!(storage.get(&old_answered.question_id).await.unwrap().is_none());
+        let pending =
+            storage.list(Some(QuestionStatus::Pending), None, None, None, None).await.unwrap();
+        assert_eq!(pending.len(), 0);
     }
 }

@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
+# Deploy Approval Respond workflow — Part 2 of 2.
+#
+# Fires automatically when the operator answers or dismisses a deployment-
+# category question from the deploy agent. Checks the response pattern to
+# determine whether to proceed with or abort the deployment.
+#
+# A response matching YES/yes/y/approve proceeds with deployment.
+# Any other response (NO, dismiss, etc.) aborts safely.
+#
+# Pattern: Ask Response → Agent → Deploy or Abort
+#
+# Usage:
+#   agent apply .agentd/workflows/examples/deploy-approval-ask.yml
+#   agent apply .agentd/workflows/examples/deploy-approval-respond.yml
+
+name: deploy-approval-respond
+agent: deploy
+
+source:
+  type: ask_response
+  agent_id: deploy       # Only react to questions asked by the deploy agent
+  category: deployment   # Only react to deployment-category questions
+
+poll_interval: 60
+enabled: false
+
+prompt_template: |
+  The operator has responded to a deployment approval request.
+
+  Question ID: {{question_id}}
+  Event Type:  {{event_type}}
+  Question:    {{question}}
+  Answer:      {{answer}}
+
+  Evaluate the response and take action:
+
+  If the answer is "YES", "yes", "y", "approve", or "approved" — proceed:
+  1. Run the deployment pipeline (e.g. trigger the deploy script or CI job)
+  2. Notify the operator:
+     ```bash
+     agent notify create \
+       --title "Deployment Approved — Proceeding" \
+       --message "Operator approved. Deployment of v2.3.0 is now underway." \
+       --priority high
+     ```
+  3. Monitor for completion and notify again when done.
+
+  If the answer is "NO", "no", "abort", or "cancel" — abort:
+  1. Do NOT proceed with deployment
+  2. Notify the operator:
+     ```bash
+     agent notify create \
+       --title "Deployment Aborted" \
+       --message "Operator declined. Deployment of v2.3.0 has been cancelled." \
+       --priority normal
+     ```
+
+  If the question was dismissed (event_type = "dismissed") — treat as abort:
+  1. Do NOT proceed with deployment
+  2. Notify the operator that the window expired or was dismissed.
+
+  If the answer is ambiguous — ask for clarification:
+  ```bash
+  agent ask create \
+    --agent-id deploy \
+    --question "Your response was unclear. Please reply YES to deploy or NO to abort." \
+    --category deployment \
+    --priority urgent \
+    --expires-in 1800
+  ```

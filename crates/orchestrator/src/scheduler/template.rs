@@ -82,6 +82,13 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "queue_name",
     "queue_task_id",
     "queue_priority",
+    // Metadata-backed (ask_response trigger)
+    "question_id",
+    "agent_id",
+    "category",
+    "question",
+    "answer",
+    "event_type",
 ];
 
 /// Validate a prompt template, returning any warnings or errors.

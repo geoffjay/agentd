@@ -1,5 +1,6 @@
 use crate::manager::AgentManager;
 use crate::scheduler::api::{queue_routes, webhook_routes, workflow_routes, WorkflowState};
+use crate::scheduler::events::SystemEvent;
 use crate::scheduler::Scheduler;
 use crate::types::*;
 use crate::websocket::{
@@ -81,6 +82,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/approvals/{id}/approve", post(approve_tool))
         .route("/approvals/{id}/deny", post(deny_tool))
         .route("/debug/agents", get(debug_agents))
+        .route("/events/ask", post(ask_event_handler))
         .with_state(state);
 
     api_routes
@@ -934,6 +936,53 @@ pub use agentd_common::error::ApiError;
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Ask service event callback
+// ---------------------------------------------------------------------------
+
+/// Payload sent by the ask service when a question is answered or dismissed.
+#[derive(Debug, Deserialize)]
+struct AskEventPayload {
+    event_type: String,
+    question_id: uuid::Uuid,
+    agent_id: String,
+    workflow_id: Option<uuid::Uuid>,
+    dispatch_id: Option<uuid::Uuid>,
+    category: Option<String>,
+    question: String,
+    answer: Option<String>,
+}
+
+/// `POST /events/ask`
+///
+/// Receives ask-response callbacks from the ask service and publishes a
+/// [`SystemEvent::AskResponseReceived`] to the event bus so that
+/// `ask_response` workflow triggers can fire.
+async fn ask_event_handler(
+    State(state): State<ApiState>,
+    Json(payload): Json<AskEventPayload>,
+) -> impl IntoResponse {
+    info!(
+        question_id = %payload.question_id,
+        agent_id = %payload.agent_id,
+        event_type = %payload.event_type,
+        "Received ask event callback"
+    );
+
+    state.scheduler.publish_event(SystemEvent::AskResponseReceived {
+        question_id: payload.question_id,
+        agent_id: payload.agent_id,
+        workflow_id: payload.workflow_id,
+        dispatch_id: payload.dispatch_id,
+        category: payload.category,
+        question: payload.question,
+        answer: payload.answer,
+        event_type: payload.event_type,
+    });
+
+    StatusCode::NO_CONTENT
+}
 
 #[cfg(test)]
 mod tests {

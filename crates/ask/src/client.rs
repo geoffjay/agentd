@@ -1,222 +1,116 @@
-//! HTTP client for interacting with the ask service.
-//!
-//! This module provides a strongly-typed client for making requests to the
-//! ask service REST API. It handles serialization/deserialization and provides
-//! ergonomic methods for all ask service operations.
+//! HTTP client for interacting with the ask service Q&A API.
 //!
 //! # Examples
 //!
-//! ## Creating a client and triggering checks
-//!
 //! ```no_run
 //! use ask::client::AskClient;
-//!
-//! # async fn example() -> anyhow::Result<()> {
-//! let client = AskClient::new("http://localhost:7001");
-//! let response = client.trigger_checks().await?;
-//! println!("Ran {} checks", response.checks_run.len());
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ## Answering a question
-//!
-//! ```no_run
-//! use ask::client::AskClient;
-//! use ask::types::AnswerRequest;
-//! use uuid::Uuid;
+//! use ask::types::{CreateQuestionRequest, QuestionPriority};
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! let client = AskClient::new("http://localhost:7001");
 //!
-//! let request = AnswerRequest {
-//!     question_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")?,
-//!     answer: "yes".to_string(),
+//! let req = CreateQuestionRequest {
+//!     agent_id: "dietician".to_string(),
+//!     workflow_id: None,
+//!     dispatch_id: None,
+//!     category: Some("health".to_string()),
+//!     question: "What did you eat yesterday?".to_string(),
+//!     context: None,
+//!     priority: Some(QuestionPriority::Normal),
+//!     expires_in_seconds: Some(86400),
 //! };
 //!
-//! let response = client.answer_question(&request).await?;
-//! println!("{}", response.message);
+//! let question = client.create_question(&req).await?;
+//! println!("Question ID: {}", question.id);
 //! # Ok(())
 //! # }
 //! ```
 
-use crate::types::*;
+use crate::types::{
+    AnswerQuestionRequest, CreateQuestionRequest, HealthResponse, ListQuestionsQuery, Question,
+    QuestionResponse, QuestionsListResponse,
+};
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use uuid::Uuid;
 
 /// Client for the ask service REST API.
-///
-/// Provides strongly-typed methods for all ask service operations including
-/// triggering checks and answering questions.
-///
-/// # Examples
-///
-/// ```
-/// use ask::client::AskClient;
-///
-/// let client = AskClient::new("http://localhost:7001");
-/// ```
 #[derive(Clone)]
 pub struct AskClient {
     client: reqwest::Client,
-    base_url: String,
+    pub base_url: String,
 }
 
 impl AskClient {
     /// Create a new ask service client.
-    ///
-    /// # Arguments
-    ///
-    /// * `base_url` - The base URL for the ask service (e.g., "http://localhost:7001")
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use ask::client::AskClient;
-    ///
-    /// let client = AskClient::new("http://localhost:7001");
-    /// ```
     pub fn new(base_url: impl Into<String>) -> Self {
         Self { client: reqwest::Client::new(), base_url: base_url.into() }
     }
 
-    /// Trigger environment checks.
-    ///
-    /// Runs all configured checks (e.g., tmux session check) and creates
-    /// notifications for any conditions that require user attention.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use ask::client::AskClient;
-    /// # async fn example() -> anyhow::Result<()> {
-    /// let client = AskClient::new("http://localhost:7001");
-    /// let response = client.trigger_checks().await?;
-    /// println!("Ran {} checks", response.checks_run.len());
-    /// println!("Created {} notifications", response.notifications_sent.len());
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn trigger_checks(&self) -> Result<TriggerResponse> {
-        self.post("/trigger", &()).await
+    /// Create a new question (called by agents during workflow execution).
+    pub async fn create_question(&self, req: &CreateQuestionRequest) -> Result<QuestionResponse> {
+        self.post_expecting_status("/questions", req, reqwest::StatusCode::CREATED).await
     }
 
-    /// Submit an answer to a question.
-    ///
-    /// # Arguments
-    ///
-    /// * `request` - The answer request containing the question ID and answer text
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use ask::client::AskClient;
-    /// # use ask::types::AnswerRequest;
-    /// # use uuid::Uuid;
-    /// # async fn example() -> anyhow::Result<()> {
-    /// let client = AskClient::new("http://localhost:7001");
-    ///
-    /// let request = AnswerRequest {
-    ///     question_id: Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")?,
-    ///     answer: "yes".to_string(),
-    /// };
-    ///
-    /// let response = client.answer_question(&request).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn answer_question(&self, request: &AnswerRequest) -> Result<AnswerResponse> {
-        self.post("/answer", request).await
+    /// Answer a question (called by the human user).
+    pub async fn answer_question(&self, id: Uuid, answer: &str) -> Result<QuestionResponse> {
+        let req = AnswerQuestionRequest { answer: answer.to_string() };
+        self.post(&format!("/questions/{id}/answer"), &req).await
     }
 
-    /// Check the health of the ask service.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use ask::client::AskClient;
-    /// # async fn example() -> anyhow::Result<()> {
-    /// let client = AskClient::new("http://localhost:7001");
-    /// let health = client.health().await?;
-    /// println!("Service: {}", health.service);
-    /// println!("Status: {}", health.status);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn health(&self) -> Result<HealthResponse> {
-        self.get("/health").await
+    /// Dismiss a question (called by the human user).
+    pub async fn dismiss_question(&self, id: Uuid) -> Result<QuestionResponse> {
+        self.post(&format!("/questions/{id}/dismiss"), &()).await
     }
 
-    /// List questions stored in the ask service.
-    ///
-    /// # Arguments
-    ///
-    /// * `status` - Optional status filter: `"pending"`, `"answered"`, or `"expired"`.
-    ///   Pass `None` to retrieve all questions.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use ask::client::AskClient;
-    /// # async fn example() -> anyhow::Result<()> {
-    /// let client = AskClient::new("http://localhost:7001");
-    ///
-    /// // All questions
-    /// let all = client.list_questions(None).await?;
-    /// println!("{} questions total", all.total);
-    ///
-    /// // Only pending
-    /// let pending = client.list_questions(Some("pending")).await?;
-    /// println!("{} pending questions", pending.total);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn list_questions(&self, status: Option<&str>) -> Result<ListQuestionsResponse> {
-        let path = match status {
-            Some(s) => format!("/questions?status={s}"),
-            None => "/questions".to_string(),
+    /// List questions with optional filters.
+    pub async fn list_questions(
+        &self,
+        filters: &ListQuestionsQuery,
+    ) -> Result<QuestionsListResponse> {
+        let mut params = Vec::new();
+        if let Some(ref s) = filters.status {
+            params.push(format!("status={s}"));
+        }
+        if let Some(ref a) = filters.agent_id {
+            params.push(format!("agent_id={a}"));
+        }
+        if let Some(ref c) = filters.category {
+            params.push(format!("category={c}"));
+        }
+        if let Some(l) = filters.limit {
+            params.push(format!("limit={l}"));
+        }
+        if let Some(o) = filters.offset {
+            params.push(format!("offset={o}"));
+        }
+
+        let path = if params.is_empty() {
+            "/questions".to_string()
+        } else {
+            format!("/questions?{}", params.join("&"))
         };
         self.get(&path).await
     }
 
-    /// Retrieve a single question by UUID.
-    ///
-    /// # Arguments
-    ///
-    /// * `question_id` - The UUID of the question to fetch
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use ask::client::AskClient;
-    /// # use uuid::Uuid;
-    /// # async fn example() -> anyhow::Result<()> {
-    /// let client = AskClient::new("http://localhost:7001");
-    /// let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000")?;
-    /// let question = client.get_question(&id).await?;
-    /// println!("Status: {:?}", question.status);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn get_question(&self, question_id: &uuid::Uuid) -> Result<QuestionInfo> {
-        self.get(&format!("/questions/{question_id}")).await
+    /// Get a specific question by UUID.
+    pub async fn get_question(&self, id: Uuid) -> Result<Question> {
+        self.get(&format!("/questions/{id}")).await
     }
 
-    // Internal helper methods
+    /// Check the health of the ask service.
+    pub async fn health(&self) -> Result<HealthResponse> {
+        self.get("/health").await
+    }
+
+    // --- Internal helpers ---
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
         let response =
             self.client.get(&url).send().await.context(format!("Failed to GET {url}"))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Request failed with status {status}: {body}");
-        }
-
-        response.json().await.context("Failed to parse response JSON")
+        self.handle_response(response).await
     }
 
     async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
@@ -228,13 +122,39 @@ impl AskClient {
             .send()
             .await
             .context(format!("Failed to POST {url}"))?;
+        self.handle_response(response).await
+    }
 
+    async fn post_expecting_status<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+        expected: reqwest::StatusCode,
+    ) -> Result<T> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .post(&url)
+            .json(body)
+            .send()
+            .await
+            .context(format!("Failed to POST {url}"))?;
+
+        let status = response.status();
+        if status == expected || status.is_success() {
+            return response.json().await.context("Failed to parse response JSON");
+        }
+
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("Request failed with status {status}: {body}");
+    }
+
+    async fn handle_response<T: DeserializeOwned>(&self, response: reqwest::Response) -> Result<T> {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             anyhow::bail!("Request failed with status {status}: {body}");
         }
-
         response.json().await.context("Failed to parse response JSON")
     }
 }
@@ -250,16 +170,17 @@ mod tests {
     }
 
     #[test]
-    fn test_client_creation_with_string() {
-        let url = String::from("http://localhost:7001");
-        let client = AskClient::new(url);
-        assert_eq!(client.base_url, "http://localhost:7001");
-    }
-
-    #[test]
     fn test_client_clone() {
         let client1 = AskClient::new("http://localhost:7001");
         let client2 = client1.clone();
         assert_eq!(client1.base_url, client2.base_url);
+    }
+
+    #[test]
+    fn test_list_questions_query_default() {
+        let q = ListQuestionsQuery::default();
+        assert!(q.status.is_none());
+        assert!(q.agent_id.is_none());
+        assert!(q.category.is_none());
     }
 }

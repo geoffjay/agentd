@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
+# Daily Nutrition Analyze workflow — Part 2 of 2.
+#
+# Fires automatically when the user answers a health-category question from the
+# dietician agent (via the ask_response trigger). Receives the question and
+# answer as template variables, then prompts the dietician to analyze dietary
+# intake and provide recommendations.
+#
+# This is the response handler for daily-nutrition-ask.yml.
+#
+# Pattern: Ask Response → Agent → Analysis + Recommendations
+#
+# Usage:
+#   agent apply .agentd/workflows/examples/daily-nutrition-ask.yml
+#   agent apply .agentd/workflows/examples/daily-nutrition-analyze.yml
+
+name: daily-nutrition-analyze
+agent: dietician
+
+source:
+  type: ask_response
+  agent_id: dietician    # Only react to questions asked by the dietician agent
+  category: health       # Only react to health-category questions
+
+poll_interval: 60
+enabled: false  # Set to true after deploying both workflows in this pair
+
+prompt_template: |
+  The user has responded to your nutrition question. Here are the details:
+
+  Question ID: {{question_id}}
+  Event Type:  {{event_type}}
+  Question:    {{question}}
+  Answer:      {{answer}}
+
+  {{#if (eq event_type "dismissed")}}
+  The user dismissed the question without answering. Send a friendly reminder
+  that nutrition tracking helps with their health goals, and let them know they
+  can answer tomorrow's check-in at their convenience.
+  {{else}}
+  Analyze their dietary intake and provide:
+
+  1. **Estimated calories** — rough breakdown by meal
+  2. **Macro summary** — estimated protein, carbs, and fat
+  3. **Nutritional highlights** — what they did well
+  4. **One recommendation** — a single, actionable suggestion for today
+
+  Keep the response encouraging and conversational. Use the notify service to
+  deliver the analysis:
+
+  ```bash
+  agent notify create \
+    --title "Your Nutrition Analysis" \
+    --message "<your analysis here>" \
+    --priority normal
+  ```
+  {{/if}}
