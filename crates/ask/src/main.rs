@@ -5,6 +5,7 @@
 //! # Environment Variables
 //!
 //! - `AGENTD_PORT` - Port to bind to (default: 17001)
+//! - `AGENTD_ORCHESTRATOR_URL` - Orchestrator callback URL (default: http://localhost:17006)
 //! - `RUST_LOG` - Logging configuration (default: info)
 
 mod api;
@@ -46,7 +47,10 @@ async fn main() -> Result<()> {
         .parse::<u16>()
         .unwrap_or(17001);
 
-    info!("Configuration: port={}", port);
+    let orchestrator_url = std::env::var("AGENTD_ORCHESTRATOR_URL")
+        .unwrap_or_else(|_| "http://localhost:17006".to_string());
+
+    info!("Configuration: port={}, orchestrator={}", port, orchestrator_url);
 
     // Initialize persistent storage.
     let storage = match QuestionStorage::new().await {
@@ -62,7 +66,8 @@ async fn main() -> Result<()> {
 
     let app_state = AppState::new_with_storage(storage);
 
-    let api_state = ApiState { app_state: app_state.clone() };
+    let api_state =
+        ApiState { app_state: app_state.clone(), orchestrator_url: Some(orchestrator_url) };
 
     let metrics_handle = init_metrics();
     let metrics_router =
