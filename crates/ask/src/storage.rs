@@ -11,13 +11,13 @@
 use crate::{
     entity::question as question_entity,
     migration::Migrator,
-    types::{CreateQuestionRequest, Question, QuestionPriority, QuestionStatus},
+    types::{CreateQuestionRequest, Question, QuestionStatus},
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter,
-    QueryOrder, QuerySelect,
+    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use sea_orm_migration::prelude::MigratorTrait;
 use std::path::Path;
@@ -62,9 +62,8 @@ impl QuestionStorage {
         let id = Uuid::new_v4();
         let now = Utc::now();
         let priority = req.priority.unwrap_or_default();
-        let expires_at = req
-            .expires_in_seconds
-            .map(|secs| now + chrono::Duration::seconds(secs as i64));
+        let expires_at =
+            req.expires_in_seconds.map(|secs| now + chrono::Duration::seconds(secs as i64));
 
         let model = question_entity::ActiveModel {
             id: Set(id.to_string()),
@@ -103,9 +102,8 @@ impl QuestionStorage {
 
     /// Retrieves a question by its UUID.
     pub async fn get(&self, question_id: &Uuid) -> Result<Option<Question>> {
-        let model = question_entity::Entity::find_by_id(question_id.to_string())
-            .one(&self.db)
-            .await?;
+        let model =
+            question_entity::Entity::find_by_id(question_id.to_string()).one(&self.db).await?;
         model.map(model_to_question).transpose()
     }
 
@@ -118,8 +116,8 @@ impl QuestionStorage {
         limit: Option<u64>,
         offset: Option<u64>,
     ) -> Result<Vec<Question>> {
-        let mut query = question_entity::Entity::find()
-            .order_by(question_entity::Column::AskedAt, Order::Desc);
+        let mut query =
+            question_entity::Entity::find().order_by(question_entity::Column::AskedAt, Order::Desc);
 
         if let Some(s) = status {
             query = query.filter(question_entity::Column::Status.eq(s.as_str()));
@@ -233,6 +231,7 @@ fn model_to_question(model: question_entity::Model) -> Result<Question> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::QuestionPriority;
 
     async fn make_storage() -> QuestionStorage {
         QuestionStorage::in_memory().await.unwrap()
@@ -300,10 +299,12 @@ mod tests {
             .await
             .unwrap();
 
-        let pending = storage.list(Some(QuestionStatus::Pending), None, None, None, None).await.unwrap();
+        let pending =
+            storage.list(Some(QuestionStatus::Pending), None, None, None, None).await.unwrap();
         assert_eq!(pending.len(), 0);
 
-        let answered = storage.list(Some(QuestionStatus::Answered), None, None, None, None).await.unwrap();
+        let answered =
+            storage.list(Some(QuestionStatus::Answered), None, None, None, None).await.unwrap();
         assert_eq!(answered.len(), 1);
     }
 
@@ -345,10 +346,7 @@ mod tests {
         let req = make_request();
         let q = storage.create(&req).await.unwrap();
 
-        let updated = storage
-            .update_status(&q.id, QuestionStatus::Dismissed, None)
-            .await
-            .unwrap();
+        let updated = storage.update_status(&q.id, QuestionStatus::Dismissed, None).await.unwrap();
 
         assert_eq!(updated.status, QuestionStatus::Dismissed);
         assert!(updated.answer.is_none());
@@ -365,9 +363,8 @@ mod tests {
             .await
             .unwrap();
 
-        let result = storage
-            .update_status(&q.id, QuestionStatus::Answered, Some("no".to_string()))
-            .await;
+        let result =
+            storage.update_status(&q.id, QuestionStatus::Answered, Some("no".to_string())).await;
 
         assert!(result.is_err());
     }
@@ -395,7 +392,8 @@ mod tests {
         let expired = storage.expire_old().await.unwrap();
         assert_eq!(expired, 1);
 
-        let pending = storage.list(Some(QuestionStatus::Pending), None, None, None, None).await.unwrap();
+        let pending =
+            storage.list(Some(QuestionStatus::Pending), None, None, None, None).await.unwrap();
         assert_eq!(pending.len(), 0);
     }
 }
