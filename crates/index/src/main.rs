@@ -13,11 +13,12 @@
 //!
 //! # Environment Variables
 //!
-//! | Variable                  | Default                        | Description         |
-//! |---------------------------|--------------------------------|---------------------|
-//! | `RUST_LOG`                | `info`                         | Log level           |
-//! | `AGENTD_PORT`             | `17012`                        | HTTP listen port    |
-//! | `AGENTD_INDEX_DATA_PATH`  | XDG data dir / `agentd-index`  | Data directory      |
+//! | Variable                        | Default                        | Description               |
+//! |---------------------------------|--------------------------------|---------------------------|
+//! | `RUST_LOG`                      | `info`                         | Log level                 |
+//! | `AGENTD_PORT`                   | `17012`                        | HTTP listen port          |
+//! | `AGENTD_INDEX_LANCE_PATH`       | XDG data dir / `lancedb`       | LanceDB directory         |
+//! | `AGENTD_INDEX_EMBEDDING_MODEL`  | `nomic-embed-code`             | Embedding model           |
 //!
 //! # Endpoints
 //!
@@ -50,9 +51,9 @@ async fn main() -> anyhow::Result<()> {
 
     let config = IndexConfig::from_env();
 
-    // Ensure data directory exists.
-    std::fs::create_dir_all(&config.data_path)?;
-    info!(data_path = %config.data_path.display(), "Data directory ready");
+    // Ensure LanceDB directory exists.
+    std::fs::create_dir_all(&config.lance.path)?;
+    info!(lance_path = %config.lance.path, "LanceDB directory ready");
 
     // ── Metrics ──────────────────────────────────────────────────────────
     let metrics_handle = init_metrics();
