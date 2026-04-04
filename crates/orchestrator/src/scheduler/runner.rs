@@ -429,6 +429,16 @@ fn create_trigger_strategy(
                 visibility_timeout_secs.unwrap_or(300),
             )))
         }
+        TriggerConfig::AskResponse { agent_id: filter_agent, category, response_pattern } => {
+            let bus = event_bus
+                .ok_or_else(|| anyhow::anyhow!("EventBus is required for ask_response triggers"))?;
+            let filter = EventFilter::AskResponse {
+                agent_id: filter_agent.clone(),
+                category: category.clone(),
+                response_pattern: response_pattern.clone(),
+            };
+            Ok(Box::new(EventStrategy::new(bus.clone(), filter)))
+        }
         _ => {
             let source = create_source(trigger)?;
             Ok(Box::new(PollingStrategy::new(source, poll_interval_secs)))

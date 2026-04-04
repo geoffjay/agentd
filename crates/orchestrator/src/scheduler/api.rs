@@ -185,6 +185,9 @@ async fn create_workflow(
                 ));
             }
         }
+        TriggerConfig::AskResponse { .. } => {
+            // No required fields — all filters (agent_id, category, response_pattern) are optional.
+        }
     }
 
     // Reject trigger types that are not yet implemented.
