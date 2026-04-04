@@ -213,6 +213,41 @@ pub enum TriggerConfig {
         #[serde(default)]
         visibility_timeout_secs: Option<u64>,
     },
+    /// Ask response trigger — fires when the human answers or dismisses a question.
+    ///
+    /// Enables reactive workflows: an agent asks a question, and a second workflow
+    /// triggers when the human responds.
+    ///
+    /// # Example workflow YAML
+    ///
+    /// ```yaml
+    /// source:
+    ///   type: ask_response
+    ///   agent_id: dietician        # optional: only react to questions from this agent
+    ///   category: health           # optional: only react to questions in this category
+    ///   response_pattern: ".*"     # optional: regex filter on the answer text
+    /// ```
+    ///
+    /// # Template variables
+    ///
+    /// - `{{question_id}}` — UUID of the answered question
+    /// - `{{agent_id}}` — which agent asked the question
+    /// - `{{category}}` — question category
+    /// - `{{question}}` — the question text
+    /// - `{{answer}}` — the human's answer (empty string if dismissed)
+    /// - `{{event_type}}` — `"question_answered"` or `"question_dismissed"`
+    /// - `{{workflow_id}}` — originating workflow (if the question came from a workflow)
+    AskResponse {
+        /// Only react to questions asked by this agent (optional).
+        #[serde(default)]
+        agent_id: Option<String>,
+        /// Only react to questions in this category (optional).
+        #[serde(default)]
+        category: Option<String>,
+        /// Regex filter on the answer text (optional, applies to `answer` field).
+        #[serde(default)]
+        response_pattern: Option<String>,
+    },
 }
 
 fn default_issue_state() -> String {
@@ -238,6 +273,7 @@ impl TriggerConfig {
             TriggerConfig::LinearIssues { .. } => "linear_issues",
             TriggerConfig::Composite { .. } => "composite",
             TriggerConfig::Queue { .. } => "queue",
+            TriggerConfig::AskResponse { .. } => "ask_response",
         }
     }
 
@@ -255,7 +291,8 @@ impl TriggerConfig {
             | TriggerConfig::AgentIdle { .. }
             | TriggerConfig::LinearIssues { .. }
             | TriggerConfig::Composite { .. }
-            | TriggerConfig::Queue { .. } => true,
+            | TriggerConfig::Queue { .. }
+            | TriggerConfig::AskResponse { .. } => true,
         }
     }
 
@@ -263,7 +300,7 @@ impl TriggerConfig {
     /// the workflow after firing.
     pub fn is_one_shot(&self) -> bool {
         matches!(self, TriggerConfig::Delay { .. })
-        // AgentIdle is NOT one-shot — it fires repeatedly after each idle period.
+        // AskResponse, AgentIdle etc. are NOT one-shot — they fire repeatedly.
     }
 }
 

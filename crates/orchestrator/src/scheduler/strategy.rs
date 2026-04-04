@@ -387,6 +387,15 @@ pub enum EventFilter {
         /// If set, only match completions with this status.
         status: Option<DispatchStatus>,
     },
+    /// Match ask response events (human answered or dismissed a question).
+    AskResponse {
+        /// Only react to questions from this agent (optional).
+        agent_id: Option<String>,
+        /// Only react to questions in this category (optional).
+        category: Option<String>,
+        /// Regex filter on the answer text (optional).
+        response_pattern: Option<String>,
+    },
 }
 
 /// A [`TriggerStrategy`] that subscribes to the internal [`EventBus`] and
@@ -485,6 +494,56 @@ impl EventStrategy {
                 ))
             }
 
+            // AskResponse: match AskResponseReceived with optional filters.
+            (
+                EventFilter::AskResponse {
+                    agent_id: filter_agent,
+                    category: filter_category,
+                    response_pattern: filter_pattern,
+                },
+                SystemEvent::AskResponseReceived {
+                    question_id,
+                    agent_id,
+                    category,
+                    question,
+                    answer,
+                    event_type,
+                    workflow_id,
+                    ..
+                },
+            ) => {
+                // Filter by agent_id if configured.
+                if let Some(expected_agent) = filter_agent {
+                    if agent_id != expected_agent {
+                        return None;
+                    }
+                }
+                // Filter by category if configured.
+                if let Some(expected_cat) = filter_category {
+                    if category.as_deref() != Some(expected_cat.as_str()) {
+                        return None;
+                    }
+                }
+                // Filter by response_pattern (regex) if configured.
+                if let Some(pattern) = filter_pattern {
+                    let answer_str = answer.as_deref().unwrap_or("");
+                    match regex::Regex::new(pattern) {
+                        Ok(re) if !re.is_match(answer_str) => return None,
+                        Err(_) => return None, // invalid regex — skip
+                        _ => {}
+                    }
+                }
+                Some(self.build_ask_response_task(
+                    question_id,
+                    agent_id,
+                    category.as_deref(),
+                    question,
+                    answer.as_deref(),
+                    event_type,
+                    workflow_id.as_ref(),
+                ))
+            }
+
             _ => None,
         }
     }
@@ -500,6 +559,44 @@ impl EventStrategy {
         Task {
             source_id: format!("event:{}:{}:{}", event_type, agent_id, timestamp),
             title: format!("Agent lifecycle: {}", event_type),
+            body: String::new(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }
+    }
+
+    /// Build a task for an ask response event.
+    #[allow(clippy::too_many_arguments)]
+    fn build_ask_response_task(
+        &self,
+        question_id: &Uuid,
+        agent_id: &str,
+        category: Option<&str>,
+        question: &str,
+        answer: Option<&str>,
+        event_type: &str,
+        workflow_id: Option<&Uuid>,
+    ) -> Task {
+        let timestamp = Utc::now().to_rfc3339();
+        let mut metadata = HashMap::new();
+        metadata.insert("question_id".to_string(), question_id.to_string());
+        metadata.insert("agent_id".to_string(), agent_id.to_string());
+        metadata.insert("question".to_string(), question.to_string());
+        metadata.insert("answer".to_string(), answer.unwrap_or("").to_string());
+        metadata.insert("event_type".to_string(), event_type.to_string());
+        metadata.insert("timestamp".to_string(), timestamp.clone());
+        if let Some(cat) = category {
+            metadata.insert("category".to_string(), cat.to_string());
+        }
+        if let Some(wf_id) = workflow_id {
+            metadata.insert("workflow_id".to_string(), wf_id.to_string());
+        }
+
+        Task {
+            source_id: format!("ask:{}:{}", question_id, timestamp),
+            title: format!("Ask response: {}", question_id),
             body: String::new(),
             url: String::new(),
             labels: vec![],
