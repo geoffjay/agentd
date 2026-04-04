@@ -436,14 +436,12 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "mockito",
- "notify",
  "reqwest",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tmux_interface",
  "tokio",
  "tower",
  "tower-http",
@@ -4660,6 +4658,7 @@ dependencies = [
  "hmac",
  "metrics",
  "metrics-exporter-prometheus",
+ "regex",
  "reqwest",
  "sea-orm",
  "sea-orm-migration",
@@ -7072,12 +7071,6 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
-
-[[package]]
-name = "tmux_interface"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3885889703554d7b0dd515111432fc3b2f9cceb15b2139f9b12da73365299c05"
 
 [[package]]
 name = "tokio"

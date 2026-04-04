@@ -35,6 +35,28 @@ pub enum SystemEvent {
     },
     /// An agent joined a communicate room.
     AgentJoinedRoom { agent_id: Uuid, room_id: Uuid },
+    /// A human answered or dismissed an ask service question.
+    ///
+    /// Published by the orchestrator when it receives a callback from the ask
+    /// service. Consumed by `AskResponseStrategy` to trigger reactive workflows.
+    AskResponseReceived {
+        /// UUID of the answered question.
+        question_id: Uuid,
+        /// Which agent asked the question.
+        agent_id: String,
+        /// The workflow that originally created the question (if any).
+        workflow_id: Option<Uuid>,
+        /// The dispatch that originally created the question (if any).
+        dispatch_id: Option<Uuid>,
+        /// Question category (e.g. "health", "deployment").
+        category: Option<String>,
+        /// The question text.
+        question: String,
+        /// The human's answer (None if dismissed).
+        answer: Option<String>,
+        /// Event type: `"question_answered"` or `"question_dismissed"`.
+        event_type: String,
+    },
 }
 
 /// A shared broadcast-based event bus for internal system events.

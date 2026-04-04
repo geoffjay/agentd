@@ -9,9 +9,7 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Drop the old table entirely — the old schema is incompatible.
-        manager
-            .drop_table(Table::drop().table(Questions::Table).if_exists().to_owned())
-            .await?;
+        manager.drop_table(Table::drop().table(Questions::Table).if_exists().to_owned()).await?;
 
         // Create new agent-driven questions table.
         manager
@@ -26,18 +24,8 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Questions::Category).string().null())
                     .col(ColumnDef::new(Questions::Question).string().not_null())
                     .col(ColumnDef::new(Questions::Context).string().null())
-                    .col(
-                        ColumnDef::new(Questions::Priority)
-                            .string()
-                            .not_null()
-                            .default("normal"),
-                    )
-                    .col(
-                        ColumnDef::new(Questions::Status)
-                            .string()
-                            .not_null()
-                            .default("Pending"),
-                    )
+                    .col(ColumnDef::new(Questions::Priority).string().not_null().default("normal"))
+                    .col(ColumnDef::new(Questions::Status).string().not_null().default("Pending"))
                     .col(ColumnDef::new(Questions::Answer).string().null())
                     .col(ColumnDef::new(Questions::AskedAt).string().not_null())
                     .col(ColumnDef::new(Questions::AnsweredAt).string().null())
