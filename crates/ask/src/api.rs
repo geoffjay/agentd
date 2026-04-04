@@ -195,9 +195,9 @@ pub fn create_router_with_tracing(api_state: ApiState) -> Router {
     Router::new()
         .route("/health", get(health_handler))
         .route("/questions", post(create_question_handler).get(list_questions_handler))
-        .route("/questions/:id/answer", post(answer_question_handler))
-        .route("/questions/:id/dismiss", post(dismiss_question_handler))
-        .route("/questions/:id", get(get_question_handler))
+        .route("/questions/{id}/answer", post(answer_question_handler))
+        .route("/questions/{id}/dismiss", post(dismiss_question_handler))
+        .route("/questions/{id}", get(get_question_handler))
         .with_state(api_state)
         .layer(TraceLayer::new_for_http())
 }
