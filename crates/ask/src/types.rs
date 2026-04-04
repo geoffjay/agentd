@@ -205,6 +205,7 @@ pub struct ListQuestionsQuery {
 }
 
 /// Response for a single question (used for create, answer, get endpoints).
+#[allow(dead_code)]
 pub type QuestionResponse = Question;
 
 /// Response from the `GET /questions` endpoint.
