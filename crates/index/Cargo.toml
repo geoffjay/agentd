@@ -1,0 +1,40 @@
+[package]
+name = "index"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "index"
+path = "src/lib.rs"
+
+[[bin]]
+name = "agentd-index"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP API server
+axum = { workspace = true }
+tower-http = { workspace = true, features = ["cors"] }
+
+# Additional utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { workspace = true }
+directories = "6.0.0"
+agentd-common = { path = "../common" }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+hyper = "1.0"
