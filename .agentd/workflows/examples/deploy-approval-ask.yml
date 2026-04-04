@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
+# Deploy Approval Ask workflow — Part 1 of 2.
+#
+# Triggered manually (or chained from a CI/CD dispatch_result) when a release
+# is ready. The deploy agent asks the human operator for explicit approval
+# before proceeding. The operator's answer triggers deploy-approval-respond.yml.
+#
+# Pattern: Manual / dispatch_result → Agent → Ask Approval Question
+#
+# Usage (manual dispatch via CLI):
+#   agent orchestrator dispatch <workflow-id> "Release v2.3.0 is ready. Request approval."
+#
+# Or chain from a CI success dispatch_result trigger:
+#   source:
+#     type: dispatch_result
+#     status: completed
+#     source_workflow_id: "<ci-workflow-uuid>"
+
+name: deploy-approval-ask
+agent: deploy
+
+source:
+  type: manual
+
+poll_interval: 60
+enabled: false
+
+prompt_template: |
+  A deployment approval is needed. Ask the operator for explicit go/no-go
+  sign-off before proceeding.
+
+  Create an urgent approval question through the ask service:
+
+  ```bash
+  agent ask create \
+    --agent-id deploy \
+    --question "Release v2.3.0 is staged and ready. Do you approve the production deployment? Reply YES to proceed or NO to abort." \
+    --category deployment \
+    --priority urgent \
+    --context "All CI checks passed. Staging environment validated. Estimated deployment time: 10 minutes." \
+    --expires-in 3600
+  ```
+
+  After creating the question, send a notification so the operator is alerted:
+
+  ```bash
+  agent notify create \
+    --title "Deployment Approval Required" \
+    --message "Release v2.3.0 is staged and awaiting your go/no-go. Check the ask service to approve or abort." \
+    --priority urgent \
+    --requires-response
+  ```
+
+  Do not proceed with deployment yet. The deploy-approval-respond workflow
+  will fire automatically once the operator responds.
