@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
+# Productivity Followup workflow — Part 2 of 2.
+#
+# Fires when the user answers their end-of-day productivity review question.
+# The productivity agent synthesizes a brief summary, identifies any blockers,
+# and provides a focused plan for tomorrow.
+#
+# Pattern: Ask Response → Agent → Summary + Tomorrow's Plan
+#
+# Usage:
+#   agent apply .agentd/workflows/examples/productivity-check.yml
+#   agent apply .agentd/workflows/examples/productivity-followup.yml
+
+name: productivity-followup
+agent: productivity
+
+source:
+  type: ask_response
+  agent_id: productivity  # Only react to questions from the productivity agent
+  category: productivity  # Only react to productivity-category questions
+
+poll_interval: 60
+enabled: false
+
+prompt_template: |
+  The user has completed their end-of-day review. Here are the details:
+
+  Question ID: {{question_id}}
+  Event Type:  {{event_type}}
+  Question:    {{question}}
+  Answer:      {{answer}}
+
+  {{#if (eq event_type "dismissed")}}
+  The user skipped today's review — that's okay. Send a brief, non-judgmental
+  acknowledgment:
+
+  ```bash
+  agent notify create \
+    --title "Check-in Skipped" \
+    --message "No worries — see you tomorrow for another check-in!" \
+    --priority low
+  ```
+  {{else}}
+  Based on their response, provide a brief end-of-day summary with:
+
+  1. **Wins** — what they accomplished (even small things count)
+  2. **Blockers** — any obstacles worth addressing (if mentioned)
+  3. **Tomorrow's focus** — one or two concrete priorities based on what they shared
+
+  Keep it short, warm, and encouraging. Deliver via notification:
+
+  ```bash
+  agent notify create \
+    --title "End-of-Day Summary" \
+    --message "<your summary here>" \
+    --priority low
+  ```
+
+  If they mentioned being overwhelmed or stressed, acknowledge that first
+  before jumping to productivity suggestions.
+  {{/if}}
