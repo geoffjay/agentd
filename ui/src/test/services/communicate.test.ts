@@ -133,11 +133,11 @@ describe("CommunicateClient", () => {
 	// Messages
 	// -------------------------------------------------------------------------
 
-	it("getLatestMessages returns paginated messages", async () => {
+	it("getLatestMessages returns message array", async () => {
 		const messages = makeChatMessageList(5);
 		server.use(
 			http.get(`${BASE}/rooms/room-1/messages/latest`, () =>
-				HttpResponse.json(paginated(messages)),
+				HttpResponse.json(messages),
 			),
 		);
 

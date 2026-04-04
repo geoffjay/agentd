@@ -38,16 +38,16 @@ describe("ContentArea", () => {
 		expect(screen.getByRole("main")).toBeInTheDocument();
 	});
 
-	it("applies lg:ml-60 when sidebar is open", () => {
+	it("applies transition classes regardless of sidebar state", () => {
 		renderContentArea(<p>Content</p>, true);
 		const main = screen.getByRole("main");
-		expect(main.className).toContain("lg:ml-60");
+		expect(main.className).toContain("transition-all");
 	});
 
-	it("applies lg:ml-16 when sidebar is closed", () => {
+	it("applies mt-12 offset for fixed header", () => {
 		renderContentArea(<p>Content</p>, false);
 		const main = screen.getByRole("main");
-		expect(main.className).toContain("lg:ml-16");
+		expect(main.className).toContain("mt-12");
 	});
 
 	it("has id=main-content for skip-navigation links", () => {

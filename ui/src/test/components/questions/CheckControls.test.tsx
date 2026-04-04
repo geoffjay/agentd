@@ -133,6 +133,6 @@ describe("CheckControls", () => {
 			/>,
 		);
 		expect(screen.getByText("tmux_sessions result")).toBeTruthy();
-		expect(screen.getByText(/Running — 2 sessions/)).toBeTruthy();
+		expect(screen.getByText(/Running - 2 sessions/)).toBeTruthy();
 	});
 });

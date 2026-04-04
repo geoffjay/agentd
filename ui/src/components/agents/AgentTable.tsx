@@ -48,6 +48,18 @@ interface SortHeaderProps {
 	onSort: (field: SortField) => void;
 }
 
+/** Return the aria-sort value for a given sort header. */
+function getAriaSort(
+	field: SortField,
+	currentSort: SortField,
+	currentDir: SortDir,
+): "ascending" | "descending" | "none" {
+	if (currentSort === field) {
+		return currentDir === "asc" ? "ascending" : "descending";
+	}
+	return "none";
+}
+
 function SortHeader({
 	field,
 	label,
@@ -61,9 +73,6 @@ function SortHeader({
 			type="button"
 			onClick={() => onSort(field)}
 			className="flex items-center gap-1 font-medium hover:text-th-text"
-			aria-sort={
-				isActive ? (currentDir === "asc" ? "ascending" : "descending") : "none"
-			}
 		>
 			{label}
 			{isActive ? (
@@ -366,7 +375,7 @@ export function AgentTable({
 									className="h-4 w-4 rounded border-th-border-input text-th-accent focus:ring-th-focus-ring bg-th-input"
 								/>
 							</th>
-							<th className="px-4 py-3 text-left text-xs text-th-text-muted">
+							<th className="px-4 py-3 text-left text-xs text-th-text-muted" aria-sort={getAriaSort("name", sortBy, sortDir)}>
 								<SortHeader
 									field="name"
 									label="Name"
@@ -375,7 +384,7 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="px-4 py-3 text-left text-xs text-th-text-muted">
+							<th className="px-4 py-3 text-left text-xs text-th-text-muted" aria-sort={getAriaSort("status", sortBy, sortDir)}>
 								<SortHeader
 									field="status"
 									label="Status"
@@ -387,7 +396,7 @@ export function AgentTable({
 							<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
 								Model
 							</th>
-							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell">
+							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell" aria-sort={getAriaSort("cost", sortBy, sortDir)}>
 								<SortHeader
 									field="cost"
 									label="Cost"
@@ -396,7 +405,7 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell">
+							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell" aria-sort={getAriaSort("tokens", sortBy, sortDir)}>
 								<SortHeader
 									field="tokens"
 									label="Tokens"
@@ -405,7 +414,7 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted xl:table-cell">
+							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted xl:table-cell" aria-sort={getAriaSort("cache", sortBy, sortDir)}>
 								<SortHeader
 									field="cache"
 									label="Cache Hit"
@@ -417,7 +426,7 @@ export function AgentTable({
 							<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
 								Working Directory
 							</th>
-							<th className="px-4 py-3 text-left text-xs text-th-text-muted">
+							<th className="px-4 py-3 text-left text-xs text-th-text-muted" aria-sort={getAriaSort("created_at", sortBy, sortDir)}>
 								<SortHeader
 									field="created_at"
 									label="Created"

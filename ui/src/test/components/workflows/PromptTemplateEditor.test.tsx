@@ -72,7 +72,7 @@ describe("PromptTemplateEditor", () => {
 	it("applies error border class when error is provided", () => {
 		render(<PromptTemplateEditor value="" onChange={() => {}} error="oops" />);
 		const textarea = screen.getByRole("textbox");
-		expect(textarea.className).toContain("border-red");
+		expect(textarea.className).toContain("border-th-status-error-border");
 	});
 
 	it("inserts variable when variable button is clicked", () => {

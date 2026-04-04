@@ -13,20 +13,20 @@ describe("StatusBadge", () => {
 			render(<StatusBadge status="failed" />);
 			const badge = screen.getByRole("status");
 			expect(badge).toHaveTextContent("failed");
-			expect(badge.className).toContain("red");
+			expect(badge.className).toContain("bg-th-status-error-bg");
 		});
 
 		it("renders service status healthy", () => {
 			render(<StatusBadge status="healthy" />);
 			const badge = screen.getByRole("status");
 			expect(badge).toHaveTextContent("healthy");
-			expect(badge.className).toContain("green");
+			expect(badge.className).toContain("bg-th-status-success-bg");
 		});
 
-		it("renders service status down with red colour", () => {
+		it("renders service status down with error colour", () => {
 			render(<StatusBadge status="down" />);
 			const badge = screen.getByRole("status");
-			expect(badge.className).toContain("red");
+			expect(badge.className).toContain("bg-th-status-error-bg");
 		});
 
 		it("renders notification status pending", () => {
@@ -38,15 +38,15 @@ describe("StatusBadge", () => {
 	describe("dot variant", () => {
 		it("renders a coloured dot with aria-label", () => {
 			render(<StatusBadge status="running" variant="dot" />);
-			const dot = screen.getByRole("status", { name: "Running" });
+			const dot = screen.getByRole("status", { name: "running" });
 			expect(dot.className).toContain("rounded-full");
-			expect(dot.className).toContain("green");
+			expect(dot.className).toContain("bg-th-status-success-dot");
 		});
 
-		it("applies correct colour for Failed", () => {
+		it("applies correct colour for failed", () => {
 			render(<StatusBadge status="failed" variant="dot" />);
-			const dot = screen.getByRole("status", { name: "Failed" });
-			expect(dot.className).toContain("red");
+			const dot = screen.getByRole("status", { name: "failed" });
+			expect(dot.className).toContain("bg-th-status-error-dot");
 		});
 
 		it("applies custom className", () => {

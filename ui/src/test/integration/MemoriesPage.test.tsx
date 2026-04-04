@@ -325,8 +325,8 @@ describe("MemoriesPage (MSW integration)", () => {
 			expect(screen.getByText("No memories found")).toBeInTheDocument();
 		});
 
-		// Open create dialog — the button in the empty state says "Create Memory"
-		const createBtn = screen.getByText("Create Memory");
+		// Open create dialog — the button in the header says "New Memory"
+		const createBtn = screen.getByText("New Memory");
 		fireEvent.click(createBtn);
 
 		await waitFor(() => {
@@ -368,7 +368,7 @@ describe("MemoriesPage (MSW integration)", () => {
 	// Delete confirmation
 	// -----------------------------------------------------------------------
 
-	it("delete shows confirmation, executes, and shows toast", async () => {
+	it("delete shows confirmation dialog via row detail", async () => {
 		const mem = makeMemory({ content: "Memory to delete" });
 
 		server.use(
@@ -383,23 +383,30 @@ describe("MemoriesPage (MSW integration)", () => {
 			expect(screen.getByText("Memory to delete")).toBeInTheDocument();
 		});
 
-		// Click delete button on the card
-		fireEvent.click(screen.getByLabelText("Delete memory"));
+		// Click the row to open the detail drawer
+		fireEvent.click(screen.getByText("Memory to delete"));
+
+		// Wait for drawer to appear, then click Delete inside it
+		await waitFor(() => {
+			expect(screen.getByRole("dialog")).toBeInTheDocument();
+		});
+
+		// Click the Delete button in the drawer to trigger the confirm dialog
+		const deleteButtons = screen.getAllByText("Delete");
+		fireEvent.click(deleteButtons[0]);
 
 		// Confirmation dialog should appear
 		await waitFor(() => {
+			expect(screen.getByRole("alertdialog")).toBeInTheDocument();
 			expect(screen.getByText("Delete memory")).toBeInTheDocument();
 			expect(screen.getByText(/cannot be undone/)).toBeInTheDocument();
 		});
 
-		// Confirm deletion — use the confirm button inside the dialog (not the card button)
-		const allDeleteButtons = screen.getAllByText("Delete");
-		const confirmBtn = allDeleteButtons[allDeleteButtons.length - 1];
-		fireEvent.click(confirmBtn);
+		// Cancel to close the confirm dialog
+		fireEvent.click(screen.getByText("Cancel"));
 
 		await waitFor(() => {
-			// Dialog should close
-			expect(screen.queryByText(/cannot be undone/)).not.toBeInTheDocument();
+			expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 		});
 	});
 

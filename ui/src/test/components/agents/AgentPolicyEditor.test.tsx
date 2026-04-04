@@ -80,7 +80,7 @@ describe("AgentPolicyEditor", () => {
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() =>
 			expect(onSave).toHaveBeenCalledWith({
-				type: "AllowList",
+				mode: "allow_list",
 				tools: ["bash", "read_file", "write_file"],
 			}),
 		);

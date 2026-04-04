@@ -149,6 +149,6 @@ describe("CreateRoomDialog", () => {
 		fireEvent.click(screen.getByText("Direct"));
 		// The button should have the selected style
 		const directBtn = screen.getByText("Direct").closest("button");
-		expect(directBtn).toHaveClass("border-primary-500");
+		expect(directBtn).toHaveClass("border-th-focus-ring");
 	});
 });

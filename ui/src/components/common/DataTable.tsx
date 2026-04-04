@@ -91,6 +91,18 @@ interface SortHeaderProps {
 	onSort?: (field: string) => void;
 }
 
+/** Return the aria-sort value for a given sort header. */
+function getAriaSort(
+	field: string,
+	currentSort?: string,
+	currentDir?: "asc" | "desc",
+): "ascending" | "descending" | "none" {
+	if (currentSort === field) {
+		return currentDir === "asc" ? "ascending" : "descending";
+	}
+	return "none";
+}
+
 function SortHeader({
 	field,
 	label,
@@ -104,9 +116,6 @@ function SortHeader({
 			type="button"
 			onClick={() => onSort?.(field)}
 			className="flex items-center gap-1 font-medium hover:text-th-text"
-			aria-sort={
-				isActive ? (currentDir === "asc" ? "ascending" : "descending") : "none"
-			}
 		>
 			{label}
 			{isActive ? (
@@ -231,6 +240,11 @@ export function DataTable<T>({
 									]
 										.filter(Boolean)
 										.join(" ")}
+									aria-sort={
+										col.sortable && onSort
+											? getAriaSort(col.sortField ?? col.key, sortBy, sortDir)
+											: undefined
+									}
 								>
 									{col.sortable && onSort ? (
 										<SortHeader

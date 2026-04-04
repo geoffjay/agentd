@@ -28,9 +28,12 @@ function makeTodoWriteEvent(
 }
 
 describe("AgentTodosPanel", () => {
-	it("renders nothing before any TodoWrite event is received", () => {
-		const { container } = render(<AgentTodosPanel agentId={AGENT_ID} />);
-		expect(container.firstChild).toBeNull();
+	it("renders empty state before any TodoWrite event is received", () => {
+		render(<AgentTodosPanel agentId={AGENT_ID} />);
+		expect(
+			screen.getByRole("region", { name: /agent todos/i }),
+		).toBeInTheDocument();
+		expect(screen.getByText("No todos.")).toBeInTheDocument();
 	});
 
 	it("renders the panel after a TodoWrite event arrives", () => {
@@ -54,7 +57,7 @@ describe("AgentTodosPanel", () => {
 	});
 
 	it("ignores events from other agents", () => {
-		const { container } = render(<AgentTodosPanel agentId={AGENT_ID} />);
+		render(<AgentTodosPanel agentId={AGENT_ID} />);
 		act(() => {
 			agentEventBus.emit(
 				makeTodoWriteEvent(OTHER_AGENT_ID, [
@@ -67,11 +70,13 @@ describe("AgentTodosPanel", () => {
 				]),
 			);
 		});
-		expect(container.firstChild).toBeNull();
+		// Should still show empty state, not the other agent's todos
+		expect(screen.getByText("No todos.")).toBeInTheDocument();
+		expect(screen.queryByText("Should not appear")).not.toBeInTheDocument();
 	});
 
 	it("ignores non-TodoWrite tool_use events", () => {
-		const { container } = render(<AgentTodosPanel agentId={AGENT_ID} />);
+		render(<AgentTodosPanel agentId={AGENT_ID} />);
 		act(() => {
 			agentEventBus.emit({
 				type: "agent:tool_use",
@@ -83,7 +88,8 @@ describe("AgentTodosPanel", () => {
 				timestamp: new Date().toISOString(),
 			} satisfies AgentToolUseEvent);
 		});
-		expect(container.firstChild).toBeNull();
+		// Should still show empty state
+		expect(screen.getByText("No todos.")).toBeInTheDocument();
 	});
 
 	it("updates todos when a new TodoWrite event arrives", () => {

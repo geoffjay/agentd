@@ -21,7 +21,7 @@ const defaultUI: Settings["ui"] = {
 describe("UIPreferences", () => {
 	it("renders all preference fields", () => {
 		render(<UIPreferences ui={defaultUI} onSave={vi.fn()} />, { wrapper });
-		expect(screen.getByLabelText(/theme/i)).toBeInTheDocument();
+		expect(screen.getByText(/theme/i)).toBeInTheDocument();
 		expect(screen.getByLabelText(/open by default/i)).toBeInTheDocument();
 		expect(screen.getByLabelText(/refresh interval/i)).toBeInTheDocument();
 		expect(
@@ -39,27 +39,29 @@ describe("UIPreferences", () => {
 		expect(onSave).toHaveBeenCalledWith(defaultUI);
 	});
 
-	it("changing theme select updates the value passed to onSave", () => {
+	it("clicking a theme card updates the value passed to onSave", () => {
 		const onSave = vi.fn();
 		render(<UIPreferences ui={defaultUI} onSave={onSave} />, { wrapper });
 
-		const themeSelect = screen.getByLabelText(/theme/i);
-		fireEvent.change(themeSelect, { target: { value: "dark" } });
+		// Click the "agentd Dark" theme card button
+		fireEvent.click(screen.getByText("agentd Dark"));
 
 		fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
 		expect(onSave).toHaveBeenCalledWith(
-			expect.objectContaining({ theme: "dark" }),
+			expect.objectContaining({ theme: "agentd-dark" }),
 		);
 	});
 
-	it("changing theme select applies theme immediately to DOM", () => {
+	it("clicking a theme card applies theme immediately to DOM", () => {
 		render(<UIPreferences ui={defaultUI} onSave={vi.fn()} />, { wrapper });
 
-		const themeSelect = screen.getByLabelText(/theme/i);
-		fireEvent.change(themeSelect, { target: { value: "dark" } });
+		// Click a dark theme card
+		fireEvent.click(screen.getByText("agentd Dark"));
 
-		expect(document.documentElement.classList.contains("dark")).toBe(true);
+		expect(document.documentElement.getAttribute("data-theme")).toBe(
+			"agentd-dark",
+		);
 	});
 
 	it("unchecking sidebar checkbox updates the value passed to onSave", () => {

@@ -36,7 +36,7 @@ describe("RoomList", () => {
 		);
 
 		const btn = screen.getByText(selected.name).closest("button");
-		expect(btn).toHaveClass("bg-primary-700");
+		expect(btn).toHaveClass("bg-th-accent");
 	});
 
 	it("calls onSelectRoom when a room is clicked", () => {

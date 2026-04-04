@@ -53,10 +53,10 @@ describe("AgentFilters", () => {
 		fireEvent.change(
 			screen.getByRole("combobox", { name: /filter by status/i }),
 			{
-				target: { value: "Running" },
+				target: { value: "running" },
 			},
 		);
-		expect(onStatusChange).toHaveBeenCalledWith("Running");
+		expect(onStatusChange).toHaveBeenCalledWith("running");
 	});
 
 	it("calls onSearchChange when search input changes", () => {
@@ -107,9 +107,9 @@ describe("AgentFilters", () => {
 			(o) => o.value,
 		);
 		expect(options).toContain("");
-		expect(options).toContain("Running");
-		expect(options).toContain("Pending");
-		expect(options).toContain("Stopped");
-		expect(options).toContain("Failed");
+		expect(options).toContain("running");
+		expect(options).toContain("pending");
+		expect(options).toContain("stopped");
+		expect(options).toContain("failed");
 	});
 });

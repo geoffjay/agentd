@@ -128,7 +128,7 @@ describe("MemoryList", () => {
 		});
 	});
 
-	it("opens delete confirmation dialog", async () => {
+	it("opens delete confirmation dialog via row detail drawer", async () => {
 		const mem = makeMemory();
 		vi.spyOn(memoryClient, "listMemories").mockResolvedValue({
 			items: [mem],
@@ -142,7 +142,16 @@ describe("MemoryList", () => {
 			expect(screen.getByText("Test memory content")).toBeTruthy();
 		});
 
-		fireEvent.click(screen.getByLabelText("Delete memory"));
+		// Click row to open detail drawer
+		fireEvent.click(screen.getByText("Test memory content"));
+
+		await waitFor(() => {
+			expect(screen.getByRole("dialog")).toBeTruthy();
+		});
+
+		// Click Delete in the drawer
+		fireEvent.click(screen.getByText("Delete"));
+
 		await waitFor(() => {
 			expect(screen.getByText("Delete memory")).toBeTruthy();
 			expect(screen.getByText(/cannot be undone/)).toBeTruthy();

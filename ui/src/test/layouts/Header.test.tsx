@@ -57,9 +57,11 @@ describe("Header", () => {
 		expect(screen.getByRole("banner")).toBeInTheDocument();
 	});
 
-	it("renders the agentd logo/title", () => {
+	it("renders the sidebar toggle button", () => {
 		renderHeader();
-		expect(screen.getByText("agentd")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /toggle sidebar/i }),
+		).toBeInTheDocument();
 	});
 
 	it("calls toggleSidebar when hamburger button is clicked", () => {
