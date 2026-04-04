@@ -1,4 +1,4 @@
-//! SeaORM entity for the `questions` table.
+//! SeaORM entity for the `questions` table (redesigned for agent-driven Q&A).
 //!
 //! This module defines the ORM model, active model, column enum, and relation
 //! enum for questions stored in SQLite.
@@ -13,20 +13,41 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
 
-    /// The notification ID from the notification service (UUID as TEXT).
-    pub notification_id: String,
+    /// The agent that created this question.
+    pub agent_id: String,
 
-    /// Check type label (e.g. "tmux_sessions").
-    pub check_type: String,
+    /// The workflow ID that triggered this question (UUID as TEXT, optional).
+    pub workflow_id: Option<String>,
+
+    /// The dispatch ID that triggered this question (UUID as TEXT, optional).
+    pub dispatch_id: Option<String>,
+
+    /// Optional category for filtering (e.g. "health", "productivity", "deployment").
+    pub category: Option<String>,
+
+    /// The question text.
+    pub question: String,
+
+    /// Additional context for the human (optional).
+    pub context: Option<String>,
+
+    /// Priority label: `"low"`, `"normal"`, `"high"`, or `"urgent"`.
+    pub priority: String,
+
+    /// Status label: `"Pending"`, `"Answered"`, `"Dismissed"`, or `"Expired"`.
+    pub status: String,
+
+    /// User's textual answer — `None` until answered.
+    pub answer: Option<String>,
 
     /// RFC3339 timestamp when the question was asked.
     pub asked_at: String,
 
-    /// Status label: `"Pending"`, `"Answered"`, or `"Expired"`.
-    pub status: String,
+    /// RFC3339 timestamp when the question was answered (optional).
+    pub answered_at: Option<String>,
 
-    /// User's textual answer — `None` until the user responds.
-    pub answer: Option<String>,
+    /// RFC3339 timestamp when the question expires (optional).
+    pub expires_at: Option<String>,
 }
 
 /// No foreign-key relations — questions are a self-contained table.

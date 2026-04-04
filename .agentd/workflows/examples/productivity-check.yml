@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
+# Productivity Check workflow — Part 1 of 2.
+#
+# Fires every weekday afternoon at 4pm and prompts the productivity agent to
+# ask the user about their day — what they accomplished, what blocked them,
+# and how they're feeling. The response triggers productivity-followup.yml
+# which provides a summary and suggestions for tomorrow.
+#
+# Pattern: Cron (weekdays) → Agent → Ask End-of-Day Review
+#
+# Usage:
+#   agent apply .agentd/workflows/examples/productivity-check.yml
+#   agent apply .agentd/workflows/examples/productivity-followup.yml
+
+name: productivity-check
+agent: productivity
+
+source:
+  type: cron
+  expression: "0 16 * * 1-5"  # Weekdays (Mon-Fri) at 4:00 PM
+
+poll_interval: 60
+enabled: false
+
+prompt_template: |
+  It's end-of-day check-in time. Ask the user about their productivity today.
+
+  Create a conversational end-of-day review question:
+
+  ```bash
+  agent ask create \
+    --agent-id productivity \
+    --question "How did your day go? What did you accomplish today, what got in the way, and how are you feeling?" \
+    --category productivity \
+    --priority low \
+    --context "End-of-day review — your answers help me identify patterns and suggest improvements for tomorrow." \
+    --expires-in 43200
+  ```
+
+  The question expires in 12 hours so it doesn't carry over to the next morning.
+
+  Do not wait for the response — the productivity-followup workflow will handle
+  it automatically when the user answers.

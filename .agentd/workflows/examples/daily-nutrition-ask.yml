@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
+# Daily Nutrition Ask workflow — Part 1 of 2.
+#
+# Fires every morning at 10am and prompts the dietician agent to ask the user
+# what they ate the previous day. The agent uses the ask service to create a
+# structured Q&A question that the human answers asynchronously.
+#
+# Pair this with daily-nutrition-analyze.yml, which fires automatically via
+# the ask_response trigger when the human answers the question.
+#
+# Pattern: Cron → Agent → Ask Question
+#
+# Usage:
+#   agent apply .agentd/workflows/examples/daily-nutrition-ask.yml
+#   agent apply .agentd/workflows/examples/daily-nutrition-analyze.yml
+
+name: daily-nutrition-ask
+agent: dietician
+
+source:
+  type: cron
+  expression: "0 10 * * *"  # Daily at 10:00 AM
+
+poll_interval: 60
+enabled: false  # Set to true after deploying both workflows in this pair
+
+prompt_template: |
+  Good morning! It's time for the daily nutrition check-in.
+
+  Ask the user what they ate yesterday by creating a question through the ask service:
+
+  ```bash
+  agent ask create \
+    --agent-id dietician \
+    --question "What did you eat yesterday? Please include breakfast, lunch, dinner, and any snacks." \
+    --category health \
+    --priority normal \
+    --context "Daily nutrition tracking — I'll analyze your intake and provide personalized recommendations." \
+    --expires-in 86400
+  ```
+
+  After creating the question, note its ID and let the user know you're waiting for their response.
+  The daily-nutrition-analyze workflow will automatically fire when they answer.
+
+  Do not poll for the answer — it will come via the ask_response trigger.

@@ -74,6 +74,13 @@ impl Scheduler {
         &self.webhook_registry
     }
 
+    /// Publish an event to the event bus (no-op if no bus is configured).
+    pub fn publish_event(&self, event: SystemEvent) {
+        if let Some(bus) = &self.event_bus {
+            bus.publish(event);
+        }
+    }
+
     /// Start a workflow runner as a background tokio task.
     pub async fn start_workflow(&self, config: WorkflowConfig) -> anyhow::Result<()> {
         let workflow_id = config.id;

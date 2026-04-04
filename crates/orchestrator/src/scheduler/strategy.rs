@@ -387,6 +387,15 @@ pub enum EventFilter {
         /// If set, only match completions with this status.
         status: Option<DispatchStatus>,
     },
+    /// Match ask response events (human answered or dismissed a question).
+    AskResponse {
+        /// Only react to questions from this agent (optional).
+        agent_id: Option<String>,
+        /// Only react to questions in this category (optional).
+        category: Option<String>,
+        /// Regex filter on the answer text (optional).
+        response_pattern: Option<String>,
+    },
 }
 
 /// A [`TriggerStrategy`] that subscribes to the internal [`EventBus`] and
@@ -485,6 +494,56 @@ impl EventStrategy {
                 ))
             }
 
+            // AskResponse: match AskResponseReceived with optional filters.
+            (
+                EventFilter::AskResponse {
+                    agent_id: filter_agent,
+                    category: filter_category,
+                    response_pattern: filter_pattern,
+                },
+                SystemEvent::AskResponseReceived {
+                    question_id,
+                    agent_id,
+                    category,
+                    question,
+                    answer,
+                    event_type,
+                    workflow_id,
+                    ..
+                },
+            ) => {
+                // Filter by agent_id if configured.
+                if let Some(expected_agent) = filter_agent {
+                    if agent_id != expected_agent {
+                        return None;
+                    }
+                }
+                // Filter by category if configured.
+                if let Some(expected_cat) = filter_category {
+                    if category.as_deref() != Some(expected_cat.as_str()) {
+                        return None;
+                    }
+                }
+                // Filter by response_pattern (regex) if configured.
+                if let Some(pattern) = filter_pattern {
+                    let answer_str = answer.as_deref().unwrap_or("");
+                    match regex::Regex::new(pattern) {
+                        Ok(re) if !re.is_match(answer_str) => return None,
+                        Err(_) => return None, // invalid regex — skip
+                        _ => {}
+                    }
+                }
+                Some(self.build_ask_response_task(
+                    question_id,
+                    agent_id,
+                    category.as_deref(),
+                    question,
+                    answer.as_deref(),
+                    event_type,
+                    workflow_id.as_ref(),
+                ))
+            }
+
             _ => None,
         }
     }
@@ -500,6 +559,44 @@ impl EventStrategy {
         Task {
             source_id: format!("event:{}:{}:{}", event_type, agent_id, timestamp),
             title: format!("Agent lifecycle: {}", event_type),
+            body: String::new(),
+            url: String::new(),
+            labels: vec![],
+            assignee: None,
+            metadata,
+        }
+    }
+
+    /// Build a task for an ask response event.
+    #[allow(clippy::too_many_arguments)]
+    fn build_ask_response_task(
+        &self,
+        question_id: &Uuid,
+        agent_id: &str,
+        category: Option<&str>,
+        question: &str,
+        answer: Option<&str>,
+        event_type: &str,
+        workflow_id: Option<&Uuid>,
+    ) -> Task {
+        let timestamp = Utc::now().to_rfc3339();
+        let mut metadata = HashMap::new();
+        metadata.insert("question_id".to_string(), question_id.to_string());
+        metadata.insert("agent_id".to_string(), agent_id.to_string());
+        metadata.insert("question".to_string(), question.to_string());
+        metadata.insert("answer".to_string(), answer.unwrap_or("").to_string());
+        metadata.insert("event_type".to_string(), event_type.to_string());
+        metadata.insert("timestamp".to_string(), timestamp.clone());
+        if let Some(cat) = category {
+            metadata.insert("category".to_string(), cat.to_string());
+        }
+        if let Some(wf_id) = workflow_id {
+            metadata.insert("workflow_id".to_string(), wf_id.to_string());
+        }
+
+        Task {
+            source_id: format!("ask:{}:{}", question_id, timestamp),
+            title: format!("Ask response: {}", question_id),
             body: String::new(),
             url: String::new(),
             labels: vec![],
@@ -2924,5 +3021,266 @@ mod tests {
         let priority =
             tasks[0].metadata.get("queue_priority").expect("queue_priority should be in metadata");
         assert_eq!(priority, "99");
+    }
+
+    // ── AskResponse EventStrategy tests ──────────────────────────────────
+
+    fn sample_ask_response_event(
+        agent_id: &str,
+        category: Option<&str>,
+        answer: Option<&str>,
+        event_type: &str,
+    ) -> SystemEvent {
+        SystemEvent::AskResponseReceived {
+            question_id: Uuid::new_v4(),
+            agent_id: agent_id.to_string(),
+            workflow_id: None,
+            dispatch_id: None,
+            category: category.map(str::to_string),
+            question: "What did you eat yesterday?".to_string(),
+            answer: answer.map(str::to_string),
+            event_type: event_type.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn ask_response_strategy_matches_any_event_with_no_filters() {
+        let bus = EventBus::shared(16);
+        let filter =
+            EventFilter::AskResponse { agent_id: None, category: None, response_pattern: None };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        bus.publish(sample_ask_response_event(
+            "dietician",
+            Some("health"),
+            Some("oatmeal"),
+            "question_answered",
+        ));
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].source_id.starts_with("ask:"));
+        assert_eq!(result[0].metadata.get("agent_id"), Some(&"dietician".to_string()));
+        assert_eq!(result[0].metadata.get("event_type"), Some(&"question_answered".to_string()));
+        assert_eq!(result[0].metadata.get("answer"), Some(&"oatmeal".to_string()));
+        assert_eq!(
+            result[0].metadata.get("question"),
+            Some(&"What did you eat yesterday?".to_string())
+        );
+        assert_eq!(result[0].metadata.get("category"), Some(&"health".to_string()));
+    }
+
+    #[tokio::test]
+    async fn ask_response_strategy_filters_by_agent_id() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::AskResponse {
+            agent_id: Some("dietician".to_string()),
+            category: None,
+            response_pattern: None,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Publish event from wrong agent — should not match.
+        bus.publish(sample_ask_response_event(
+            "assistant",
+            None,
+            Some("pasta"),
+            "question_answered",
+        ));
+        // Publish event from correct agent — should match.
+        bus.publish(sample_ask_response_event(
+            "dietician",
+            None,
+            Some("salad"),
+            "question_answered",
+        ));
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].metadata.get("agent_id"), Some(&"dietician".to_string()));
+    }
+
+    #[tokio::test]
+    async fn ask_response_strategy_filters_by_category() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::AskResponse {
+            agent_id: None,
+            category: Some("health".to_string()),
+            response_pattern: None,
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Wrong category — should not match.
+        bus.publish(sample_ask_response_event(
+            "agent-x",
+            Some("deployment"),
+            Some("yes"),
+            "question_answered",
+        ));
+        // Correct category — should match.
+        bus.publish(sample_ask_response_event(
+            "agent-x",
+            Some("health"),
+            Some("oatmeal"),
+            "question_answered",
+        ));
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].metadata.get("category"), Some(&"health".to_string()));
+    }
+
+    #[tokio::test]
+    async fn ask_response_strategy_filters_by_response_pattern() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::AskResponse {
+            agent_id: None,
+            category: None,
+            response_pattern: Some("yes|approve".to_string()),
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Answer that does not match the pattern — should not match.
+        bus.publish(sample_ask_response_event("deploy", None, Some("no"), "question_answered"));
+        // Answer that matches — should match.
+        bus.publish(sample_ask_response_event(
+            "deploy",
+            None,
+            Some("yes please"),
+            "question_answered",
+        ));
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].metadata.get("answer"), Some(&"yes please".to_string()));
+    }
+
+    #[tokio::test]
+    async fn ask_response_strategy_matches_dismissed_event() {
+        let bus = EventBus::shared(16);
+        let filter =
+            EventFilter::AskResponse { agent_id: None, category: None, response_pattern: None };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Dismissed question has no answer.
+        bus.publish(sample_ask_response_event(
+            "dietician",
+            Some("health"),
+            None,
+            "question_dismissed",
+        ));
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].metadata.get("event_type"), Some(&"question_dismissed".to_string()));
+        assert_eq!(result[0].metadata.get("answer"), Some(&"".to_string()));
+    }
+
+    #[tokio::test]
+    async fn ask_response_strategy_response_pattern_ignores_dismissed_no_answer() {
+        let bus = EventBus::shared(16);
+        // Pattern requires "yes" — dismissed question has empty answer.
+        let filter = EventFilter::AskResponse {
+            agent_id: None,
+            category: None,
+            response_pattern: Some("yes".to_string()),
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        // Dismissed with no answer — regex won't match empty string.
+        bus.publish(sample_ask_response_event("deploy", None, None, "question_dismissed"));
+        // Answered with "yes" — should match.
+        bus.publish(sample_ask_response_event("deploy", None, Some("yes"), "question_answered"));
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].metadata.get("answer"), Some(&"yes".to_string()));
+    }
+
+    #[tokio::test]
+    async fn ask_response_strategy_invalid_regex_does_not_match() {
+        let bus = EventBus::shared(16);
+        let filter = EventFilter::AskResponse {
+            agent_id: None,
+            category: None,
+            response_pattern: Some("[invalid regex".to_string()),
+        };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, _rx) = watch::channel(false);
+
+        bus.publish(sample_ask_response_event(
+            "agent-x",
+            None,
+            Some("any answer"),
+            "question_answered",
+        ));
+        // After one matched (skipped) event, publish a different event type to unblock.
+        bus.publish(SystemEvent::AgentConnected { agent_id: Uuid::new_v4() });
+
+        // Give strategy a timeout — should return empty since invalid regex skips all answers.
+        let (tx, rx2) = watch::channel(false);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(true);
+        });
+        let result = strategy.next_tasks(&rx2).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn ask_response_strategy_template_metadata_has_question_id() {
+        let bus = EventBus::shared(16);
+        let filter =
+            EventFilter::AskResponse { agent_id: None, category: None, response_pattern: None };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        let question_id = Uuid::new_v4();
+        bus.publish(SystemEvent::AskResponseReceived {
+            question_id,
+            agent_id: "dietician".to_string(),
+            workflow_id: None,
+            dispatch_id: None,
+            category: None,
+            question: "How are you?".to_string(),
+            answer: Some("Fine".to_string()),
+            event_type: "question_answered".to_string(),
+        });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].metadata.get("question_id"), Some(&question_id.to_string()));
+        assert!(result[0].source_id.contains(&question_id.to_string()));
+    }
+
+    #[tokio::test]
+    async fn ask_response_strategy_includes_workflow_id_when_present() {
+        let bus = EventBus::shared(16);
+        let filter =
+            EventFilter::AskResponse { agent_id: None, category: None, response_pattern: None };
+        let mut strategy = EventStrategy::new(bus.clone(), filter);
+        let (_tx, rx) = watch::channel(false);
+
+        let wf_id = Uuid::new_v4();
+        bus.publish(SystemEvent::AskResponseReceived {
+            question_id: Uuid::new_v4(),
+            agent_id: "worker".to_string(),
+            workflow_id: Some(wf_id),
+            dispatch_id: None,
+            category: Some("productivity".to_string()),
+            question: "How productive were you?".to_string(),
+            answer: Some("Very".to_string()),
+            event_type: "question_answered".to_string(),
+        });
+
+        let result = strategy.next_tasks(&rx).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].metadata.get("workflow_id"), Some(&wf_id.to_string()));
     }
 }
