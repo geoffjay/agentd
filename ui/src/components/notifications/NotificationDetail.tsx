@@ -77,10 +77,10 @@ export function NotificationDetail({
 		<div className="space-y-5">
 			{/* Title */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+				<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 					Title
 				</h3>
-				<p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+				<p className="mt-1 text-sm font-semibold text-th-text">
 					{notification.title}
 				</p>
 			</div>
@@ -88,17 +88,17 @@ export function NotificationDetail({
 			{/* Status & Priority */}
 			<div className="flex items-center gap-3">
 				<StatusBadge status={notification.status} />
-				<span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium capitalize text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+				<span className="rounded-full bg-th-surface-sunken px-2.5 py-0.5 text-xs font-medium capitalize text-th-text-muted">
 					{notification.priority}
 				</span>
 			</div>
 
 			{/* Source */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+				<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 					Source
 				</h3>
-				<p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+				<p className="mt-1 text-sm text-th-text-secondary">
 					{SOURCE_LABELS[notification.source.type] ?? notification.source.type}
 				</p>
 			</div>
@@ -106,26 +106,26 @@ export function NotificationDetail({
 			{/* Timing */}
 			<div className="grid grid-cols-2 gap-4">
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						Created
 					</h3>
-					<div className="mt-1 flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
-						<Clock size={13} className="text-gray-400" />
+					<div className="mt-1 flex items-center gap-1.5 text-sm text-th-text-secondary">
+						<Clock size={13} className="text-th-text-muted" />
 						{formatRelativeTime(notification.created_at)}
 					</div>
 				</div>
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						Lifetime
 					</h3>
 					<div className="mt-1 flex items-center gap-1.5 text-sm">
 						{isEphemeral && expiresAt ? (
-							<span className="flex items-center gap-1 text-amber-500">
+							<span className="flex items-center gap-1 text-th-status-warning-text">
 								<Timer size={13} />
 								{formatCountdown(expiresAt)}
 							</span>
 						) : (
-							<span className="flex items-center gap-1 text-gray-500">
+							<span className="flex items-center gap-1 text-th-text-muted">
 								<InfinityIcon size={13} />
 								Persistent
 							</span>
@@ -136,10 +136,10 @@ export function NotificationDetail({
 
 			{/* Message */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+				<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 					Message
 				</h3>
-				<div className="mt-2 rounded-lg bg-gray-100 p-4 text-sm text-gray-800 whitespace-pre-wrap dark:bg-gray-800 dark:text-gray-300">
+				<div className="mt-2 rounded-lg bg-th-surface-sunken p-4 text-sm text-th-text-secondary whitespace-pre-wrap">
 					{notification.message}
 				</div>
 			</div>
@@ -147,10 +147,10 @@ export function NotificationDetail({
 			{/* Response (if responded) */}
 			{notification.status === "responded" && notification.response && (
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						Response
 					</h3>
-					<div className="mt-2 rounded-lg bg-green-50 p-4 text-sm text-green-800 dark:bg-green-900/20 dark:text-green-300">
+					<div className="mt-2 rounded-lg bg-th-status-success-bg p-4 text-sm text-th-status-success-text">
 						{notification.response}
 					</div>
 				</div>
@@ -158,14 +158,14 @@ export function NotificationDetail({
 
 			{/* Actions */}
 			{!isDone && (
-				<div className="border-t border-gray-200 pt-4 dark:border-gray-700">
+				<div className="border-t border-th-border pt-4">
 					<div className="flex flex-wrap gap-2">
 						{notification.status === "pending" && (
 							<button
 								type="button"
 								disabled={busy}
 								onClick={() => onView(notification.id)}
-								className="rounded-md px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+								className="rounded-md px-3 py-1.5 text-xs font-medium bg-th-surface-sunken text-th-text-secondary hover:bg-th-surface-hover disabled:opacity-50 transition-colors"
 							>
 								Mark Viewed
 							</button>
@@ -178,7 +178,7 @@ export function NotificationDetail({
 									type="button"
 									disabled={busy}
 									onClick={() => onRespond(notification)}
-									className="rounded-md px-3 py-1.5 text-xs font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+									className="rounded-md px-3 py-1.5 text-xs font-medium bg-th-accent text-th-accent-text hover:bg-th-accent-hover disabled:opacity-50 transition-colors"
 								>
 									Respond
 								</button>
@@ -190,7 +190,7 @@ export function NotificationDetail({
 								type="button"
 								disabled={busy}
 								onClick={() => onDismiss(notification.id)}
-								className="rounded-md px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+								className="rounded-md px-3 py-1.5 text-xs font-medium bg-th-surface-sunken text-th-text-secondary hover:bg-th-surface-hover disabled:opacity-50 transition-colors"
 							>
 								Dismiss
 							</button>
@@ -200,7 +200,7 @@ export function NotificationDetail({
 							type="button"
 							disabled={busy}
 							onClick={() => onDelete(notification.id)}
-							className="rounded-md px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors"
+							className="rounded-md px-3 py-1.5 text-xs font-medium bg-th-status-error-bg text-th-status-error-text hover:opacity-90 disabled:opacity-50 transition-colors"
 						>
 							Delete
 						</button>

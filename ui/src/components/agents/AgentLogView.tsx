@@ -53,7 +53,7 @@ function StreamStatusBadge({ status }: { status: StreamStatus }) {
 		return (
 			<span
 				aria-label="Stream connected"
-				className="flex items-center gap-1 text-xs text-green-500 dark:text-green-400"
+				className="flex items-center gap-1 text-xs text-th-status-success-text"
 			>
 				<Wifi size={12} aria-hidden="true" />
 				Connected
@@ -64,7 +64,7 @@ function StreamStatusBadge({ status }: { status: StreamStatus }) {
 		return (
 			<span
 				aria-label="Stream connecting"
-				className="flex items-center gap-1 text-xs text-yellow-500 dark:text-yellow-400"
+				className="flex items-center gap-1 text-xs text-th-status-warning-text"
 			>
 				<Loader2 size={12} aria-hidden="true" className="animate-spin" />
 				Connecting…
@@ -74,7 +74,7 @@ function StreamStatusBadge({ status }: { status: StreamStatus }) {
 	return (
 		<span
 			aria-label="Stream disconnected"
-			className="flex items-center gap-1 text-xs text-red-500 dark:text-red-400"
+			className="flex items-center gap-1 text-xs text-th-status-error-text"
 		>
 			<WifiOff size={12} aria-hidden="true" />
 			Disconnected
@@ -101,10 +101,10 @@ function ToolUseLine({ ts, toolName, summary, toolInput }: ToolUseLineProps) {
 			<button
 				type="button"
 				onClick={() => setExpanded((v) => !v)}
-				className="flex w-full items-start gap-2 rounded px-1 text-left hover:bg-gray-800"
+				className="flex w-full items-start gap-2 rounded px-1 text-left hover:bg-th-surface-hover"
 			>
-				<span className="flex-shrink-0 select-none text-gray-600">{ts}</span>
-				<span className="flex-shrink-0 text-purple-400">
+				<span className="flex-shrink-0 select-none text-th-text-muted">{ts}</span>
+				<span className="flex-shrink-0 text-th-status-info-text">
 					{expanded ? (
 						<ChevronDown size={12} aria-hidden="true" className="mt-0.5" />
 					) : (
@@ -112,14 +112,14 @@ function ToolUseLine({ ts, toolName, summary, toolInput }: ToolUseLineProps) {
 					)}
 				</span>
 				<span className="flex items-baseline gap-1.5">
-					<span className="rounded bg-purple-900/40 px-1.5 py-0.5 text-xs font-semibold text-purple-300">
+					<span className="rounded bg-th-status-info-bg px-1.5 py-0.5 text-xs font-semibold text-th-status-info-text">
 						{toolName}
 					</span>
-					<span className="text-gray-300">{summary}</span>
+					<span className="text-th-text-secondary">{summary}</span>
 				</span>
 			</button>
 			{expanded && (
-				<div className="ml-24 mt-1 mb-2 rounded border border-gray-700 bg-gray-900 p-2 text-xs text-gray-300">
+				<div className="ml-24 mt-1 mb-2 rounded border border-th-border bg-th-page-inset p-2 text-xs text-th-text-secondary">
 					<pre className="whitespace-pre-wrap break-all">
 						{JSON.stringify(toolInput, null, 2)}
 					</pre>
@@ -190,10 +190,10 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
 	return (
 		<div
 			aria-label="Agent log output"
-			className="flex h-full flex-col overflow-hidden rounded-lg border border-gray-700 bg-gray-950"
+			className="flex h-full flex-col overflow-hidden rounded-lg border border-th-border bg-th-page-inset"
 		>
 			{/* Toolbar */}
-			<div className="flex items-center justify-between border-b border-gray-700 bg-gray-900 px-3 py-2">
+			<div className="flex items-center justify-between border-b border-th-border bg-th-surface-raised px-3 py-2">
 				<StreamStatusBadge status={status} />
 				<div className="flex items-center gap-2">
 					{scrollLocked && (
@@ -201,7 +201,7 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
 							type="button"
 							aria-label="Resume auto-scroll"
 							onClick={resumeScroll}
-							className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-yellow-400 hover:bg-gray-700"
+							className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-th-status-warning-text hover:bg-th-surface-hover"
 						>
 							<ArrowDown size={12} aria-hidden="true" />
 							Resume scroll
@@ -211,7 +211,7 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
 						type="button"
 						aria-label={showThinking ? "Hide thinking" : "Show thinking"}
 						onClick={toggleThinking}
-						className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-white"
+						className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-th-text-muted hover:bg-th-surface-hover hover:text-th-text"
 					>
 						{showThinking ? (
 							<EyeOff size={12} aria-hidden="true" />
@@ -224,7 +224,7 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
 						type="button"
 						aria-label="Clear log"
 						onClick={onClear}
-						className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-white"
+						className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-th-text-muted hover:bg-th-surface-hover hover:text-th-text"
 					>
 						<Eraser size={12} aria-hidden="true" />
 						Clear
@@ -236,13 +236,13 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
 			<div
 				ref={containerRef}
 				onScroll={handleScroll}
-				className="flex-1 overflow-y-auto px-3 py-2 font-mono text-xs leading-5 text-gray-200"
+				className="flex-1 overflow-y-auto px-3 py-2 font-mono text-xs leading-5 text-th-text-secondary"
 				aria-live="polite"
 				aria-atomic="false"
 				aria-relevant="additions"
 			>
 				{visibleLines.length === 0 ? (
-					<p className="text-gray-600 italic select-none">
+					<p className="text-th-text-muted italic select-none">
 						{status === "connecting"
 							? "Connecting to agent stream…"
 							: status === "disconnected"
@@ -264,11 +264,11 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
 									key={line.id}
 									className="my-1 flex items-center gap-2 select-none"
 								>
-									<div className="flex-1 border-t border-dashed border-gray-700" />
-									<span className="text-xs text-gray-500 italic">
+									<div className="flex-1 border-t border-dashed border-th-border" />
+									<span className="text-xs text-th-text-muted italic">
 										{line.text}
 									</span>
-									<div className="flex-1 border-t border-dashed border-gray-700" />
+									<div className="flex-1 border-t border-dashed border-th-border" />
 								</div>
 							);
 						}
@@ -277,9 +277,9 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
 							return (
 								<div
 									key={line.id}
-									className="flex gap-2 whitespace-pre-wrap break-all italic text-blue-300/70"
+									className="flex gap-2 whitespace-pre-wrap break-all italic text-th-status-info-text/70"
 								>
-									<span className="flex-shrink-0 select-none text-gray-600">
+									<span className="flex-shrink-0 select-none text-th-text-muted">
 										{ts}
 									</span>
 									<span className="flex-shrink-0 select-none">💭</span>
@@ -305,7 +305,7 @@ export function AgentLogView({ lines, status, onClear }: AgentLogViewProps) {
 								key={line.id}
 								className="flex gap-2 whitespace-pre-wrap break-all"
 							>
-								<span className="flex-shrink-0 select-none text-gray-600">
+								<span className="flex-shrink-0 select-none text-th-text-muted">
 									{ts}
 								</span>
 								<span>{stripAnsi(line.text)}</span>

@@ -30,7 +30,7 @@ export function ApprovalActions({
 				aria-label="Approve"
 				className={[
 					"inline-flex items-center gap-1 rounded-md font-medium transition-colors",
-					"bg-green-600 text-white hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50",
+					"bg-th-status-success-dot text-th-accent-text hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50",
 					isSmall ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm",
 				].join(" ")}
 			>
@@ -45,7 +45,7 @@ export function ApprovalActions({
 				aria-label="Deny"
 				className={[
 					"inline-flex items-center gap-1 rounded-md font-medium transition-colors",
-					"bg-red-600 text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50",
+					"bg-th-status-error-dot text-th-accent-text hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50",
 					isSmall ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm",
 				].join(" ")}
 			>

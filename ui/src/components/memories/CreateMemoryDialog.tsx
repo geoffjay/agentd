@@ -154,7 +154,7 @@ export function CreateMemoryDialog({
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 			{/* Backdrop */}
 			<div
-				className="absolute inset-0 bg-black/50"
+				className="absolute inset-0 bg-th-overlay"
 				onClick={onClose}
 				aria-hidden="true"
 			/>
@@ -165,20 +165,20 @@ export function CreateMemoryDialog({
 					role="dialog"
 					aria-modal="true"
 					aria-labelledby="create-memory-title"
-					className="relative z-10 w-full sm:min-w-60 lg:min-w-150 max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 shadow-xl"
+					className="relative z-10 w-full sm:min-w-60 lg:min-w-150 max-h-[90vh] overflow-y-auto rounded-xl bg-th-surface shadow-xl"
 				>
 					{/* Header */}
-					<div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
+					<div className="sticky top-0 z-10 flex items-center justify-between border-b border-th-border bg-th-surface px-6 py-4">
 						<h2
 							id="create-memory-title"
-							className="text-lg font-semibold text-gray-900 dark:text-white"
+							className="text-lg font-semibold text-th-text"
 						>
 							Create Memory
 						</h2>
 						<button
 							type="button"
 							onClick={onClose}
-							className="rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+							className="rounded p-1 text-th-text-muted hover:text-th-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-th-focus-ring"
 							aria-label="Close dialog"
 						>
 							<X size={18} />
@@ -188,15 +188,15 @@ export function CreateMemoryDialog({
 					{/* Body */}
 					<div className="px-6 py-5 space-y-4">
 						{saveError && (
-							<p className="rounded-md bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+							<p className="rounded-md bg-th-status-error-bg px-3 py-2 text-sm text-th-status-error-text">
 								{saveError}
 							</p>
 						)}
 
 						{/* Content */}
 						<div>
-							<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-								Content <span className="text-red-500">*</span>
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
+								Content <span className="text-th-status-error-text">*</span>
 							</label>
 							<textarea
 								ref={contentRef}
@@ -207,14 +207,14 @@ export function CreateMemoryDialog({
 								className={fieldClass(errors.content)}
 							/>
 							{errors.content && (
-								<p className="mt-1 text-xs text-red-500">{errors.content}</p>
+								<p className="mt-1 text-xs text-th-status-error-text">{errors.content}</p>
 							)}
 						</div>
 
 						{/* Created by */}
 						<div>
-							<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-								Created by <span className="text-red-500">*</span>
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
+								Created by <span className="text-th-status-error-text">*</span>
 							</label>
 							<input
 								type="text"
@@ -224,14 +224,14 @@ export function CreateMemoryDialog({
 								className={fieldClass(errors.created_by)}
 							/>
 							{errors.created_by && (
-								<p className="mt-1 text-xs text-red-500">{errors.created_by}</p>
+								<p className="mt-1 text-xs text-th-status-error-text">{errors.created_by}</p>
 							)}
 						</div>
 
 						{/* Type + Visibility row */}
 						<div className="grid grid-cols-2 gap-3">
 							<div>
-								<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+								<label className="block text-sm font-medium text-th-text-secondary mb-1">
 									Type
 								</label>
 								<select
@@ -248,7 +248,7 @@ export function CreateMemoryDialog({
 							</div>
 
 							<div>
-								<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+								<label className="block text-sm font-medium text-th-text-secondary mb-1">
 									Visibility
 								</label>
 								<select
@@ -270,9 +270,9 @@ export function CreateMemoryDialog({
 						{/* Shared with (conditional) */}
 						{visibility === "shared" && (
 							<div>
-								<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+								<label className="block text-sm font-medium text-th-text-secondary mb-1">
 									Shared with{" "}
-									<span className="text-gray-400">(comma-separated)</span>
+									<span className="text-th-text-muted">(comma-separated)</span>
 								</label>
 								<input
 									type="text"
@@ -286,8 +286,8 @@ export function CreateMemoryDialog({
 
 						{/* Tags */}
 						<div>
-							<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-								Tags <span className="text-gray-400">(comma-separated)</span>
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
+								Tags <span className="text-th-text-muted">(comma-separated)</span>
 							</label>
 							<input
 								type="text"
@@ -306,7 +306,7 @@ export function CreateMemoryDialog({
 										.map((tag, i) => (
 											<span
 												key={`${tag}-${i}`}
-												className="rounded-full bg-gray-200 dark:bg-gray-700 px-2 py-0.5 text-[11px] font-medium text-gray-700 dark:text-gray-300"
+												className="rounded-full bg-th-surface-sunken px-2 py-0.5 text-[11px] font-medium text-th-text-secondary"
 											>
 												{tag}
 											</span>
@@ -317,12 +317,12 @@ export function CreateMemoryDialog({
 					</div>
 
 					{/* Footer */}
-					<div className="sticky bottom-0 flex items-center justify-end gap-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
+					<div className="sticky bottom-0 flex items-center justify-end gap-3 border-t border-th-border bg-th-surface px-6 py-4">
 						<button
 							type="button"
 							onClick={onClose}
 							disabled={saving}
-							className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+							className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover transition-colors disabled:opacity-50"
 						>
 							Cancel
 						</button>
@@ -330,7 +330,7 @@ export function CreateMemoryDialog({
 							type="button"
 							onClick={handleSave}
 							disabled={saving}
-							className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
+							className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors disabled:opacity-50"
 						>
 							{saving ? "Creating…" : "Create memory"}
 						</button>
@@ -348,13 +348,13 @@ export function CreateMemoryDialog({
 function fieldClass(error?: string, extra = ""): string {
 	return [
 		"w-full rounded-md border px-3 py-2 text-sm",
-		"bg-white dark:bg-gray-900",
-		"text-gray-900 dark:text-white",
-		"focus:outline-none focus:ring-2 focus:ring-primary-500",
+		"bg-th-input",
+		"text-th-text",
+		"focus:outline-none focus:ring-2 focus:ring-th-focus-ring",
 		"disabled:cursor-not-allowed disabled:opacity-50",
 		error
-			? "border-red-400 dark:border-red-500"
-			: "border-gray-300 dark:border-gray-600",
+			? "border-th-status-error-border"
+			: "border-th-border-input",
 		extra,
 	]
 		.filter(Boolean)

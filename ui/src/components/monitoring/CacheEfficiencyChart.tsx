@@ -133,11 +133,11 @@ export function CacheEfficiencyChart({
 
 	return (
 		<div
-			className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5"
+			className="rounded-lg border border-th-border bg-th-surface p-5"
 			aria-label="Cache efficiency donut chart"
 		>
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+				<h3 className="text-sm font-semibold text-th-text">
 					Cache Efficiency
 				</h3>
 
@@ -148,7 +148,7 @@ export function CacheEfficiencyChart({
 							value={selectedAgent}
 							onChange={(e) => setSelectedAgent(e.target.value)}
 							aria-label="Select agent for cache breakdown"
-							className="appearance-none rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pl-2.5 pr-7 py-1 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+							className="appearance-none rounded-md border border-th-border bg-th-surface pl-2.5 pr-7 py-1 text-xs text-th-text-muted hover:bg-th-surface-hover transition-colors cursor-pointer"
 						>
 							<option value="all">All Agents</option>
 							{entries.map((entry) => (
@@ -159,7 +159,7 @@ export function CacheEfficiencyChart({
 						</select>
 						<ChevronDown
 							size={12}
-							className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
+							className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-th-text-muted"
 						/>
 					</div>
 				)}
@@ -168,7 +168,7 @@ export function CacheEfficiencyChart({
 			{loading ? (
 				<ChartSkeleton height={240} />
 			) : !hasData ? (
-				<div className="flex items-center justify-center h-60 text-sm text-gray-400 dark:text-gray-500">
+				<div className="flex items-center justify-center h-60 text-sm text-th-text-faint">
 					No cache data available
 				</div>
 			) : (
@@ -193,16 +193,16 @@ export function CacheEfficiencyChart({
 							arcLinkLabelsColor={{ from: "color" }}
 							enableArcLabels={false}
 							tooltip={({ datum }) => (
-								<div className="rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-xs shadow-lg">
+								<div className="rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-xs shadow-lg">
 									<div className="flex items-center gap-1.5">
 										<span
 											className="h-2 w-2 rounded-full flex-shrink-0"
 											style={{ background: datum.color }}
 										/>
-										<span className="text-gray-600 dark:text-gray-300">
+										<span className="text-th-text-secondary">
 											{datum.label}:
 										</span>
-										<span className="font-medium text-gray-900 dark:text-white">
+										<span className="font-medium text-th-text">
 											{formatTokenCount(datum.value)}
 										</span>
 									</div>
@@ -214,10 +214,10 @@ export function CacheEfficiencyChart({
 						{/* Center label — cache hit percentage */}
 						<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
 							<div className="text-center">
-								<div className="text-2xl font-bold text-gray-900 dark:text-white">
+								<div className="text-2xl font-bold text-th-text">
 									{pct(hitRatio)}
 								</div>
-								<div className="text-xs text-gray-500 dark:text-gray-400">
+								<div className="text-xs text-th-text-muted">
 									Cache Hit
 								</div>
 							</div>
@@ -233,7 +233,7 @@ export function CacheEfficiencyChart({
 						].map((item) => (
 							<span
 								key={item.label}
-								className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"
+								className="flex items-center gap-1 text-xs text-th-text-muted"
 							>
 								<span
 									className="h-2 w-2 rounded-full flex-shrink-0"

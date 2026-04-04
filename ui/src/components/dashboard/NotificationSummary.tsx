@@ -49,26 +49,26 @@ export function NotificationSummary({
 	return (
 		<section
 			aria-labelledby="notification-summary-heading"
-			className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
+			className="rounded-lg border border-th-border bg-th-surface p-5"
 		>
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<h2
 					id="notification-summary-heading"
-					className="text-base font-semibold text-gray-900 dark:text-white"
+					className="text-base font-semibold text-th-text"
 				>
 					Notifications
 				</h2>
 				<Link
 					to="/notifications"
-					className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+					className="flex items-center gap-1 text-xs font-medium text-th-text-link hover:opacity-80"
 				>
 					View All <ExternalLink size={12} />
 				</Link>
 			</div>
 
 			{/* Error state */}
-			{error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+			{error && <p className="mt-3 text-sm text-th-status-error-text">{error}</p>}
 
 			{/* Loading */}
 			{loading && !error && (
@@ -82,28 +82,28 @@ export function NotificationSummary({
 				<>
 					{/* Summary counts */}
 					<div className="mt-4 grid grid-cols-2 gap-3">
-						<div className="rounded-md bg-yellow-50 p-3 dark:bg-yellow-900/20">
+						<div className="rounded-md bg-th-status-warning-bg p-3">
 							<div className="flex items-center gap-2">
 								<Bell
 									size={16}
-									className="text-yellow-600 dark:text-yellow-400"
+									className="text-th-status-warning-text"
 								/>
-								<span className="text-xs text-yellow-700 dark:text-yellow-300">
+								<span className="text-xs text-th-status-warning-text">
 									Pending
 								</span>
 							</div>
-							<p className="mt-1 text-2xl font-bold text-yellow-800 dark:text-yellow-200">
+							<p className="mt-1 text-2xl font-bold text-th-status-warning-text">
 								{pending}
 							</p>
 						</div>
-						<div className="rounded-md bg-blue-50 p-3 dark:bg-blue-900/20">
+						<div className="rounded-md bg-th-status-info-bg p-3">
 							<div className="flex items-center gap-2">
-								<Bell size={16} className="text-blue-600 dark:text-blue-400" />
-								<span className="text-xs text-blue-700 dark:text-blue-300">
+								<Bell size={16} className="text-th-status-info-text" />
+								<span className="text-xs text-th-status-info-text">
 									Unread
 								</span>
 							</div>
-							<p className="mt-1 text-2xl font-bold text-blue-800 dark:text-blue-200">
+							<p className="mt-1 text-2xl font-bold text-th-status-info-text">
 								{unread}
 							</p>
 						</div>
@@ -112,7 +112,7 @@ export function NotificationSummary({
 					{/* Priority bar chart */}
 					{hasData ? (
 						<div className="mt-4">
-							<p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+							<p className="mb-2 text-xs font-medium uppercase tracking-wide text-th-text-faint">
 								By Priority (active)
 							</p>
 							<div className="h-28">
@@ -133,7 +133,7 @@ export function NotificationSummary({
 									padding={0.3}
 									margin={{ top: 0, right: 0, bottom: 24, left: 0 }}
 									tooltip={({ indexValue, value }) => (
-										<div className="rounded bg-gray-900 px-2 py-1 text-xs text-white shadow">
+										<div className="rounded bg-th-surface-raised px-2 py-1 text-xs text-th-text shadow">
 											{indexValue}: {value}
 										</div>
 									)}
@@ -148,7 +148,7 @@ export function NotificationSummary({
 							</div>
 						</div>
 					) : (
-						<p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+						<p className="mt-4 text-sm text-th-text-muted">
 							No active notifications.
 						</p>
 					)}

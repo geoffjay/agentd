@@ -112,19 +112,19 @@ export function PlaceholderChart({
 	];
 
 	return (
-		<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+		<div className="rounded-lg border border-th-border bg-th-surface overflow-hidden">
 			{/* Header */}
 			<div className="px-4 pt-4 pb-2">
 				<div className="flex items-center justify-between">
-					<h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+					<h3 className="text-sm font-semibold text-th-text">
 						{title}
 					</h3>
-					<span className="rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+					<span className="rounded-full bg-th-status-warning-bg px-2 py-0.5 text-xs font-medium text-th-status-warning-text">
 						Coming Soon
 					</span>
 				</div>
 				{description && (
-					<p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+					<p className="mt-0.5 text-xs text-th-text-faint">
 						{description}
 					</p>
 				)}
@@ -155,13 +155,13 @@ export function PlaceholderChart({
 
 				{/* Coming Soon overlay */}
 				<div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-					<div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-						<Info size={16} className="text-amber-600 dark:text-amber-400" />
+					<div className="flex h-8 w-8 items-center justify-center rounded-full bg-th-status-warning-bg">
+						<Info size={16} className="text-th-status-warning-text" />
 					</div>
-					<p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+					<p className="text-xs font-medium text-th-text-muted">
 						Monitor service not yet available
 					</p>
-					<p className="text-xs text-gray-400 dark:text-gray-500">
+					<p className="text-xs text-th-text-faint">
 						Port 17003 · Planned feature
 					</p>
 				</div>

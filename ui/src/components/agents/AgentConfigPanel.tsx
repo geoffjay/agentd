@@ -56,10 +56,10 @@ function ConfigRow({
 }) {
 	return (
 		<div className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
-			<span className="w-36 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
+			<span className="w-36 flex-shrink-0 text-xs font-medium text-th-text-faint">
 				{label}
 			</span>
-			<span className="text-sm text-gray-700 dark:text-gray-300">
+			<span className="text-sm text-th-text-secondary">
 				{children}
 			</span>
 		</div>
@@ -74,14 +74,14 @@ function EnvVarsRow({ env }: { env: Record<string, string> }) {
 	return (
 		<div className="flex flex-col gap-1">
 			<div className="flex items-center gap-2">
-				<span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+				<span className="text-xs font-medium text-th-text-faint">
 					Environment
 				</span>
 				<button
 					type="button"
 					aria-label={revealed ? "Hide env values" : "Show env values"}
 					onClick={() => setRevealed((v) => !v)}
-					className="rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+					className="rounded p-0.5 text-th-text-muted hover:text-th-text-secondary"
 				>
 					{revealed ? <EyeOff size={13} /> : <Eye size={13} />}
 				</button>
@@ -89,8 +89,8 @@ function EnvVarsRow({ env }: { env: Record<string, string> }) {
 			<div className="ml-0 flex flex-col gap-1 pl-0 font-mono text-xs">
 				{entries.map(([key, value]) => (
 					<div key={key} className="flex gap-2">
-						<span className="text-gray-500 dark:text-gray-400">{key}=</span>
-						<span className="text-gray-700 dark:text-gray-300">
+						<span className="text-th-text-muted">{key}=</span>
+						<span className="text-th-text-secondary">
 							{revealed ? value : "••••••••"}
 						</span>
 					</div>
@@ -143,7 +143,7 @@ function SystemPromptRow({ prompt }: { prompt: string }) {
 
 	return (
 		<div className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
-			<span className="w-36 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
+			<span className="w-36 flex-shrink-0 text-xs font-medium text-th-text-faint">
 				System Prompt
 			</span>
 			<div className="flex flex-col gap-1 min-w-0 flex-1">
@@ -152,10 +152,10 @@ function SystemPromptRow({ prompt }: { prompt: string }) {
 						code={prompt}
 						language="markdown"
 						maxHeight="20rem"
-						className="border border-gray-200 dark:border-gray-700"
+						className="border border-th-border"
 					/>
 				) : (
-					<p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+					<p className="whitespace-pre-wrap text-sm text-th-text-secondary">
 						{isLong ? `${prompt.slice(0, 200)}…` : prompt}
 					</p>
 				)}
@@ -163,7 +163,7 @@ function SystemPromptRow({ prompt }: { prompt: string }) {
 					<button
 						type="button"
 						onClick={() => setExpanded((e) => !e)}
-						className="self-start text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+						className="self-start text-xs text-th-text-link hover:opacity-80"
 					>
 						{expanded ? "Show less" : "Show more"}
 					</button>
@@ -209,12 +209,12 @@ function AddDirDialog({
 	}
 
 	const inputCls =
-		"block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white";
+		"block w-full rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text font-mono focus:border-th-border-focus focus:outline-none focus:ring-1 focus:ring-th-focus-ring";
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 			<div
-				className="absolute inset-0 bg-black/50"
+				className="absolute inset-0 bg-th-overlay"
 				aria-hidden="true"
 				onClick={onCancel}
 			/>
@@ -222,18 +222,18 @@ function AddDirDialog({
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="add-dir-title"
-				className="relative rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+				className="relative rounded-lg bg-th-surface p-6 shadow-xl"
 			>
 				<h2
 					id="add-dir-title"
-					className="mb-4 text-base font-semibold text-gray-900 dark:text-white"
+					className="mb-4 text-base font-semibold text-th-text"
 				>
 					Add Directory
 				</h2>
 
-				<p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+				<p className="mb-3 text-sm text-th-text-muted">
 					Enter an absolute path to grant the agent access via{" "}
-					<code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-700">
+					<code className="rounded bg-th-surface-sunken px-1 py-0.5 font-mono text-xs">
 						--add-dir
 					</code>
 					.
@@ -242,7 +242,7 @@ function AddDirDialog({
 				{error && (
 					<p
 						role="alert"
-						className="mb-3 text-sm text-red-600 dark:text-red-400"
+						className="mb-3 text-sm text-th-status-error-text"
 					>
 						{error}
 					</p>
@@ -251,7 +251,7 @@ function AddDirDialog({
 				<div className="flex flex-col gap-2">
 					<label
 						htmlFor="add-dir-path"
-						className="text-sm font-medium text-gray-700 dark:text-gray-300"
+						className="text-sm font-medium text-th-text-secondary"
 					>
 						Directory path
 					</label>
@@ -268,7 +268,7 @@ function AddDirDialog({
 					/>
 				</div>
 
-				<p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
+				<p className="mt-3 text-xs text-th-status-warning-text">
 					Directory changes take effect on the next agent restart.
 				</p>
 
@@ -277,7 +277,7 @@ function AddDirDialog({
 						type="button"
 						onClick={onCancel}
 						disabled={saving}
-						className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+						className="rounded-md border border-th-border-input bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover disabled:opacity-50"
 					>
 						Cancel
 					</button>
@@ -285,7 +285,7 @@ function AddDirDialog({
 						type="button"
 						onClick={handleSubmit}
 						disabled={saving || !path.trim()}
-						className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+						className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover disabled:opacity-50 transition-colors"
 					>
 						{saving ? "Adding…" : "Add Directory"}
 					</button>
@@ -349,7 +349,7 @@ function AdditionalDirsRow({ dirs, onAdd, onRemove }: AdditionalDirsRowProps) {
 	return (
 		<div className="flex flex-col gap-1">
 			<div className="flex items-center gap-2">
-				<span className="w-36 flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
+				<span className="w-36 flex-shrink-0 text-xs font-medium text-th-text-faint">
 					Additional Dirs
 				</span>
 				{canEdit && (
@@ -360,7 +360,7 @@ function AdditionalDirsRow({ dirs, onAdd, onRemove }: AdditionalDirsRowProps) {
 							setAddError(undefined);
 							setShowDialog(true);
 						}}
-						className="flex items-center gap-1 rounded p-0.5 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+						className="flex items-center gap-1 rounded p-0.5 text-xs text-th-text-link hover:opacity-80"
 					>
 						<Plus size={13} />
 						Add
@@ -369,7 +369,7 @@ function AdditionalDirsRow({ dirs, onAdd, onRemove }: AdditionalDirsRowProps) {
 			</div>
 
 			{dirs.length === 0 ? (
-				<span className="pl-0 text-sm text-gray-400 dark:text-gray-500 sm:pl-40">
+				<span className="pl-0 text-sm text-th-text-faint sm:pl-40">
 					(none)
 				</span>
 			) : (
@@ -378,10 +378,10 @@ function AdditionalDirsRow({ dirs, onAdd, onRemove }: AdditionalDirsRowProps) {
 						<li key={dir} className="flex items-center gap-2 group">
 							<FolderOpen
 								size={13}
-								className="flex-shrink-0 text-gray-400 dark:text-gray-500"
+								className="flex-shrink-0 text-th-text-faint"
 								aria-hidden="true"
 							/>
-							<span className="flex-1 font-mono text-xs text-gray-700 dark:text-gray-300 break-all">
+							<span className="flex-1 font-mono text-xs text-th-text-secondary break-all">
 								{dir}
 							</span>
 							{canEdit && (
@@ -390,7 +390,7 @@ function AdditionalDirsRow({ dirs, onAdd, onRemove }: AdditionalDirsRowProps) {
 									aria-label={`Remove directory ${dir}`}
 									onClick={() => handleRemove(dir)}
 									disabled={removingPath === dir}
-									className="rounded p-0.5 text-gray-300 hover:text-red-500 disabled:opacity-50 dark:text-gray-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+									className="rounded p-0.5 text-th-text-faint hover:text-th-status-error-text disabled:opacity-50 opacity-0 group-hover:opacity-100 transition-opacity"
 								>
 									<X size={13} />
 								</button>
@@ -401,7 +401,7 @@ function AdditionalDirsRow({ dirs, onAdd, onRemove }: AdditionalDirsRowProps) {
 			)}
 
 			{restartNotice && (
-				<p className="pl-0 text-xs text-amber-600 dark:text-amber-400 sm:pl-40">
+				<p className="pl-0 text-xs text-th-status-warning-text sm:pl-40">
 					Directory changes take effect on the next agent restart.
 				</p>
 			)}
@@ -438,7 +438,7 @@ export function AgentConfigPanel({
 	return (
 		<section
 			aria-label="Agent configuration"
-			className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+			className="rounded-lg border border-th-border bg-th-surface"
 		>
 			{/* Header / toggle */}
 			<button
@@ -446,7 +446,7 @@ export function AgentConfigPanel({
 				aria-expanded={open}
 				aria-controls="agent-config-body"
 				onClick={() => setOpen((o) => !o)}
-				className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-gray-800/50"
+				className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-th-text hover:bg-th-surface-hover"
 			>
 				<span>Configuration</span>
 				{open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -455,7 +455,7 @@ export function AgentConfigPanel({
 			{open && (
 				<div
 					id="agent-config-body"
-					className="flex flex-col gap-3 border-t border-gray-100 px-4 py-4 dark:border-gray-700"
+					className="flex flex-col gap-3 border-t border-th-border px-4 py-4"
 				>
 					<ConfigRow label="Working Dir">
 						<span className="font-mono text-xs">{config.working_dir}</span>
@@ -467,11 +467,11 @@ export function AgentConfigPanel({
 
 					<ConfigRow label="Interactive">
 						{config.interactive ? (
-							<span className="text-green-600 dark:text-green-400">
+							<span className="text-th-status-success-text">
 								Yes (TTY)
 							</span>
 						) : (
-							<span className="text-gray-500 dark:text-gray-400">No</span>
+							<span className="text-th-text-muted">No</span>
 						)}
 					</ConfigRow>
 
@@ -500,11 +500,11 @@ export function AgentConfigPanel({
 					<ConfigRow label="Auto-clear">
 						{config.auto_clear_threshold != null &&
 						config.auto_clear_threshold > 0 ? (
-							<span className="text-amber-600 dark:text-amber-400">
+							<span className="text-th-status-warning-text">
 								at {config.auto_clear_threshold.toLocaleString()} tokens
 							</span>
 						) : (
-							<span className="text-gray-500 dark:text-gray-400">Disabled</span>
+							<span className="text-th-text-muted">Disabled</span>
 						)}
 					</ConfigRow>
 
@@ -523,9 +523,9 @@ export function AgentConfigPanel({
 					{(config.system_prompt || config.system_prompt_file) && (
 						<ConfigRow label="Prompt Mode">
 							{config.append_system_prompt ? (
-								<span className="text-blue-600 dark:text-blue-400">Append</span>
+								<span className="text-th-status-info-text">Append</span>
 							) : (
-								<span className="text-gray-500 dark:text-gray-400">
+								<span className="text-th-text-muted">
 									Replace
 								</span>
 							)}
@@ -544,7 +544,7 @@ export function AgentConfigPanel({
 
 					{agent.launch_command && (
 						<div className="flex flex-col gap-1">
-							<span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+							<span className="text-xs font-medium text-th-text-faint">
 								Launch Command
 							</span>
 							<div data-testid="launch-command-code">
@@ -555,7 +555,7 @@ export function AgentConfigPanel({
 									)}
 									language="bash"
 									maxHeight="12rem"
-									className="border border-gray-200 dark:border-gray-700"
+									className="border border-th-border"
 								/>
 							</div>
 						</div>

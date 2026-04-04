@@ -22,7 +22,7 @@ export function NotificationBadge({
 	return (
 		<span
 			aria-label={`${count} pending notification${count !== 1 ? "s" : ""}`}
-			className={`inline-block h-2 w-2 rounded-full bg-red-500 ${className}`}
+			className={`inline-block h-2 w-2 rounded-full bg-th-status-error-dot ${className}`}
 		/>
 	);
 }

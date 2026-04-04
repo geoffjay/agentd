@@ -72,15 +72,15 @@ export function CheckControls({
 	const tmux = lastTriggerResult?.results?.tmux_sessions;
 
 	return (
-		<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 space-y-4">
+		<div className="rounded-lg border border-th-border bg-th-surface p-5 space-y-4">
 			{/* Header */}
 			<div className="flex items-center justify-between gap-3 flex-wrap">
 				<div>
-					<h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+					<h3 className="text-sm font-semibold text-th-text">
 						Environment Checks
 					</h3>
 					{lastTriggerAt && (
-						<p className="mt-0.5 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+						<p className="mt-0.5 flex items-center gap-1 text-xs text-th-text-faint">
 							<Clock size={11} />
 							Last run at {formatTimestamp(lastTriggerAt)}
 						</p>
@@ -93,7 +93,7 @@ export function CheckControls({
 					onClick={onRunTrigger}
 					disabled={triggering}
 					aria-label="Run environment checks"
-					className="flex items-center gap-2 rounded-md bg-primary-600 hover:bg-primary-700 disabled:opacity-60 px-4 py-2 text-sm font-medium text-white transition-colors"
+					className="flex items-center gap-2 rounded-md bg-th-accent hover:bg-th-accent-hover disabled:opacity-60 px-4 py-2 text-sm font-medium text-th-accent-text transition-colors"
 				>
 					{triggering ? (
 						<RefreshCw size={14} className="animate-spin" />
@@ -106,7 +106,7 @@ export function CheckControls({
 
 			{/* Error */}
 			{triggerError && (
-				<div className="rounded-md border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+				<div className="rounded-md border border-th-status-error-border bg-th-status-error-bg px-3 py-2 text-sm text-th-status-error-text">
 					{triggerError}
 				</div>
 			)}
@@ -118,17 +118,17 @@ export function CheckControls({
 					<div className="flex items-start gap-2">
 						<RefreshCw
 							size={13}
-							className="mt-0.5 text-gray-400 flex-shrink-0"
+							className="mt-0.5 text-th-text-muted flex-shrink-0"
 						/>
 						<div>
-							<p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+							<p className="text-xs font-medium text-th-text-muted">
 								Checks run
 							</p>
 							<div className="mt-1 flex flex-wrap gap-1">
 								{lastTriggerResult.checks_run.map((check) => (
 									<span
 										key={check}
-										className="rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs text-blue-700 dark:text-blue-300"
+										className="rounded-full bg-th-status-info-bg px-2 py-0.5 text-xs text-th-status-info-text"
 									>
 										{check}
 									</span>
@@ -139,13 +139,13 @@ export function CheckControls({
 
 					{/* Notifications sent */}
 					<div className="flex items-start gap-2">
-						<Bell size={13} className="mt-0.5 text-gray-400 flex-shrink-0" />
+						<Bell size={13} className="mt-0.5 text-th-text-muted flex-shrink-0" />
 						<div>
-							<p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+							<p className="text-xs font-medium text-th-text-muted">
 								Notifications sent
 							</p>
 							{lastTriggerResult.notifications_sent.length === 0 ? (
-								<p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+								<p className="mt-0.5 text-xs text-th-text-faint">
 									None
 								</p>
 							) : (
@@ -153,7 +153,7 @@ export function CheckControls({
 									{lastTriggerResult.notifications_sent.map((id) => (
 										<li
 											key={id}
-											className="font-mono text-xs text-gray-500 dark:text-gray-400"
+											className="font-mono text-xs text-th-text-muted"
 										>
 											{id}
 										</li>
@@ -165,25 +165,25 @@ export function CheckControls({
 
 					{/* Tmux result detail */}
 					{tmux && (
-						<div className="rounded-md bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700 px-3 py-2 space-y-1">
-							<p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+						<div className="rounded-md bg-th-surface-sunken border border-th-border px-3 py-2 space-y-1">
+							<p className="text-xs font-medium text-th-text-muted">
 								tmux_sessions result
 							</p>
 							<div className="flex items-center gap-2">
 								<span
 									className={[
 										"h-2 w-2 rounded-full flex-shrink-0",
-										tmux.running ? "bg-green-500" : "bg-red-500",
+										tmux.running ? "bg-th-status-success-dot" : "bg-th-status-error-dot",
 									].join(" ")}
 								/>
-								<span className="text-xs text-gray-600 dark:text-gray-300">
+								<span className="text-xs text-th-text-secondary">
 									{tmux.running
-										? `Running — ${tmux.session_count} session${tmux.session_count !== 1 ? "s" : ""}`
+										? `Running - ${tmux.session_count} session${tmux.session_count !== 1 ? "s" : ""}`
 										: "Not running"}
 								</span>
 							</div>
 							{tmux.sessions && tmux.sessions.length > 0 && (
-								<p className="text-xs text-gray-400 dark:text-gray-500 pl-4">
+								<p className="text-xs text-th-text-faint pl-4">
 									{tmux.sessions.join(", ")}
 								</p>
 							)}
@@ -193,22 +193,22 @@ export function CheckControls({
 			)}
 
 			{/* Auto-trigger controls */}
-			<div className="border-t border-gray-100 dark:border-gray-700 pt-4 flex items-center justify-between gap-3 flex-wrap">
+			<div className="border-t border-th-border pt-4 flex items-center justify-between gap-3 flex-wrap">
 				<div className="flex items-center gap-2">
 					<button
 						type="button"
 						role="switch"
 						aria-checked={autoTrigger}
 						onClick={() => onSetAutoTrigger(!autoTrigger)}
-						className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+						className="flex items-center gap-2 text-sm text-th-text-secondary hover:text-th-text transition-colors"
 					>
 						{autoTrigger ? (
 							<ToggleRight
 								size={20}
-								className="text-primary-600 dark:text-primary-400"
+								className="text-th-text-link"
 							/>
 						) : (
-							<ToggleLeft size={20} className="text-gray-400" />
+							<ToggleLeft size={20} className="text-th-text-muted" />
 						)}
 						Auto-trigger
 					</button>
@@ -216,7 +216,7 @@ export function CheckControls({
 
 				{autoTrigger && (
 					<div
-						className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs"
+						className="flex items-center rounded-md border border-th-border overflow-hidden text-xs"
 						role="group"
 						aria-label="Auto-trigger interval"
 					>
@@ -231,8 +231,8 @@ export function CheckControls({
 								className={[
 									"px-2.5 py-1 transition-colors",
 									autoTriggerInterval === Number(ms)
-										? "bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 font-medium"
-										: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+										? "bg-th-accent/10 text-th-text-link font-medium"
+										: "text-th-text-muted hover:text-th-text",
 								].join(" ")}
 							>
 								{label}

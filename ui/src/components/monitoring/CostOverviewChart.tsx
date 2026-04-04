@@ -72,17 +72,17 @@ export function CostOverviewChart({
 
 	return (
 		<div
-			className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5"
+			className="rounded-lg border border-th-border bg-th-surface p-5"
 			aria-label="Cost overview bar chart"
 		>
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+				<h3 className="text-sm font-semibold text-th-text">
 					Cost per Agent
 				</h3>
 				{hasData && (
-					<span className="text-xs text-gray-500 dark:text-gray-400">
+					<span className="text-xs text-th-text-muted">
 						Total:{" "}
-						<span className="font-medium text-gray-900 dark:text-white">
+						<span className="font-medium text-th-text">
 							{formatUsd(aggregate.totalCostUsd)}
 						</span>
 					</span>
@@ -92,7 +92,7 @@ export function CostOverviewChart({
 			{loading ? (
 				<ChartSkeleton height={240} />
 			) : !hasData ? (
-				<div className="flex items-center justify-center h-60 text-sm text-gray-400 dark:text-gray-500">
+				<div className="flex items-center justify-center h-60 text-sm text-th-text-faint">
 					No cost data available
 				</div>
 			) : (
@@ -126,40 +126,40 @@ export function CostOverviewChart({
 							tooltip={({ data: rowData }) => {
 								const row = rowData as Record<string, unknown>;
 								return (
-									<div className="rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-xs shadow-lg">
-										<div className="font-medium text-gray-900 dark:text-white mb-1.5">
+									<div className="rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-xs shadow-lg">
+										<div className="font-medium text-th-text mb-1.5">
 											{row.agentFull as string}
 										</div>
 										<div className="space-y-0.5">
 											<div className="flex justify-between gap-4">
-												<span className="text-gray-500 dark:text-gray-400">
+												<span className="text-th-text-muted">
 													Cost:
 												</span>
-												<span className="font-medium text-gray-900 dark:text-white">
+												<span className="font-medium text-th-text">
 													{formatUsd(row.cost as number)}
 												</span>
 											</div>
 											<div className="flex justify-between gap-4">
-												<span className="text-gray-500 dark:text-gray-400">
+												<span className="text-th-text-muted">
 													Input tokens:
 												</span>
-												<span className="text-gray-700 dark:text-gray-300">
+												<span className="text-th-text-secondary">
 													{formatTokenCount(row.input_tokens as number)}
 												</span>
 											</div>
 											<div className="flex justify-between gap-4">
-												<span className="text-gray-500 dark:text-gray-400">
+												<span className="text-th-text-muted">
 													Output tokens:
 												</span>
-												<span className="text-gray-700 dark:text-gray-300">
+												<span className="text-th-text-secondary">
 													{formatTokenCount(row.output_tokens as number)}
 												</span>
 											</div>
 											<div className="flex justify-between gap-4">
-												<span className="text-gray-500 dark:text-gray-400">
+												<span className="text-th-text-muted">
 													Sessions:
 												</span>
-												<span className="text-gray-700 dark:text-gray-300">
+												<span className="text-th-text-secondary">
 													{row.sessions as number}
 												</span>
 											</div>
@@ -173,16 +173,16 @@ export function CostOverviewChart({
 					</div>
 
 					{/* Summary footer */}
-					<div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400">
+					<div className="mt-3 flex flex-wrap gap-4 text-xs text-th-text-muted">
 						<span>
 							Agents:{" "}
-							<span className="font-medium text-gray-700 dark:text-gray-300">
+							<span className="font-medium text-th-text-secondary">
 								{barData.length}
 							</span>
 						</span>
 						<span>
 							Total tokens:{" "}
-							<span className="font-medium text-gray-700 dark:text-gray-300">
+							<span className="font-medium text-th-text-secondary">
 								{formatTokenCount(aggregate.totalTokens)}
 							</span>
 						</span>

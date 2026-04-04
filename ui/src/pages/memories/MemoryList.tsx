@@ -52,11 +52,11 @@ type ViewMode = "list" | "search";
 
 const TYPE_STYLES: Record<string, string> = {
 	information:
-		"bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+		"bg-th-status-info-bg text-th-status-info-text",
 	question:
-		"bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+		"bg-th-status-warning-bg text-th-status-warning-text",
 	request:
-		"bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+		"bg-th-status-info-bg text-th-status-info-text",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -67,10 +67,10 @@ const TYPE_LABELS: Record<string, string> = {
 
 const VISIBILITY_STYLES: Record<string, string> = {
 	public:
-		"bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+		"bg-th-status-success-bg text-th-status-success-text",
 	shared:
-		"bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-	private: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+		"bg-th-status-warning-bg text-th-status-warning-text",
+	private: "bg-th-status-error-bg text-th-status-error-text",
 };
 
 const VISIBILITY_ICONS: Record<VisibilityLevel, React.ReactNode> = {
@@ -265,7 +265,7 @@ function MemoryListInner() {
 				<span
 					className={[
 						"inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-						TYPE_STYLES[m.type] ?? "bg-gray-100 text-gray-600",
+						TYPE_STYLES[m.type] ?? "bg-th-surface-sunken text-th-text-muted",
 					].join(" ")}
 				>
 					{TYPE_LABELS[m.type] ?? m.type}
@@ -276,7 +276,7 @@ function MemoryListInner() {
 			key: "content",
 			header: "Content",
 			render: (m) => (
-				<span className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+				<span className="text-sm text-th-text-secondary line-clamp-2">
 					{m.content}
 				</span>
 			),
@@ -288,7 +288,7 @@ function MemoryListInner() {
 				<span
 					className={[
 						"inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-						VISIBILITY_STYLES[m.visibility] ?? "bg-gray-100 text-gray-600",
+						VISIBILITY_STYLES[m.visibility] ?? "bg-th-surface-sunken text-th-text-muted",
 					].join(" ")}
 				>
 					{VISIBILITY_ICONS[m.visibility]}
@@ -305,26 +305,26 @@ function MemoryListInner() {
 						{m.tags.slice(0, 3).map((tag) => (
 							<span
 								key={tag}
-								className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+								className="rounded-full bg-th-surface-sunken px-2 py-0.5 text-xs font-medium text-th-text-secondary"
 							>
 								{tag}
 							</span>
 						))}
 						{m.tags.length > 3 && (
-							<span className="text-xs text-gray-400">
+							<span className="text-xs text-th-text-muted">
 								+{m.tags.length - 3}
 							</span>
 						)}
 					</div>
 				) : (
-					<span className="text-xs text-gray-400">—</span>
+					<span className="text-xs text-th-text-muted">—</span>
 				),
 		},
 		{
 			key: "created_by",
 			header: "Creator",
 			render: (m) => (
-				<span className="text-sm text-gray-500 dark:text-gray-400">
+				<span className="text-sm text-th-text-muted">
 					{m.created_by}
 				</span>
 			),
@@ -334,7 +334,7 @@ function MemoryListInner() {
 			header: "Created",
 			sortable: true,
 			render: (m) => (
-				<span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+				<span className="text-sm text-th-text-muted whitespace-nowrap">
 					{new Date(m.created_at).toLocaleDateString()}
 				</span>
 			),
@@ -346,13 +346,13 @@ function MemoryListInner() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+					<h1 className="text-2xl font-semibold text-th-text">
 						Memories
 					</h1>
-					<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					<p className="mt-1 text-sm text-th-text-muted">
 						Manage stored knowledge and context.
 						{viewMode === "list" && total > 0 && (
-							<span className="ml-2 text-gray-400">({total} total)</span>
+							<span className="ml-2 text-th-text-muted">({total} total)</span>
 						)}
 					</p>
 				</div>
@@ -360,7 +360,7 @@ function MemoryListInner() {
 				<div className="flex items-center gap-2">
 					{/* View mode toggle */}
 					<div
-						className="flex rounded-md border border-gray-300 dark:border-gray-600"
+						className="flex rounded-md border border-th-border-strong"
 						role="group"
 						aria-label="View mode"
 					>
@@ -371,8 +371,8 @@ function MemoryListInner() {
 							className={[
 								"flex items-center gap-1.5 rounded-l-md px-3 py-1.5 text-xs font-medium transition-colors",
 								viewMode === "list"
-									? "bg-primary-600 text-white"
-									: "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white",
+									? "bg-th-accent text-th-accent-text"
+									: "bg-th-surface text-th-text-muted hover:text-th-text",
 							].join(" ")}
 						>
 							<List size={14} aria-hidden="true" />
@@ -385,8 +385,8 @@ function MemoryListInner() {
 							className={[
 								"flex items-center gap-1.5 rounded-r-md px-3 py-1.5 text-xs font-medium transition-colors",
 								viewMode === "search"
-									? "bg-primary-600 text-white"
-									: "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white",
+									? "bg-th-accent text-th-accent-text"
+									: "bg-th-surface text-th-text-muted hover:text-th-text",
 							].join(" ")}
 						>
 							<Search size={14} aria-hidden="true" />
@@ -398,7 +398,7 @@ function MemoryListInner() {
 					<button
 						type="button"
 						onClick={() => setShowCreateDialog(true)}
-						className="flex items-center gap-1.5 rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors"
+						className="flex items-center gap-1.5 rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors"
 					>
 						<Plus size={16} aria-hidden="true" />
 						New Memory
@@ -411,7 +411,7 @@ function MemoryListInner() {
 							onClick={refetch}
 							aria-label="Refresh memories"
 							className={[
-								"rounded-md border border-gray-300 bg-white p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors",
+								"rounded-md border border-th-border-strong bg-th-surface p-2 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text-secondary transition-colors",
 								refreshing ? "animate-spin" : "",
 							].join(" ")}
 						>
@@ -452,13 +452,13 @@ function MemoryListInner() {
 					{error && (
 						<div
 							role="alert"
-							className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400"
+							className="rounded-md bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text"
 						>
 							<p>{error}</p>
 							<button
 								type="button"
 								onClick={refetch}
-								className="mt-2 rounded-md px-3 py-1 text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors"
+								className="mt-2 rounded-md px-3 py-1 text-xs font-medium bg-th-status-error-bg text-th-status-error-text hover:opacity-90 transition-colors"
 							>
 								Retry
 							</button>

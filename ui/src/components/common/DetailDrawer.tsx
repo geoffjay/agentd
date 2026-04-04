@@ -149,7 +149,7 @@ function DetailDrawer({ open, title, onClose, children }: DetailDrawerProps) {
 			{/* Backdrop */}
 			<div
 				className={[
-					"fixed inset-0 z-40 bg-black/30 transition-opacity duration-300",
+					"fixed inset-0 z-40 bg-th-overlay transition-opacity duration-300",
 					animating ? "opacity-100" : "opacity-0",
 				].join(" ")}
 				onClick={onClose}
@@ -165,21 +165,21 @@ function DetailDrawer({ open, title, onClose, children }: DetailDrawerProps) {
 				tabIndex={-1}
 				className={[
 					"fixed inset-y-0 right-0 z-50 flex sm:w-full md:w-120 lg:w-180 flex-col",
-					"bg-white shadow-xl dark:bg-gray-900 dark:border-l dark:border-gray-700",
+					"bg-th-surface shadow-xl border-l border-th-border",
 					"transition-transform duration-300 ease-in-out",
 					animating ? "translate-x-0" : "translate-x-full",
 				].join(" ")}
 			>
 				{/* Header */}
-				<div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-					<h2 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
+				<div className="flex items-center justify-between border-b border-th-border px-6 py-4">
+					<h2 className="text-lg font-semibold text-th-text truncate">
 						{title}
 					</h2>
 					<button
 						type="button"
 						onClick={onClose}
 						aria-label="Close drawer"
-						className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 transition-colors"
+						className="rounded-md p-1.5 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text transition-colors"
 					>
 						<X size={18} />
 					</button>

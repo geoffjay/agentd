@@ -95,17 +95,17 @@ export function QuestionList() {
 			{/* Page header */}
 			<div className="flex items-start justify-between gap-4 flex-wrap">
 				<div className="flex items-center gap-3">
-					<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/30">
+					<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-th-status-info-bg">
 						<HelpCircle
 							size={20}
-							className="text-purple-600 dark:text-purple-400"
+							className="text-th-status-info-text"
 						/>
 					</div>
 					<div>
-						<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+						<h1 className="text-2xl font-semibold text-th-text">
 							Questions
 						</h1>
-						<p className="text-sm text-gray-500 dark:text-gray-400">
+						<p className="text-sm text-th-text-muted">
 							Pending questions waiting for your response.
 						</p>
 					</div>
@@ -114,26 +114,26 @@ export function QuestionList() {
 				{/* Service health indicator */}
 				<div className="flex items-center gap-2">
 					{health.checking ? (
-						<div className="flex items-center gap-1.5 text-xs text-gray-400">
+						<div className="flex items-center gap-1.5 text-xs text-th-text-muted">
 							<RefreshCw size={12} className="animate-spin" />
 							Checking…
 						</div>
 					) : health.reachable ? (
-						<div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+						<div className="flex items-center gap-1.5 text-xs text-th-status-success-text">
 							<Wifi size={13} />
 							Ask service · port 17001
 							{health.version && (
-								<span className="text-gray-400">v{health.version}</span>
+								<span className="text-th-text-muted">v{health.version}</span>
 							)}
 						</div>
 					) : (
 						<button
 							type="button"
 							onClick={recheckHealth}
-							className="flex items-center gap-1.5 text-xs text-red-500 dark:text-red-400 hover:underline"
+							className="flex items-center gap-1.5 text-xs text-th-status-error-text hover:underline"
 						>
 							<WifiOff size={13} />
-							Ask service unreachable — retry
+							Ask service unreachable - retry
 						</button>
 					)}
 				</div>
@@ -141,7 +141,7 @@ export function QuestionList() {
 
 			{/* Notify service warning */}
 			{health.reachable && !health.notifyUrl && (
-				<div className="flex items-center gap-2 rounded-md border border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-yellow-900/10 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-400">
+				<div className="flex items-center gap-2 rounded-md border border-th-status-warning-border bg-th-status-warning-bg px-4 py-3 text-sm text-th-status-warning-text">
 					<AlertTriangle size={14} className="flex-shrink-0" />
 					<span>
 						Could not determine the connected notify service URL. Answers may
@@ -150,9 +150,9 @@ export function QuestionList() {
 				</div>
 			)}
 			{health.reachable && health.notifyUrl && (
-				<div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+				<div className="flex items-center gap-2 text-xs text-th-text-faint">
 					<span>Connected notify service:</span>
-					<code className="font-mono text-gray-600 dark:text-gray-300">
+					<code className="font-mono text-th-text-secondary">
 						{health.notifyUrl}
 					</code>
 				</div>
@@ -176,7 +176,7 @@ export function QuestionList() {
 
 			{/* Answer success toast */}
 			{answerSuccess && (
-				<div className="rounded-md border border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-900/10 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+				<div className="rounded-md border border-th-status-success-border bg-th-status-success-bg px-4 py-3 text-sm text-th-status-success-text">
 					Answer submitted successfully.
 				</div>
 			)}
@@ -184,10 +184,10 @@ export function QuestionList() {
 			{/* Questions section */}
 			<section aria-label="Questions">
 				<div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
-					<h2 className="text-base font-semibold text-gray-900 dark:text-white">
+					<h2 className="text-base font-semibold text-th-text">
 						Questions
 						{pendingCount > 0 && (
-							<span className="ml-2 rounded-full bg-yellow-100 dark:bg-yellow-900/30 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:text-yellow-400">
+							<span className="ml-2 rounded-full bg-th-status-warning-bg px-2 py-0.5 text-xs font-medium text-th-status-warning-text">
 								{pendingCount} pending
 							</span>
 						)}
@@ -195,7 +195,7 @@ export function QuestionList() {
 
 					{/* Status filter */}
 					<div
-						className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs"
+						className="flex items-center rounded-md border border-th-border overflow-hidden text-xs"
 						role="group"
 						aria-label="Filter by status"
 					>
@@ -208,8 +208,8 @@ export function QuestionList() {
 								className={[
 									"px-3 py-1.5 transition-colors",
 									statusFilter === filter
-										? "bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 font-medium"
-										: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+										? "bg-th-accent/10 text-th-text-link font-medium"
+										: "text-th-text-muted hover:text-th-text",
 								].join(" ")}
 							>
 								{filter}
@@ -219,12 +219,12 @@ export function QuestionList() {
 				</div>
 
 				{filteredQuestions.length === 0 ? (
-					<div className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 py-12 text-center">
+					<div className="rounded-lg border border-dashed border-th-border bg-th-surface py-12 text-center">
 						<HelpCircle
 							size={32}
-							className="mx-auto mb-3 text-gray-300 dark:text-gray-600"
+							className="mx-auto mb-3 text-th-text-faint"
 						/>
-						<p className="text-sm text-gray-500 dark:text-gray-400">
+						<p className="text-sm text-th-text-muted">
 							{statusFilter === "All"
 								? "No questions yet. Run checks to see if any action is needed."
 								: `No ${statusFilter.toLowerCase()} questions.`}

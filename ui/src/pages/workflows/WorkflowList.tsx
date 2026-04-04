@@ -69,10 +69,10 @@ export function WorkflowList() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+					<h1 className="text-2xl font-semibold text-th-text">
 						Workflows
 					</h1>
-					<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					<p className="mt-1 text-sm text-th-text-muted">
 						Automated task dispatch — poll external sources and dispatch tasks
 						to agents.
 					</p>
@@ -82,7 +82,7 @@ export function WorkflowList() {
 						type="button"
 						onClick={refetch}
 						disabled={loading || refreshing}
-						className="rounded-md p-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+						className="rounded-md p-2 text-th-text-muted hover:text-th-text-secondary hover:bg-th-surface-hover transition-colors disabled:opacity-50"
 						aria-label="Refresh workflows"
 					>
 						<RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
@@ -90,7 +90,7 @@ export function WorkflowList() {
 					<button
 						type="button"
 						onClick={openCreate}
-						className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+						className="inline-flex items-center gap-2 rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
 					>
 						<Plus size={16} />
 						New workflow
@@ -100,7 +100,7 @@ export function WorkflowList() {
 
 			{/* Error banner */}
 			{error && (
-				<div className="rounded-md bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+				<div className="rounded-md bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text">
 					{error}
 				</div>
 			)}
@@ -109,7 +109,7 @@ export function WorkflowList() {
 			<div className="relative max-w-xs">
 				<Search
 					size={14}
-					className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+					className="absolute left-3 top-1/2 -translate-y-1/2 text-th-text-muted pointer-events-none"
 				/>
 				<input
 					type="text"
@@ -119,7 +119,7 @@ export function WorkflowList() {
 						setPage(1);
 					}}
 					placeholder="Search workflows…"
-					className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 pl-8 pr-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+					className="w-full rounded-md border border-th-border-input bg-th-input pl-8 pr-3 py-2 text-sm text-th-text placeholder:text-th-text-muted focus:outline-none focus:ring-2 focus:ring-th-focus-ring"
 				/>
 			</div>
 
@@ -135,7 +135,7 @@ export function WorkflowList() {
 
 			{/* Pagination */}
 			{pageCount > 1 && (
-				<div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+				<div className="flex items-center justify-between text-sm text-th-text-muted">
 					<span>
 						{total} workflow{total !== 1 ? "s" : ""}
 					</span>
@@ -144,7 +144,7 @@ export function WorkflowList() {
 							type="button"
 							disabled={page <= 1}
 							onClick={() => setPage((p) => p - 1)}
-							className="rounded px-3 py-1 border border-gray-300 dark:border-gray-600 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
+							className="rounded px-3 py-1 border border-th-border-strong disabled:opacity-40 hover:bg-th-surface-hover"
 						>
 							Previous
 						</button>
@@ -155,7 +155,7 @@ export function WorkflowList() {
 							type="button"
 							disabled={page >= pageCount}
 							onClick={() => setPage((p) => p + 1)}
-							className="rounded px-3 py-1 border border-gray-300 dark:border-gray-600 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
+							className="rounded px-3 py-1 border border-th-border-strong disabled:opacity-40 hover:bg-th-surface-hover"
 						>
 							Next
 						</button>

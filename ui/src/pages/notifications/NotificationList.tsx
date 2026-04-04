@@ -242,7 +242,7 @@ function NotificationListInner() {
 			key: "title",
 			header: "Title",
 			render: (n) => (
-				<span className="text-sm font-medium text-gray-900 dark:text-white">
+				<span className="text-sm font-medium text-th-text">
 					{n.title}
 				</span>
 			),
@@ -251,7 +251,7 @@ function NotificationListInner() {
 			key: "source",
 			header: "Source",
 			render: (n) => (
-				<span className="text-sm text-gray-500 dark:text-gray-400">
+				<span className="text-sm text-th-text-muted">
 					{SOURCE_LABELS[n.source.type] ?? n.source.type}
 				</span>
 			),
@@ -265,7 +265,7 @@ function NotificationListInner() {
 			key: "priority",
 			header: "Priority",
 			render: (n) => (
-				<span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium capitalize text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+				<span className="rounded-full bg-th-surface-sunken px-2.5 py-0.5 text-xs font-medium capitalize text-th-text-muted">
 					{n.priority}
 				</span>
 			),
@@ -274,7 +274,7 @@ function NotificationListInner() {
 			key: "created_at",
 			header: "Created",
 			render: (n) => (
-				<span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+				<span className="text-sm text-th-text-muted whitespace-nowrap">
 					{formatRelativeTime(n.created_at)}
 				</span>
 			),
@@ -286,7 +286,7 @@ function NotificationListInner() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3">
-					<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+					<h1 className="text-2xl font-semibold text-th-text">
 						Notifications
 					</h1>
 					<NotificationBadge count={pendingCount} showZero />
@@ -298,7 +298,7 @@ function NotificationListInner() {
 						<button
 							type="button"
 							onClick={handleMarkAllViewed}
-							className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+							className="rounded-md border border-th-border-strong px-3 py-1.5 text-xs font-medium text-th-text-secondary bg-th-surface hover:bg-th-surface-hover transition-colors"
 						>
 							Mark all viewed
 						</button>
@@ -309,7 +309,7 @@ function NotificationListInner() {
 						type="button"
 						onClick={refetch}
 						aria-label="Refresh notifications"
-						className="rounded-md border border-gray-300 bg-white p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors"
+						className="rounded-md border border-th-border-strong bg-th-surface p-2 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text-secondary transition-colors"
 					>
 						<RefreshCw size={16} />
 					</button>
@@ -317,7 +317,7 @@ function NotificationListInner() {
 			</div>
 
 			{/* Tab navigation */}
-			<div className="border-b border-gray-200 dark:border-gray-700">
+			<div className="border-b border-th-border">
 				<nav className="-mb-px flex gap-1" aria-label="Notification tabs">
 					{TABS.map((t) => (
 						<button
@@ -329,8 +329,8 @@ function NotificationListInner() {
 							className={[
 								"rounded-t-md px-4 py-2 text-sm font-medium transition-colors border-b-2",
 								tab === t.value
-									? "border-primary-500 text-primary-600 dark:text-primary-400"
-									: "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-500",
+									? "border-th-accent text-th-text-link"
+									: "border-transparent text-th-text-muted hover:text-th-text hover:border-th-border-strong",
 							].join(" ")}
 						>
 							{t.label}
@@ -351,7 +351,7 @@ function NotificationListInner() {
 			{error && (
 				<div
 					role="alert"
-					className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400"
+					className="rounded-md bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text"
 				>
 					{error}
 				</div>

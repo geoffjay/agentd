@@ -60,17 +60,17 @@ function ApprovalRow({ approval, onApprove, onDeny }: ApprovalRowProps) {
 	}
 
 	return (
-		<li className="flex flex-col gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+		<li className="flex flex-col gap-2 rounded-lg border border-th-border p-3">
 			{/* Header row */}
 			<div className="flex items-start justify-between gap-3">
 				<div className="flex flex-col gap-0.5">
-					<span className="text-sm font-medium text-gray-900 dark:text-white">
+					<span className="text-sm font-medium text-th-text">
 						{approval.tool_name}
 					</span>
-					<span className="text-xs text-gray-500 dark:text-gray-400">
+					<span className="text-xs text-th-text-muted">
 						Requested: {requestedAt}
 					</span>
-					<span className="text-xs text-gray-500 dark:text-gray-400">
+					<span className="text-xs text-th-text-muted">
 						Expires: {expiresAt}
 					</span>
 				</div>
@@ -82,7 +82,7 @@ function ApprovalRow({ approval, onApprove, onDeny }: ApprovalRowProps) {
 						aria-label={`Approve ${approval.tool_name}`}
 						onClick={handleApprove}
 						disabled={busy}
-						className="flex items-center gap-1 rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
+						className="flex items-center gap-1 rounded-md bg-th-status-success-dot px-2.5 py-1 text-xs font-medium text-th-accent-text hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-th-focus-ring disabled:opacity-50"
 					>
 						<Check size={12} aria-hidden="true" />
 						{approving ? "Approving…" : "Approve"}
@@ -92,7 +92,7 @@ function ApprovalRow({ approval, onApprove, onDeny }: ApprovalRowProps) {
 						aria-label={`Deny ${approval.tool_name}`}
 						onClick={handleDeny}
 						disabled={busy}
-						className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+						className="flex items-center gap-1 rounded-md bg-th-status-error-dot px-2.5 py-1 text-xs font-medium text-th-accent-text hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-th-focus-ring disabled:opacity-50"
 					>
 						<X size={12} aria-hidden="true" />
 						{denying ? "Denying…" : "Deny"}
@@ -107,13 +107,13 @@ function ApprovalRow({ approval, onApprove, onDeny }: ApprovalRowProps) {
 						type="button"
 						aria-expanded={expanded}
 						onClick={() => setExpanded((e) => !e)}
-						className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+						className="flex items-center gap-1 text-xs text-th-text-muted hover:text-th-text-secondary"
 					>
 						{expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
 						Tool input
 					</button>
 					{expanded && (
-						<pre className="mt-1 overflow-x-auto rounded bg-gray-100 p-2 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+						<pre className="mt-1 overflow-x-auto rounded bg-th-surface-sunken p-2 text-xs text-th-text-secondary">
 							{JSON.stringify(approval.tool_input, null, 2)}
 						</pre>
 					)}
@@ -122,7 +122,7 @@ function ApprovalRow({ approval, onApprove, onDeny }: ApprovalRowProps) {
 
 			{/* Error */}
 			{error && (
-				<p role="alert" className="text-xs text-red-500 dark:text-red-400">
+				<p role="alert" className="text-xs text-th-status-error-text">
 					{error}
 				</p>
 			)}
@@ -152,11 +152,11 @@ export function AgentApprovals({
 	return (
 		<section aria-label="Pending approvals">
 			<div className="mb-3 flex items-center gap-2">
-				<h3 className="text-sm font-medium text-gray-900 dark:text-white">
+				<h3 className="text-sm font-medium text-th-text">
 					Pending Approvals
 				</h3>
 				{approvals.length > 0 && (
-					<span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
+					<span className="rounded-full bg-th-status-warning-bg px-2 py-0.5 text-xs font-medium text-th-status-warning-text">
 						{approvals.length}
 					</span>
 				)}
@@ -165,11 +165,11 @@ export function AgentApprovals({
 			{loading ? (
 				<ListItemSkeleton rows={2} />
 			) : error ? (
-				<p role="alert" className="text-sm text-red-600 dark:text-red-400">
+				<p role="alert" className="text-sm text-th-status-error-text">
 					{error}
 				</p>
 			) : approvals.length === 0 ? (
-				<p className="text-sm text-gray-500 dark:text-gray-400">
+				<p className="text-sm text-th-text-muted">
 					No pending approvals.
 				</p>
 			) : (

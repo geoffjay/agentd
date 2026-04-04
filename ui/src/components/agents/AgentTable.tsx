@@ -60,7 +60,7 @@ function SortHeader({
 		<button
 			type="button"
 			onClick={() => onSort(field)}
-			className="flex items-center gap-1 font-medium hover:text-gray-900 dark:hover:text-white"
+			className="flex items-center gap-1 font-medium hover:text-th-text"
 			aria-sort={
 				isActive ? (currentDir === "asc" ? "ascending" : "descending") : "none"
 			}
@@ -87,10 +87,10 @@ function EmptyState() {
 	return (
 		<tr>
 			<td colSpan={10} className="py-12 text-center">
-				<p className="text-sm text-gray-500 dark:text-gray-400">
+				<p className="text-sm text-th-text-muted">
 					No agents found.
 				</p>
-				<p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+				<p className="mt-1 text-xs text-th-text-faint">
 					Create your first agent using the button above.
 				</p>
 			</td>
@@ -163,11 +163,11 @@ function AgentRow({
 	const displayDir =
 		workingDir.length > 30 ? `…${workingDir.slice(-29)}` : workingDir;
 
-	const dash = <span className="text-gray-300 dark:text-gray-600">—</span>;
+	const dash = <span className="text-th-text-faint">—</span>;
 
 	return (
 		<tr
-			className="cursor-pointer border-b border-gray-100 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/50"
+			className="cursor-pointer border-b border-th-border hover:bg-th-surface-hover"
 			onClick={() => navigate(`/agents/${agent.id}`)}
 		>
 			{/* Checkbox */}
@@ -184,12 +184,12 @@ function AgentRow({
 					onChange={(e) => {
 						onSelect(agent.id, e.target.checked);
 					}}
-					className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+					className="h-4 w-4 rounded border-th-border-input text-th-accent focus:ring-th-focus-ring bg-th-input"
 				/>
 			</td>
 
 			{/* Name */}
-			<td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+			<td className="px-4 py-3 text-sm font-medium text-th-text">
 				{agent.name}
 			</td>
 
@@ -199,19 +199,19 @@ function AgentRow({
 			</td>
 
 			{/* Model */}
-			<td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+			<td className="text-th-text-muted px-4 py-3 text-sm">
 				{agent.config.model ?? (
 					<span className="italic opacity-50">default</span>
 				)}
 			</td>
 
 			{/* Cost */}
-			<td className="hidden px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap lg:table-cell">
+			<td className="hidden px-4 py-3 text-sm text-th-text-muted whitespace-nowrap lg:table-cell">
 				{usage ? formatCost(usage.cumulative.total_cost_usd) : dash}
 			</td>
 
 			{/* Tokens */}
-			<td className="hidden px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap lg:table-cell">
+			<td className="hidden px-4 py-3 text-sm text-th-text-muted whitespace-nowrap lg:table-cell">
 				{usage
 					? formatTokens(
 							usage.cumulative.input_tokens + usage.cumulative.output_tokens,
@@ -220,20 +220,20 @@ function AgentRow({
 			</td>
 
 			{/* Cache Hit */}
-			<td className="hidden px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap xl:table-cell">
+			<td className="hidden px-4 py-3 text-sm text-th-text-muted whitespace-nowrap xl:table-cell">
 				{usage ? formatCacheHit(usage) : dash}
 			</td>
 
 			{/* Working Directory */}
 			<td
-				className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+				className="px-4 py-3 text-sm text-th-text-muted"
 				title={workingDir}
 			>
 				<span className="font-mono text-xs">{displayDir}</span>
 			</td>
 
 			{/* Created */}
-			<td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+			<td className="px-4 py-3 text-sm text-th-text-muted whitespace-nowrap">
 				{formattedDate}
 			</td>
 
@@ -244,7 +244,7 @@ function AgentRow({
 						type="button"
 						aria-label={`View agent ${agent.name}`}
 						onClick={() => navigate(`/agents/${agent.id}`)}
-						className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-gray-700 dark:hover:text-primary-400"
+						className="rounded p-1.5 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text-link"
 					>
 						<Eye size={15} />
 					</button>
@@ -252,7 +252,7 @@ function AgentRow({
 						type="button"
 						aria-label={`Terminate agent ${agent.name}`}
 						onClick={() => onDelete(agent.id)}
-						className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+						className="rounded p-1.5 text-th-text-muted hover:bg-th-status-error-bg hover:text-th-status-error-text"
 					>
 						<Trash2 size={15} />
 					</button>
@@ -327,17 +327,17 @@ export function AgentTable({
 		: "This will permanently terminate this agent and all associated resources. This action cannot be undone.";
 
 	return (
-		<div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+		<div className="overflow-hidden rounded-lg border border-th-border">
 			{/* Bulk action toolbar */}
 			{someSelected && (
-				<div className="flex items-center gap-3 border-b border-gray-200 bg-primary-50 px-4 py-2.5 dark:border-gray-700 dark:bg-primary-900/20">
-					<span className="text-sm font-medium text-primary-700 dark:text-primary-300">
+				<div className="flex items-center gap-3 border-b border-th-border bg-th-accent/10 px-4 py-2.5">
+					<span className="text-sm font-medium text-th-text-link">
 						{selectedIds.length} selected
 					</span>
 					<button
 						type="button"
 						onClick={() => setBulkDeletePending(true)}
-						className="flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1"
+						className="flex items-center gap-1.5 rounded-md bg-th-status-error-dot px-3 py-1.5 text-xs font-medium text-th-accent-text hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1"
 					>
 						<Trash2 size={12} />
 						Terminate selected
@@ -345,7 +345,7 @@ export function AgentTable({
 					<button
 						type="button"
 						onClick={() => onSelectChange([])}
-						className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+						className="text-xs text-th-text-muted hover:text-th-text-secondary"
 					>
 						Clear selection
 					</button>
@@ -353,8 +353,8 @@ export function AgentTable({
 			)}
 
 			<div className="overflow-x-auto">
-				<table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-					<thead className="bg-gray-50 dark:bg-gray-800/50">
+				<table className="min-w-full divide-y divide-th-border">
+					<thead className="bg-th-surface-sunken">
 						<tr>
 							{/* Select all */}
 							<th className="w-10 px-4 py-3">
@@ -363,10 +363,10 @@ export function AgentTable({
 									aria-label="Select all agents"
 									checked={allSelected}
 									onChange={(e) => toggleAll(e.target.checked)}
-									className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+									className="h-4 w-4 rounded border-th-border-input text-th-accent focus:ring-th-focus-ring bg-th-input"
 								/>
 							</th>
-							<th className="px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400">
+							<th className="px-4 py-3 text-left text-xs text-th-text-muted">
 								<SortHeader
 									field="name"
 									label="Name"
@@ -375,7 +375,7 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400">
+							<th className="px-4 py-3 text-left text-xs text-th-text-muted">
 								<SortHeader
 									field="status"
 									label="Status"
@@ -384,10 +384,10 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+							<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
 								Model
 							</th>
-							<th className="hidden px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400 lg:table-cell">
+							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell">
 								<SortHeader
 									field="cost"
 									label="Cost"
@@ -396,7 +396,7 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="hidden px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400 lg:table-cell">
+							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell">
 								<SortHeader
 									field="tokens"
 									label="Tokens"
@@ -405,7 +405,7 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="hidden px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400 xl:table-cell">
+							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted xl:table-cell">
 								<SortHeader
 									field="cache"
 									label="Cache Hit"
@@ -414,10 +414,10 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+							<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
 								Working Directory
 							</th>
-							<th className="px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400">
+							<th className="px-4 py-3 text-left text-xs text-th-text-muted">
 								<SortHeader
 									field="created_at"
 									label="Created"
@@ -426,13 +426,13 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400">
+							<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
 								Actions
 							</th>
 						</tr>
 					</thead>
 
-					<tbody className="divide-y divide-gray-100 bg-white dark:divide-gray-700 dark:bg-gray-900">
+					<tbody className="divide-y divide-th-border bg-th-surface">
 						{loading ? (
 							<tr>
 								<td colSpan={10} className="p-4">

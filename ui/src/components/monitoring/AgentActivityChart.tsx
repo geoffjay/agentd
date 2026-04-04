@@ -89,15 +89,15 @@ export function AgentActivityChart({
 
 	return (
 		<div
-			className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5"
+			className="rounded-lg border border-th-border bg-th-surface p-5"
 			aria-label="Agent activity charts"
 		>
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+				<h3 className="text-sm font-semibold text-th-text">
 					Agent Activity
 				</h3>
 				<div
-					className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden"
+					className="flex items-center rounded-md border border-th-border overflow-hidden"
 					role="group"
 					aria-label="Chart view"
 				>
@@ -110,8 +110,8 @@ export function AgentActivityChart({
 							className={[
 								"flex items-center gap-1 px-2.5 py-1 text-xs transition-colors",
 								view === v.value
-									? "bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 font-medium"
-									: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+									? "bg-th-accent-subtle text-th-text-link font-medium"
+									: "text-th-text-muted hover:text-th-text",
 							].join(" ")}
 						>
 							{v.icon}
@@ -209,7 +209,7 @@ export function AgentActivityChart({
 					{Object.entries(STATUS_COLORS).map(([status, color]) => (
 						<span
 							key={status}
-							className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"
+							className="flex items-center gap-1 text-xs text-th-text-muted"
 						>
 							<span
 								className="h-2 w-2 rounded-full flex-shrink-0"

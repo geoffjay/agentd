@@ -61,8 +61,8 @@ export function ConfirmDialog({
 
 	const confirmClasses =
 		variant === "danger"
-			? "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500"
-			: "bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500";
+			? "bg-th-status-error-dot text-th-accent-text hover:opacity-90 focus:ring-th-focus-ring"
+			: "bg-th-accent text-th-accent-text hover:bg-th-accent-hover focus:ring-th-focus-ring";
 
 	return (
 		/* Backdrop */
@@ -72,7 +72,7 @@ export function ConfirmDialog({
 		>
 			{/* Overlay */}
 			<div
-				className="absolute inset-0 bg-black/50"
+				className="absolute inset-0 bg-th-overlay"
 				aria-hidden="true"
 				onClick={onCancel}
 			/>
@@ -83,14 +83,14 @@ export function ConfirmDialog({
 				aria-modal="true"
 				aria-labelledby="confirm-dialog-title"
 				aria-describedby={description ? "confirm-dialog-desc" : undefined}
-				className="relative rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+				className="relative rounded-lg bg-th-surface p-6 shadow-xl"
 			>
 				{/* Close button */}
 				<button
 					type="button"
 					aria-label="Close dialog"
 					onClick={onCancel}
-					className="absolute right-4 top-4 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+					className="absolute right-4 top-4 rounded-md p-1 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text"
 				>
 					<X size={16} />
 				</button>
@@ -98,7 +98,7 @@ export function ConfirmDialog({
 				{/* Title */}
 				<h2
 					id="confirm-dialog-title"
-					className="text-base font-semibold text-gray-900 dark:text-white"
+					className="text-base font-semibold text-th-text"
 				>
 					{title}
 				</h2>
@@ -107,7 +107,7 @@ export function ConfirmDialog({
 				{description && (
 					<p
 						id="confirm-dialog-desc"
-						className="mt-2 text-sm text-gray-500 dark:text-gray-400"
+						className="mt-2 text-sm text-th-text-muted"
 					>
 						{description}
 					</p>
@@ -120,7 +120,7 @@ export function ConfirmDialog({
 						type="button"
 						onClick={onCancel}
 						disabled={loading}
-						className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+						className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 disabled:opacity-50"
 					>
 						{cancelLabel}
 					</button>

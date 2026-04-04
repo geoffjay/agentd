@@ -18,27 +18,23 @@ const CATEGORY_META: Record<
 > = {
 	agent: {
 		label: "Agent",
-		iconEl: <Bot size={16} className="text-primary-400" />,
-		badgeClass:
-			"bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300",
+		iconEl: <Bot size={16} className="text-th-text-link" />,
+		badgeClass: "bg-th-accent/10 text-th-text-link",
 	},
 	notification: {
 		label: "Notification",
-		iconEl: <Bell size={16} className="text-yellow-400" />,
-		badgeClass:
-			"bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
+		iconEl: <Bell size={16} className="text-th-status-warning-text" />,
+		badgeClass: "bg-th-status-warning-bg text-th-status-warning-text",
 	},
 	action: {
 		label: "Action",
-		iconEl: <Zap size={16} className="text-green-400" />,
-		badgeClass:
-			"bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+		iconEl: <Zap size={16} className="text-th-status-success-text" />,
+		badgeClass: "bg-th-status-success-bg text-th-status-success-text",
 	},
 	memory: {
 		label: "Memory",
-		iconEl: <Brain size={16} className="text-purple-400" />,
-		badgeClass:
-			"bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+		iconEl: <Brain size={16} className="text-th-status-info-text" />,
+		badgeClass: "bg-th-status-info-bg text-th-status-info-text",
 	},
 };
 
@@ -81,13 +77,13 @@ export function SearchResultItem({
 				className={[
 					"flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors",
 					isActive
-						? "bg-primary-50 dark:bg-primary-900/20"
-						: "hover:bg-gray-50 dark:hover:bg-gray-800",
+						? "bg-th-accent/10"
+						: "hover:bg-th-surface-hover",
 				].join(" ")}
 			>
 				{/* Category icon */}
 				<span
-					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700"
+					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-th-surface-sunken"
 					aria-hidden="true"
 				>
 					{meta.iconEl}
@@ -95,10 +91,10 @@ export function SearchResultItem({
 
 				{/* Text */}
 				<span className="min-w-0 flex-1">
-					<span className="block truncate text-sm font-medium text-gray-900 dark:text-white">
+					<span className="block truncate text-sm font-medium text-th-text">
 						{result.title}
 					</span>
-					<span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+					<span className="block truncate text-xs text-th-text-muted">
 						{result.subtitle}
 					</span>
 				</span>
@@ -116,7 +112,7 @@ export function SearchResultItem({
 				{/* Arrow hint */}
 				<ChevronRight
 					size={14}
-					className="shrink-0 text-gray-300 dark:text-gray-600"
+					className="shrink-0 text-th-text-faint"
 					aria-hidden="true"
 				/>
 			</div>

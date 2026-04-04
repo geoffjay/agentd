@@ -23,10 +23,10 @@ import type { Notification } from "@/types/notify";
 // ---------------------------------------------------------------------------
 
 const PRIORITY_BORDER: Record<string, string> = {
-	low: "border-l-blue-500",
-	normal: "border-l-green-500",
-	high: "border-l-orange-500",
-	urgent: "border-l-red-500",
+	low: "border-l-th-status-info-dot",
+	normal: "border-l-th-status-success-dot",
+	high: "border-l-th-status-warning-dot",
+	urgent: "border-l-th-status-error-dot",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -37,10 +37,10 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const SOURCE_COLORS: Record<string, string> = {
-	system: "bg-gray-700 text-gray-300",
-	ask_service: "bg-blue-900/50 text-blue-300",
-	agent_hook: "bg-purple-900/50 text-purple-300",
-	monitor_service: "bg-teal-900/50 text-teal-300",
+	system: "bg-th-surface-sunken text-th-text-secondary",
+	ask_service: "bg-th-status-info-bg text-th-status-info-text",
+	agent_hook: "bg-th-status-info-bg text-th-status-info-text",
+	monitor_service: "bg-th-status-info-bg text-th-status-info-text",
 };
 
 function formatRelativeTime(dateStr: string): string {
@@ -92,7 +92,7 @@ export function NotificationCard({
 }: NotificationCardProps) {
 	const [expanded, setExpanded] = useState(false);
 	const borderClass =
-		PRIORITY_BORDER[notification.priority] ?? "border-l-gray-500";
+		PRIORITY_BORDER[notification.priority] ?? "border-l-th-border-strong";
 	const isEphemeral = notification.lifetime.type === "ephemeral";
 	const expiresAt = isEphemeral
 		? (notification.lifetime as { type: "ephemeral"; expires_at: string })
@@ -107,9 +107,9 @@ export function NotificationCard({
 		<article
 			aria-label={`Notification: ${notification.title}`}
 			className={[
-				"rounded-lg border border-gray-700 bg-gray-800 border-l-4 transition-opacity",
+				"rounded-lg border border-th-border bg-th-surface border-l-4 transition-opacity",
 				borderClass,
-				selected ? "ring-2 ring-primary-500" : "",
+				selected ? "ring-2 ring-th-focus-ring" : "",
 				isDone ? "opacity-70" : "",
 			]
 				.filter(Boolean)
@@ -123,7 +123,7 @@ export function NotificationCard({
 						aria-label={`Select notification: ${notification.title}`}
 						checked={selected}
 						onChange={() => onToggleSelect(notification.id)}
-						className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-primary-500 focus:ring-primary-500 shrink-0"
+						className="mt-0.5 h-4 w-4 rounded border-th-border bg-th-input text-th-accent focus:ring-th-focus-ring shrink-0"
 					/>
 				)}
 
@@ -131,7 +131,7 @@ export function NotificationCard({
 				<div className="min-w-0 flex-1">
 					{/* Top row: title + badges */}
 					<div className="flex flex-wrap items-start gap-2">
-						<span className="font-semibold text-white text-sm leading-tight flex-1 min-w-0">
+						<span className="font-semibold text-th-text text-sm leading-tight flex-1 min-w-0">
 							{notification.title}
 						</span>
 
@@ -140,7 +140,7 @@ export function NotificationCard({
 							className={[
 								"shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
 								SOURCE_COLORS[notification.source.type] ??
-									"bg-gray-700 text-gray-300",
+									"bg-th-surface-sunken text-th-text-secondary",
 							].join(" ")}
 						>
 							{SOURCE_LABELS[notification.source.type] ??
@@ -152,26 +152,26 @@ export function NotificationCard({
 					</div>
 
 					{/* Meta row: timestamp + lifetime */}
-					<div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-400">
+					<div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-th-text-muted">
 						<span className="flex items-center gap-1">
 							<Clock size={11} aria-hidden="true" />
 							{formatRelativeTime(notification.created_at)}
 						</span>
 
 						{isEphemeral && expiresAt ? (
-							<span className="flex items-center gap-1 text-amber-400">
+							<span className="flex items-center gap-1 text-th-status-warning-text">
 								<Timer size={11} aria-hidden="true" />
 								{formatCountdown(expiresAt)}
 							</span>
 						) : (
-							<span className="flex items-center gap-1 text-gray-500">
+							<span className="flex items-center gap-1 text-th-text-muted">
 								<InfinityIcon size={11} aria-hidden="true" />
 								Persistent
 							</span>
 						)}
 
 						{/* Priority label */}
-						<span className="capitalize text-gray-500">
+						<span className="capitalize text-th-text-muted">
 							{notification.priority}
 						</span>
 					</div>
@@ -182,7 +182,7 @@ export function NotificationCard({
 						aria-expanded={expanded}
 						aria-controls={`notif-msg-${notification.id}`}
 						onClick={() => setExpanded((v) => !v)}
-						className="mt-1 flex items-center gap-1 text-xs text-gray-400 hover:text-gray-300"
+						className="mt-1 flex items-center gap-1 text-xs text-th-text-muted hover:text-th-text-secondary"
 					>
 						{expanded ? (
 							<ChevronDown size={12} aria-hidden="true" />
@@ -196,7 +196,7 @@ export function NotificationCard({
 					{expanded && (
 						<p
 							id={`notif-msg-${notification.id}`}
-							className="mt-2 rounded bg-gray-900 p-3 text-xs text-gray-300 whitespace-pre-wrap"
+							className="mt-2 rounded bg-th-surface-sunken p-3 text-xs text-th-text-secondary whitespace-pre-wrap"
 						>
 							{notification.message}
 						</p>
@@ -204,8 +204,8 @@ export function NotificationCard({
 
 					{/* Response (if already responded) */}
 					{notification.status === "responded" && notification.response && (
-						<div className="mt-2 rounded bg-gray-900/60 p-2 text-xs text-gray-400">
-							<span className="font-semibold text-gray-300">Response:</span>{" "}
+						<div className="mt-2 rounded bg-th-surface-sunken p-2 text-xs text-th-text-muted">
+							<span className="font-semibold text-th-text-secondary">Response:</span>{" "}
 							{notification.response}
 						</div>
 					)}
@@ -217,7 +217,7 @@ export function NotificationCard({
 								type="button"
 								disabled={busy}
 								onClick={() => onView(notification.id)}
-								className="rounded px-2.5 py-1 text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 transition-colors"
+								className="rounded px-2.5 py-1 text-xs font-medium bg-th-surface-sunken text-th-text-secondary hover:bg-th-surface-hover disabled:opacity-50 transition-colors"
 							>
 								Mark Viewed
 							</button>
@@ -230,7 +230,7 @@ export function NotificationCard({
 									type="button"
 									disabled={busy}
 									onClick={() => onRespond(notification)}
-									className="rounded px-2.5 py-1 text-xs font-medium bg-primary-700 text-white hover:bg-primary-600 disabled:opacity-50 transition-colors"
+									className="rounded px-2.5 py-1 text-xs font-medium bg-th-accent text-th-accent-text hover:bg-th-accent-hover disabled:opacity-50 transition-colors"
 								>
 									Respond
 								</button>
@@ -242,7 +242,7 @@ export function NotificationCard({
 								type="button"
 								disabled={busy}
 								onClick={() => onDismiss(notification.id)}
-								className="rounded px-2.5 py-1 text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-50 transition-colors"
+								className="rounded px-2.5 py-1 text-xs font-medium bg-th-surface-sunken text-th-text-secondary hover:bg-th-surface-hover disabled:opacity-50 transition-colors"
 							>
 								Dismiss
 							</button>
@@ -252,7 +252,7 @@ export function NotificationCard({
 							type="button"
 							disabled={busy}
 							onClick={() => onDelete(notification.id)}
-							className="rounded px-2.5 py-1 text-xs font-medium bg-red-900/40 text-red-400 hover:bg-red-900/70 disabled:opacity-50 transition-colors"
+							className="rounded px-2.5 py-1 text-xs font-medium bg-th-status-error-bg text-th-status-error-text hover:opacity-90 disabled:opacity-50 transition-colors"
 						>
 							Delete
 						</button>

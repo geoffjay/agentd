@@ -52,18 +52,18 @@ export function NotificationMetricsChart({
 
 	return (
 		<div
-			className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5"
+			className="rounded-lg border border-th-border bg-th-surface p-5"
 			aria-label="Notification metrics"
 		>
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+				<h3 className="text-sm font-semibold text-th-text">
 					Notification Breakdown
 				</h3>
 				<div className="text-right">
-					<p className="text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
+					<p className="text-lg font-semibold tabular-nums text-th-text">
 						{counts.total}
 					</p>
-					<p className="text-xs text-gray-400 dark:text-gray-500">total</p>
+					<p className="text-xs text-th-text-faint">total</p>
 				</div>
 			</div>
 
@@ -104,7 +104,7 @@ export function NotificationMetricsChart({
 								className="h-2 w-2 rounded-full flex-shrink-0"
 								style={{ background: color }}
 							/>
-							<span className="text-xs text-gray-500 dark:text-gray-400">
+							<span className="text-xs text-th-text-muted">
 								{counts[priority as keyof Omit<NotificationCounts, "total">]}{" "}
 								{priority}
 							</span>
@@ -114,7 +114,7 @@ export function NotificationMetricsChart({
 			)}
 
 			{!loading && activeCount === 0 && (
-				<p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+				<p className="mt-2 text-xs text-th-text-faint">
 					No active notifications
 				</p>
 			)}

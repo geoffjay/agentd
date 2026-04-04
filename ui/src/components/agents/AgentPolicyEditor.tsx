@@ -65,7 +65,7 @@ function buildPolicy(mode: PolicyType, toolsStr: string): ToolPolicy {
 }
 
 const inputCls =
-	"block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white";
+	"block w-full rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text focus:border-th-border-focus focus:outline-none focus:ring-1 focus:ring-th-focus-ring";
 
 // ---------------------------------------------------------------------------
 // AgentPolicyEditor
@@ -94,7 +94,7 @@ export function AgentPolicyEditor({
 	return (
 		<div className="flex flex-col gap-3">
 			{error && (
-				<p role="alert" className="text-sm text-red-600 dark:text-red-400">
+				<p role="alert" className="text-sm text-th-status-error-text">
 					{error}
 				</p>
 			)}
@@ -103,7 +103,7 @@ export function AgentPolicyEditor({
 			<div>
 				<label
 					htmlFor="policy-type"
-					className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400"
+					className="mb-1 block text-xs font-medium text-th-text-muted"
 				>
 					Policy type
 				</label>
@@ -127,7 +127,7 @@ export function AgentPolicyEditor({
 				<div>
 					<label
 						htmlFor="policy-tools"
-						className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400"
+						className="mb-1 block text-xs font-medium text-th-text-muted"
 					>
 						Tool names (comma-separated)
 					</label>
@@ -149,7 +149,7 @@ export function AgentPolicyEditor({
 					type="button"
 					onClick={handleSave}
 					disabled={saving}
-					className="flex items-center gap-1.5 rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:opacity-50 transition-colors"
+					className="flex items-center gap-1.5 rounded-md bg-th-accent px-3 py-1.5 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1 disabled:opacity-50 transition-colors"
 				>
 					<Save size={14} aria-hidden="true" />
 					{saving ? "Saving…" : "Save Policy"}

@@ -91,7 +91,7 @@ export function AnswerDialog({
 		<>
 			{/* Backdrop */}
 			<div
-				className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+				className="fixed inset-0 z-40 bg-th-overlay backdrop-blur-sm"
 				aria-hidden="true"
 				onClick={onClose}
 			/>
@@ -104,12 +104,12 @@ export function AnswerDialog({
 				aria-labelledby="answer-dialog-title"
 				className="fixed inset-0 z-50 flex items-center justify-center p-4"
 			>
-				<div className="relative w-full max-w-lg rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+				<div className="relative w-full max-w-lg rounded-xl bg-th-surface shadow-xl border border-th-border p-6 space-y-4">
 					{/* Close button */}
 					<button
 						type="button"
 						onClick={onClose}
-						className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+						className="absolute right-4 top-4 text-th-text-muted hover:text-th-text transition-colors"
 						aria-label="Close answer dialog"
 					>
 						<X size={18} />
@@ -117,46 +117,46 @@ export function AnswerDialog({
 
 					{/* Title */}
 					<div className="flex items-center gap-2.5">
-						<div className="flex h-9 w-9 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
+						<div className="flex h-9 w-9 items-center justify-center rounded-full bg-th-status-warning-bg">
 							<MessageSquare
 								size={17}
-								className="text-yellow-600 dark:text-yellow-400"
+								className="text-th-status-warning-text"
 							/>
 						</div>
 						<div>
 							<h2
 								id="answer-dialog-title"
-								className="text-base font-semibold text-gray-900 dark:text-white"
+								className="text-base font-semibold text-th-text"
 							>
 								Answer Question
 							</h2>
-							<p className="text-xs text-gray-400 dark:text-gray-500">
+							<p className="text-xs text-th-text-faint">
 								From {checkLabel}
 							</p>
 						</div>
 					</div>
 
 					{/* Context */}
-					<div className="rounded-md bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700 p-3 space-y-1.5 text-xs">
+					<div className="rounded-md bg-th-surface-sunken border border-th-border p-3 space-y-1.5 text-xs">
 						<div className="flex justify-between">
-							<span className="text-gray-400 dark:text-gray-500">
+							<span className="text-th-text-faint">
 								Check type
 							</span>
-							<span className="font-medium text-gray-700 dark:text-gray-300">
+							<span className="font-medium text-th-text-secondary">
 								{question.check_type}
 							</span>
 						</div>
 						<div className="flex justify-between">
-							<span className="text-gray-400 dark:text-gray-500">Asked at</span>
-							<span className="font-medium text-gray-700 dark:text-gray-300">
+							<span className="text-th-text-faint">Asked at</span>
+							<span className="font-medium text-th-text-secondary">
 								{new Date(question.asked_at).toLocaleString()}
 							</span>
 						</div>
 						<div className="flex justify-between">
-							<span className="text-gray-400 dark:text-gray-500">
+							<span className="text-th-text-faint">
 								Notification
 							</span>
-							<span className="font-mono font-medium text-gray-700 dark:text-gray-300 truncate max-w-[180px]">
+							<span className="font-mono font-medium text-th-text-secondary truncate max-w-[180px]">
 								{question.notification_id}
 							</span>
 						</div>
@@ -164,7 +164,7 @@ export function AnswerDialog({
 
 					{/* Quick answers */}
 					<div className="space-y-1.5">
-						<p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
+						<p className="text-xs font-medium text-th-text-muted flex items-center gap-1">
 							<Zap size={11} /> Quick answers
 						</p>
 						<div className="flex flex-wrap gap-2">
@@ -174,7 +174,7 @@ export function AnswerDialog({
 									type="button"
 									disabled={answering}
 									onClick={() => handleQuickAnswer(qa.value)}
-									className="rounded-full border border-gray-200 dark:border-gray-600 px-3 py-1 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+									className="rounded-full border border-th-border px-3 py-1 text-xs text-th-text-secondary hover:bg-th-surface-hover disabled:opacity-50 transition-colors"
 								>
 									{qa.label}
 								</button>
@@ -187,7 +187,7 @@ export function AnswerDialog({
 						<div>
 							<label
 								htmlFor="answer-input"
-								className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+								className="block text-xs font-medium text-th-text-secondary mb-1"
 							>
 								Custom answer
 							</label>
@@ -199,13 +199,13 @@ export function AnswerDialog({
 								onChange={(e) => setAnswer(e.target.value)}
 								placeholder="Type your answer…"
 								disabled={answering}
-								className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 resize-none"
+								className="w-full rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text placeholder:text-th-text-faint focus:outline-none focus:ring-2 focus:ring-th-focus-ring disabled:opacity-50 resize-none"
 							/>
 						</div>
 
 						{/* Error */}
 						{answerError && (
-							<p className="text-xs text-red-600 dark:text-red-400">
+							<p className="text-xs text-th-status-error-text">
 								{answerError}
 							</p>
 						)}
@@ -216,14 +216,14 @@ export function AnswerDialog({
 								type="button"
 								onClick={onClose}
 								disabled={answering}
-								className="rounded-md border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+								className="rounded-md border border-th-border px-4 py-2 text-sm text-th-text-muted hover:bg-th-surface-hover disabled:opacity-50 transition-colors"
 							>
 								Cancel
 							</button>
 							<button
 								type="submit"
 								disabled={!answer.trim() || answering}
-								className="rounded-md bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 text-sm font-medium text-white transition-colors"
+								className="rounded-md bg-th-accent hover:bg-th-accent-hover disabled:opacity-50 px-4 py-2 text-sm font-medium text-th-accent-text transition-colors"
 							>
 								{answering ? "Submitting…" : "Submit Answer"}
 							</button>

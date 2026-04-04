@@ -96,26 +96,26 @@ export function PromptTemplateEditor({
 				placeholder={DEFAULT_TEMPLATE}
 				className={[
 					"w-full rounded-md border px-3 py-2 text-sm font-mono",
-					"bg-white dark:bg-gray-900",
-					"text-gray-900 dark:text-white",
-					"placeholder:text-gray-400 dark:placeholder:text-gray-600",
-					"focus:outline-none focus:ring-2 focus:ring-primary-500",
+					"bg-th-input",
+					"text-th-text",
+					"placeholder:text-th-text-faint",
+					"focus:outline-none focus:ring-2 focus:ring-th-focus-ring",
 					"disabled:cursor-not-allowed disabled:opacity-50",
 					error
-						? "border-red-400 dark:border-red-500"
-						: "border-gray-300 dark:border-gray-600",
+						? "border-th-status-error-border"
+						: "border-th-border-input",
 				].join(" ")}
 			/>
 			{error && (
-				<p className="text-xs text-red-500 dark:text-red-400">{error}</p>
+				<p className="text-xs text-th-status-error-text">{error}</p>
 			)}
 
 			{/* Available variables */}
-			<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+			<div className="rounded-md border border-th-border overflow-hidden">
 				<button
 					type="button"
 					onClick={() => setShowVars((v) => !v)}
-					className="flex w-full items-center justify-between px-3 py-2 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+					className="flex w-full items-center justify-between px-3 py-2 text-xs text-th-text-muted hover:bg-th-surface-hover transition-colors"
 				>
 					<span className="flex items-center gap-1.5">
 						<Info size={12} />
@@ -125,7 +125,7 @@ export function PromptTemplateEditor({
 				</button>
 
 				{showVars && (
-					<div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2">
+					<div className="border-t border-th-border bg-th-surface-sunken px-3 py-2">
 						<div className="flex flex-wrap gap-2">
 							{TEMPLATE_VARS.map((v) => (
 								<button
@@ -134,7 +134,7 @@ export function PromptTemplateEditor({
 									onClick={() => insertVariable(v.name)}
 									disabled={disabled}
 									title={`${v.description} — click to insert`}
-									className="inline-flex items-center gap-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-0.5 font-mono text-xs text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+									className="inline-flex items-center gap-1 rounded border border-th-border bg-th-surface px-2 py-0.5 font-mono text-xs text-th-text-link hover:bg-th-accent-subtle transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 								>
 									{v.name}
 								</button>
@@ -145,15 +145,15 @@ export function PromptTemplateEditor({
 								{TEMPLATE_VARS.map((v) => (
 									<tr
 										key={v.name}
-										className="border-t border-gray-100 dark:border-gray-700"
+										className="border-t border-th-border-subtle"
 									>
-										<td className="py-1 pr-3 font-mono text-primary-600 dark:text-primary-400 whitespace-nowrap">
+										<td className="py-1 pr-3 font-mono text-th-text-link whitespace-nowrap">
 											{v.name}
 										</td>
-										<td className="py-1 pr-3 text-gray-600 dark:text-gray-400">
+										<td className="py-1 pr-3 text-th-text-muted">
 											{v.description}
 										</td>
-										<td className="py-1 text-gray-400 dark:text-gray-500 italic">
+										<td className="py-1 text-th-text-faint italic">
 											{v.sample}
 										</td>
 									</tr>
@@ -166,18 +166,18 @@ export function PromptTemplateEditor({
 
 			{/* Preview */}
 			{hasValue && (
-				<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+				<div className="rounded-md border border-th-border overflow-hidden">
 					<button
 						type="button"
 						onClick={() => setShowPreview((v) => !v)}
-						className="flex w-full items-center justify-between px-3 py-2 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+						className="flex w-full items-center justify-between px-3 py-2 text-xs text-th-text-muted hover:bg-th-surface-hover transition-colors"
 					>
 						<span>Preview with sample data</span>
 						{showPreview ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
 					</button>
 
 					{showPreview && (
-						<div className="border-t border-gray-200 dark:border-gray-700">
+						<div className="border-t border-th-border">
 							<HighlightedCode
 								code={preview}
 								language="markdown"

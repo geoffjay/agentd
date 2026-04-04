@@ -57,7 +57,7 @@ export function HighlightedCode({
 
 	if (!code || code.trim().length === 0) {
 		return (
-			<span className="text-xs italic text-gray-400 dark:text-gray-600">
+			<span className="text-xs italic text-th-text-muted">
 				No content
 			</span>
 		);

@@ -68,7 +68,7 @@ export interface NotificationFiltersProps {
 }
 
 const selectClass =
-	"rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500";
+	"rounded-md border border-th-border-input bg-th-input px-3 py-1.5 text-sm text-th-text focus:outline-none focus:ring-2 focus:ring-th-focus-ring";
 
 export function NotificationFilters({
 	filters,
@@ -162,7 +162,7 @@ export function NotificationFilters({
 				<button
 					type="button"
 					onClick={resetFilters}
-					className="rounded-md px-2.5 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+					className="rounded-md px-2.5 py-1.5 text-xs font-medium text-th-text-muted hover:text-th-text hover:bg-th-surface-hover transition-colors"
 				>
 					Reset filters
 				</button>

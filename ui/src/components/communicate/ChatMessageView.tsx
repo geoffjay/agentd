@@ -35,8 +35,8 @@ function SenderAvatar({ kind }: { kind: ParticipantKind }) {
 	return (
 		<div
 			className={[
-				"flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white",
-				kind === "agent" ? "bg-primary-600" : "bg-emerald-600",
+				"flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-th-accent-text",
+				kind === "agent" ? "bg-th-accent" : "bg-th-status-success-dot",
 			].join(" ")}
 			aria-hidden="true"
 		>
@@ -55,8 +55,8 @@ function KindBadge({ kind }: { kind: ParticipantKind }) {
 			className={[
 				"rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
 				kind === "agent"
-					? "bg-primary-900 text-primary-300"
-					: "bg-emerald-900 text-emerald-300",
+					? "bg-th-accent/10 text-th-text-link"
+					: "bg-th-status-success-bg text-th-status-success-text",
 			].join(" ")}
 		>
 			{kind}
@@ -81,18 +81,18 @@ function MessageBubble({ message, replyToMessage }: MessageBubbleProps) {
 			<div className="min-w-0 flex-1">
 				{/* Header */}
 				<div className="flex items-center gap-2 mb-1">
-					<span className="text-sm font-semibold text-white">
+					<span className="text-sm font-semibold text-th-text">
 						{message.sender_name}
 					</span>
 					<KindBadge kind={message.sender_kind} />
-					<span className="text-xs text-gray-500">
+					<span className="text-xs text-th-text-muted">
 						{formatTime(message.created_at)}
 					</span>
 				</div>
 
 				{/* Reply indicator */}
 				{replyToMessage && (
-					<div className="mb-1 flex items-center gap-1.5 rounded-md border-l-2 border-gray-500 bg-gray-700/50 px-2 py-1 text-xs text-gray-400">
+					<div className="mb-1 flex items-center gap-1.5 rounded-md border-l-2 border-th-border-strong bg-th-surface-raised/50 px-2 py-1 text-xs text-th-text-muted">
 						<CornerUpLeft size={12} className="shrink-0" />
 						<span className="font-medium">{replyToMessage.sender_name}</span>
 						<span className="truncate">{replyToMessage.content}</span>
@@ -100,7 +100,7 @@ function MessageBubble({ message, replyToMessage }: MessageBubbleProps) {
 				)}
 
 				{/* Content */}
-				<p className="whitespace-pre-wrap break-words text-sm text-gray-200 leading-relaxed">
+				<p className="whitespace-pre-wrap break-words text-sm text-th-text leading-relaxed">
 					{message.content}
 				</p>
 			</div>
@@ -180,7 +180,7 @@ export function ChatMessageView({
 	if (loading) {
 		return (
 			<div className="flex flex-1 items-center justify-center">
-				<Loader2 size={24} className="animate-spin text-gray-400" />
+				<Loader2 size={24} className="animate-spin text-th-text-muted" />
 			</div>
 		);
 	}
@@ -188,7 +188,7 @@ export function ChatMessageView({
 	if (messages.length === 0) {
 		return (
 			<div className="flex flex-1 items-center justify-center">
-				<p className="text-sm text-gray-500">
+				<p className="text-sm text-th-text-muted">
 					No messages yet. Start the conversation!
 				</p>
 			</div>
@@ -207,11 +207,11 @@ export function ChatMessageView({
 			{/* Load older indicator */}
 			{loadingOlder && (
 				<div className="flex justify-center py-2">
-					<Loader2 size={16} className="animate-spin text-gray-400" />
+					<Loader2 size={16} className="animate-spin text-th-text-muted" />
 				</div>
 			)}
 			{!hasMore && messages.length > 0 && (
-				<p className="text-center text-xs text-gray-600 py-1">
+				<p className="text-center text-xs text-th-text-muted py-1">
 					Beginning of conversation
 				</p>
 			)}

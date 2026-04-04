@@ -43,10 +43,10 @@ const TYPE_OPTIONS: Array<{ value: MemoryType | ""; label: string }> = [
 const LIMIT_OPTIONS = [5, 10, 20, 50];
 
 const selectClass =
-	"rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500";
+	"rounded-md border border-th-border-input bg-th-input px-3 py-1.5 text-sm text-th-text-secondary focus:outline-none focus:ring-2 focus:ring-th-focus-ring";
 
 const inputClass =
-	"rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500";
+	"rounded-md border border-th-border-input bg-th-input px-3 py-1.5 text-sm text-th-text-secondary placeholder-th-text-faint focus:outline-none focus:ring-2 focus:ring-th-focus-ring";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -117,7 +117,7 @@ export function MemorySearch({
 				<div className="relative flex-1">
 					<Search
 						size={16}
-						className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+						className="absolute left-3 top-1/2 -translate-y-1/2 text-th-text-muted"
 						aria-hidden="true"
 					/>
 					<input
@@ -127,7 +127,7 @@ export function MemorySearch({
 						onKeyDown={handleKeyDown}
 						placeholder="Semantic search across memories…"
 						aria-label="Semantic search query"
-						className="w-full rounded-md border border-gray-600 bg-gray-800 pl-9 pr-3 py-2 text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+						className="w-full rounded-md border border-th-border-input bg-th-input pl-9 pr-3 py-2 text-sm text-th-text-secondary placeholder-th-text-faint focus:outline-none focus:ring-2 focus:ring-th-focus-ring"
 					/>
 				</div>
 
@@ -135,7 +135,7 @@ export function MemorySearch({
 					type="button"
 					onClick={handleSearch}
 					disabled={!query.trim() || searching}
-					className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-500 disabled:opacity-50 transition-colors"
+					className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover disabled:opacity-50 transition-colors"
 				>
 					{searching ? (
 						<Loader2 size={16} className="animate-spin" />
@@ -149,7 +149,7 @@ export function MemorySearch({
 						type="button"
 						onClick={handleClear}
 						aria-label="Clear search"
-						className="rounded-md p-2 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+						className="rounded-md p-2 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text transition-colors"
 					>
 						<X size={16} />
 					</button>
@@ -161,7 +161,7 @@ export function MemorySearch({
 				type="button"
 				onClick={() => setShowAdvanced((v) => !v)}
 				aria-expanded={showAdvanced}
-				className="mb-3 flex items-center gap-1 text-xs text-gray-400 hover:text-gray-300"
+				className="mb-3 flex items-center gap-1 text-xs text-th-text-muted hover:text-th-text-secondary"
 			>
 				{showAdvanced ? (
 					<ChevronDown size={12} aria-hidden="true" />
@@ -173,7 +173,7 @@ export function MemorySearch({
 
 			{/* Advanced filters panel */}
 			{showAdvanced && (
-				<div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/50 p-3">
+				<div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-th-border-nav bg-th-surface-raised p-3">
 					{/* Type filter */}
 					<select
 						aria-label="Filter by type"
@@ -237,7 +237,7 @@ export function MemorySearch({
 				<button
 					type="button"
 					onClick={handleBackToList}
-					className="text-xs text-primary-400 hover:text-primary-300 transition-colors"
+					className="text-xs text-th-text-link hover:opacity-80 transition-colors"
 				>
 					← Back to memory list
 				</button>
@@ -245,7 +245,7 @@ export function MemorySearch({
 
 			{/* Search loading */}
 			{searching && (
-				<div className="flex items-center justify-center gap-2 py-12 text-sm text-gray-400">
+				<div className="flex items-center justify-center gap-2 py-12 text-sm text-th-text-muted">
 					<Loader2 size={16} className="animate-spin" />
 					Searching memories…
 				</div>
@@ -253,7 +253,7 @@ export function MemorySearch({
 
 			{/* Search error */}
 			{!searching && error && (
-				<div className="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+				<div className="rounded-lg border border-th-status-error-border bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text">
 					{error}
 				</div>
 			)}
@@ -263,11 +263,11 @@ export function MemorySearch({
 				<div className="py-12 text-center">
 					<Search
 						size={32}
-						className="mx-auto mb-3 text-gray-600"
+						className="mx-auto mb-3 text-th-text-faint"
 						aria-hidden="true"
 					/>
-					<p className="text-gray-400">No matching memories found</p>
-					<p className="mt-1 text-xs text-gray-600">
+					<p className="text-th-text-muted">No matching memories found</p>
+					<p className="mt-1 text-xs text-th-text-faint">
 						Try a different query or adjust the advanced filters.
 					</p>
 				</div>
@@ -276,7 +276,7 @@ export function MemorySearch({
 			{/* Search results */}
 			{!searching && results.length > 0 && (
 				<>
-					<div className="mb-3 text-xs text-gray-500">
+					<div className="mb-3 text-xs text-th-text-muted">
 						{total} result{total !== 1 ? "s" : ""} for &ldquo;{query}&rdquo;
 					</div>
 					<ul className="space-y-3" aria-label="Search results">
@@ -298,11 +298,11 @@ export function MemorySearch({
 				<div className="py-12 text-center">
 					<Search
 						size={32}
-						className="mx-auto mb-3 text-gray-600"
+						className="mx-auto mb-3 text-th-text-faint"
 						aria-hidden="true"
 					/>
-					<p className="text-gray-400">Enter a query to search memories</p>
-					<p className="mt-1 text-xs text-gray-600">
+					<p className="text-th-text-muted">Enter a query to search memories</p>
+					<p className="mt-1 text-xs text-th-text-faint">
 						Uses semantic similarity to find the most relevant memories.
 					</p>
 				</div>

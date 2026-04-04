@@ -81,16 +81,16 @@ export function AppShell() {
 					closeSearch,
 				}}
 			>
-				<div className="min-h-screen pt-2 pr-2 pb-2 bg-gray-900 transition-colors duration-150">
+				<div className="min-h-screen pt-2 pr-2 pb-2 bg-th-nav transition-colors duration-150">
 					<SkipNav />
 					<Sidebar />
 					<div
 						className={[
 							"max-h-[calc(100vh-1rem)]",
 							"overflow-y-auto",
-							"bg-gray-100 dark:bg-gray-800",
+							"bg-th-surface-sunken",
 							"transition-all duration-300 ease-in-out",
-							"border border-gray-400 dark:border-gray-600",
+							"border border-th-border-strong",
 							"rounded-xl",
 							// On large screens, shift right by sidebar width
 							sidebarOpen ? "lg:ml-60" : "lg:ml-16",

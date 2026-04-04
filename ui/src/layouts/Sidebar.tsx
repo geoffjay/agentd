@@ -103,10 +103,10 @@ function NavLink({
 			aria-label={collapsed ? item.label : undefined}
 			aria-current={isActive ? "page" : undefined}
 			className={[
-				"flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+				"flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium transition-colors",
 				isActive
-					? "bg-primary-700 text-white"
-					: "text-gray-400 hover:bg-gray-700 hover:text-white",
+					? "bg-th-nav-active text-th-text-nav-active"
+					: "text-th-text-nav hover:bg-th-nav-hover hover:text-th-text-nav-active",
 				collapsed ? "justify-center px-2" : "",
 			]
 				.filter(Boolean)
@@ -163,7 +163,7 @@ export function Sidebar() {
 			{sidebarOpen && (
 				<div
 					aria-hidden="true"
-					className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+					className="fixed inset-0 z-30 bg-th-overlay lg:hidden"
 					onClick={() => setSidebarOpen(false)}
 				/>
 			)}
@@ -172,7 +172,7 @@ export function Sidebar() {
 			<aside
 				aria-label="Sidebar navigation"
 				className={[
-					"fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-900 transition-all duration-300 ease-in-out",
+					"fixed inset-y-0 left-0 z-40 flex flex-col bg-th-nav transition-all duration-300 ease-in-out",
 					// Width: collapsed = 64px, expanded = 240px
 					sidebarOpen ? "w-60" : "w-16",
 					// On mobile: slide in/out from left
@@ -185,10 +185,10 @@ export function Sidebar() {
 				<div className="flex h-16 shrink-0 items-center gap-2 px-4">
 					<Link
 						to="/"
-						className="flex items-center gap-2 text-lg m-auto font-semibold text-white hover:text-primary-400"
+						className="flex items-center gap-2 text-lg m-auto font-semibold text-th-text-nav-active hover:text-th-text-link"
 						aria-label="agentd home"
 					>
-						<Hexagon size={20} className="shrink-0 text-primary-400" />
+						<Hexagon size={20} className="shrink-0 text-th-text-link" />
 						{sidebarOpen && <span>agentd</span>}
 					</Link>
 					{/* Mobile close button */}
@@ -197,7 +197,7 @@ export function Sidebar() {
 							type="button"
 							aria-label="Close sidebar"
 							onClick={() => setSidebarOpen(false)}
-							className="rounded-md p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+							className="rounded-md p-1 text-th-text-nav hover:bg-th-nav-hover hover:text-th-text-nav-active"
 						>
 							<X size={18} />
 						</button>
@@ -225,16 +225,16 @@ export function Sidebar() {
 				</nav>
 
 				{/* Bottom section */}
-				<div className="border-t border-gray-700 px-3 py-3">
+				<div className="border-t border-th-border-nav px-3 py-3">
 					{sidebarOpen ? (
-						<div className="space-y-1 text-xs text-gray-500">
+						<div className="space-y-1 text-xs text-th-text-muted">
 							<p>v{APP_VERSION}</p>
 							<div className="flex gap-2">
 								<a
 									href="https://github.com/geoffjay/agentd"
 									target="_blank"
 									rel="noopener noreferrer"
-									className="hover:text-gray-300"
+									className="hover:text-th-text-secondary"
 								>
 									Docs
 								</a>
@@ -243,7 +243,7 @@ export function Sidebar() {
 									href="/api/orchestrator/health"
 									target="_blank"
 									rel="noopener noreferrer"
-									className="hover:text-gray-300"
+									className="hover:text-th-text-secondary"
 								>
 									Health
 								</a>
@@ -255,7 +255,7 @@ export function Sidebar() {
 							type="button"
 							aria-label="Expand sidebar"
 							onClick={toggleSidebar}
-							className="flex w-full justify-center rounded-md p-1 text-gray-500 hover:bg-gray-700 hover:text-white"
+							className="flex w-full justify-center rounded-md p-1 text-th-text-muted hover:bg-th-nav-hover hover:text-th-text-nav-active"
 						>
 							<span className="text-xs">›</span>
 						</button>

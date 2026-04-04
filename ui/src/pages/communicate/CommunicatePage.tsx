@@ -50,7 +50,7 @@ import type { ChatMessage, Participant, Room } from "@/types/communicate";
 function ConnectionIndicator({ state }: { state: ConnectionState }) {
 	if (state === "Connected") {
 		return (
-			<span className="flex items-center gap-1.5 text-xs text-green-400">
+			<span className="flex items-center gap-1.5 text-xs text-th-status-success-text">
 				<Wifi size={14} />
 				Live
 			</span>
@@ -58,14 +58,14 @@ function ConnectionIndicator({ state }: { state: ConnectionState }) {
 	}
 	if (state === "Connecting" || state === "Reconnecting") {
 		return (
-			<span className="flex items-center gap-1.5 text-xs text-yellow-400">
+			<span className="flex items-center gap-1.5 text-xs text-th-status-warning-text">
 				<Loader2 size={14} className="animate-spin" />
 				{state === "Reconnecting" ? "Reconnecting…" : "Connecting…"}
 			</span>
 		);
 	}
 	return (
-		<span className="flex items-center gap-1.5 text-xs text-gray-500">
+		<span className="flex items-center gap-1.5 text-xs text-th-text-muted">
 			<WifiOff size={14} />
 			Offline
 		</span>
@@ -79,10 +79,10 @@ function ConnectionIndicator({ state }: { state: ConnectionState }) {
 function NoRoomSelected() {
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-			<MessageSquare size={40} className="text-gray-600" />
+			<MessageSquare size={40} className="text-th-text-muted" />
 			<div>
-				<p className="text-sm font-medium text-gray-300">No room selected</p>
-				<p className="mt-1 text-xs text-gray-500">
+				<p className="text-sm font-medium text-th-text-secondary">No room selected</p>
+				<p className="mt-1 text-xs text-th-text-muted">
 					Pick a room from the sidebar to start chatting.
 				</p>
 			</div>
@@ -304,21 +304,21 @@ export function CommunicatePage() {
 			/>
 
 			{/* Rounded container */}
-			<div className="flex h-full overflow-hidden rounded-2xl border border-gray-800">
+			<div className="flex h-full overflow-hidden rounded-2xl border border-th-border">
 				{/* Room list sidebar */}
 				<aside
-					className="flex w-60 shrink-0 flex-col border-r border-gray-800 bg-gray-900"
+					className="flex w-60 shrink-0 flex-col border-r border-th-border bg-th-nav"
 					aria-label="Rooms sidebar"
 				>
-					<div className="flex h-12 shrink-0 items-center justify-between border-b border-gray-800 px-4">
-						<h2 className="text-sm font-semibold text-white">Rooms</h2>
+					<div className="flex h-12 shrink-0 items-center justify-between border-b border-th-border px-4">
+						<h2 className="text-sm font-semibold text-th-text">Rooms</h2>
 						<div className="flex items-center gap-2">
 							<ConnectionIndicator state={connectionState} />
 							<button
 								type="button"
 								onClick={() => setShowCreateRoom(true)}
 								aria-label="Create room"
-								className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+								className="rounded p-1 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text transition-colors"
 							>
 								<Plus size={16} />
 							</button>
@@ -332,21 +332,21 @@ export function CommunicatePage() {
 					/>
 					{/* Identity footer */}
 					{identity && (
-						<div className="shrink-0 border-t border-gray-800 px-3 py-2">
+						<div className="shrink-0 border-t border-th-border px-3 py-2">
 							<button
 								type="button"
 								onClick={() => setShowIdentitySetup(true)}
-								className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+								className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-th-text-muted hover:bg-th-surface-hover hover:text-th-text transition-colors"
 								aria-label="Edit identity"
 							>
-								<span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white text-[10px] font-bold">
+								<span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-th-status-success-dot text-th-text-inverse text-[10px] font-bold">
 									{identity.displayName.charAt(0).toUpperCase()}
 								</span>
 								<span className="min-w-0">
-									<span className="block truncate font-medium text-gray-300">
+									<span className="block truncate font-medium text-th-text-secondary">
 										{identity.displayName}
 									</span>
-									<span className="block truncate text-gray-500">
+									<span className="block truncate text-th-text-muted">
 										{identity.identifier}
 									</span>
 								</span>
@@ -356,17 +356,17 @@ export function CommunicatePage() {
 				</aside>
 
 				{/* Main chat area */}
-				<main className="flex flex-1 flex-col overflow-hidden bg-gray-950">
+				<main className="flex flex-1 flex-col overflow-hidden bg-th-page">
 					{selectedRoom ? (
 						<>
 							{/* Room header */}
-							<div className="flex h-12 shrink-0 items-center gap-3 border-b border-gray-800 px-4">
+							<div className="flex h-12 shrink-0 items-center gap-3 border-b border-th-border px-4">
 								<div className="min-w-0 flex-1">
-									<h2 className="truncate text-sm font-semibold text-white">
+									<h2 className="truncate text-sm font-semibold text-th-text">
 										{selectedRoom.name}
 									</h2>
 									{selectedRoom.topic && (
-										<p className="truncate text-xs text-gray-400">
+										<p className="truncate text-xs text-th-text-muted">
 											{selectedRoom.topic}
 										</p>
 									)}
@@ -383,8 +383,8 @@ export function CommunicatePage() {
 									className={[
 										"rounded p-1.5 transition-colors",
 										rightPanel === "settings"
-											? "bg-gray-700 text-white"
-											: "text-gray-400 hover:bg-gray-700 hover:text-white",
+											? "bg-th-surface-hover text-th-text"
+											: "text-th-text-muted hover:bg-th-surface-hover hover:text-th-text",
 									].join(" ")}
 								>
 									<Settings size={16} />
@@ -417,7 +417,7 @@ export function CommunicatePage() {
 
 				{/* Right panel: Participants or Settings */}
 				<aside
-					className="hidden w-56 shrink-0 flex-col border-l border-gray-800 bg-gray-900 lg:flex"
+					className="hidden w-56 shrink-0 flex-col border-l border-th-border bg-th-nav lg:flex"
 					aria-label={
 						rightPanel === "settings" ? "Room settings" : "Participants"
 					}
@@ -433,8 +433,8 @@ export function CommunicatePage() {
 						/>
 					) : (
 						<>
-							<div className="flex h-12 shrink-0 items-center border-b border-gray-800 px-4">
-								<h2 className="text-sm font-semibold text-white">
+							<div className="flex h-12 shrink-0 items-center border-b border-th-border px-4">
+								<h2 className="text-sm font-semibold text-th-text">
 									Participants
 								</h2>
 							</div>

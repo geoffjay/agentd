@@ -47,10 +47,10 @@ function uptimePct(stat: ResponseTimeStat): number {
 }
 
 function responseClass(ms?: number): string {
-	if (ms === undefined) return "text-gray-400 dark:text-gray-500";
-	if (ms < 100) return "text-green-500 dark:text-green-400";
-	if (ms < 500) return "text-yellow-500 dark:text-yellow-400";
-	return "text-red-500 dark:text-red-400";
+	if (ms === undefined) return "text-th-text-faint";
+	if (ms < 100) return "text-th-status-success-text";
+	if (ms < 500) return "text-th-status-warning-text";
+	return "text-th-status-error-text";
 }
 
 // ---------------------------------------------------------------------------
@@ -104,10 +104,10 @@ export function SystemHealthPanel({
 	}, [measureResponseTimes]);
 
 	return (
-		<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
+		<div className="rounded-lg border border-th-border bg-th-surface p-5">
 			<div className="flex items-center gap-2 mb-4">
-				<Activity size={16} className="text-primary-500" />
-				<h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+				<Activity size={16} className="text-th-text-link" />
+				<h3 className="text-sm font-semibold text-th-text">
 					System Health
 				</h3>
 			</div>
@@ -117,7 +117,7 @@ export function SystemHealthPanel({
 					{[1, 2, 3].map((i) => (
 						<div
 							key={i}
-							className="h-20 rounded-lg bg-gray-100 dark:bg-gray-700 animate-pulse"
+							className="h-20 rounded-lg bg-th-surface-sunken animate-pulse"
 						/>
 					))}
 				</div>
@@ -133,30 +133,30 @@ export function SystemHealthPanel({
 								className={[
 									"rounded-lg border p-3 space-y-2",
 									svc.reachable
-										? "border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
-										: "border-red-100 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/5",
+										? "border-th-border-subtle bg-th-surface-sunken"
+										: "border-th-status-error-border bg-th-status-error-bg",
 								].join(" ")}
 							>
 								{/* Service name + status */}
 								<div className="flex items-center justify-between">
-									<span className="text-sm font-medium text-gray-900 dark:text-white">
+									<span className="text-sm font-medium text-th-text">
 										{svc.name}
 									</span>
 									{svc.reachable ? (
 										<CheckCircle2
 											size={15}
-											className="text-green-500 dark:text-green-400"
+											className="text-th-status-success-text"
 										/>
 									) : (
 										<XCircle
 											size={15}
-											className="text-red-500 dark:text-red-400"
+											className="text-th-status-error-text"
 										/>
 									)}
 								</div>
 
 								{/* Port */}
-								<p className="text-xs text-gray-400 dark:text-gray-500">
+								<p className="text-xs text-th-text-faint">
 									Port {svc.port}
 								</p>
 
@@ -165,7 +165,7 @@ export function SystemHealthPanel({
 									<div className="flex items-center gap-1">
 										<Clock
 											size={12}
-											className="text-gray-400 dark:text-gray-500"
+											className="text-th-text-faint"
 										/>
 										<span
 											className={`text-xs tabular-nums font-medium ${responseClass(stat?.latestMs)}`}
@@ -177,7 +177,7 @@ export function SystemHealthPanel({
 									</div>
 									{uptime !== null && (
 										<span
-											className={`text-xs tabular-nums ${uptime === 100 ? "text-green-500 dark:text-green-400" : uptime > 90 ? "text-yellow-500" : "text-red-500"}`}
+											className={`text-xs tabular-nums ${uptime === 100 ? "text-th-status-success-text" : uptime > 90 ? "text-th-status-warning-text" : "text-th-status-error-text"}`}
 										>
 											{uptime}% up
 										</span>

@@ -25,9 +25,9 @@ function urgencyLabel(minutes: number): string {
 }
 
 function urgencyColor(minutes: number): string {
-	if (minutes >= 10) return "text-red-400";
-	if (minutes >= 5) return "text-yellow-400";
-	return "text-green-400";
+	if (minutes >= 10) return "text-th-status-error-text";
+	if (minutes >= 5) return "text-th-status-warning-text";
+	return "text-th-status-success-text";
 }
 
 // ---------------------------------------------------------------------------
@@ -55,29 +55,29 @@ export function ApprovalDetail({
 		<div className="space-y-5">
 			{/* Tool name */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+				<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 					Tool
 				</h3>
-				<p className="mt-1 font-mono text-sm font-semibold text-gray-900 dark:text-white">
+				<p className="mt-1 font-mono text-sm font-semibold text-th-text">
 					{approval.tool_name}
 				</p>
 			</div>
 
 			{/* Agent */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+				<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 					Agent
 				</h3>
 				<p className="mt-1">
 					{agentName ? (
 						<Link
 							to={`/agents/${approval.agent_id}`}
-							className="text-sm text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+							className="text-sm text-th-text-link hover:opacity-80"
 						>
 							{agentName}
 						</Link>
 					) : (
-						<span className="text-sm text-gray-500 dark:text-gray-400">
+						<span className="text-sm text-th-text-muted">
 							{approval.agent_id}
 						</span>
 					)}
@@ -86,7 +86,7 @@ export function ApprovalDetail({
 
 			{/* Urgency & timing */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+				<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 					Wait Time
 				</h3>
 				<div className="mt-1 flex items-center gap-2">
@@ -96,7 +96,7 @@ export function ApprovalDetail({
 					>
 						{minutes < 1 ? "Just now" : `${minutes}m ago`}
 					</span>
-					<span className="text-xs text-gray-500 dark:text-gray-400">
+					<span className="text-xs text-th-text-muted">
 						({urgencyLabel(minutes)})
 					</span>
 				</div>
@@ -104,10 +104,10 @@ export function ApprovalDetail({
 
 			{/* Status */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+				<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 					Status
 				</h3>
-				<p className="mt-1 text-sm capitalize text-gray-700 dark:text-gray-300">
+				<p className="mt-1 text-sm capitalize text-th-text-secondary">
 					{approval.status}
 				</p>
 			</div>
@@ -115,18 +115,18 @@ export function ApprovalDetail({
 			{/* Created / Expires */}
 			<div className="grid grid-cols-2 gap-4">
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						Created
 					</h3>
-					<p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+					<p className="mt-1 text-sm text-th-text-secondary">
 						{new Date(approval.created_at).toLocaleString()}
 					</p>
 				</div>
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						Expires
 					</h3>
-					<p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+					<p className="mt-1 text-sm text-th-text-secondary">
 						{new Date(approval.expires_at).toLocaleString()}
 					</p>
 				</div>
@@ -134,17 +134,17 @@ export function ApprovalDetail({
 
 			{/* Tool input */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+				<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 					Tool Input
 				</h3>
-				<pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-gray-100 p-4 text-xs text-gray-800 dark:bg-gray-800 dark:text-gray-300">
+				<pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-th-surface-sunken p-4 text-xs text-th-text-secondary">
 					{JSON.stringify(approval.tool_input, null, 2)}
 				</pre>
 			</div>
 
 			{/* Actions */}
 			{approval.status === "pending" && (
-				<div className="border-t border-gray-200 pt-4 dark:border-gray-700">
+				<div className="border-t border-th-border pt-4">
 					<ApprovalActions
 						approvalId={approval.id}
 						busy={busy}

@@ -29,9 +29,9 @@ import type { Memory, VisibilityLevel } from "@/types/memory";
 const CONTENT_PREVIEW_LENGTH = 180;
 
 const TYPE_STYLES: Record<string, string> = {
-	information: "bg-blue-900/50 text-blue-300",
-	question: "bg-amber-900/50 text-amber-300",
-	request: "bg-purple-900/50 text-purple-300",
+	information: "bg-th-status-info-bg text-th-status-info-text",
+	question: "bg-th-status-warning-bg text-th-status-warning-text",
+	request: "bg-th-status-info-bg text-th-status-info-text",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -41,9 +41,9 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const VISIBILITY_STYLES: Record<string, string> = {
-	public: "bg-green-900/50 text-green-300",
-	shared: "bg-yellow-900/50 text-yellow-300",
-	private: "bg-red-900/50 text-red-300",
+	public: "bg-th-status-success-bg text-th-status-success-text",
+	shared: "bg-th-status-warning-bg text-th-status-warning-text",
+	private: "bg-th-status-error-bg text-th-status-error-text",
 };
 
 const VISIBILITY_ICONS: Record<VisibilityLevel, React.ReactNode> = {
@@ -90,7 +90,7 @@ export function MemoryCard({
 	return (
 		<article
 			aria-label={`Memory: ${memory.content.slice(0, 60)}`}
-			className="rounded-lg border border-gray-700 bg-gray-800 transition-colors hover:border-gray-600"
+			className="rounded-lg border border-th-border bg-th-surface transition-colors hover:border-th-border-strong"
 		>
 			<div className="p-4">
 				{/* Top row: badges */}
@@ -99,7 +99,7 @@ export function MemoryCard({
 					<span
 						className={[
 							"shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-							TYPE_STYLES[memory.type] ?? "bg-gray-700 text-gray-300",
+							TYPE_STYLES[memory.type] ?? "bg-th-surface-raised text-th-text-secondary",
 						].join(" ")}
 					>
 						{TYPE_LABELS[memory.type] ?? memory.type}
@@ -110,7 +110,7 @@ export function MemoryCard({
 						className={[
 							"shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
 							VISIBILITY_STYLES[memory.visibility] ??
-								"bg-gray-700 text-gray-300",
+								"bg-th-surface-raised text-th-text-secondary",
 						].join(" ")}
 					>
 						{VISIBILITY_ICONS[memory.visibility]}
@@ -120,7 +120,7 @@ export function MemoryCard({
 					<div className="flex-1" />
 
 					{/* Timestamp */}
-					<span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
+					<span className="flex items-center gap-1 text-xs text-th-text-muted shrink-0">
 						<Clock size={11} aria-hidden="true" />
 						{formatRelativeTime(memory.created_at)}
 					</span>
@@ -128,7 +128,7 @@ export function MemoryCard({
 
 				{/* Content */}
 				<div className="mt-2">
-					<p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
+					<p className="text-sm text-th-text-secondary whitespace-pre-wrap leading-relaxed">
 						{displayContent}
 					</p>
 
@@ -138,7 +138,7 @@ export function MemoryCard({
 							type="button"
 							aria-expanded={expanded}
 							onClick={() => setExpanded((v) => !v)}
-							className="mt-1 flex items-center gap-1 text-xs text-gray-400 hover:text-gray-300"
+							className="mt-1 flex items-center gap-1 text-xs text-th-text-muted hover:text-th-text-secondary"
 						>
 							{expanded ? (
 								<ChevronDown size={12} aria-hidden="true" />
@@ -156,7 +156,7 @@ export function MemoryCard({
 						{memory.tags.map((tag) => (
 							<span
 								key={tag}
-								className="rounded-full bg-gray-700 px-2 py-0.5 text-[11px] font-medium text-gray-300"
+								className="rounded-full bg-th-surface-raised px-2 py-0.5 text-[11px] font-medium text-th-text-secondary"
 							>
 								{tag}
 							</span>
@@ -166,7 +166,7 @@ export function MemoryCard({
 
 				{/* Shared with */}
 				{memory.visibility === "shared" && memory.shared_with.length > 0 && (
-					<div className="mt-2 text-xs text-gray-500">
+					<div className="mt-2 text-xs text-th-text-muted">
 						Shared with: {memory.shared_with.join(", ")}
 					</div>
 				)}
@@ -174,13 +174,13 @@ export function MemoryCard({
 				{/* Meta row + actions */}
 				<div className="mt-3 flex flex-wrap items-center gap-3">
 					{/* Creator */}
-					<span className="text-xs text-gray-500">
-						by <span className="text-gray-400">{memory.created_by}</span>
+					<span className="text-xs text-th-text-muted">
+						by <span className="text-th-text-muted">{memory.created_by}</span>
 					</span>
 
 					{/* References count */}
 					{memory.references.length > 0 && (
-						<span className="text-xs text-gray-500">
+						<span className="text-xs text-th-text-muted">
 							{memory.references.length} ref
 							{memory.references.length !== 1 ? "s" : ""}
 						</span>
@@ -194,7 +194,7 @@ export function MemoryCard({
 							type="button"
 							onClick={() => onEditVisibility(memory)}
 							aria-label="Edit visibility"
-							className="rounded px-2.5 py-1 text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors flex items-center gap-1"
+							className="rounded px-2.5 py-1 text-xs font-medium bg-th-surface-raised text-th-text-secondary hover:bg-th-surface-hover transition-colors flex items-center gap-1"
 						>
 							<Eye size={12} aria-hidden="true" />
 							Visibility
@@ -204,7 +204,7 @@ export function MemoryCard({
 							type="button"
 							onClick={() => onDelete(memory.id)}
 							aria-label="Delete memory"
-							className="rounded px-2.5 py-1 text-xs font-medium bg-red-900/40 text-red-400 hover:bg-red-900/70 transition-colors flex items-center gap-1"
+							className="rounded px-2.5 py-1 text-xs font-medium bg-th-status-error-bg text-th-status-error-text hover:opacity-90 transition-colors flex items-center gap-1"
 						>
 							<Trash2 size={12} aria-hidden="true" />
 							Delete

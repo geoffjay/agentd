@@ -13,12 +13,9 @@ import type { Memory, VisibilityLevel } from "@/types/memory";
 // ---------------------------------------------------------------------------
 
 const TYPE_STYLES: Record<string, string> = {
-	information:
-		"bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-	question:
-		"bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-	request:
-		"bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+	information: "bg-th-status-info-bg text-th-status-info-text",
+	question: "bg-th-status-warning-bg text-th-status-warning-text",
+	request: "bg-th-status-info-bg text-th-status-info-text",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -28,11 +25,9 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const VISIBILITY_STYLES: Record<string, string> = {
-	public:
-		"bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-	shared:
-		"bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-	private: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+	public: "bg-th-status-success-bg text-th-status-success-text",
+	shared: "bg-th-status-warning-bg text-th-status-warning-text",
+	private: "bg-th-status-error-bg text-th-status-error-text",
 };
 
 const VISIBILITY_ICONS: Record<VisibilityLevel, React.ReactNode> = {
@@ -63,7 +58,7 @@ export function MemoryDetail({
 				<span
 					className={[
 						"inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-						TYPE_STYLES[memory.type] ?? "bg-gray-100 text-gray-600",
+						TYPE_STYLES[memory.type] ?? "bg-th-surface-sunken text-th-text-muted",
 					].join(" ")}
 				>
 					{TYPE_LABELS[memory.type] ?? memory.type}
@@ -71,7 +66,7 @@ export function MemoryDetail({
 				<span
 					className={[
 						"inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-						VISIBILITY_STYLES[memory.visibility] ?? "bg-gray-100 text-gray-600",
+						VISIBILITY_STYLES[memory.visibility] ?? "bg-th-surface-sunken text-th-text-muted",
 					].join(" ")}
 				>
 					{VISIBILITY_ICONS[memory.visibility]}
@@ -81,10 +76,10 @@ export function MemoryDetail({
 
 			{/* Content */}
 			<div>
-				<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+				<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 					Content
 				</h3>
-				<div className="mt-2 rounded-lg bg-gray-100 p-4 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed dark:bg-gray-800 dark:text-gray-300">
+				<div className="mt-2 rounded-lg bg-th-surface-sunken p-4 text-sm text-th-text-secondary whitespace-pre-wrap leading-relaxed">
 					{memory.content}
 				</div>
 			</div>
@@ -92,14 +87,14 @@ export function MemoryDetail({
 			{/* Tags */}
 			{memory.tags.length > 0 && (
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						Tags
 					</h3>
 					<div className="mt-2 flex flex-wrap gap-1.5">
 						{memory.tags.map((tag) => (
 							<span
 								key={tag}
-								className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+								className="rounded-full bg-th-surface-sunken px-2.5 py-0.5 text-xs font-medium text-th-text-secondary"
 							>
 								{tag}
 							</span>
@@ -111,19 +106,19 @@ export function MemoryDetail({
 			{/* Creator & timestamps */}
 			<div className="grid grid-cols-2 gap-4">
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						Created By
 					</h3>
-					<p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+					<p className="mt-1 text-sm text-th-text-secondary">
 						{memory.created_by}
 					</p>
 				</div>
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						Created
 					</h3>
-					<div className="mt-1 flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
-						<Clock size={13} className="text-gray-400" />
+					<div className="mt-1 flex items-center gap-1.5 text-sm text-th-text-secondary">
+						<Clock size={13} className="text-th-text-muted" />
 						{new Date(memory.created_at).toLocaleString()}
 					</div>
 				</div>
@@ -132,14 +127,14 @@ export function MemoryDetail({
 			{/* Shared with */}
 			{memory.visibility === "shared" && memory.shared_with.length > 0 && (
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						Shared With
 					</h3>
 					<div className="mt-2 flex flex-wrap gap-1.5">
 						{memory.shared_with.map((actor) => (
 							<span
 								key={actor}
-								className="rounded-full bg-yellow-50 px-2.5 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+								className="rounded-full bg-th-status-warning-bg px-2.5 py-0.5 text-xs font-medium text-th-status-warning-text"
 							>
 								{actor}
 							</span>
@@ -151,14 +146,14 @@ export function MemoryDetail({
 			{/* References */}
 			{memory.references.length > 0 && (
 				<div>
-					<h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<h3 className="text-xs font-medium uppercase tracking-wide text-th-text-muted">
 						References
 					</h3>
 					<ul className="mt-2 space-y-1">
 						{memory.references.map((ref) => (
 							<li
 								key={ref}
-								className="text-xs font-mono text-gray-500 dark:text-gray-400"
+								className="text-xs font-mono text-th-text-muted"
 							>
 								{ref}
 							</li>
@@ -168,12 +163,12 @@ export function MemoryDetail({
 			)}
 
 			{/* Actions */}
-			<div className="border-t border-gray-200 pt-4 dark:border-gray-700">
+			<div className="border-t border-th-border pt-4">
 				<div className="flex gap-2">
 					<button
 						type="button"
 						onClick={() => onEditVisibility(memory)}
-						className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+						className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-th-surface-sunken text-th-text-secondary hover:bg-th-surface-hover transition-colors"
 					>
 						<Eye size={13} />
 						Edit Visibility
@@ -181,7 +176,7 @@ export function MemoryDetail({
 					<button
 						type="button"
 						onClick={() => onDelete(memory.id)}
-						className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors"
+						className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-th-status-error-bg text-th-status-error-text hover:opacity-90 transition-colors"
 					>
 						<Trash2 size={13} />
 						Delete

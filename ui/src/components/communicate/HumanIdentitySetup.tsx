@@ -87,7 +87,7 @@ export function HumanIdentitySetup({
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 			{/* Backdrop — clickable only when dismissible */}
 			<div
-				className="absolute inset-0 bg-black/60"
+				className="absolute inset-0 bg-th-overlay"
 				aria-hidden="true"
 				onClick={onClose}
 			/>
@@ -96,31 +96,31 @@ export function HumanIdentitySetup({
 					role="dialog"
 					aria-modal="true"
 					aria-labelledby="identity-setup-title"
-					className="relative z-10 rounded-xl bg-gray-800 shadow-xl border border-gray-700"
+					className="relative z-10 rounded-xl bg-th-surface shadow-xl border border-th-border"
 				>
 					{/* Header */}
-					<div className="relative flex flex-col items-center px-6 py-6 text-center border-b border-gray-700">
-						{/* Close button — only rendered when dismissible */}
+					<div className="relative flex flex-col items-center px-6 py-6 text-center border-b border-th-border">
+						{/* Close button -- only rendered when dismissible */}
 						{onClose && (
 							<button
 								type="button"
 								onClick={onClose}
 								aria-label="Close dialog"
-								className="absolute right-3 top-3 rounded p-1 text-gray-400 hover:text-gray-200 transition-colors"
+								className="absolute right-3 top-3 rounded p-1 text-th-text-muted hover:text-th-text transition-colors"
 							>
 								<X size={16} />
 							</button>
 						)}
-						<div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 mb-3">
-							<User size={24} className="text-white" />
+						<div className="flex h-12 w-12 items-center justify-center rounded-full bg-th-status-success-dot mb-3">
+							<User size={24} className="text-th-accent-text" />
 						</div>
 						<h2
 							id="identity-setup-title"
-							className="text-lg font-semibold text-white"
+							className="text-lg font-semibold text-th-text"
 						>
 							{onClose ? "Edit your identity" : "Set up your identity"}
 						</h2>
-						<p className="mt-1 text-sm text-gray-400">
+						<p className="mt-1 text-sm text-th-text-muted">
 							Choose how you appear to agents and other participants.
 						</p>
 					</div>
@@ -128,8 +128,8 @@ export function HumanIdentitySetup({
 					{/* Body */}
 					<div className="px-6 py-5 space-y-4" onKeyDown={handleKeyDown}>
 						<div>
-							<label className="block text-sm font-medium text-gray-300 mb-1">
-								Display name <span className="text-red-400">*</span>
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
+								Display name <span className="text-th-status-error-text">*</span>
 							</label>
 							<input
 								ref={nameRef}
@@ -140,15 +140,15 @@ export function HumanIdentitySetup({
 								className={inputClass(errors.displayName)}
 							/>
 							{errors.displayName && (
-								<p className="mt-1 text-xs text-red-400">
+								<p className="mt-1 text-xs text-th-status-error-text">
 									{errors.displayName}
 								</p>
 							)}
 						</div>
 
 						<div>
-							<label className="block text-sm font-medium text-gray-300 mb-1">
-								Identifier <span className="text-red-400">*</span>
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
+								Identifier <span className="text-th-status-error-text">*</span>
 							</label>
 							<input
 								type="text"
@@ -158,9 +158,9 @@ export function HumanIdentitySetup({
 								className={inputClass(errors.identifier)}
 							/>
 							{errors.identifier ? (
-								<p className="mt-1 text-xs text-red-400">{errors.identifier}</p>
+								<p className="mt-1 text-xs text-th-status-error-text">{errors.identifier}</p>
 							) : (
-								<p className="mt-1 text-xs text-gray-500">
+								<p className="mt-1 text-xs text-th-text-muted">
 									Unique ID used by agents to address you. Lowercase letters,
 									numbers, and hyphens.
 								</p>
@@ -169,11 +169,11 @@ export function HumanIdentitySetup({
 					</div>
 
 					{/* Footer */}
-					<div className="flex justify-end px-6 py-4 border-t border-gray-700">
+					<div className="flex justify-end px-6 py-4 border-t border-th-border">
 						<button
 							type="button"
 							onClick={handleSave}
-							className="rounded-md bg-emerald-600 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors"
+							className="rounded-md bg-th-accent px-5 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors"
 						>
 							Get started
 						</button>
@@ -186,8 +186,8 @@ export function HumanIdentitySetup({
 
 function inputClass(error?: string): string {
 	return [
-		"w-full rounded-md border px-3 py-2 text-sm bg-gray-900 text-white",
-		"placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500",
-		error ? "border-red-500" : "border-gray-600",
+		"w-full rounded-md border px-3 py-2 text-sm bg-th-input text-th-text",
+		"placeholder:text-th-text-faint focus:outline-none focus:ring-2 focus:ring-th-focus-ring",
+		error ? "border-th-status-error-border" : "border-th-border-input",
 	].join(" ");
 }

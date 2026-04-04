@@ -3,9 +3,9 @@
  *
  * These are unit tests that verify:
  * - ThemeProvider reads initial theme from settingsStore
- * - setTheme updates DOM class and persists to localStorage
+ * - setTheme updates DOM and persists to localStorage
  * - System mode responds to prefers-color-scheme changes
- * - resolvedTheme correctly reflects the active theme
+ * - resolvedThemeId correctly reflects the active theme
  */
 
 import { act, renderHook } from "@testing-library/react";
@@ -25,7 +25,7 @@ function wrapper({ children }: { children: ReactNode }) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function setStoredTheme(theme: "light" | "dark" | "system") {
+function setStoredTheme(theme: string) {
 	localStorage.setItem(
 		"agentd:settings",
 		JSON.stringify({ version: 1, ui: { theme } }),
@@ -39,92 +39,77 @@ function setStoredTheme(theme: "light" | "dark" | "system") {
 describe("useTheme", () => {
 	beforeEach(() => {
 		localStorage.clear();
-		document.documentElement.classList.remove("dark");
+		document.documentElement.removeAttribute("data-theme");
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
-		document.documentElement.classList.remove("dark");
+		document.documentElement.removeAttribute("data-theme");
 	});
 
 	it("defaults to system theme when no preference is stored", () => {
 		const { result } = renderHook(() => useTheme(), { wrapper });
-		expect(result.current.theme).toBe("system");
+		expect(result.current.themeId).toBe("system");
 	});
 
-	it("reads stored light preference", () => {
-		setStoredTheme("light");
+	it("reads stored named theme preference", () => {
+		setStoredTheme("tokyo-night");
 		const { result } = renderHook(() => useTheme(), { wrapper });
-		expect(result.current.theme).toBe("light");
+		expect(result.current.themeId).toBe("tokyo-night");
 	});
 
-	it("reads stored dark preference", () => {
-		setStoredTheme("dark");
-		const { result } = renderHook(() => useTheme(), { wrapper });
-		expect(result.current.theme).toBe("dark");
-	});
-
-	it("adds dark class to documentElement when theme is dark", () => {
-		setStoredTheme("dark");
+	it("sets data-theme for a dark theme", () => {
+		setStoredTheme("agentd-dark");
 		renderHook(() => useTheme(), { wrapper });
-		expect(document.documentElement.classList.contains("dark")).toBe(true);
+		expect(document.documentElement.getAttribute("data-theme")).toBe("agentd-dark");
 	});
 
-	it("removes dark class when theme is light", () => {
-		document.documentElement.classList.add("dark");
-		setStoredTheme("light");
+	it("sets data-theme for a light theme", () => {
+		setStoredTheme("agentd-light");
 		renderHook(() => useTheme(), { wrapper });
-		expect(document.documentElement.classList.contains("dark")).toBe(false);
+		expect(document.documentElement.getAttribute("data-theme")).toBe("agentd-light");
 	});
 
 	it("setTheme updates the theme and applies to DOM", () => {
 		const { result } = renderHook(() => useTheme(), { wrapper });
 
 		act(() => {
-			result.current.setTheme("dark");
+			result.current.setTheme("kanagawa");
 		});
 
-		expect(result.current.theme).toBe("dark");
-		expect(document.documentElement.classList.contains("dark")).toBe(true);
+		expect(result.current.themeId).toBe("kanagawa");
+		expect(document.documentElement.getAttribute("data-theme")).toBe("kanagawa");
 	});
 
-	it("setTheme light removes dark class", () => {
-		document.documentElement.classList.add("dark");
+	it("setTheme to light theme sets correct data-theme", () => {
 		const { result } = renderHook(() => useTheme(), { wrapper });
 
 		act(() => {
-			result.current.setTheme("light");
+			result.current.setTheme("agentd-light");
 		});
 
-		expect(result.current.theme).toBe("light");
-		expect(document.documentElement.classList.contains("dark")).toBe(false);
+		expect(result.current.themeId).toBe("agentd-light");
+		expect(document.documentElement.getAttribute("data-theme")).toBe("agentd-light");
 	});
 
 	it("setTheme persists to localStorage", () => {
 		const { result } = renderHook(() => useTheme(), { wrapper });
 
 		act(() => {
-			result.current.setTheme("dark");
+			result.current.setTheme("catppuccin-mocha");
 		});
 
 		const stored = JSON.parse(localStorage.getItem("agentd:settings") ?? "{}");
-		expect(stored.ui.theme).toBe("dark");
+		expect(stored.ui.theme).toBe("catppuccin-mocha");
 	});
 
-	it("resolvedTheme is light when theme is light", () => {
-		setStoredTheme("light");
+	it("resolvedThemeId is concrete for named themes", () => {
+		setStoredTheme("tokyo-night");
 		const { result } = renderHook(() => useTheme(), { wrapper });
-		expect(result.current.resolvedTheme).toBe("light");
+		expect(result.current.resolvedThemeId).toBe("tokyo-night");
 	});
 
-	it("resolvedTheme is dark when theme is dark", () => {
-		setStoredTheme("dark");
-		const { result } = renderHook(() => useTheme(), { wrapper });
-		expect(result.current.resolvedTheme).toBe("dark");
-	});
-
-	it("resolvedTheme follows system preference in system mode", () => {
-		// Mock matchMedia to report dark preference
+	it("resolvedThemeId follows system preference in system mode", () => {
 		Object.defineProperty(window, "matchMedia", {
 			writable: true,
 			value: vi.fn().mockImplementation((query: string) => ({
@@ -140,12 +125,16 @@ describe("useTheme", () => {
 		});
 
 		const { result } = renderHook(() => useTheme(), { wrapper });
-		// system mode → dark OS preference → resolvedTheme = dark
-		expect(result.current.resolvedTheme).toBe("dark");
+		expect(result.current.resolvedThemeId).toBe("agentd-dark");
+	});
+
+	it("theme object has correct family", () => {
+		setStoredTheme("catppuccin-latte");
+		const { result } = renderHook(() => useTheme(), { wrapper });
+		expect(result.current.theme.family).toBe("light");
 	});
 
 	it("throws when used outside ThemeProvider", () => {
-		// Suppress the error boundary console output
 		const spy = vi.spyOn(console, "error").mockImplementation(() => {});
 		expect(() => renderHook(() => useTheme())).toThrow(
 			"useTheme must be used within a ThemeProvider",

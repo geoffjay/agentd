@@ -26,14 +26,11 @@ export interface DispatchHistoryProps {
 // ---------------------------------------------------------------------------
 
 const STATUS_STYLES: Record<DispatchStatus, string> = {
-	pending:
-		"bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-	dispatched:
-		"bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-	completed:
-		"bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-	failed: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-	skipped: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+	pending: "bg-th-status-warning-bg text-th-status-warning-text",
+	dispatched: "bg-th-status-info-bg text-th-status-info-text",
+	completed: "bg-th-status-success-bg text-th-status-success-text",
+	failed: "bg-th-status-error-bg text-th-status-error-text",
+	skipped: "bg-th-surface-sunken text-th-text-muted",
 };
 
 function formatDate(iso: string): string {
@@ -72,20 +69,20 @@ function DispatchRow({ record }: { record: DispatchRecord }) {
 
 	return (
 		<>
-			<tr className="border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-				<td className="py-2 px-4 font-mono text-xs text-gray-500 dark:text-gray-400">
+			<tr className="border-t border-th-border-subtle hover:bg-th-surface-hover">
+				<td className="py-2 px-4 font-mono text-xs text-th-text-muted">
 					{record.source_id}
 				</td>
 				<td className="py-2 px-4 text-sm">
 					<div className="flex items-start gap-1">
-						<span className="text-gray-700 dark:text-gray-300 leading-relaxed">
+						<span className="text-th-text-secondary leading-relaxed">
 							{truncate(record.prompt_sent)}
 						</span>
 						{record.prompt_sent.length > 80 && (
 							<button
 								type="button"
 								onClick={() => setExpanded((v) => !v)}
-								className="flex-shrink-0 text-primary-500 hover:text-primary-700 focus-visible:outline-none"
+								className="flex-shrink-0 text-th-text-link hover:text-th-text-link focus-visible:outline-none"
 								aria-label={expanded ? "Collapse prompt" : "Expand prompt"}
 							>
 								{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -100,18 +97,18 @@ function DispatchRow({ record }: { record: DispatchRecord }) {
 						{record.status}
 					</span>
 				</td>
-				<td className="py-2 px-4 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+				<td className="py-2 px-4 text-xs text-th-text-muted whitespace-nowrap">
 					{formatDate(record.dispatched_at)}
 				</td>
-				<td className="py-2 px-4 text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
+				<td className="py-2 px-4 text-xs text-th-text-faint whitespace-nowrap">
 					{record.completed_at ? formatDate(record.completed_at) : "—"}
 				</td>
 			</tr>
 
 			{expanded && (
-				<tr className="bg-gray-50 dark:bg-gray-800/50">
+				<tr className="bg-th-surface-sunken">
 					<td colSpan={5} className="px-4 py-2">
-						<pre className="text-xs font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+						<pre className="text-xs font-mono text-th-text-secondary whitespace-pre-wrap">
 							{record.prompt_sent}
 						</pre>
 					</td>
@@ -145,7 +142,7 @@ export function DispatchHistory({
 		<div className="space-y-3">
 			{/* Filter bar */}
 			<div className="flex items-center gap-2">
-				<span className="text-xs text-gray-500 dark:text-gray-400">
+				<span className="text-xs text-th-text-muted">
 					Filter:
 				</span>
 				<div className="flex gap-1">
@@ -160,8 +157,8 @@ export function DispatchHistory({
 							className={[
 								"rounded px-2 py-0.5 text-xs transition-colors",
 								statusFilter === opt.value
-									? "bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 font-medium"
-									: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+									? "bg-th-accent-subtle text-th-text-link font-medium"
+									: "text-th-text-muted hover:text-th-text",
 							].join(" ")}
 						>
 							{opt.label}
@@ -171,23 +168,23 @@ export function DispatchHistory({
 			</div>
 
 			{/* Table */}
-			<div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+			<div className="overflow-x-auto rounded-lg border border-th-border">
 				<table className="min-w-full text-sm">
-					<thead className="bg-gray-50 dark:bg-gray-800">
+					<thead className="bg-th-surface-sunken">
 						<tr>
-							<th className="py-2 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+							<th className="py-2 px-4 text-left text-xs font-medium text-th-text-muted uppercase tracking-wide">
 								Source ID
 							</th>
-							<th className="py-2 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+							<th className="py-2 px-4 text-left text-xs font-medium text-th-text-muted uppercase tracking-wide">
 								Prompt sent
 							</th>
-							<th className="py-2 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+							<th className="py-2 px-4 text-left text-xs font-medium text-th-text-muted uppercase tracking-wide">
 								Status
 							</th>
-							<th className="py-2 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+							<th className="py-2 px-4 text-left text-xs font-medium text-th-text-muted uppercase tracking-wide">
 								Dispatched
 							</th>
-							<th className="py-2 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+							<th className="py-2 px-4 text-left text-xs font-medium text-th-text-muted uppercase tracking-wide">
 								Completed
 							</th>
 						</tr>
@@ -197,7 +194,7 @@ export function DispatchHistory({
 							Array.from({ length: 3 }).map((_, i) => (
 								<tr
 									key={i}
-									className="border-t border-gray-100 dark:border-gray-800"
+									className="border-t border-th-border-subtle"
 								>
 									<td colSpan={5} className="p-2">
 										<ListItemSkeleton />
@@ -208,7 +205,7 @@ export function DispatchHistory({
 							<tr>
 								<td
 									colSpan={5}
-									className="py-8 text-center text-sm text-red-500"
+									className="py-8 text-center text-sm text-th-status-error-text"
 								>
 									{error}
 								</td>
@@ -217,7 +214,7 @@ export function DispatchHistory({
 							<tr>
 								<td
 									colSpan={5}
-									className="py-8 text-center text-sm text-gray-400 dark:text-gray-500"
+									className="py-8 text-center text-sm text-th-text-faint"
 								>
 									No dispatches found.
 								</td>

@@ -48,7 +48,7 @@ export function AgentFilters({
 					aria-label="Filter by status"
 					value={status}
 					onChange={(e) => onStatusChange(e.target.value as AgentStatus | "")}
-					className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+					className="rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text shadow-sm focus:border-th-border-focus focus:outline-none focus:ring-1 focus:ring-th-focus-ring"
 				>
 					{STATUS_OPTIONS.map((opt) => (
 						<option key={opt.value} value={opt.value}>
@@ -62,7 +62,7 @@ export function AgentFilters({
 					<Search
 						size={14}
 						aria-hidden="true"
-						className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+						className="absolute left-3 top-1/2 -translate-y-1/2 text-th-text-muted"
 					/>
 					<input
 						type="search"
@@ -70,14 +70,14 @@ export function AgentFilters({
 						placeholder="Search by name…"
 						value={search}
 						onChange={(e) => onSearchChange(e.target.value)}
-						className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500 sm:w-60"
+						className="w-full rounded-md border border-th-border-input bg-th-input py-2 pl-9 pr-8 text-sm text-th-text shadow-sm placeholder:text-th-text-muted focus:border-th-border-focus focus:outline-none focus:ring-1 focus:ring-th-focus-ring sm:w-60"
 					/>
 					{search && (
 						<button
 							type="button"
 							aria-label="Clear search"
 							onClick={() => onSearchChange("")}
-							className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+							className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-th-text-muted hover:text-th-text-secondary"
 						>
 							<X size={12} />
 						</button>
@@ -86,13 +86,13 @@ export function AgentFilters({
 			</div>
 
 			{/* Right: results count */}
-			<p className="text-sm text-gray-500 dark:text-gray-400">
+			<p className="text-sm text-th-text-muted">
 				Showing{" "}
-				<span className="font-medium text-gray-700 dark:text-gray-300">
+				<span className="font-medium text-th-text-secondary">
 					{displayCount}
 				</span>{" "}
 				of{" "}
-				<span className="font-medium text-gray-700 dark:text-gray-300">
+				<span className="font-medium text-th-text-secondary">
 					{totalCount}
 				</span>{" "}
 				{totalCount === 1 ? "agent" : "agents"}

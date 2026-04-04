@@ -86,17 +86,17 @@ export function TokenUsageChart({ entries, loading }: TokenUsageChartProps) {
 
 	return (
 		<div
-			className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5"
+			className="rounded-lg border border-th-border bg-th-surface p-5"
 			aria-label="Token usage stacked bar chart"
 		>
-			<h3 className="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
+			<h3 className="mb-4 text-sm font-semibold text-th-text">
 				Token Usage by Agent
 			</h3>
 
 			{loading ? (
 				<ChartSkeleton height={240} />
 			) : !hasData ? (
-				<div className="flex items-center justify-center h-60 text-sm text-gray-400 dark:text-gray-500">
+				<div className="flex items-center justify-center h-60 text-sm text-th-text-faint">
 					No usage data available
 				</div>
 			) : (
@@ -128,8 +128,8 @@ export function TokenUsageChart({ entries, loading }: TokenUsageChartProps) {
 								tickRotation: entries.length > 6 ? -35 : 0,
 							}}
 							tooltip={({ id, value, data: rowData }) => (
-								<div className="rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-xs shadow-lg">
-									<div className="font-medium text-gray-900 dark:text-white mb-1">
+								<div className="rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-xs shadow-lg">
+									<div className="font-medium text-th-text mb-1">
 										{(rowData as Record<string, unknown>).agentFull as string}
 									</div>
 									<div className="flex items-center gap-1.5">
@@ -137,10 +137,10 @@ export function TokenUsageChart({ entries, loading }: TokenUsageChartProps) {
 											className="h-2 w-2 rounded-full flex-shrink-0"
 											style={{ background: TOKEN_COLORS[id as string] }}
 										/>
-										<span className="text-gray-600 dark:text-gray-300">
+										<span className="text-th-text-secondary">
 											{TOKEN_LABELS[id as string] ?? String(id)}:
 										</span>
-										<span className="font-medium text-gray-900 dark:text-white">
+										<span className="font-medium text-th-text">
 											{formatTokenCount(value)}
 										</span>
 									</div>
@@ -156,7 +156,7 @@ export function TokenUsageChart({ entries, loading }: TokenUsageChartProps) {
 						{TOKEN_KEYS.map((key) => (
 							<span
 								key={key}
-								className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"
+								className="flex items-center gap-1 text-xs text-th-text-muted"
 							>
 								<span
 									className="h-2 w-2 rounded-full flex-shrink-0"

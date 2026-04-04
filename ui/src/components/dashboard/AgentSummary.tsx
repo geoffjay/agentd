@@ -37,14 +37,14 @@ function AgentRow({ agent }: AgentRowProps) {
 	const navigate = useNavigate();
 	return (
 		<li
-			className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+			className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-th-surface-hover"
 			onClick={() => navigate(`/agents`)}
 		>
 			<div className="min-w-0">
-				<p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+				<p className="truncate text-sm font-medium text-th-text">
 					{agent.name}
 				</p>
-				<p className="text-xs text-gray-500 dark:text-gray-400">
+				<p className="text-xs text-th-text-muted">
 					{formatRelativeTime(new Date(agent.updated_at))}
 				</p>
 			</div>
@@ -102,17 +102,17 @@ export function AgentSummary({
 	return (
 		<section
 			aria-labelledby="agent-summary-heading"
-			className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
+			className="rounded-lg border border-th-border bg-th-surface p-5"
 		>
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<h2
 					id="agent-summary-heading"
-					className="text-base font-semibold text-gray-900 dark:text-white"
+					className="text-base font-semibold text-th-text"
 				>
 					Agents
 					{!loading && (
-						<span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+						<span className="ml-2 text-sm font-normal text-th-text-muted">
 							({total} total)
 						</span>
 					)}
@@ -121,7 +121,7 @@ export function AgentSummary({
 					type="button"
 					onClick={onCreateAgent}
 					aria-label="Create new agent"
-					className="flex items-center gap-1.5 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+					className="flex items-center gap-1.5 rounded-md bg-th-accent px-3 py-1.5 text-xs font-medium text-th-accent-text hover:bg-th-accent-hover focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
 				>
 					<Plus size={14} />
 					Create Agent
@@ -161,7 +161,7 @@ export function AgentSummary({
 								enableArcLabels={false}
 								enableArcLinkLabels={false}
 								tooltip={({ datum }) => (
-									<div className="rounded bg-gray-900 px-2 py-1 text-xs text-white shadow">
+									<div className="rounded bg-th-page-inset px-2 py-1 text-xs text-th-text shadow">
 										{datum.label}: {datum.value}
 									</div>
 								)}
@@ -182,7 +182,7 @@ export function AgentSummary({
 							/>
 						</div>
 					) : (
-						<p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+						<p className="mt-4 text-sm text-th-text-muted">
 							No agents yet.
 						</p>
 					)}
@@ -194,7 +194,7 @@ export function AgentSummary({
 								count > 0 ? (
 									<span
 										key={status}
-										className="flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+										className="flex items-center gap-1 rounded-full bg-th-surface-sunken px-2.5 py-0.5 text-xs font-medium text-th-text-secondary"
 									>
 										<span
 											className="h-2 w-2 rounded-full"
@@ -213,12 +213,12 @@ export function AgentSummary({
 							className="mt-3 grid grid-cols-3 gap-2"
 							data-testid="aggregate-usage"
 						>
-							<div className="rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
-								<div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+							<div className="rounded-md bg-th-surface-sunken px-3 py-2">
+								<div className="flex items-center gap-1 text-xs text-th-text-faint">
 									<DollarSign size={12} />
 									Total Cost
 								</div>
-								<p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+								<p className="mt-0.5 text-sm font-semibold text-th-text">
 									$
 									{aggregateUsage.totalCostUsd < 0.01 &&
 									aggregateUsage.totalCostUsd > 0
@@ -226,12 +226,12 @@ export function AgentSummary({
 										: aggregateUsage.totalCostUsd.toFixed(2)}
 								</p>
 							</div>
-							<div className="rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
-								<div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+							<div className="rounded-md bg-th-surface-sunken px-3 py-2">
+								<div className="flex items-center gap-1 text-xs text-th-text-faint">
 									<Hash size={12} />
 									Tokens
 								</div>
-								<p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+								<p className="mt-0.5 text-sm font-semibold text-th-text">
 									{aggregateUsage.totalTokens >= 1_000_000
 										? `${(aggregateUsage.totalTokens / 1_000_000).toFixed(1)}M`
 										: aggregateUsage.totalTokens >= 1_000
@@ -239,12 +239,12 @@ export function AgentSummary({
 											: aggregateUsage.totalTokens}
 								</p>
 							</div>
-							<div className="rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
-								<div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+							<div className="rounded-md bg-th-surface-sunken px-3 py-2">
+								<div className="flex items-center gap-1 text-xs text-th-text-faint">
 									<Layers size={12} />
 									Cache Hit
 								</div>
-								<p className="mt-0.5 text-sm font-semibold text-gray-900 dark:text-white">
+								<p className="mt-0.5 text-sm font-semibold text-th-text">
 									{aggregateUsage.cacheHitPercent.toFixed(0)}%
 								</p>
 							</div>
@@ -254,7 +254,7 @@ export function AgentSummary({
 					{/* Recent agents list */}
 					{recentAgents.length > 0 && (
 						<div className="mt-4">
-							<p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+							<p className="mb-1 text-xs font-medium uppercase tracking-wide text-th-text-faint">
 								Recently Active
 							</p>
 							<ul role="list" className="space-y-0.5">

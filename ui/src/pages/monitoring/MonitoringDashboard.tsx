@@ -79,10 +79,10 @@ export function MonitoringDashboard() {
 			{/* Page header */}
 			<div className="flex items-start justify-between gap-4 flex-wrap">
 				<div>
-					<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+					<h1 className="text-2xl font-semibold text-th-text">
 						Monitoring
 					</h1>
-					<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					<p className="mt-1 text-sm text-th-text-muted">
 						Real-time agent and service metrics.
 					</p>
 				</div>
@@ -90,7 +90,7 @@ export function MonitoringDashboard() {
 				<div className="flex items-center gap-3">
 					{/* Last refresh indicator */}
 					{lastRefresh && (
-						<div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+						<div className="flex items-center gap-1.5 text-xs text-th-text-faint">
 							<Clock size={12} />
 							<span>Updated {formatRefreshTime(lastRefresh)}</span>
 						</div>
@@ -98,7 +98,7 @@ export function MonitoringDashboard() {
 
 					{/* Interval picker */}
 					<div
-						className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs"
+						className="flex items-center rounded-md border border-th-border overflow-hidden text-xs"
 						role="group"
 						aria-label="Refresh interval"
 					>
@@ -111,8 +111,8 @@ export function MonitoringDashboard() {
 								className={[
 									"px-2.5 py-1 transition-colors",
 									refreshInterval === opt.value
-										? "bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 font-medium"
-										: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+										? "bg-th-accent-subtle text-th-text-link font-medium"
+										: "text-th-text-muted hover:text-th-text-secondary",
 								].join(" ")}
 							>
 								{opt.label}
@@ -126,7 +126,7 @@ export function MonitoringDashboard() {
 						onClick={refetch}
 						disabled={loading}
 						aria-label="Refresh metrics"
-						className="flex items-center gap-1.5 rounded-md border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+						className="flex items-center gap-1.5 rounded-md border border-th-border px-3 py-1.5 text-xs text-th-text-muted hover:bg-th-surface-hover transition-colors disabled:opacity-50"
 					>
 						<RefreshCw size={12} className={loading ? "animate-spin" : ""} />
 						Refresh
@@ -136,7 +136,7 @@ export function MonitoringDashboard() {
 
 			{/* Error banner */}
 			{error && (
-				<div className="rounded-md border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+				<div className="rounded-md border border-th-status-error-border bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text">
 					Failed to fetch metrics: {error}
 				</div>
 			)}
@@ -190,7 +190,7 @@ export function MonitoringDashboard() {
 
 			{/* Token Usage & Prompt Cache section */}
 			<section aria-label="Token usage and prompt cache metrics">
-				<h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+				<h2 className="mb-3 text-sm font-semibold text-th-text-secondary">
 					Token Usage &amp; Prompt Cache
 				</h2>
 				<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -212,9 +212,9 @@ export function MonitoringDashboard() {
 
 			{/* Placeholder charts for future monitor service */}
 			<section aria-label="System resource charts (coming soon)">
-				<h2 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+				<h2 className="mb-3 text-sm font-semibold text-th-text-secondary">
 					System Resources
-					<span className="ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">
+					<span className="ml-2 text-xs font-normal text-th-text-faint">
 						— requires monitor service (port 17003)
 					</span>
 				</h2>

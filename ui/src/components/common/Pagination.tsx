@@ -43,10 +43,10 @@ export function Pagination({
 	}
 
 	const btnBase =
-		"inline-flex h-8 w-8 items-center justify-center rounded text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:pointer-events-none disabled:opacity-40";
-	const btnActive = "bg-primary-600 text-white dark:bg-primary-500";
+		"inline-flex h-8 w-8 items-center justify-center rounded text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1 disabled:pointer-events-none disabled:opacity-40";
+	const btnActive = "bg-th-accent text-th-accent-text";
 	const btnInactive =
-		"border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700";
+		"border border-th-border-strong bg-th-surface text-th-text-secondary hover:bg-th-surface-hover";
 
 	return (
 		<nav
@@ -54,17 +54,17 @@ export function Pagination({
 			className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between"
 		>
 			{/* Item range */}
-			<p className="text-sm text-gray-500 dark:text-gray-400">
+			<p className="text-sm text-th-text-muted">
 				Showing{" "}
-				<span className="font-medium text-gray-700 dark:text-gray-300">
+				<span className="font-medium text-th-text-secondary">
 					{startItem}
 				</span>
 				–
-				<span className="font-medium text-gray-700 dark:text-gray-300">
+				<span className="font-medium text-th-text-secondary">
 					{endItem}
 				</span>{" "}
 				of{" "}
-				<span className="font-medium text-gray-700 dark:text-gray-300">
+				<span className="font-medium text-th-text-secondary">
 					{totalItems}
 				</span>
 			</p>
@@ -94,7 +94,7 @@ export function Pagination({
 							1
 						</button>
 						{windowStart > 2 && (
-							<span className="px-1 text-gray-400 dark:text-gray-600">…</span>
+							<span className="px-1 text-th-text-muted">…</span>
 						)}
 					</>
 				)}
@@ -119,7 +119,7 @@ export function Pagination({
 				{windowEnd < totalPages && (
 					<>
 						{windowEnd < totalPages - 1 && (
-							<span className="px-1 text-gray-400 dark:text-gray-600">…</span>
+							<span className="px-1 text-th-text-muted">…</span>
 						)}
 						<button
 							type="button"

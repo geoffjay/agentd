@@ -113,7 +113,7 @@ export function CreateRoomDialog({
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 			<div
-				className="absolute inset-0 bg-black/50"
+				className="absolute inset-0 bg-th-overlay"
 				onClick={onClose}
 				aria-hidden="true"
 			/>
@@ -122,13 +122,13 @@ export function CreateRoomDialog({
 					role="dialog"
 					aria-modal="true"
 					aria-labelledby="create-room-title"
-					className="relative z-10 rounded-xl bg-gray-800 shadow-xl border border-gray-700"
+					className="relative z-10 rounded-xl bg-th-surface shadow-xl border border-th-border"
 				>
 					{/* Header */}
-					<div className="flex items-center justify-between border-b border-gray-700 px-6 py-4">
+					<div className="flex items-center justify-between border-b border-th-border px-6 py-4">
 						<h2
 							id="create-room-title"
-							className="text-base font-semibold text-white"
+							className="text-base font-semibold text-th-text"
 						>
 							Create Room
 						</h2>
@@ -136,7 +136,7 @@ export function CreateRoomDialog({
 							type="button"
 							onClick={onClose}
 							aria-label="Close dialog"
-							className="rounded p-1 text-gray-400 hover:text-gray-200 transition-colors"
+							className="rounded p-1 text-th-text-muted hover:text-th-text transition-colors"
 						>
 							<X size={18} />
 						</button>
@@ -145,15 +145,15 @@ export function CreateRoomDialog({
 					{/* Body */}
 					<div className="px-6 py-5 space-y-4">
 						{saveError && (
-							<p className="rounded-md bg-red-900/30 border border-red-700 px-3 py-2 text-sm text-red-400">
+							<p className="rounded-md bg-th-status-error-bg border border-th-status-error-border px-3 py-2 text-sm text-th-status-error-text">
 								{saveError}
 							</p>
 						)}
 
 						{/* Name */}
 						<div>
-							<label className="block text-sm font-medium text-gray-300 mb-1">
-								Name <span className="text-red-400">*</span>
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
+								Name <span className="text-th-status-error-text">*</span>
 							</label>
 							<input
 								ref={nameRef}
@@ -164,13 +164,13 @@ export function CreateRoomDialog({
 								className={fieldClass(nameError)}
 							/>
 							{nameError && (
-								<p className="mt-1 text-xs text-red-400">{nameError}</p>
+								<p className="mt-1 text-xs text-th-status-error-text">{nameError}</p>
 							)}
 						</div>
 
 						{/* Room type */}
 						<div>
-							<label className="block text-sm font-medium text-gray-300 mb-1">
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
 								Type
 							</label>
 							<div className="grid grid-cols-3 gap-2">
@@ -182,12 +182,12 @@ export function CreateRoomDialog({
 										className={[
 											"flex flex-col items-start rounded-md border px-3 py-2 text-left text-xs transition-colors",
 											roomType === opt.value
-												? "border-primary-500 bg-primary-900/30 text-primary-300"
-												: "border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500",
+												? "border-th-focus-ring bg-th-accent/10 text-th-text-link"
+												: "border-th-border-strong bg-th-surface-raised text-th-text-secondary hover:border-th-border-strong",
 										].join(" ")}
 									>
 										<span className="font-medium">{opt.label}</span>
-										<span className="text-[10px] text-gray-500 mt-0.5">
+										<span className="text-[10px] text-th-text-muted mt-0.5">
 											{opt.description}
 										</span>
 									</button>
@@ -197,9 +197,9 @@ export function CreateRoomDialog({
 
 						{/* Topic */}
 						<div>
-							<label className="block text-sm font-medium text-gray-300 mb-1">
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
 								Topic{" "}
-								<span className="text-gray-500 font-normal">(optional)</span>
+								<span className="text-th-text-muted font-normal">(optional)</span>
 							</label>
 							<input
 								type="text"
@@ -212,9 +212,9 @@ export function CreateRoomDialog({
 
 						{/* Description */}
 						<div>
-							<label className="block text-sm font-medium text-gray-300 mb-1">
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
 								Description{" "}
-								<span className="text-gray-500 font-normal">(optional)</span>
+								<span className="text-th-text-muted font-normal">(optional)</span>
 							</label>
 							<textarea
 								value={description}
@@ -227,12 +227,12 @@ export function CreateRoomDialog({
 					</div>
 
 					{/* Footer */}
-					<div className="flex justify-end gap-3 border-t border-gray-700 px-6 py-4">
+					<div className="flex justify-end gap-3 border-t border-th-border px-6 py-4">
 						<button
 							type="button"
 							onClick={onClose}
 							disabled={saving}
-							className="rounded-md border border-gray-600 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 transition-colors disabled:opacity-50"
+							className="rounded-md border border-th-border-strong px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover transition-colors disabled:opacity-50"
 						>
 							Cancel
 						</button>
@@ -240,7 +240,7 @@ export function CreateRoomDialog({
 							type="button"
 							onClick={() => void handleCreate()}
 							disabled={saving}
-							className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
+							className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors disabled:opacity-50"
 						>
 							{saving ? "Creating…" : "Create room"}
 						</button>
@@ -253,9 +253,9 @@ export function CreateRoomDialog({
 
 function fieldClass(error?: string): string {
 	return [
-		"w-full rounded-md border px-3 py-2 text-sm bg-gray-900 text-white",
-		"placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500",
+		"w-full rounded-md border px-3 py-2 text-sm bg-th-input text-th-text",
+		"placeholder:text-th-text-faint focus:outline-none focus:ring-2 focus:ring-th-focus-ring",
 		"disabled:opacity-50",
-		error ? "border-red-500" : "border-gray-600",
+		error ? "border-th-status-error-border" : "border-th-border-input",
 	].join(" ");
 }

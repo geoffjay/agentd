@@ -86,7 +86,7 @@ export function NotificationResponseDialog({
 	return (
 		/* Backdrop */
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-th-overlay p-4"
 			aria-modal="true"
 			role="dialog"
 			aria-labelledby="response-dialog-title"
@@ -96,18 +96,18 @@ export function NotificationResponseDialog({
 		>
 			<div
 				ref={dialogRef}
-				className="w-full max-w-lg rounded-xl border border-gray-700 bg-gray-900 shadow-2xl"
+				className="w-full max-w-lg rounded-xl border border-th-border bg-th-surface shadow-2xl"
 			>
 				{/* Header */}
-				<div className="flex items-start justify-between gap-4 border-b border-gray-700 px-6 py-4">
+				<div className="flex items-start justify-between gap-4 border-b border-th-border px-6 py-4">
 					<div className="min-w-0">
 						<h2
 							id="response-dialog-title"
-							className="text-base font-semibold text-white truncate"
+							className="text-base font-semibold text-th-text truncate"
 						>
 							{notification.title}
 						</h2>
-						<p className="mt-0.5 text-xs text-gray-400">
+						<p className="mt-0.5 text-xs text-th-text-muted">
 							{SOURCE_LABELS[notification.source.type] ??
 								notification.source.type}
 							{" · "}
@@ -118,7 +118,7 @@ export function NotificationResponseDialog({
 						type="button"
 						aria-label="Close dialog"
 						onClick={onClose}
-						className="shrink-0 rounded-md p-1 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+						className="shrink-0 rounded-md p-1 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text transition-colors"
 					>
 						<X size={18} />
 					</button>
@@ -127,7 +127,7 @@ export function NotificationResponseDialog({
 				{/* Body */}
 				<div className="px-6 py-4 space-y-4">
 					{/* Full message */}
-					<div className="rounded-md bg-gray-800 p-4 text-sm text-gray-300 whitespace-pre-wrap max-h-40 overflow-y-auto">
+					<div className="rounded-md bg-th-surface-sunken p-4 text-sm text-th-text-secondary whitespace-pre-wrap max-h-40 overflow-y-auto">
 						{notification.message}
 					</div>
 
@@ -135,7 +135,7 @@ export function NotificationResponseDialog({
 					<form onSubmit={handleSubmit} className="space-y-3">
 						<label
 							htmlFor="response-input"
-							className="block text-sm font-medium text-gray-300"
+							className="block text-sm font-medium text-th-text-secondary"
 						>
 							Your response
 						</label>
@@ -147,11 +147,11 @@ export function NotificationResponseDialog({
 							rows={4}
 							placeholder="Type your response here…"
 							disabled={busy}
-							className="w-full rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:opacity-50 resize-none"
+							className="w-full rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text placeholder:text-th-text-faint focus:border-th-focus-ring focus:outline-none focus:ring-1 focus:ring-th-focus-ring disabled:opacity-50 resize-none"
 						/>
 
 						{error && (
-							<p role="alert" className="text-xs text-red-400">
+							<p role="alert" className="text-xs text-th-status-error-text">
 								{error}
 							</p>
 						)}
@@ -162,14 +162,14 @@ export function NotificationResponseDialog({
 								type="button"
 								onClick={onClose}
 								disabled={busy}
-								className="rounded-md px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-50"
+								className="rounded-md px-4 py-2 text-sm font-medium text-th-text-muted hover:text-th-text hover:bg-th-surface-hover transition-colors disabled:opacity-50"
 							>
 								Cancel
 							</button>
 							<button
 								type="submit"
 								disabled={busy || !responseText.trim()}
-								className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-500 transition-colors disabled:opacity-50"
+								className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors disabled:opacity-50"
 							>
 								{busy ? "Submitting…" : "Submit Response"}
 							</button>

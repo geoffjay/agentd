@@ -81,14 +81,14 @@ function ToggleSwitch({
 			}}
 			className={[
 				"relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
-				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500",
+				"focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring",
 				"disabled:opacity-50 disabled:cursor-not-allowed",
-				checked ? "bg-primary-500" : "bg-gray-200 dark:bg-gray-700",
+				checked ? "bg-th-accent" : "bg-th-border-strong",
 			].join(" ")}
 		>
 			<span
 				className={[
-					"inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform",
+					"inline-block h-3.5 w-3.5 rounded-full bg-th-accent-text shadow transition-transform",
 					checked ? "translate-x-4" : "translate-x-0.5",
 				].join(" ")}
 			/>
@@ -135,7 +135,7 @@ export function WorkflowTable({
 			key: "name",
 			header: "Workflow",
 			render: (wf) => (
-				<span className="text-sm font-medium text-gray-900 dark:text-white">
+				<span className="text-sm font-medium text-th-text">
 					{wf.name}
 				</span>
 			),
@@ -148,12 +148,12 @@ export function WorkflowTable({
 				return agent ? (
 					<div className="flex items-center gap-2">
 						<AgentStatusBadge status={agent.status} variant="dot" />
-						<span className="text-xs text-gray-700 dark:text-gray-300">
+						<span className="text-xs text-th-text-secondary">
 							{agent.name}
 						</span>
 					</div>
 				) : (
-					<span className="text-xs text-gray-400 dark:text-gray-500">
+					<span className="text-xs text-th-text-faint">
 						Unknown agent
 					</span>
 				);
@@ -163,7 +163,7 @@ export function WorkflowTable({
 			key: "source",
 			header: "Source",
 			render: (wf) => (
-				<span className="text-xs text-gray-500 dark:text-gray-400">
+				<span className="text-xs text-th-text-muted">
 					{sourceLabel(wf)}
 				</span>
 			),
@@ -172,7 +172,7 @@ export function WorkflowTable({
 			key: "interval",
 			header: "Interval",
 			render: (wf) => (
-				<span className="text-xs text-gray-500 dark:text-gray-400">
+				<span className="text-xs text-th-text-muted">
 					{formatInterval(wf.poll_interval_secs)}
 				</span>
 			),
@@ -193,7 +193,7 @@ export function WorkflowTable({
 			key: "updated_at",
 			header: "Updated",
 			render: (wf) => (
-				<span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
+				<span className="text-xs text-th-text-faint whitespace-nowrap">
 					{new Date(wf.updated_at).toLocaleDateString()}
 				</span>
 			),
@@ -209,7 +209,7 @@ export function WorkflowTable({
 					<button
 						type="button"
 						onClick={() => onEdit(wf)}
-						className="rounded p-1 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+						className="rounded p-1 text-th-text-muted hover:text-th-text-link focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
 						aria-label={`Edit ${wf.name}`}
 					>
 						<Edit2 size={15} />
@@ -217,7 +217,7 @@ export function WorkflowTable({
 					<button
 						type="button"
 						onClick={() => setDeletingId(wf.id)}
-						className="rounded p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+						className="rounded p-1 text-th-text-muted hover:text-th-status-error-text focus-visible:outline-none focus-visible:ring-2 focus:ring-th-status-error-dot"
 						aria-label={`Delete ${wf.name}`}
 					>
 						<Trash2 size={15} />

@@ -33,9 +33,9 @@ function formatNumber(n: number): string {
 }
 
 function errorRateClass(rate: number): string {
-	if (rate > 0.1) return "text-red-500 dark:text-red-400";
-	if (rate > 0.01) return "text-yellow-500 dark:text-yellow-400";
-	return "text-green-500 dark:text-green-400";
+	if (rate > 0.1) return "text-th-status-error-text";
+	if (rate > 0.01) return "text-th-status-warning-text";
+	return "text-th-status-success-text";
 }
 
 // ---------------------------------------------------------------------------
@@ -55,13 +55,13 @@ function Stat({
 }) {
 	return (
 		<div>
-			<p className="text-xs text-gray-400 dark:text-gray-500">{label}</p>
+			<p className="text-xs text-th-text-faint">{label}</p>
 			<p
-				className={`text-lg font-semibold tabular-nums ${valueClass || "text-gray-900 dark:text-white"}`}
+				className={`text-lg font-semibold tabular-nums ${valueClass || "text-th-text"}`}
 			>
 				{value}
 			</p>
-			{sub && <p className="text-xs text-gray-400 dark:text-gray-500">{sub}</p>}
+			{sub && <p className="text-xs text-th-text-faint">{sub}</p>}
 		</div>
 	);
 }
@@ -83,10 +83,10 @@ export function ServiceMetricsCard({
 	return (
 		<div
 			className={[
-				"rounded-lg border bg-white dark:bg-gray-800 p-5 space-y-4",
+				"rounded-lg border bg-th-surface p-5 space-y-4",
 				reachable
-					? "border-gray-200 dark:border-gray-700"
-					: "border-red-200 dark:border-red-900/40",
+					? "border-th-border"
+					: "border-th-status-error-border",
 			].join(" ")}
 		>
 			{/* Header */}
@@ -96,36 +96,36 @@ export function ServiceMetricsCard({
 						className={[
 							"flex h-9 w-9 items-center justify-center rounded-full",
 							reachable
-								? "bg-green-100 dark:bg-green-900/30"
-								: "bg-red-100 dark:bg-red-900/30",
+								? "bg-th-status-success-bg"
+								: "bg-th-status-error-bg",
 						].join(" ")}
 					>
 						<Activity
 							size={18}
 							className={
 								reachable
-									? "text-green-600 dark:text-green-400"
-									: "text-red-500 dark:text-red-400"
+									? "text-th-status-success-text"
+									: "text-th-status-error-text"
 							}
 						/>
 					</div>
 					<div>
-						<p className="font-semibold text-gray-900 dark:text-white">
+						<p className="font-semibold text-th-text">
 							{name}
 						</p>
-						<p className="text-xs text-gray-400 dark:text-gray-500">
+						<p className="text-xs text-th-text-faint">
 							Port {port}
 						</p>
 					</div>
 				</div>
 
 				{reachable ? (
-					<div className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+					<div className="flex items-center gap-1 text-xs text-th-status-success-text">
 						<CheckCircle2 size={14} />
 						<span>Up</span>
 					</div>
 				) : (
-					<div className="flex items-center gap-1 text-xs text-red-500 dark:text-red-400">
+					<div className="flex items-center gap-1 text-xs text-th-status-error-text">
 						<XCircle size={14} />
 						<span>Down</span>
 					</div>
@@ -156,7 +156,7 @@ export function ServiceMetricsCard({
 					/>
 				</div>
 			) : (
-				<div className="flex items-center gap-2 text-sm text-red-500 dark:text-red-400">
+				<div className="flex items-center gap-2 text-sm text-th-status-error-text">
 					<AlertCircle size={14} />
 					<span>Service unreachable</span>
 				</div>
@@ -164,7 +164,7 @@ export function ServiceMetricsCard({
 
 			{/* Error count detail */}
 			{reachable && http.errorsTotal > 0 && (
-				<p className="text-xs text-yellow-600 dark:text-yellow-400">
+				<p className="text-xs text-th-status-warning-text">
 					{formatNumber(http.errorsTotal)} error
 					{http.errorsTotal !== 1 ? "s" : ""} logged
 				</p>

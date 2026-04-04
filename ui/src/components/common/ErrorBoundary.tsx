@@ -73,19 +73,19 @@ function DefaultFallback({
 			className={[
 				"flex flex-col items-center justify-center gap-6 p-8 text-center",
 				level === "root"
-					? "min-h-screen bg-gray-950"
-					: "min-h-64 rounded-xl border border-gray-700 bg-gray-800",
+					? "min-h-screen bg-th-surface"
+					: "min-h-64 rounded-xl border border-th-border bg-th-surface",
 			].join(" ")}
 		>
-			<div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-900/30">
-				<AlertTriangle size={32} className="text-red-400" aria-hidden="true" />
+			<div className="flex h-16 w-16 items-center justify-center rounded-full bg-th-status-error-bg">
+				<AlertTriangle size={32} className="text-th-status-error-text" aria-hidden="true" />
 			</div>
 
 			<div className="max-w-md">
-				<h2 className="text-xl font-semibold text-white">
+				<h2 className="text-xl font-semibold text-th-text">
 					{level === "root" ? "Something went wrong" : "This page crashed"}
 				</h2>
-				<p className="mt-2 text-sm text-gray-400">
+				<p className="mt-2 text-sm text-th-text-muted">
 					{level === "root"
 						? "An unexpected error occurred. Try refreshing the page."
 						: "An error occurred while rendering this page. You can try again or go home."}
@@ -97,7 +97,7 @@ function DefaultFallback({
 				<button
 					type="button"
 					onClick={onReset}
-					className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-500 transition-colors"
+					className="flex items-center gap-2 rounded-lg bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors"
 				>
 					<RefreshCw size={15} aria-hidden="true" />
 					Try Again
@@ -105,7 +105,7 @@ function DefaultFallback({
 
 				<a
 					href="/"
-					className="flex items-center gap-2 rounded-lg border border-gray-600 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 transition-colors"
+					className="flex items-center gap-2 rounded-lg border border-th-border-strong px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover transition-colors"
 				>
 					<Home size={15} aria-hidden="true" />
 					Go Home
@@ -118,7 +118,7 @@ function DefaultFallback({
 					type="button"
 					onClick={onToggleDetails}
 					aria-expanded={detailsOpen}
-					className="flex w-full items-center justify-center gap-1 text-xs text-gray-500 hover:text-gray-400 transition-colors"
+					className="flex w-full items-center justify-center gap-1 text-xs text-th-text-muted hover:text-th-text-secondary transition-colors"
 				>
 					{detailsOpen ? (
 						<ChevronDown size={12} aria-hidden="true" />
@@ -129,21 +129,21 @@ function DefaultFallback({
 				</button>
 
 				{detailsOpen && (
-					<div className="mt-3 rounded-lg bg-gray-900 p-4 text-left">
-						<p className="mb-2 text-xs font-semibold text-red-400">
+					<div className="mt-3 rounded-lg bg-th-surface-sunken p-4 text-left">
+						<p className="mb-2 text-xs font-semibold text-th-status-error-text">
 							{error.name}: {error.message}
 						</p>
 						{error.stack && (
-							<pre className="overflow-x-auto whitespace-pre-wrap text-[10px] text-gray-500 font-mono">
+							<pre className="overflow-x-auto whitespace-pre-wrap text-[10px] text-th-text-muted font-mono">
 								{error.stack}
 							</pre>
 						)}
 						{errorInfo?.componentStack && (
 							<>
-								<p className="mt-3 mb-1 text-xs font-semibold text-gray-400">
+								<p className="mt-3 mb-1 text-xs font-semibold text-th-text-muted">
 									Component stack:
 								</p>
-								<pre className="overflow-x-auto whitespace-pre-wrap text-[10px] text-gray-500 font-mono">
+								<pre className="overflow-x-auto whitespace-pre-wrap text-[10px] text-th-text-muted font-mono">
 									{errorInfo.componentStack}
 								</pre>
 							</>

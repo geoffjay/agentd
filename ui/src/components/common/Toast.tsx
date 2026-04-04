@@ -24,28 +24,28 @@ import type { Toast as ToastData } from "@/stores/toastStore";
 // ---------------------------------------------------------------------------
 
 const BORDER: Record<string, string> = {
-	success: "border-l-green-500",
-	error: "border-l-red-500",
-	warning: "border-l-yellow-500",
-	info: "border-l-blue-500",
+	success: "border-l-th-status-success-dot",
+	error: "border-l-th-status-error-dot",
+	warning: "border-l-th-status-warning-dot",
+	info: "border-l-th-status-info-dot",
 };
 
 const ICON_CLASS: Record<string, string> = {
-	success: "text-green-400",
-	error: "text-red-400",
-	warning: "text-yellow-400",
-	info: "text-blue-400",
+	success: "text-th-status-success-text",
+	error: "text-th-status-error-text",
+	warning: "text-th-status-warning-text",
+	info: "text-th-status-info-text",
 };
 
 const PROGRESS_CLASS: Record<string, string> = {
-	success: "bg-green-500",
-	error: "bg-red-500",
-	warning: "bg-yellow-500",
-	info: "bg-blue-500",
+	success: "bg-th-status-success-dot",
+	error: "bg-th-status-error-dot",
+	warning: "bg-th-status-warning-dot",
+	info: "bg-th-status-info-dot",
 };
 
 function ToastIcon({ type }: { type: string }) {
-	const cls = ["shrink-0", ICON_CLASS[type] ?? "text-gray-400"].join(" ");
+	const cls = ["shrink-0", ICON_CLASS[type] ?? "text-th-text-muted"].join(" ");
 	switch (type) {
 		case "success":
 			return <CheckCircle2 size={18} className={cls} aria-hidden="true" />;
@@ -100,18 +100,18 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 			aria-live={type === "error" ? "assertive" : "polite"}
 			aria-atomic="true"
 			className={[
-				"relative overflow-hidden rounded-lg border border-gray-700 bg-gray-800 shadow-xl",
+				"relative overflow-hidden rounded-lg border border-th-border bg-th-surface shadow-xl",
 				"border-l-4",
-				BORDER[type] ?? "border-l-gray-500",
+				BORDER[type] ?? "border-l-th-text-muted",
 			].join(" ")}
 		>
 			<div className="flex items-start gap-3 p-4">
 				<ToastIcon type={type} />
 
 				<div className="min-w-0 flex-1">
-					<p className="text-sm font-semibold text-white">{title}</p>
+					<p className="text-sm font-semibold text-th-text">{title}</p>
 					{message && (
-						<p className="mt-0.5 text-xs text-gray-400 break-words">
+						<p className="mt-0.5 text-xs text-th-text-muted break-words">
 							{message}
 						</p>
 					)}
@@ -122,7 +122,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 								action.onClick();
 								onDismiss(id);
 							}}
-							className="mt-2 text-xs font-medium text-primary-400 hover:text-primary-300 transition-colors"
+							className="mt-2 text-xs font-medium text-th-text-link hover:opacity-80 transition-colors"
 						>
 							{action.label}
 						</button>
@@ -133,7 +133,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 					type="button"
 					aria-label="Dismiss notification"
 					onClick={() => onDismiss(id)}
-					className="shrink-0 rounded-md p-0.5 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+					className="shrink-0 rounded-md p-0.5 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text transition-colors"
 				>
 					<X size={14} />
 				</button>
@@ -144,7 +144,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 				<div
 					className={[
 						"absolute bottom-0 left-0 h-0.5 transition-none",
-						PROGRESS_CLASS[type] ?? "bg-gray-500",
+						PROGRESS_CLASS[type] ?? "bg-th-text-muted",
 					].join(" ")}
 					style={{ width: `${progress}%` }}
 					aria-hidden="true"

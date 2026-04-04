@@ -35,8 +35,8 @@ export function ServiceBanner({
 			className={[
 				"flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm",
 				isDown
-					? "border-red-800 bg-red-900/20 text-red-300"
-					: "border-yellow-800 bg-yellow-900/20 text-yellow-300",
+					? "border-th-status-error-border bg-th-status-error-bg text-th-status-error-text"
+					: "border-th-status-warning-border bg-th-status-warning-bg text-th-status-warning-text",
 				className,
 			].join(" ")}
 		>
@@ -56,7 +56,7 @@ export function ServiceBanner({
 					<span>is degraded — performance may be impacted</span>
 				)}
 				{showStaleIndicator && (
-					<span className="ml-2 inline-flex items-center gap-1 rounded-full bg-yellow-900/50 px-2 py-0.5 text-[10px] font-medium text-yellow-400">
+					<span className="ml-2 inline-flex items-center gap-1 rounded-full bg-th-status-warning-bg px-2 py-0.5 text-[10px] font-medium text-th-status-warning-text">
 						<AlertCircle size={10} aria-hidden="true" />
 						Showing stale data
 					</span>
@@ -71,8 +71,8 @@ export function ServiceBanner({
 					className={[
 						"flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
 						isDown
-							? "bg-red-800/50 text-red-200 hover:bg-red-800"
-							: "bg-yellow-800/50 text-yellow-200 hover:bg-yellow-800",
+							? "bg-th-status-error-bg text-th-status-error-text hover:opacity-90"
+							: "bg-th-status-warning-bg text-th-status-warning-text hover:opacity-90",
 					].join(" ")}
 				>
 					<RefreshCw size={12} aria-hidden="true" />

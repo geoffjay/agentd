@@ -100,12 +100,12 @@ function ChangeModelDialog({
 	}
 
 	const inputCls =
-		"block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white";
+		"block w-full rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-th-focus-ring";
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 			<div
-				className="absolute inset-0 bg-black/50"
+				className="absolute inset-0 bg-th-overlay"
 				aria-hidden="true"
 				onClick={onClose}
 			/>
@@ -113,11 +113,11 @@ function ChangeModelDialog({
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="change-model-title"
-				className="relative rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+				className="relative rounded-lg bg-th-surface p-6 shadow-xl"
 			>
 				<h2
 					id="change-model-title"
-					className="mb-4 text-base font-semibold text-gray-900 dark:text-white"
+					className="mb-4 text-base font-semibold text-th-text"
 				>
 					Change Model
 				</h2>
@@ -125,7 +125,7 @@ function ChangeModelDialog({
 				{error && (
 					<p
 						role="alert"
-						className="mb-3 text-sm text-red-400 dark:text-red-400"
+						className="mb-3 text-sm text-th-status-error-text"
 					>
 						{error}
 					</p>
@@ -135,7 +135,7 @@ function ChangeModelDialog({
 					<div>
 						<label
 							htmlFor="change-model-select"
-							className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+							className="mb-1 block text-sm font-medium text-th-text-secondary"
 						>
 							Model
 						</label>
@@ -159,11 +159,11 @@ function ChangeModelDialog({
 							type="checkbox"
 							checked={restart}
 							onChange={(e) => setRestart(e.target.checked)}
-							className="h-4 w-4 rounded border-gray-300 text-primary-600"
+							className="h-4 w-4 rounded border-th-border-strong text-th-accent"
 						/>
 						<label
 							htmlFor="change-model-restart"
-							className="text-sm text-gray-700 dark:text-gray-300"
+							className="text-sm text-th-text-secondary"
 						>
 							Restart agent after change
 						</label>
@@ -175,7 +175,7 @@ function ChangeModelDialog({
 						type="button"
 						onClick={onClose}
 						disabled={saving}
-						className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+						className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover disabled:opacity-50"
 					>
 						Cancel
 					</button>
@@ -183,7 +183,7 @@ function ChangeModelDialog({
 						type="button"
 						onClick={handleSave}
 						disabled={saving}
-						className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+						className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover disabled:opacity-50 transition-colors"
 					>
 						{saving ? "Saving…" : "Save"}
 					</button>
@@ -231,7 +231,7 @@ function ClearContextDialog({
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 			<div
-				className="absolute inset-0 bg-black/50"
+				className="absolute inset-0 bg-th-overlay"
 				aria-hidden="true"
 				onClick={onCancel}
 			/>
@@ -240,18 +240,18 @@ function ClearContextDialog({
 				aria-modal="true"
 				aria-labelledby="clear-context-title"
 				aria-describedby="clear-context-desc"
-				className="relative rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+				className="relative rounded-lg bg-th-surface p-6 shadow-xl"
 			>
 				<h2
 					id="clear-context-title"
-					className="text-base font-semibold text-gray-900 dark:text-white"
+					className="text-base font-semibold text-th-text"
 				>
 					Clear context?
 				</h2>
 
 				<p
 					id="clear-context-desc"
-					className="mt-2 text-sm text-gray-500 dark:text-gray-400"
+					className="mt-2 text-sm text-th-text-muted"
 				>
 					This will clear the agent&apos;s current context and start a new
 					session. Current session usage will be saved.
@@ -259,38 +259,38 @@ function ClearContextDialog({
 
 				{/* Session stats summary */}
 				{session && totalTokens > 0 && (
-					<div className="mt-3 rounded-md bg-gray-50 p-3 dark:bg-gray-700/50">
-						<p className="mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+					<div className="mt-3 rounded-md bg-th-surface-sunken p-3">
+						<p className="mb-1.5 text-xs font-medium text-th-text-muted">
 							Current session
 						</p>
 						<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-							<span className="text-gray-500 dark:text-gray-400">
+							<span className="text-th-text-muted">
 								Input tokens
 							</span>
-							<span className="text-right font-medium text-gray-700 dark:text-gray-300">
+							<span className="text-right font-medium text-th-text-secondary">
 								{session.input_tokens.toLocaleString()}
 							</span>
-							<span className="text-gray-500 dark:text-gray-400">
+							<span className="text-th-text-muted">
 								Output tokens
 							</span>
-							<span className="text-right font-medium text-gray-700 dark:text-gray-300">
+							<span className="text-right font-medium text-th-text-secondary">
 								{session.output_tokens.toLocaleString()}
 							</span>
-							<span className="text-gray-500 dark:text-gray-400">
+							<span className="text-th-text-muted">
 								Cache tokens
 							</span>
-							<span className="text-right font-medium text-gray-700 dark:text-gray-300">
+							<span className="text-right font-medium text-th-text-secondary">
 								{(
 									session.cache_read_input_tokens +
 									session.cache_creation_input_tokens
 								).toLocaleString()}
 							</span>
-							<span className="text-gray-500 dark:text-gray-400">Cost</span>
-							<span className="text-right font-medium text-gray-700 dark:text-gray-300">
+							<span className="text-th-text-muted">Cost</span>
+							<span className="text-right font-medium text-th-text-secondary">
 								{costFmt.format(session.total_cost_usd)}
 							</span>
-							<span className="text-gray-500 dark:text-gray-400">Turns</span>
-							<span className="text-right font-medium text-gray-700 dark:text-gray-300">
+							<span className="text-th-text-muted">Turns</span>
+							<span className="text-right font-medium text-th-text-secondary">
 								{session.num_turns}
 							</span>
 						</div>
@@ -302,7 +302,7 @@ function ClearContextDialog({
 						type="button"
 						onClick={onCancel}
 						disabled={loading}
-						className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+						className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 disabled:opacity-50"
 					>
 						Cancel
 					</button>
@@ -310,7 +310,7 @@ function ClearContextDialog({
 						type="button"
 						onClick={onConfirm}
 						disabled={loading}
-						className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
+						className="rounded-md bg-th-status-warning-dot px-4 py-2 text-sm font-medium text-th-accent-text hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 disabled:opacity-50 transition-colors"
 					>
 						{loading ? "Clearing…" : "Clear Context"}
 					</button>
@@ -359,12 +359,12 @@ function AddDirDialog({ open, onConfirm, onClose }: AddDirDialogProps) {
 	}
 
 	const inputCls =
-		"block w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white";
+		"block w-full rounded-md border border-th-border-input bg-th-input px-3 py-2 font-mono text-sm text-th-text focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-th-focus-ring";
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 			<div
-				className="absolute inset-0 bg-black/50"
+				className="absolute inset-0 bg-th-overlay"
 				aria-hidden="true"
 				onClick={onClose}
 			/>
@@ -372,18 +372,18 @@ function AddDirDialog({ open, onConfirm, onClose }: AddDirDialogProps) {
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="add-dir-header-title"
-				className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
+				className="relative w-full max-w-md rounded-lg bg-th-surface p-6 shadow-xl"
 			>
 				<h2
 					id="add-dir-header-title"
-					className="mb-4 text-base font-semibold text-gray-900 dark:text-white"
+					className="mb-4 text-base font-semibold text-th-text"
 				>
 					Add Directory
 				</h2>
 
-				<p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+				<p className="mb-3 text-sm text-th-text-muted">
 					Enter an absolute path to grant the agent access via{" "}
-					<code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-700">
+					<code className="rounded bg-th-surface-sunken px-1 py-0.5 font-mono text-xs">
 						--add-dir
 					</code>
 					.
@@ -392,7 +392,7 @@ function AddDirDialog({ open, onConfirm, onClose }: AddDirDialogProps) {
 				{error && (
 					<p
 						role="alert"
-						className="mb-3 text-sm text-red-600 dark:text-red-400"
+						className="mb-3 text-sm text-th-status-error-text"
 					>
 						{error}
 					</p>
@@ -401,7 +401,7 @@ function AddDirDialog({ open, onConfirm, onClose }: AddDirDialogProps) {
 				<div className="flex flex-col gap-2">
 					<label
 						htmlFor="add-dir-header-path"
-						className="text-sm font-medium text-gray-700 dark:text-gray-300"
+						className="text-sm font-medium text-th-text-secondary"
 					>
 						Directory path
 					</label>
@@ -419,7 +419,7 @@ function AddDirDialog({ open, onConfirm, onClose }: AddDirDialogProps) {
 					/>
 				</div>
 
-				<p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
+				<p className="mt-3 text-xs text-th-status-warning-text">
 					Directory changes take effect on the next agent restart.
 				</p>
 
@@ -428,7 +428,7 @@ function AddDirDialog({ open, onConfirm, onClose }: AddDirDialogProps) {
 						type="button"
 						onClick={onClose}
 						disabled={saving}
-						className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+						className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover disabled:opacity-50"
 					>
 						Cancel
 					</button>
@@ -436,7 +436,7 @@ function AddDirDialog({ open, onConfirm, onClose }: AddDirDialogProps) {
 						type="button"
 						onClick={handleSubmit}
 						disabled={saving || !path.trim()}
-						className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+						className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover disabled:opacity-50 transition-colors"
 					>
 						{saving ? "Adding…" : "Add Directory"}
 					</button>
@@ -519,9 +519,9 @@ function ActionsDropdown({
 
 	const itemCls =
 		"flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm focus:outline-none";
-	const normalItem = `${itemCls} text-gray-700 hover:bg-gray-50 focus:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 dark:focus:bg-gray-700/50`;
-	const amberItem = `${itemCls} text-amber-700 hover:bg-amber-50 focus:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 dark:focus:bg-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed`;
-	const redItem = `${itemCls} text-red-600 hover:bg-red-50 focus:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 dark:focus:bg-red-900/20`;
+	const normalItem = `${itemCls} text-th-text-secondary hover:bg-th-surface-hover focus:bg-th-surface-hover`;
+	const amberItem = `${itemCls} text-th-status-warning-text hover:bg-th-status-warning-bg focus:bg-th-status-warning-bg disabled:opacity-50 disabled:cursor-not-allowed`;
+	const redItem = `${itemCls} text-th-status-error-text hover:bg-th-status-error-bg focus:bg-th-status-error-bg`;
 
 	return (
 		<div ref={menuRef} className="relative">
@@ -531,7 +531,7 @@ function ActionsDropdown({
 				aria-haspopup="menu"
 				aria-expanded={open}
 				onClick={() => setOpen((o) => !o)}
-				className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+				className="flex items-center gap-1.5 rounded-md border border-th-border-strong bg-th-surface px-3 py-1.5 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1"
 			>
 				<MoreHorizontal size={14} aria-hidden="true" />
 				<span className="hidden sm:inline">Actions</span>
@@ -546,7 +546,7 @@ function ActionsDropdown({
 				<div
 					role="menu"
 					aria-label="Agent actions"
-					className="absolute right-0 z-20 mt-1 w-52 rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+					className="absolute right-0 z-20 mt-1 w-52 rounded-md border border-th-border bg-th-surface py-1 shadow-lg"
 				>
 					{/* Change Model */}
 					<button
@@ -557,7 +557,7 @@ function ActionsDropdown({
 					>
 						<Settings2
 							size={14}
-							className="text-gray-400 dark:text-gray-500"
+							className="text-th-text-faint"
 							aria-hidden="true"
 						/>
 						Change Model
@@ -572,7 +572,7 @@ function ActionsDropdown({
 					>
 						<FolderPlus
 							size={14}
-							className="text-gray-400 dark:text-gray-500"
+							className="text-th-text-faint"
 							aria-hidden="true"
 						/>
 						Add Directory
@@ -589,11 +589,11 @@ function ActionsDropdown({
 						{clearing ? (
 							<Loader2
 								size={14}
-								className="animate-spin text-amber-500"
+								className="animate-spin text-th-status-warning-text"
 								aria-hidden="true"
 							/>
 						) : (
-							<Eraser size={14} className="text-amber-500" aria-hidden="true" />
+							<Eraser size={14} className="text-th-status-warning-text" aria-hidden="true" />
 						)}
 						Clear Context
 					</button>
@@ -601,7 +601,7 @@ function ActionsDropdown({
 					{/* Divider */}
 					<div
 						role="separator"
-						className="my-1 border-t border-gray-100 dark:border-gray-700"
+						className="my-1 border-t border-th-border"
 					/>
 
 					{/* Terminate (red / danger) */}
@@ -611,7 +611,7 @@ function ActionsDropdown({
 						onClick={() => pick(onTerminate)}
 						className={redItem}
 					>
-						<Trash2 size={14} className="text-red-500" aria-hidden="true" />
+						<Trash2 size={14} className="text-th-status-error-text" aria-hidden="true" />
 						Terminate
 					</button>
 				</div>
@@ -764,14 +764,14 @@ export function AgentDetail() {
 				<button
 					type="button"
 					onClick={() => navigate("/agents")}
-					className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+					className="flex items-center gap-1.5 text-sm text-th-text-muted hover:text-th-text-secondary"
 				>
 					<ArrowLeft size={14} />
 					Back to agents
 				</button>
 				<div
 					role="alert"
-					className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400"
+					className="rounded-md bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text"
 				>
 					{error ?? "Agent not found"}
 				</div>
@@ -795,19 +795,19 @@ export function AgentDetail() {
 			<button
 				type="button"
 				onClick={() => navigate("/agents")}
-				className="flex items-center gap-1.5 self-start text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+				className="flex items-center gap-1.5 self-start text-sm text-th-text-muted hover:text-th-text-secondary"
 			>
 				<ArrowLeft size={14} aria-hidden="true" />
 				Back to agents
 			</button>
 
 			{/* ── Agent header ────────────────────────────────────────────────── */}
-			<div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900">
+			<div className="rounded-lg border border-th-border bg-th-surface p-5">
 				<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 					{/* Left: identity */}
 					<div className="flex flex-col gap-2">
 						<div className="flex items-center gap-3">
-							<h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+							<h1 className="text-xl font-semibold text-th-text">
 								{agent.name}
 							</h1>
 							<AgentStatusBadge status={agent.status} />
@@ -815,26 +815,26 @@ export function AgentDetail() {
 
 						{/* ID */}
 						<div className="flex items-center gap-1.5">
-							<span className="font-mono text-xs text-gray-400 dark:text-gray-500">
+							<span className="font-mono text-xs text-th-text-faint">
 								{agentId}
 							</span>
 							<button
 								type="button"
 								aria-label="Copy agent ID"
 								onClick={copyId}
-								className="rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+								className="rounded p-0.5 text-th-text-muted hover:text-th-text-secondary"
 							>
 								<Copy size={12} />
 							</button>
 							{copied && (
-								<span className="text-xs text-green-500 dark:text-green-400">
+								<span className="text-xs text-th-status-success-text">
 									Copied!
 								</span>
 							)}
 						</div>
 
 						{/* Timestamps & model */}
-						<div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+						<div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-th-text-muted">
 							<span>Created: {formattedCreated}</span>
 							<span>Updated: {formattedUpdated}</span>
 							{agent.config.model && <span>Model: {agent.config.model}</span>}
@@ -848,7 +848,7 @@ export function AgentDetail() {
 							type="button"
 							aria-label="Refresh agent data"
 							onClick={refetch}
-							className="rounded-md border border-gray-300 bg-white p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+							className="rounded-md border border-th-border-strong bg-th-surface p-2 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text-secondary focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1"
 						>
 							<RefreshCw size={14} aria-hidden="true" />
 						</button>
@@ -874,7 +874,7 @@ export function AgentDetail() {
 					<div
 						role="tablist"
 						aria-label="Agent output view"
-						className="flex gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-800"
+						className="flex gap-1 rounded-lg border border-th-border bg-th-surface-sunken p-1"
 					>
 						<button
 							role="tab"
@@ -886,8 +886,8 @@ export function AgentDetail() {
 							className={[
 								"flex-1 rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500",
 								activeTab === "logs"
-									? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
-									: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+									? "bg-th-surface text-th-text shadow-sm"
+									: "text-th-text-muted hover:text-th-text-secondary",
 							].join(" ")}
 						>
 							Logs
@@ -903,8 +903,8 @@ export function AgentDetail() {
 								className={[
 									"flex-1 rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500",
 									activeTab === "terminal"
-										? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
-										: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+										? "bg-th-surface text-th-text shadow-sm"
+										: "text-th-text-muted hover:text-th-text-secondary",
 								].join(" ")}
 							>
 								Terminal
@@ -986,17 +986,17 @@ export function AgentDetail() {
 					{/* Tool policy */}
 					<section
 						aria-label="Tool policy"
-						className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+						className="rounded-lg border border-th-border bg-th-surface"
 					>
-						<div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-							<h2 className="text-sm font-medium text-gray-900 dark:text-white">
+						<div className="flex items-center justify-between border-b border-th-border px-4 py-3">
+							<h2 className="text-sm font-medium text-th-text">
 								Tool Policy
 							</h2>
 							{!policyEditing && (
 								<button
 									type="button"
 									onClick={() => setPolicyEditing(true)}
-									className="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+									className="text-xs text-th-text-link hover:opacity-80"
 								>
 									Edit
 								</button>
@@ -1015,7 +1015,7 @@ export function AgentDetail() {
 					</section>
 
 					{/* Pending approvals */}
-					<div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+					<div className="rounded-lg border border-th-border bg-th-surface p-4">
 						<AgentApprovals
 							approvals={approvals}
 							loading={approvalsLoading}

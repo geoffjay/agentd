@@ -9,20 +9,44 @@
     <!--
       Anti-FOUC (Flash of Unstyled Content) theme script.
       Runs synchronously before React hydrates to apply the correct
-      theme class to <html> before any paint occurs.
+      theme to <html> before any paint occurs.
       Reads the theme preference from the 'agentd:settings' localStorage key.
+      Critical background colors must be kept in sync with theme definitions.
     -->
     <script>
       ;(() => {
         try {
-          var settings = JSON.parse(localStorage.getItem('agentd:settings') || '{}')
-          var theme = (settings.ui && settings.ui.theme) || 'system'
-          var isDark =
-            theme === 'dark' ||
-            (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-          if (isDark) {
-            document.documentElement.classList.add('dark')
+          // Theme family (dark/light) -- keep in sync with themes/index.ts
+          var darkIds = {
+            'agentd-dark':1,'tokyo-night':1,'kanagawa':1,
+            'nord-dark':1,'catppuccin-mocha':1
           }
+          // Critical page background per theme -- keep in sync with ThemeTokens.page
+          var pageBg = {
+            'agentd-dark':'#15180c','agentd-light':'#f4f6ee',
+            'tokyo-night':'#1a1b26','kanagawa':'#1f1f28',
+            'nord-dark':'#2e3440','nord-light':'#eceff4',
+            'catppuccin-mocha':'#1e1e2e','catppuccin-latte':'#eff1f5'
+          }
+          var settings = JSON.parse(localStorage.getItem('agentd:settings') || '{}')
+          var pref = (settings.ui && settings.ui.theme) || 'system'
+          // Migrate legacy values
+          if (pref === 'light') pref = 'agentd-light'
+          if (pref === 'dark') pref = 'agentd-dark'
+          // Resolve "system" to a concrete theme ID
+          var id = pref
+          if (pref === 'system') {
+            id = window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'agentd-dark' : 'agentd-light'
+          }
+          // Validate -- fall back to agentd-dark if unknown
+          if (!pageBg[id]) id = 'agentd-dark'
+          var el = document.documentElement
+          el.setAttribute('data-theme', id)
+          el.style.colorScheme = darkIds[id] ? 'dark' : 'light'
+          // Set critical background to prevent flash before React applies full tokens
+          el.style.setProperty('--th-page', pageBg[id])
+          el.style.backgroundColor = pageBg[id]
         } catch (e) {
           // Silently ignore errors (private browsing, JSON parse failures, etc.)
         }

@@ -34,8 +34,8 @@ export function SkipNav({
 				"focus:translate-y-0",
 				"transition-transform duration-150",
 				// Visible styling
-				"rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-lg",
-				"focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-600",
+				"rounded-md bg-th-accent px-4 py-2 text-sm font-semibold text-th-accent-text shadow-lg",
+				"focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 focus:ring-offset-th-focus-ring-offset",
 			].join(" ")}
 		>
 			{label}

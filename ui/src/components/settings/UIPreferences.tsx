@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { useTheme } from "@/hooks/useTheme";
 import type { Settings } from "@/stores/settingsStore";
+import { ThemePicker } from "./ThemePicker";
 
 interface UIPreferencesProps {
 	ui: Settings["ui"];
@@ -26,39 +27,28 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
 	return (
 		<div className="space-y-5">
 			{/* Theme */}
-			<div className="flex items-center justify-between">
-				<label
-					htmlFor="ui-theme"
-					className="text-sm font-medium text-gray-700 dark:text-gray-300"
-				>
+			<div>
+				<label className="mb-2 block text-sm font-medium text-th-text-secondary">
 					Theme
 				</label>
-				<select
-					id="ui-theme"
+				<ThemePicker
 					value={localUI.theme}
-					onChange={(e) => {
-						const theme = e.target.value as Settings["ui"]["theme"];
-						setLocalUI((prev) => ({ ...prev, theme }));
-						// Apply immediately so the user sees the change in real time
-						setTheme(theme);
+					onChange={(themeId) => {
+						setLocalUI((prev) => ({ ...prev, theme: themeId }));
+						setTheme(themeId);
 					}}
-					className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-				>
-					<option value="light">Light</option>
-					<option value="dark">Dark</option>
-					<option value="system">System</option>
-				</select>
+				/>
 			</div>
 
 			{/* Sidebar default open */}
 			<div className="flex items-center justify-between">
 				<label
 					htmlFor="ui-sidebar-open"
-					className="text-sm font-medium text-gray-700 dark:text-gray-300"
+					className="text-sm font-medium text-th-text-secondary"
 				>
 					Sidebar
 				</label>
-				<label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+				<label className="flex cursor-pointer items-center gap-2 text-sm text-th-text-muted">
 					<input
 						id="ui-sidebar-open"
 						type="checkbox"
@@ -69,7 +59,7 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
 								sidebarDefaultOpen: e.target.checked,
 							}))
 						}
-						className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800"
+						className="h-4 w-4 rounded border-th-border-input text-th-accent focus:ring-th-focus-ring"
 					/>
 					Open by default
 				</label>
@@ -79,7 +69,7 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
 			<div className="flex items-center justify-between">
 				<label
 					htmlFor="ui-refresh-interval"
-					className="text-sm font-medium text-gray-700 dark:text-gray-300"
+					className="text-sm font-medium text-th-text-secondary"
 				>
 					Refresh interval
 				</label>
@@ -94,7 +84,7 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
 							) as Settings["ui"]["refreshInterval"],
 						}))
 					}
-					className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+					className="rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text focus:border-th-border-focus focus:outline-none focus:ring-1 focus:ring-th-focus-ring"
 				>
 					<option value={30}>30s</option>
 					<option value={60}>60s</option>
@@ -107,11 +97,11 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
 			<div className="flex items-center justify-between">
 				<label
 					htmlFor="ui-notifications"
-					className="text-sm font-medium text-gray-700 dark:text-gray-300"
+					className="text-sm font-medium text-th-text-secondary"
 				>
 					Notifications
 				</label>
-				<label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+				<label className="flex cursor-pointer items-center gap-2 text-sm text-th-text-muted">
 					<input
 						id="ui-notifications"
 						type="checkbox"
@@ -122,7 +112,7 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
 								notificationsEnabled: e.target.checked,
 							}))
 						}
-						className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800"
+						className="h-4 w-4 rounded border-th-border-input text-th-accent focus:ring-th-focus-ring"
 					/>
 					Enable desktop notifications
 				</label>
@@ -132,7 +122,7 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
 			<div className="flex items-center justify-between">
 				<label
 					htmlFor="ui-log-lines"
-					className="text-sm font-medium text-gray-700 dark:text-gray-300"
+					className="text-sm font-medium text-th-text-secondary"
 				>
 					Log view lines
 				</label>
@@ -147,7 +137,7 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
 							) as Settings["ui"]["logViewLines"],
 						}))
 					}
-					className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+					className="rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text focus:border-th-border-focus focus:outline-none focus:ring-1 focus:ring-th-focus-ring"
 				>
 					<option value={100}>100</option>
 					<option value={250}>250</option>
@@ -160,7 +150,7 @@ export function UIPreferences({ ui, onSave }: UIPreferencesProps) {
 				<button
 					type="button"
 					onClick={handleSave}
-					className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+					className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text transition-colors hover:bg-th-accent-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 focus:ring-offset-th-focus-ring-offset"
 				>
 					Save
 				</button>

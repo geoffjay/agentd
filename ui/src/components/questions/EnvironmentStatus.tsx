@@ -34,19 +34,19 @@ export function EnvironmentStatus({
 	const [expanded, setExpanded] = useState(false);
 
 	return (
-		<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 space-y-3">
+		<div className="rounded-lg border border-th-border bg-th-surface p-5 space-y-3">
 			{/* Header */}
 			<div className="flex items-center gap-2">
-				<Terminal size={15} className="text-gray-400" />
-				<h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+				<Terminal size={15} className="text-th-text-muted" />
+				<h3 className="text-sm font-semibold text-th-text">
 					Environment Status
 				</h3>
 			</div>
 
 			{loading ? (
 				<div className="space-y-2">
-					<div className="h-4 w-2/3 rounded bg-gray-100 dark:bg-gray-700 animate-pulse" />
-					<div className="h-4 w-1/2 rounded bg-gray-100 dark:bg-gray-700 animate-pulse" />
+					<div className="h-4 w-2/3 rounded bg-th-surface-sunken animate-pulse" />
+					<div className="h-4 w-1/2 rounded bg-th-surface-sunken animate-pulse" />
 				</div>
 			) : tmux ? (
 				<div className="space-y-3">
@@ -55,8 +55,8 @@ export function EnvironmentStatus({
 						className={[
 							"rounded-md border p-3 space-y-2",
 							tmux.running
-								? "border-green-100 dark:border-green-900/30 bg-green-50/50 dark:bg-green-900/10"
-								: "border-red-100 dark:border-red-900/30 bg-red-50/30 dark:bg-red-900/5",
+								? "border-th-status-success-border bg-th-status-success-bg"
+								: "border-th-status-error-border bg-th-status-error-bg",
 						].join(" ")}
 					>
 						{/* Running indicator */}
@@ -65,14 +65,14 @@ export function EnvironmentStatus({
 								<span
 									className={[
 										"h-2.5 w-2.5 rounded-full flex-shrink-0",
-										tmux.running ? "bg-green-500" : "bg-red-500",
+										tmux.running ? "bg-th-status-success-dot" : "bg-th-status-error-dot",
 									].join(" ")}
 									role="status"
 									aria-label={
 										tmux.running ? "tmux running" : "tmux not running"
 									}
 								/>
-								<span className="text-sm font-medium text-gray-900 dark:text-white">
+								<span className="text-sm font-medium text-th-text">
 									tmux
 								</span>
 							</div>
@@ -80,8 +80,8 @@ export function EnvironmentStatus({
 								className={[
 									"text-xs font-medium",
 									tmux.running
-										? "text-green-600 dark:text-green-400"
-										: "text-red-600 dark:text-red-400",
+										? "text-th-status-success-text"
+										: "text-th-status-error-text",
 								].join(" ")}
 							>
 								{tmux.running ? "Running" : "Not running"}
@@ -89,7 +89,7 @@ export function EnvironmentStatus({
 						</div>
 
 						{/* Session count */}
-						<p className="text-xs text-gray-500 dark:text-gray-400">
+						<p className="text-xs text-th-text-muted">
 							{tmux.session_count === 0
 								? "No active sessions"
 								: `${tmux.session_count} active session${tmux.session_count !== 1 ? "s" : ""}`}
@@ -101,7 +101,7 @@ export function EnvironmentStatus({
 								{tmux.sessions.map((session) => (
 									<span
 										key={session}
-										className="rounded bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 font-mono text-xs text-gray-600 dark:text-gray-300"
+										className="rounded bg-th-surface-sunken px-1.5 py-0.5 font-mono text-xs text-th-text-secondary"
 									>
 										{session}
 									</span>
@@ -112,7 +112,7 @@ export function EnvironmentStatus({
 
 					{/* Last checked timestamp */}
 					{lastCheckedAt && (
-						<p className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+						<p className="flex items-center gap-1 text-xs text-th-text-faint">
 							<Clock size={11} />
 							Checked at{" "}
 							{lastCheckedAt.toLocaleTimeString([], {
@@ -128,7 +128,7 @@ export function EnvironmentStatus({
 						<button
 							type="button"
 							onClick={() => setExpanded((e) => !e)}
-							className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+							className="flex items-center gap-1 text-xs text-th-text-faint hover:text-th-text-secondary transition-colors"
 							aria-expanded={expanded}
 						>
 							{expanded ? (
@@ -139,14 +139,14 @@ export function EnvironmentStatus({
 							{expanded ? "Hide" : "Show"} raw result
 						</button>
 						{expanded && (
-							<pre className="mt-2 overflow-auto rounded-md bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700 p-2 text-xs text-gray-600 dark:text-gray-300">
+							<pre className="mt-2 overflow-auto rounded-md bg-th-surface-sunken border border-th-border p-2 text-xs text-th-text-secondary">
 								{JSON.stringify(tmux, null, 2)}
 							</pre>
 						)}
 					</div>
 				</div>
 			) : (
-				<p className="text-sm text-gray-400 dark:text-gray-500">
+				<p className="text-sm text-th-text-faint">
 					No check results yet. Run checks to see environment status.
 				</p>
 			)}

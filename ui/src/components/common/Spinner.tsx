@@ -36,7 +36,7 @@ function SpinnerIcon({
 			role="status"
 			aria-label="Loading"
 			className={[
-				"animate-spin rounded-full border-gray-300 border-t-primary-500 dark:border-gray-600 dark:border-t-primary-400",
+				"animate-spin rounded-full border-th-border-strong border-t-th-accent",
 				SIZE_CLASS[size],
 				className,
 			].join(" ")}
@@ -53,13 +53,13 @@ export function Spinner({
 	if (variant === "page") {
 		return (
 			<div
-				className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-gray-950"
+				className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-th-surface"
 				role="status"
 				aria-live="polite"
 				aria-label={label ?? "Loading application…"}
 			>
 				<SpinnerIcon size="lg" />
-				{label && <p className="text-sm text-gray-400">{label}</p>}
+				{label && <p className="text-sm text-th-text-muted">{label}</p>}
 			</div>
 		);
 	}
@@ -67,7 +67,7 @@ export function Spinner({
 	if (variant === "overlay") {
 		return (
 			<div
-				className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-gray-900/60"
+				className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-th-overlay"
 				role="status"
 				aria-live="polite"
 				aria-label={label ?? "Loading…"}
@@ -82,7 +82,7 @@ export function Spinner({
 	return (
 		<span className={["inline-flex items-center gap-2", className].join(" ")}>
 			<SpinnerIcon size={size} />
-			{label && <span className="text-sm text-gray-400">{label}</span>}
+			{label && <span className="text-sm text-th-text-muted">{label}</span>}
 		</span>
 	);
 }

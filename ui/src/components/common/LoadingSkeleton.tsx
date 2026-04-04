@@ -12,7 +12,7 @@ export function Skeleton({ className = "" }: SkeletonProps) {
 		<div
 			aria-hidden="true"
 			className={[
-				"animate-pulse rounded bg-gray-200 dark:bg-gray-700",
+				"animate-pulse rounded bg-th-border",
 				className,
 			].join(" ")}
 		/>
@@ -26,7 +26,7 @@ export function CardSkeleton() {
 			role="status"
 			aria-busy="true"
 			aria-label="Loading…"
-			className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
+			className="rounded-lg border border-th-border bg-th-surface p-5"
 		>
 			<div className="flex items-center gap-3">
 				<Skeleton className="h-10 w-10 rounded-full" />

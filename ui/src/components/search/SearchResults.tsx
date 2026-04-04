@@ -35,7 +35,7 @@ function ResultSection({
 	return (
 		<div>
 			<div className="px-4 py-1.5">
-				<span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+				<span className="text-[11px] font-semibold uppercase tracking-wider text-th-text-muted">
 					{heading}
 				</span>
 			</div>
@@ -53,7 +53,7 @@ function ResultSection({
 				<div className="px-4 py-1">
 					<a
 						href={viewAllHref}
-						className="text-xs text-primary-600 hover:text-primary-500 dark:text-primary-400"
+						className="text-xs text-th-text-link hover:opacity-80"
 					>
 						{viewAllLabel ?? `View all results →`}
 					</a>
@@ -70,11 +70,11 @@ function ResultSection({
 function NoResults({ query }: { query: string }) {
 	return (
 		<div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
-			<Search size={28} className="text-gray-300 dark:text-gray-600" />
-			<p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+			<Search size={28} className="text-th-text-faint" />
+			<p className="text-sm font-medium text-th-text-secondary">
 				No results for <span className="font-semibold">"{query}"</span>
 			</p>
-			<p className="text-xs text-gray-500 dark:text-gray-400">
+			<p className="text-xs text-th-text-muted">
 				Try searching for an agent name, notification title, or a page name.
 			</p>
 		</div>
@@ -98,7 +98,7 @@ export function RecentSearches({
 }: RecentSearchesProps) {
 	if (searches.length === 0) {
 		return (
-			<div className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+			<div className="px-6 py-8 text-center text-sm text-th-text-muted">
 				Start typing to search agents, notifications, and more.
 			</div>
 		);
@@ -107,13 +107,13 @@ export function RecentSearches({
 	return (
 		<div>
 			<div className="flex items-center justify-between px-4 py-1.5">
-				<span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+				<span className="text-[11px] font-semibold uppercase tracking-wider text-th-text-muted">
 					Recent Searches
 				</span>
 				<button
 					type="button"
 					onClick={onClear}
-					className="text-[11px] text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+					className="text-[11px] text-th-text-muted hover:text-th-text-secondary"
 				>
 					Clear
 				</button>
@@ -124,11 +124,11 @@ export function RecentSearches({
 						<button
 							type="button"
 							onClick={() => onSelect(q)}
-							className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+							className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-th-text-secondary hover:bg-th-surface-hover"
 						>
 							<Search
 								size={14}
-								className="shrink-0 text-gray-400"
+								className="shrink-0 text-th-text-muted"
 								aria-hidden="true"
 							/>
 							{q}
@@ -163,7 +163,7 @@ export function SearchResults({
 		return (
 			<div className="flex items-center justify-center py-10">
 				<span
-					className="h-5 w-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"
+					className="h-5 w-5 animate-spin rounded-full border-2 border-th-focus-ring border-t-transparent"
 					role="status"
 					aria-label="Searching…"
 				/>
@@ -185,7 +185,7 @@ export function SearchResults({
 		<div
 			role="listbox"
 			aria-label="Search results"
-			className="divide-y divide-gray-100 dark:divide-gray-800"
+			className="divide-y divide-th-border"
 		>
 			<ResultSection
 				heading="Quick Actions"

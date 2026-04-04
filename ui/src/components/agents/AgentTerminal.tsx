@@ -105,7 +105,7 @@ function TerminalStatusBadge({ status }: { status: TerminalStatus }) {
 		return (
 			<span
 				aria-label="Terminal connected"
-				className="flex items-center gap-1 text-xs text-green-500 dark:text-green-400"
+				className="flex items-center gap-1 text-xs text-th-status-success-text"
 			>
 				<Wifi size={12} aria-hidden="true" />
 				Connected
@@ -116,7 +116,7 @@ function TerminalStatusBadge({ status }: { status: TerminalStatus }) {
 		return (
 			<span
 				aria-label="Terminal connecting"
-				className="flex items-center gap-1 text-xs text-yellow-500 dark:text-yellow-400"
+				className="flex items-center gap-1 text-xs text-th-status-warning-text"
 			>
 				<Loader2 size={12} aria-hidden="true" className="animate-spin" />
 				Connecting…
@@ -127,7 +127,7 @@ function TerminalStatusBadge({ status }: { status: TerminalStatus }) {
 		return (
 			<span
 				aria-label="PTY not available"
-				className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-500"
+				className="flex items-center gap-1 text-xs text-th-text-muted"
 			>
 				<TerminalSquare size={12} aria-hidden="true" />
 				PTY unavailable
@@ -137,7 +137,7 @@ function TerminalStatusBadge({ status }: { status: TerminalStatus }) {
 	return (
 		<span
 			aria-label="Terminal disconnected"
-			className="flex items-center gap-1 text-xs text-red-500 dark:text-red-400"
+			className="flex items-center gap-1 text-xs text-th-status-error-text"
 		>
 			<WifiOff size={12} aria-hidden="true" />
 			Disconnected
@@ -153,7 +153,7 @@ function TerminalModeBadge({ interactive }: { interactive: boolean }) {
 	return (
 		<span
 			aria-label={interactive ? "PTY interactive mode" : "PTY SDK mode"}
-			className="flex items-center gap-1 rounded bg-gray-800 px-1.5 py-0.5 font-mono text-xs text-gray-400"
+			className="flex items-center gap-1 rounded bg-th-surface-raised px-1.5 py-0.5 font-mono text-xs text-th-text-muted"
 		>
 			PTY · {interactive ? "Interactive" : "SDK"}
 		</span>
@@ -169,19 +169,19 @@ function SdkModeBanner({ onDismiss }: { onDismiss: () => void }) {
 		<div
 			role="note"
 			aria-label="SDK mode info"
-			className="flex items-center gap-2 border-b border-blue-800 bg-blue-950/50 px-3 py-1.5 text-xs text-blue-300"
+			className="flex items-center gap-2 border-b border-th-status-info-border bg-th-status-info-bg px-3 py-1.5 text-xs text-th-status-info-text"
 		>
 			<Info size={12} aria-hidden="true" className="shrink-0" />
 			<span className="flex-1">
 				SDK mode — This terminal shows raw protocol output. Use the{" "}
-				<strong className="text-blue-200">Logs</strong> tab for structured
+				<strong className="text-th-status-info-text">Logs</strong> tab for structured
 				output.
 			</span>
 			<button
 				type="button"
 				aria-label="Dismiss SDK mode info"
 				onClick={onDismiss}
-				className="rounded p-0.5 text-blue-400 hover:bg-blue-800 hover:text-white"
+				className="rounded p-0.5 text-th-status-info-text hover:bg-th-surface-hover hover:text-th-text"
 			>
 				<X size={12} aria-hidden="true" />
 			</button>
@@ -196,22 +196,22 @@ function SdkModeBanner({ onDismiss }: { onDismiss: () => void }) {
 function UnavailableFallback({ onRetry }: { onRetry: () => void }) {
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-			<TerminalSquare size={32} className="text-gray-600" aria-hidden="true" />
+			<TerminalSquare size={32} className="text-th-text-muted" aria-hidden="true" />
 			<div>
-				<p className="text-sm font-medium text-gray-400">
+				<p className="text-sm font-medium text-th-text-muted">
 					PTY streaming not available
 				</p>
-				<p className="mt-1 text-xs text-gray-600">
+				<p className="mt-1 text-xs text-th-text-muted">
 					This agent&apos;s backend does not support PTY streaming. Terminal
 					output is only available with a PTY-backed session (e.g. the wrap
 					service in PTY mode). Agents running on tmux or Docker backends use
-					the <strong className="text-gray-400">Logs</strong> tab instead.
+					the <strong className="text-th-text-muted">Logs</strong> tab instead.
 				</p>
 			</div>
 			<button
 				type="button"
 				onClick={onRetry}
-				className="rounded-md border border-gray-600 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800"
+				className="rounded-md border border-th-border px-3 py-1.5 text-xs text-th-text-secondary hover:bg-th-surface-hover"
 			>
 				Retry connection
 			</button>
@@ -596,9 +596,9 @@ export function AgentTerminal({
 	// ---------------------------------------------------------------------------
 
 	const toolbarBtnCls =
-		"flex items-center gap-1 rounded px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-700 hover:text-white";
+		"flex items-center gap-1 rounded px-2 py-0.5 text-xs text-th-text-muted hover:bg-th-surface-hover hover:text-th-text";
 	const toolbarBtnActiveCls =
-		"flex items-center gap-1 rounded px-2 py-0.5 text-xs text-blue-400 hover:bg-gray-700";
+		"flex items-center gap-1 rounded px-2 py-0.5 text-xs text-th-status-info-text hover:bg-th-surface-hover";
 
 	// ---------------------------------------------------------------------------
 	// Render
@@ -607,10 +607,10 @@ export function AgentTerminal({
 	return (
 		<div
 			aria-label="Agent terminal output"
-			className="flex h-full flex-col overflow-hidden rounded-lg border border-gray-700 bg-gray-950"
+			className="flex h-full flex-col overflow-hidden rounded-lg border border-th-border bg-th-page-inset"
 		>
 			{/* Toolbar */}
-			<div className="flex items-center justify-between border-b border-gray-700 bg-gray-900 px-3 py-2">
+			<div className="flex items-center justify-between border-b border-th-border bg-th-surface-raised px-3 py-2">
 				<div className="flex items-center gap-2">
 					<TerminalStatusBadge status={status} />
 					<TerminalModeBadge interactive={agentInteractive} />
@@ -663,7 +663,7 @@ export function AgentTerminal({
 								onKeyDown={handleSdkKeyDown}
 								placeholder="Message agent…"
 								disabled={sdkSending || status !== "connected"}
-								className="w-48 rounded border border-gray-600 bg-gray-800 px-2 py-0.5 font-mono text-xs text-gray-200 placeholder-gray-600 focus:border-gray-400 focus:outline-none disabled:opacity-50"
+								className="w-48 rounded border border-th-border-input bg-th-input px-2 py-0.5 font-mono text-xs text-th-text-secondary placeholder-th-text-muted focus:border-th-border-focus focus:outline-none disabled:opacity-50"
 							/>
 							<button
 								type="button"
@@ -672,7 +672,7 @@ export function AgentTerminal({
 								disabled={
 									!sdkMessage.trim() || sdkSending || status !== "connected"
 								}
-								className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-40"
+								className="rounded p-1 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text disabled:opacity-40"
 								title="Send message (Enter)"
 							>
 								{sdkSending ? (
@@ -699,7 +699,7 @@ export function AgentTerminal({
 			{!agentInteractive && sdkError && (
 				<div
 					role="alert"
-					className="border-b border-red-800 bg-red-950 px-3 py-1 text-xs text-red-400"
+					className="border-b border-th-status-error-border bg-th-status-error-bg px-3 py-1 text-xs text-th-status-error-text"
 				>
 					{sdkError}
 				</div>
@@ -707,7 +707,7 @@ export function AgentTerminal({
 
 			{/* Search bar */}
 			{searchOpen && (
-				<div className="flex items-center gap-2 border-b border-gray-700 bg-gray-900 px-3 py-1.5">
+				<div className="flex items-center gap-2 border-b border-th-border bg-th-surface-raised px-3 py-1.5">
 					<input
 						type="text"
 						aria-label="Search terminal output"
@@ -715,7 +715,7 @@ export function AgentTerminal({
 						onChange={(e) => setSearchTerm(e.target.value)}
 						onKeyDown={handleSearchKeyDown}
 						placeholder="Search… (Enter next, Shift+Enter prev)"
-						className="flex-1 rounded border border-gray-600 bg-gray-800 px-2 py-1 font-mono text-xs text-gray-200 placeholder-gray-600 focus:border-gray-400 focus:outline-none"
+						className="flex-1 rounded border border-th-border-input bg-th-input px-2 py-1 font-mono text-xs text-th-text-secondary placeholder-th-text-muted focus:border-th-border-focus focus:outline-none"
 						// eslint-disable-next-line jsx-a11y/no-autofocus
 						autoFocus
 					/>
@@ -724,7 +724,7 @@ export function AgentTerminal({
 						aria-label="Previous match"
 						onClick={handleSearchPrev}
 						disabled={!searchTerm.trim()}
-						className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-40"
+						className="rounded p-1 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text disabled:opacity-40"
 					>
 						<ChevronUp size={12} aria-hidden="true" />
 					</button>
@@ -733,7 +733,7 @@ export function AgentTerminal({
 						aria-label="Next match"
 						onClick={handleSearchNext}
 						disabled={!searchTerm.trim()}
-						className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-40"
+						className="rounded p-1 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text disabled:opacity-40"
 					>
 						<ChevronDown size={12} aria-hidden="true" />
 					</button>
@@ -741,7 +741,7 @@ export function AgentTerminal({
 						type="button"
 						aria-label="Dismiss search"
 						onClick={() => setSearchOpen(false)}
-						className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+						className="rounded p-1 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text"
 					>
 						<X size={12} aria-hidden="true" />
 					</button>

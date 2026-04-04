@@ -84,15 +84,15 @@ export function MessageInput({
 	// Non-participant: show join prompt
 	if (!isParticipant) {
 		return (
-			<div className="flex shrink-0 items-center justify-between gap-3 border-t border-gray-700 bg-gray-800 px-4 py-3">
-				<p className="text-sm text-gray-400">
+			<div className="flex shrink-0 items-center justify-between gap-3 border-t border-th-border bg-th-surface px-4 py-3">
+				<p className="text-sm text-th-text-muted">
 					You are not a participant in this room.
 				</p>
 				<button
 					type="button"
 					onClick={onJoin}
 					disabled={joiningRoom}
-					className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+					className="rounded-md bg-th-accent px-4 py-1.5 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors disabled:opacity-50"
 				>
 					{joiningRoom ? "Joining…" : "Join Room"}
 				</button>
@@ -101,8 +101,8 @@ export function MessageInput({
 	}
 
 	return (
-		<div className="shrink-0 border-t border-gray-700 bg-gray-800 px-4 py-3">
-			<div className="flex items-end gap-2 rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent">
+		<div className="shrink-0 border-t border-th-border bg-th-surface px-4 py-3">
+			<div className="flex items-end gap-2 rounded-lg border border-th-border-input bg-th-input px-3 py-2 focus-within:ring-2 focus-within:ring-th-focus-ring focus-within:border-transparent">
 				<textarea
 					ref={textareaRef}
 					value={text}
@@ -112,7 +112,7 @@ export function MessageInput({
 					rows={1}
 					disabled={sending || disabled}
 					aria-label="Message input"
-					className="flex-1 resize-none bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none disabled:opacity-50"
+					className="flex-1 resize-none bg-transparent text-sm text-th-text placeholder:text-th-text-faint focus:outline-none disabled:opacity-50"
 					style={{ maxHeight: "144px" }}
 				/>
 				<button
@@ -120,12 +120,12 @@ export function MessageInput({
 					onClick={() => void handleSend()}
 					disabled={sending || disabled || !text.trim()}
 					aria-label="Send message"
-					className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+					className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-th-accent text-th-accent-text hover:bg-th-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 				>
 					<Send size={14} />
 				</button>
 			</div>
-			<p className="mt-1 text-right text-[10px] text-gray-600">
+			<p className="mt-1 text-right text-[10px] text-th-text-muted">
 				Enter to send · Shift+Enter for newline
 			</p>
 		</div>

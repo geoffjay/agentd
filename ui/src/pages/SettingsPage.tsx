@@ -65,51 +65,51 @@ export function SettingsPage() {
 	return (
 		<div className="space-y-8">
 			<div>
-				<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+				<h1 className="text-2xl font-semibold text-th-text">
 					Settings
 				</h1>
-				<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+				<p className="mt-1 text-sm text-th-text-muted">
 					Manage service connections, UI preferences, and application data.
 				</p>
 			</div>
 
 			{/* Service Configuration */}
-			<section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+			<section className="rounded-lg border border-th-border bg-th-surface p-6 shadow-sm">
+				<h2 className="mb-4 text-lg font-semibold text-th-text">
 					Service Configuration
 				</h2>
 				<ServiceConfig services={settings.services} onSave={updateServices} />
 			</section>
 
 			{/* UI Preferences */}
-			<section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+			<section className="rounded-lg border border-th-border bg-th-surface p-6 shadow-sm">
+				<h2 className="mb-4 text-lg font-semibold text-th-text">
 					UI Preferences
 				</h2>
 				<UIPreferences ui={settings.ui} onSave={updateUI} />
 			</section>
 
 			{/* About */}
-			<section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+			<section className="rounded-lg border border-th-border bg-th-surface p-6 shadow-sm">
+				<h2 className="mb-4 text-lg font-semibold text-th-text">
 					About
 				</h2>
 				<AboutSection />
 			</section>
 
 			{/* Data Management */}
-			<section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-				<h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+			<section className="rounded-lg border border-th-border bg-th-surface p-6 shadow-sm">
+				<h2 className="mb-4 text-lg font-semibold text-th-text">
 					Data Management
 				</h2>
 				<div className="flex flex-wrap gap-3">
 					<button
 						type="button"
 						onClick={handleClearAll}
-						className={`rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 ${
+						className={`rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-th-focus-ring-offset ${
 							clearConfirmed
-								? "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500"
-								: "border border-red-300 text-red-600 hover:bg-red-50 focus:ring-red-500 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+								? "bg-th-status-error-dot text-th-accent-text hover:opacity-90 focus:ring-th-status-error-dot"
+								: "border border-th-status-error-border text-th-status-error-text hover:bg-th-status-error-bg focus:ring-th-status-error-dot"
 						}`}
 					>
 						{clearConfirmed
@@ -120,7 +120,7 @@ export function SettingsPage() {
 					<button
 						type="button"
 						onClick={handleExport}
-						className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:focus:ring-offset-gray-900"
+						className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary transition-colors hover:bg-th-surface-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 focus:ring-offset-th-focus-ring-offset"
 					>
 						Export Settings
 					</button>
@@ -128,7 +128,7 @@ export function SettingsPage() {
 					<button
 						type="button"
 						onClick={handleImportClick}
-						className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:focus:ring-offset-gray-900"
+						className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary transition-colors hover:bg-th-surface-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 focus:ring-offset-th-focus-ring-offset"
 					>
 						Import Settings
 					</button>

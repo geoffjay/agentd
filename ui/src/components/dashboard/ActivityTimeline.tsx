@@ -39,15 +39,15 @@ function formatRelativeTime(date: Date): string {
 }
 
 const EVENT_ICONS: Record<ActivityEventType, React.ReactNode> = {
-	agent: <Bot size={16} className="text-primary-500" />,
-	notification: <Bell size={16} className="text-yellow-500" />,
-	question: <HelpCircle size={16} className="text-blue-500" />,
+	agent: <Bot size={16} className="text-th-text-link" />,
+	notification: <Bell size={16} className="text-th-status-warning-text" />,
+	question: <HelpCircle size={16} className="text-th-status-info-text" />,
 };
 
 const EVENT_BG: Record<ActivityEventType, string> = {
-	agent: "bg-primary-100 dark:bg-primary-900/30",
-	notification: "bg-yellow-100 dark:bg-yellow-900/30",
-	question: "bg-blue-100 dark:bg-blue-900/30",
+	agent: "bg-th-accent-subtle",
+	notification: "bg-th-status-warning-bg",
+	question: "bg-th-status-info-bg",
 };
 
 // ---------------------------------------------------------------------------
@@ -68,26 +68,26 @@ export function ActivityTimeline({
 	return (
 		<section
 			aria-labelledby="activity-timeline-heading"
-			className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
+			className="rounded-lg border border-th-border bg-th-surface p-5"
 		>
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<h2
 					id="activity-timeline-heading"
-					className="text-base font-semibold text-gray-900 dark:text-white"
+					className="text-base font-semibold text-th-text"
 				>
 					Recent Activity
 				</h2>
 				<Link
 					to="/notifications"
-					className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+					className="flex items-center gap-1 text-xs font-medium text-th-text-link hover:opacity-80"
 				>
 					View All <ExternalLink size={12} />
 				</Link>
 			</div>
 
 			{/* Error */}
-			{error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+			{error && <p className="mt-3 text-sm text-th-status-error-text">{error}</p>}
 
 			{/* Loading */}
 			{loading && !error && (
@@ -98,7 +98,7 @@ export function ActivityTimeline({
 
 			{/* Empty state */}
 			{!loading && !error && events.length === 0 && (
-				<p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+				<p className="mt-4 text-sm text-th-text-muted">
 					No recent activity.
 				</p>
 			)}
@@ -120,12 +120,12 @@ export function ActivityTimeline({
 							</div>
 							{/* Text */}
 							<div className="min-w-0 flex-1">
-								<p className="text-sm text-gray-800 dark:text-gray-200">
+								<p className="text-sm text-th-text-secondary">
 									{event.description}
 								</p>
 								<time
 									dateTime={event.timestamp.toISOString()}
-									className="text-xs text-gray-400 dark:text-gray-500"
+									className="text-xs text-th-text-faint"
 								>
 									{formatRelativeTime(event.timestamp)}
 								</time>

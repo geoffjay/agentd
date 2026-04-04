@@ -60,21 +60,21 @@ const STATUS_ICON: Record<TodoStatus, React.ReactNode> = {
 	pending: (
 		<Circle
 			size={14}
-			className="shrink-0 text-gray-400 dark:text-gray-500"
+			className="shrink-0 text-th-text-faint"
 			aria-hidden="true"
 		/>
 	),
 	in_progress: (
 		<Loader2
 			size={14}
-			className="shrink-0 animate-spin text-blue-500 dark:text-blue-400"
+			className="shrink-0 animate-spin text-th-status-info-text"
 			aria-hidden="true"
 		/>
 	),
 	completed: (
 		<CheckSquare
 			size={14}
-			className="shrink-0 text-green-500 dark:text-green-400"
+			className="shrink-0 text-th-status-success-text"
 			aria-hidden="true"
 		/>
 	),
@@ -87,10 +87,9 @@ const STATUS_LABEL: Record<TodoStatus, string> = {
 };
 
 const PRIORITY_BADGE: Record<TodoPriority, string> = {
-	high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-	medium:
-		"bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-	low: "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400",
+	high: "bg-th-status-error-bg text-th-status-error-text",
+	medium: "bg-th-status-warning-bg text-th-status-warning-text",
+	low: "bg-th-surface-sunken text-th-text-muted",
 };
 
 interface TodoRowProps {
@@ -108,8 +107,8 @@ function TodoRow({ item }: TodoRowProps) {
 			<span
 				className={`flex-1 text-sm leading-snug ${
 					isCompleted
-						? "text-gray-400 line-through dark:text-gray-500"
-						: "text-gray-700 dark:text-gray-300"
+						? "text-th-text-faint line-through"
+						: "text-th-text-secondary"
 				}`}
 			>
 				{item.content}
@@ -154,14 +153,14 @@ export function AgentTodosPanel({ agentId }: AgentTodosPanelProps) {
 	const renderEmpty = () => (
 		<section
 			aria-label="Agent todos"
-			className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+			className="rounded-lg border border-th-border bg-th-surface"
 		>
-			<div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-				<Clock size={16} aria-hidden="true" className="text-gray-400" />
-				<h2 className="text-sm font-medium text-gray-900 dark:text-white">
+			<div className="flex items-center gap-2 border-b border-th-border px-4 py-3">
+				<Clock size={16} aria-hidden="true" className="text-th-text-muted" />
+				<h2 className="text-sm font-medium text-th-text">
 					Todos
 				</h2>
-				<p className="py-2 text-sm text-gray-400 dark:text-gray-500">
+				<p className="py-2 text-sm text-th-text-faint">
 					No todos.
 				</p>
 			</div>
@@ -178,11 +177,11 @@ export function AgentTodosPanel({ agentId }: AgentTodosPanelProps) {
 	return (
 		<section
 			aria-label="Agent todos"
-			className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+			className="rounded-lg border border-th-border bg-th-surface"
 		>
-			<div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-				<Clock size={16} aria-hidden="true" className="text-gray-400" />
-				<h2 className="text-sm font-medium text-gray-900 dark:text-white">
+			<div className="flex items-center gap-2 border-b border-th-border px-4 py-3">
+				<Clock size={16} aria-hidden="true" className="text-th-text-muted" />
+				<h2 className="text-sm font-medium text-th-text">
 					Todos
 				</h2>
 				{todos.length > 0 && (
@@ -190,14 +189,14 @@ export function AgentTodosPanel({ agentId }: AgentTodosPanelProps) {
 						{inProgress > 0 && (
 							<span
 								title={`${inProgress} in progress`}
-								className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+								className="rounded-full bg-th-status-info-bg px-2 py-0.5 text-xs font-medium text-th-status-info-text"
 							>
 								{inProgress} active
 							</span>
 						)}
 						<span
 							title={`${completed} of ${todos.length} completed`}
-							className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+							className="rounded-full bg-th-surface-sunken px-2 py-0.5 text-xs font-medium text-th-text-muted"
 						>
 							{completed}/{todos.length}
 						</span>
@@ -208,12 +207,12 @@ export function AgentTodosPanel({ agentId }: AgentTodosPanelProps) {
 			{/* Body */}
 			<div className="px-4 py-2">
 				{todos.length === 0 ? (
-					<p className="py-2 text-sm text-gray-400 dark:text-gray-500">
+					<p className="py-2 text-sm text-th-text-faint">
 						No todos.
 					</p>
 				) : (
 					<ul
-						className="divide-y divide-gray-100 dark:divide-gray-700/50"
+						className="divide-y divide-th-border"
 						aria-label={`${todos.length} todo item${todos.length !== 1 ? "s" : ""}, ${pending} pending, ${inProgress} in progress, ${completed} completed`}
 					>
 						{todos.map((item) => (

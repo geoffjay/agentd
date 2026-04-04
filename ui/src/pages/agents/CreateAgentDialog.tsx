@@ -144,11 +144,11 @@ function SectionLabel({
 	return (
 		<label
 			htmlFor={htmlFor}
-			className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+			className="block text-sm font-medium text-th-text-secondary"
 		>
 			{label}
 			{optional && (
-				<span className="ml-1 text-xs font-normal text-gray-400 dark:text-gray-500">
+				<span className="ml-1 text-xs font-normal text-th-text-faint">
 					(optional)
 				</span>
 			)}
@@ -158,7 +158,7 @@ function SectionLabel({
 
 function FieldError({ msg }: { msg?: string }) {
 	if (!msg) return null;
-	return <p className="mt-1 text-xs text-red-600 dark:text-red-400">{msg}</p>;
+	return <p className="mt-1 text-xs text-th-status-error-text">{msg}</p>;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,14 +267,14 @@ export function CreateAgentDialog({
 		form.tool_policy_type === "deny_list";
 
 	const inputCls =
-		"block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500";
+		"block w-full rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text placeholder:text-th-text-faint focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-th-focus-ring";
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-start justify-end">
 			{/* Backdrop */}
 			<div
 				aria-hidden="true"
-				className="absolute inset-0 bg-black/40"
+				className="absolute inset-0 bg-th-overlay"
 				onClick={handleClose}
 			/>
 
@@ -284,13 +284,13 @@ export function CreateAgentDialog({
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="create-agent-title"
-				className="relative flex h-full w-full max-w-lg flex-col bg-white shadow-2xl dark:bg-gray-900"
+				className="relative flex h-full w-full max-w-lg flex-col bg-th-surface shadow-2xl"
 			>
 				{/* Header */}
-				<div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+				<div className="flex items-center justify-between border-b border-th-border px-6 py-4">
 					<h2
 						id="create-agent-title"
-						className="text-lg font-semibold text-gray-900 dark:text-white"
+						className="text-lg font-semibold text-th-text"
 					>
 						Create Agent
 					</h2>
@@ -298,7 +298,7 @@ export function CreateAgentDialog({
 						type="button"
 						aria-label="Close"
 						onClick={handleClose}
-						className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+						className="rounded-md p-1.5 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text-secondary"
 					>
 						<X size={18} />
 					</button>
@@ -314,7 +314,7 @@ export function CreateAgentDialog({
 					<div className="space-y-5 px-6 py-5">
 						{/* General error */}
 						{errors.general && (
-							<div className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
+							<div className="rounded-md bg-th-status-error-bg p-3 text-sm text-th-status-error-text">
 								{errors.general}
 							</div>
 						)}
@@ -331,7 +331,7 @@ export function CreateAgentDialog({
 								placeholder="my-agent"
 								className={[
 									inputCls,
-									errors.name ? "border-red-500 focus:ring-red-500" : "",
+									errors.name ? "border-th-status-error-border focus:ring-th-status-error-border" : "",
 								].join(" ")}
 							/>
 							<FieldError msg={errors.name} />
@@ -352,7 +352,7 @@ export function CreateAgentDialog({
 								placeholder="/home/user/project"
 								className={[
 									inputCls,
-									errors.working_dir ? "border-red-500 focus:ring-red-500" : "",
+									errors.working_dir ? "border-th-status-error-border focus:ring-th-status-error-border" : "",
 								].join(" ")}
 							/>
 							<FieldError msg={errors.working_dir} />
@@ -407,14 +407,14 @@ export function CreateAgentDialog({
 							/>
 							{form.system_prompt.trim().length > 0 && (
 								<div className="mt-2">
-									<p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+									<p className="mb-1 text-xs text-th-text-muted">
 										Preview
 									</p>
 									<HighlightedCode
 										code={form.system_prompt}
 										language="markdown"
 										maxHeight="10rem"
-										className="border border-gray-200 dark:border-gray-700"
+										className="border border-th-border"
 									/>
 								</div>
 							)}
@@ -439,7 +439,7 @@ export function CreateAgentDialog({
 								<div>
 									<label
 										htmlFor="agent-tool-list"
-										className="block text-xs text-gray-500 dark:text-gray-400"
+										className="block text-xs text-th-text-muted"
 									>
 										Tool names (comma-separated)
 									</label>
@@ -456,13 +456,13 @@ export function CreateAgentDialog({
 						</div>
 
 						{/* ── Advanced section ─────────────────────────────────────── */}
-						<div className="rounded-md border border-gray-200 dark:border-gray-700">
+						<div className="rounded-md border border-th-border">
 							<button
 								type="button"
 								aria-expanded={advancedOpen}
 								aria-controls="create-agent-advanced"
 								onClick={() => setAdvancedOpen((v) => !v)}
-								className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
+								className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover"
 							>
 								<span>Advanced</span>
 								{advancedOpen ? (
@@ -475,16 +475,16 @@ export function CreateAgentDialog({
 							{advancedOpen && (
 								<div
 									id="create-agent-advanced"
-									className="space-y-5 border-t border-gray-200 px-4 py-4 dark:border-gray-700"
+									className="space-y-5 border-t border-th-border px-4 py-4"
 								>
 									{/* Interactive mode toggle */}
 									<div>
 										<div className="flex items-center justify-between">
 											<div className="flex-1 pr-4">
-												<span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+												<span className="block text-sm font-medium text-th-text-secondary">
 													Interactive mode
 												</span>
-												<span className="mt-0.5 block text-xs text-gray-400 dark:text-gray-500">
+												<span className="mt-0.5 block text-xs text-th-text-faint">
 													Runs Claude without the SDK protocol. The Terminal tab
 													becomes the primary interface; you can type directly
 													and the application can inject prompts via PTY stdin.
@@ -499,15 +499,15 @@ export function CreateAgentDialog({
 												aria-label="Interactive mode"
 												onClick={() => update("interactive", !form.interactive)}
 												className={[
-													"relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900",
+													"relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 focus:ring-offset-th-focus-ring-offset",
 													form.interactive
-														? "bg-primary-600"
-														: "bg-gray-200 dark:bg-gray-700",
+														? "bg-th-accent"
+														: "bg-th-surface-sunken",
 												].join(" ")}
 											>
 												<span
 													className={[
-														"inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+														"inline-block h-4 w-4 rounded-full bg-th-surface shadow transition-transform",
 														form.interactive
 															? "translate-x-6"
 															: "translate-x-1",
@@ -518,7 +518,7 @@ export function CreateAgentDialog({
 										{form.interactive && (
 											<div
 												role="note"
-												className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+												className="mt-2 flex items-start gap-2 rounded-md border border-th-status-warning-border bg-th-status-warning-bg px-3 py-2 text-xs text-th-status-warning-text"
 											>
 												<AlertTriangle
 													size={13}
@@ -554,11 +554,11 @@ export function CreateAgentDialog({
 											className={[
 												inputCls,
 												errors.auto_clear_threshold
-													? "border-red-500 focus:ring-red-500"
+													? "border-th-status-error-border focus:ring-th-status-error-border"
 													: "",
 											].join(" ")}
 										/>
-										<p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+										<p className="mt-1 text-xs text-th-text-faint">
 											Automatically clear context when cumulative input tokens
 											exceed this threshold. Leave empty to disable.
 										</p>
@@ -584,9 +584,9 @@ export function CreateAgentDialog({
 
 									{/* Environment Variables */}
 									<div>
-										<span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+										<span className="block text-sm font-medium text-th-text-secondary">
 											Environment Variables{" "}
-											<span className="text-xs font-normal text-gray-400 dark:text-gray-500">
+											<span className="text-xs font-normal text-th-text-faint">
 												(optional)
 											</span>
 										</span>
@@ -604,7 +604,7 @@ export function CreateAgentDialog({
 															"flex-1 font-mono text-xs",
 														].join(" ")}
 													/>
-													<span className="text-gray-400">=</span>
+													<span className="text-th-text-muted">=</span>
 													<input
 														type="text"
 														aria-label={`Environment variable value ${i + 1}`}
@@ -621,7 +621,7 @@ export function CreateAgentDialog({
 														aria-label={`Remove environment variable ${i + 1}`}
 														onClick={() => removeEnvRow(i)}
 														disabled={form.env_keys.length === 1}
-														className="rounded p-1 text-gray-400 hover:text-red-500 disabled:opacity-30"
+														className="rounded p-1 text-th-text-muted hover:text-th-status-error-text disabled:opacity-30"
 													>
 														<Trash2 size={13} />
 													</button>
@@ -630,7 +630,7 @@ export function CreateAgentDialog({
 											<button
 												type="button"
 												onClick={addEnvRow}
-												className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+												className="flex items-center gap-1 text-xs text-th-text-link hover:opacity-80"
 											>
 												<Plus size={12} />
 												Add variable
@@ -644,12 +644,12 @@ export function CreateAgentDialog({
 				</form>
 
 				{/* Footer */}
-				<div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+				<div className="flex justify-end gap-3 border-t border-th-border px-6 py-4">
 					<button
 						type="button"
 						onClick={handleClose}
 						disabled={submitting}
-						className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+						className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 disabled:opacity-50"
 					>
 						Cancel
 					</button>
@@ -657,7 +657,7 @@ export function CreateAgentDialog({
 						type="submit"
 						form="create-agent-form"
 						disabled={submitting}
-						className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
+						className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 disabled:opacity-50 transition-colors"
 					>
 						{submitting ? "Creating…" : "Create Agent"}
 					</button>

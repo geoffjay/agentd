@@ -24,30 +24,30 @@ import type {
 
 function KindIcon({ kind }: { kind: ParticipantKind }) {
 	return kind === "agent" ? (
-		<Bot size={14} className="text-primary-400" aria-hidden="true" />
+		<Bot size={14} className="text-th-text-link" aria-hidden="true" />
 	) : (
-		<User size={14} className="text-emerald-400" aria-hidden="true" />
+		<User size={14} className="text-th-status-success-text" aria-hidden="true" />
 	);
 }
 
 function RoleIcon({ role }: { role: ParticipantRole }) {
 	if (role === "admin")
-		return <Crown size={12} className="text-yellow-400" aria-label="Admin" />;
+		return <Crown size={12} className="text-th-status-warning-text" aria-label="Admin" />;
 	if (role === "observer")
-		return <Eye size={12} className="text-gray-500" aria-label="Observer" />;
+		return <Eye size={12} className="text-th-text-muted" aria-label="Observer" />;
 	return null;
 }
 
 function ActivityDot({ state }: { state?: "idle" | "busy" }) {
 	if (!state)
 		return (
-			<span className="h-2 w-2 rounded-full bg-gray-600" aria-label="Unknown" />
+			<span className="h-2 w-2 rounded-full bg-th-text-faint" aria-label="Unknown" />
 		);
 	return (
 		<span
 			className={[
 				"h-2 w-2 rounded-full",
-				state === "busy" ? "bg-yellow-400" : "bg-green-400",
+				state === "busy" ? "bg-th-status-warning-dot" : "bg-th-status-success-dot",
 			].join(" ")}
 			aria-label={state === "busy" ? "Busy" : "Idle"}
 		/>
@@ -64,10 +64,10 @@ function ParticipantItem({ participant }: { participant: Participant }) {
 			<ActivityDot state={participant.activity_state} />
 			<KindIcon kind={participant.kind} />
 			<span className="min-w-0 flex-1">
-				<span className="block truncate text-sm text-gray-300">
+				<span className="block truncate text-sm text-th-text-secondary">
 					{participant.display_name}
 				</span>
-				<span className="block truncate text-xs text-gray-500">
+				<span className="block truncate text-xs text-th-text-muted">
 					{participant.identifier}
 				</span>
 			</span>
@@ -134,7 +134,7 @@ export function ParticipantPanel({
 	if (!roomId) {
 		return (
 			<div className="flex h-full items-center justify-center p-4">
-				<p className="text-xs text-gray-500 text-center">
+				<p className="text-xs text-th-text-muted text-center">
 					Select a room to see participants.
 				</p>
 			</div>
@@ -147,7 +147,7 @@ export function ParticipantPanel({
 				{Array.from({ length: 4 }).map((_, i) => (
 					<div
 						key={i}
-						className="h-8 rounded-md bg-gray-700 animate-pulse"
+						className="h-8 rounded-md bg-th-surface-raised animate-pulse"
 						aria-hidden="true"
 					/>
 				))}
@@ -157,7 +157,7 @@ export function ParticipantPanel({
 
 	if (error) {
 		return (
-			<p className="px-3 py-4 text-xs text-red-400 text-center">{error}</p>
+			<p className="px-3 py-4 text-xs text-th-status-error-text text-center">{error}</p>
 		);
 	}
 
@@ -167,7 +167,7 @@ export function ParticipantPanel({
 				<section aria-labelledby="agents-heading">
 					<h3
 						id="agents-heading"
-						className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500"
+						className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-th-text-muted"
 					>
 						Agents — {agents.length}
 					</h3>
@@ -186,7 +186,7 @@ export function ParticipantPanel({
 				>
 					<h3
 						id="humans-heading"
-						className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500"
+						className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-th-text-muted"
 					>
 						Humans — {humans.length}
 					</h3>
@@ -199,7 +199,7 @@ export function ParticipantPanel({
 			)}
 
 			{merged.length === 0 && (
-				<p className="px-3 py-4 text-center text-xs text-gray-500">
+				<p className="px-3 py-4 text-center text-xs text-th-text-muted">
 					No participants yet.
 				</p>
 			)}

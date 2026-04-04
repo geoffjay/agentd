@@ -47,10 +47,10 @@ describe("ConnectionStatus", () => {
 	});
 
 	it.each([
-		["Connected", "bg-green-500"],
+		["Connected", "bg-th-status-success-dot"],
 		["Connecting", "animate-pulse"],
 		["Reconnecting", "animate-pulse"],
-		["Disconnected", "bg-red-500"],
+		["Disconnected", "bg-th-status-error-dot"],
 	] as [
 		ConnectionState,
 		string,

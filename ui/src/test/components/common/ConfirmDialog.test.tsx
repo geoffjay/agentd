@@ -84,7 +84,7 @@ describe("ConfirmDialog", () => {
 			/>,
 		);
 		// The backdrop is the aria-hidden overlay div
-		const overlay = document.querySelector(".absolute.inset-0.bg-black\\/50");
+		const overlay = document.querySelector(".absolute.inset-0.bg-th-overlay");
 		expect(overlay).toBeTruthy();
 		fireEvent.click(overlay!);
 		expect(onCancel).toHaveBeenCalledOnce();

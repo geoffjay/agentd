@@ -69,11 +69,11 @@ function ConfigRow({
 	value: React.ReactNode;
 }) {
 	return (
-		<div className="grid grid-cols-3 gap-4 py-3 border-t border-gray-100 dark:border-gray-800 first:border-t-0">
-			<dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
+		<div className="grid grid-cols-3 gap-4 py-3 border-t border-th-border-subtle first:border-t-0">
+			<dt className="text-sm font-medium text-th-text-muted">
 				{label}
 			</dt>
-			<dd className="col-span-2 text-sm text-gray-900 dark:text-white">
+			<dd className="col-span-2 text-sm text-th-text">
 				{value}
 			</dd>
 		</div>
@@ -131,12 +131,12 @@ export function WorkflowDetail() {
 			<div id="main-content" className="space-y-4">
 				<Link
 					to="/workflows"
-					className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors"
+					className="inline-flex items-center gap-2 text-sm text-th-text-muted hover:text-th-text transition-colors"
 				>
 					<ArrowLeft size={16} />
 					Back to Workflows
 				</Link>
-				<p className="text-sm text-red-500 dark:text-red-400">
+				<p className="text-sm text-th-status-error-text">
 					{error ?? "Workflow not found."}
 				</p>
 			</div>
@@ -150,7 +150,7 @@ export function WorkflowDetail() {
 			{/* Back nav */}
 			<Link
 				to="/workflows"
-				className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded"
+				className="inline-flex items-center gap-2 text-sm text-th-text-muted hover:text-th-text transition-colors focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring rounded"
 			>
 				<ArrowLeft size={16} />
 				Back to Workflows
@@ -159,17 +159,17 @@ export function WorkflowDetail() {
 			{/* Header */}
 			<div className="flex items-start justify-between">
 				<div className="flex items-start gap-4">
-					<div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/30">
-						<Zap size={24} className="text-primary-600 dark:text-primary-400" />
+					<div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-th-accent-subtle">
+						<Zap size={24} className="text-th-text-link" />
 					</div>
 					<div>
 						<div className="flex items-center gap-3">
-							<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+							<h1 className="text-2xl font-semibold text-th-text">
 								{workflow.name}
 							</h1>
 							<StatusBadge status={workflow.enabled ? "healthy" : "unknown"} />
 						</div>
-						<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+						<p className="mt-1 text-sm text-th-text-muted">
 							Agent: {agent?.name ?? workflow.agent_id}
 						</p>
 					</div>
@@ -179,7 +179,7 @@ export function WorkflowDetail() {
 					<button
 						type="button"
 						onClick={refetch}
-						className="rounded-md p-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+						className="rounded-md p-2 text-th-text-muted hover:text-th-text-secondary hover:bg-th-surface-hover transition-colors"
 						aria-label="Refresh"
 					>
 						<RefreshCw size={18} />
@@ -187,7 +187,7 @@ export function WorkflowDetail() {
 					<button
 						type="button"
 						onClick={() => setFormOpen(true)}
-						className="inline-flex items-center gap-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+						className="inline-flex items-center gap-2 rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
 					>
 						<Edit2 size={15} />
 						Edit
@@ -195,7 +195,7 @@ export function WorkflowDetail() {
 					<button
 						type="button"
 						onClick={() => setConfirmDelete(true)}
-						className="inline-flex items-center gap-2 rounded-md border border-red-300 dark:border-red-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+						className="inline-flex items-center gap-2 rounded-md border border-th-status-error-border bg-th-surface px-3 py-2 text-sm font-medium text-th-status-error-text hover:opacity-90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
 					>
 						<Trash2 size={15} />
 						Delete
@@ -204,8 +204,8 @@ export function WorkflowDetail() {
 			</div>
 
 			{/* Configuration card */}
-			<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
-				<h2 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
+			<div className="rounded-lg border border-th-border bg-th-surface p-6">
+				<h2 className="text-base font-semibold text-th-text mb-4">
 					Configuration
 				</h2>
 				<dl>
@@ -237,7 +237,7 @@ export function WorkflowDetail() {
 								code={workflow.prompt_template}
 								language="markdown"
 								maxHeight="8rem"
-								className="border border-gray-200 dark:border-gray-700"
+								className="border border-th-border"
 							/>
 						}
 					/>
@@ -245,8 +245,8 @@ export function WorkflowDetail() {
 			</div>
 
 			{/* Dispatch history */}
-			<div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
-				<h2 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
+			<div className="rounded-lg border border-th-border bg-th-surface p-6">
+				<h2 className="text-base font-semibold text-th-text mb-4">
 					Dispatch history
 				</h2>
 				<DispatchHistory workflowId={workflow.id} />

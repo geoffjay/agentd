@@ -155,10 +155,10 @@ export function AgentList() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+					<h1 className="text-2xl font-semibold text-th-text">
 						Agents
 					</h1>
-					<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					<p className="mt-1 text-sm text-th-text-muted">
 						Manage and monitor running agents.
 					</p>
 				</div>
@@ -169,7 +169,7 @@ export function AgentList() {
 						<RefreshCw
 							size={14}
 							aria-label="Refreshing…"
-							className="animate-spin text-gray-400"
+							className="animate-spin text-th-text-muted"
 						/>
 					)}
 
@@ -179,7 +179,7 @@ export function AgentList() {
 						aria-label="Refresh agents list"
 						onClick={refetch}
 						disabled={loading}
-						className="rounded-md border border-gray-300 bg-white p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+						className="rounded-md border border-th-border-strong bg-th-surface p-2 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text-secondary focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1 disabled:opacity-50"
 					>
 						<RefreshCw size={15} />
 					</button>
@@ -188,7 +188,7 @@ export function AgentList() {
 					<button
 						type="button"
 						onClick={() => setDialogOpen(true)}
-						className="flex items-center gap-1.5 rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 transition-colors"
+						className="flex items-center gap-1.5 rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1 transition-colors"
 					>
 						<Plus size={16} aria-hidden="true" />
 						Create Agent
@@ -200,7 +200,7 @@ export function AgentList() {
 			{error && (
 				<div
 					role="alert"
-					className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400"
+					className="rounded-md bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text"
 				>
 					{error}
 				</div>

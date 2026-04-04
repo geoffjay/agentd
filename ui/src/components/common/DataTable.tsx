@@ -103,7 +103,7 @@ function SortHeader({
 		<button
 			type="button"
 			onClick={() => onSort?.(field)}
-			className="flex items-center gap-1 font-medium hover:text-gray-900 dark:hover:text-white"
+			className="flex items-center gap-1 font-medium hover:text-th-text"
 			aria-sort={
 				isActive ? (currentDir === "asc" ? "ascending" : "descending") : "none"
 			}
@@ -168,17 +168,17 @@ export function DataTable<T>({
 	}
 
 	const BULK_VARIANT_STYLES: Record<string, string> = {
-		default: "bg-gray-600 text-white hover:bg-gray-500 focus:ring-gray-500",
-		danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500",
-		success: "bg-green-600 text-white hover:bg-green-700 focus:ring-green-500",
+		default: "bg-th-surface-hover text-th-text hover:opacity-90 focus:ring-th-focus-ring",
+		danger: "bg-th-status-error-dot text-th-accent-text hover:opacity-90 focus:ring-th-focus-ring",
+		success: "bg-th-status-success-dot text-th-accent-text hover:opacity-90 focus:ring-th-focus-ring",
 	};
 
 	return (
-		<div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+		<div className="overflow-hidden rounded-lg border border-th-border">
 			{/* Bulk action toolbar */}
 			{someSelected && bulkActions.length > 0 && (
-				<div className="flex items-center gap-3 border-b border-gray-200 bg-primary-50 px-4 py-2.5 dark:border-gray-700 dark:bg-primary-900/20">
-					<span className="text-sm font-medium text-primary-700 dark:text-primary-300">
+				<div className="flex items-center gap-3 border-b border-th-border bg-th-accent-subtle px-4 py-2.5">
+					<span className="text-sm font-medium text-th-text-link">
 						{selectedIds.length} selected
 					</span>
 					{bulkActions.map((action) => (
@@ -198,7 +198,7 @@ export function DataTable<T>({
 					<button
 						type="button"
 						onClick={() => onSelectChange?.([])}
-						className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+						className="text-xs text-th-text-muted hover:text-th-text"
 					>
 						{clearSelectionLabel}
 					</button>
@@ -206,8 +206,8 @@ export function DataTable<T>({
 			)}
 
 			<div className="overflow-x-auto">
-				<table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-					<thead className="bg-gray-50 dark:bg-gray-800/50">
+				<table className="min-w-full divide-y divide-th-border">
+					<thead className="bg-th-surface-sunken">
 						<tr>
 							{/* Select all checkbox */}
 							{selectable && (
@@ -217,7 +217,7 @@ export function DataTable<T>({
 										aria-label="Select all"
 										checked={allSelected}
 										onChange={(e) => toggleAll(e.target.checked)}
-										className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+										className="h-4 w-4 rounded border-th-border-strong text-th-accent focus:ring-th-focus-ring"
 									/>
 								</th>
 							)}
@@ -226,7 +226,7 @@ export function DataTable<T>({
 								<th
 									key={col.key}
 									className={[
-										"px-4 py-3 text-left text-xs text-gray-500 dark:text-gray-400",
+										"px-4 py-3 text-left text-xs text-th-text-muted",
 										col.headerClassName ?? "",
 									]
 										.filter(Boolean)
@@ -248,7 +248,7 @@ export function DataTable<T>({
 						</tr>
 					</thead>
 
-					<tbody className="divide-y divide-gray-100 bg-white dark:divide-gray-700 dark:bg-gray-900">
+					<tbody className="divide-y divide-th-border-subtle bg-th-surface">
 						{loading ? (
 							<tr>
 								<td colSpan={colCount} className="p-4">
@@ -258,11 +258,11 @@ export function DataTable<T>({
 						) : data.length === 0 ? (
 							<tr>
 								<td colSpan={colCount} className="py-12 text-center">
-									<p className="text-sm text-gray-500 dark:text-gray-400">
+									<p className="text-sm text-th-text-muted">
 										{emptyTitle}
 									</p>
 									{emptyDescription && (
-										<p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+										<p className="mt-1 text-xs text-th-text-muted">
 											{emptyDescription}
 										</p>
 									)}
@@ -276,7 +276,7 @@ export function DataTable<T>({
 									<tr
 										key={id}
 										className={[
-											"border-b border-gray-100 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/50",
+											"border-b border-th-border-subtle hover:bg-th-surface-hover",
 											onRowClick ? "cursor-pointer" : "",
 										].join(" ")}
 										onClick={() => onRowClick?.(row)}
@@ -291,7 +291,7 @@ export function DataTable<T>({
 													aria-label={`Select row`}
 													checked={isSelected}
 													onChange={(e) => toggleOne(id, e.target.checked)}
-													className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700"
+													className="h-4 w-4 rounded border-th-border-strong text-th-accent focus:ring-th-focus-ring"
 												/>
 											</td>
 										)}
@@ -302,7 +302,7 @@ export function DataTable<T>({
 												className={[
 													"px-4 py-3 text-sm",
 													col.cellClassName ??
-														"text-gray-500 dark:text-gray-400",
+														"text-th-text-muted",
 												].join(" ")}
 											>
 												{col.render(row)}

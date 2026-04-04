@@ -66,10 +66,10 @@ export function ServiceConfig({ services, onSave }: ServiceConfigProps) {
 					<div key={row.key} className="flex items-center gap-3">
 						<label
 							htmlFor={`service-url-${row.key}`}
-							className="w-32 shrink-0 text-sm font-medium text-gray-700 dark:text-gray-300"
+							className="w-32 shrink-0 text-sm font-medium text-th-text-secondary"
 						>
 							{row.label}
-							<span className="block text-xs font-normal text-gray-400 dark:text-gray-500">
+							<span className="block text-xs font-normal text-th-text-muted">
 								Port {row.port}
 							</span>
 						</label>
@@ -78,7 +78,7 @@ export function ServiceConfig({ services, onSave }: ServiceConfigProps) {
 							type="text"
 							value={localServices[row.key]}
 							onChange={(e) => handleUrlChange(row.key, e.target.value)}
-							className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
+							className="min-w-0 flex-1 rounded-md border border-th-border-input bg-th-input px-3 py-2 text-sm text-th-text placeholder:text-th-text-faint focus:border-th-focus-ring focus:outline-none focus:ring-1 focus:ring-th-focus-ring"
 							placeholder={`http://localhost:${row.port}`}
 						/>
 						<button
@@ -86,23 +86,23 @@ export function ServiceConfig({ services, onSave }: ServiceConfigProps) {
 							onClick={() => void handleTest(row.key)}
 							disabled={status === "loading"}
 							aria-label={`Test ${row.label} connection`}
-							className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+							className="inline-flex items-center gap-1.5 rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-sm font-medium text-th-text-secondary transition-colors hover:bg-th-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
 						>
 							{status === "loading" ? (
 								<span
-									className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600 dark:border-gray-600 dark:border-t-gray-300"
+									className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-th-border border-t-th-text-secondary"
 									aria-hidden="true"
 								/>
 							) : status === "success" ? (
 								<span
-									className="text-green-600 dark:text-green-400"
+									className="text-th-status-success-text"
 									aria-hidden="true"
 								>
 									✓
 								</span>
 							) : status === "error" ? (
 								<span
-									className="text-red-500 dark:text-red-400"
+									className="text-th-status-error-text"
 									aria-hidden="true"
 								>
 									✗
@@ -118,7 +118,7 @@ export function ServiceConfig({ services, onSave }: ServiceConfigProps) {
 				<button
 					type="button"
 					onClick={handleSave}
-					className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+					className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text transition-colors hover:bg-th-accent-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-2 focus:ring-offset-th-focus-ring-offset"
 				>
 					Save
 				</button>

@@ -28,7 +28,7 @@ function NotificationBadge({ count }: NotificationBadgeProps) {
 	return (
 		<span
 			aria-label={`${count} unread notifications`}
-			className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white"
+			className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-th-status-error-dot text-[10px] font-bold text-th-text-inverse"
 		>
 			{count > 99 ? "99+" : count}
 		</span>
@@ -48,11 +48,11 @@ function SearchTrigger() {
 			aria-label="Global search"
 			aria-keyshortcuts="Control+k Meta+k"
 			onClick={openSearch}
-			className="flex items-center gap-2 rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-4 text-sm text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-300"
+			className="flex items-center gap-2 rounded-md border border-th-border-strong bg-th-surface py-1.5 pl-3 pr-4 text-sm text-th-text-muted transition-colors hover:border-th-border-strong hover:text-th-text-secondary"
 		>
 			<Search size={14} aria-hidden="true" />
 			<span className="hidden md:inline">Search…</span>
-			<kbd className="hidden rounded border border-gray-300 px-1 py-0.5 text-[10px] text-gray-400 dark:border-gray-600 dark:text-gray-500 md:inline">
+			<kbd className="hidden rounded border border-th-border-strong px-1 py-0.5 text-[10px] text-th-text-muted md:inline">
 				Ctrl+K
 			</kbd>
 		</button>
@@ -78,8 +78,8 @@ export function Header({ unreadCount }: HeaderProps) {
 		<header
 			className={[
 				"fixed top-2 right-2 z-30 flex h-16 items-center gap-3 px-4 transition-all duration-300 ease-in-out rounded-t-lg",
-				"border border-gray-200 dark:border-gray-700",
-				"bg-gray-100 dark:bg-gray-800",
+				"border border-th-border",
+				"bg-th-surface-sunken",
 				// 'shadow-xl',
 				// 'backdrop-blur-md',
 				// Offset left edge by sidebar width
@@ -92,7 +92,7 @@ export function Header({ unreadCount }: HeaderProps) {
 				type="button"
 				aria-label="Toggle sidebar"
 				onClick={toggleSidebar}
-				className="rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+				className="rounded-md p-2 text-th-text-muted transition-colors hover:bg-th-surface-hover hover:text-th-text"
 			>
 				<Menu size={20} />
 			</button>
@@ -121,7 +121,7 @@ export function Header({ unreadCount }: HeaderProps) {
 						? `Notifications — ${displayCount} unread`
 						: "Notifications"
 				}
-				className="relative rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+				className="relative rounded-md p-2 text-th-text-muted transition-colors hover:bg-th-surface-hover hover:text-th-text"
 			>
 				<Bell size={20} />
 				<NotificationBadge count={displayCount} />
@@ -131,7 +131,7 @@ export function Header({ unreadCount }: HeaderProps) {
 			<Link
 				to="/settings"
 				aria-label="Settings"
-				className="rounded-md p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+				className="rounded-md p-2 text-th-text-muted transition-colors hover:bg-th-surface-hover hover:text-th-text"
 			>
 				<Settings size={20} />
 			</Link>

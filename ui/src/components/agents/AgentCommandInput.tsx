@@ -169,27 +169,27 @@ export function AgentCommandInput({
 	}
 
 	const borderColor = successFlash
-		? "border-green-500"
+		? "border-th-status-success-dot"
 		: error
-			? "border-red-500"
-			: "border-gray-700";
+			? "border-th-status-error-dot"
+			: "border-th-border";
 
 	return (
 		<div className="flex flex-col gap-1">
 			{error && (
-				<p role="alert" className="text-xs text-red-400">
+				<p role="alert" className="text-xs text-th-status-error-text">
 					{error}
 				</p>
 			)}
 			<div
 				className={[
-					"flex items-start gap-2 rounded-lg border bg-gray-900 px-3 py-2 transition-colors",
+					"flex items-start gap-2 rounded-lg border bg-th-page-inset px-3 py-2 transition-colors",
 					borderColor,
 					!enabled ? "opacity-60" : "",
 				].join(" ")}
 				title={!enabled ? disabledReason : undefined}
 			>
-				<span className="mt-1 shrink-0 select-none font-mono text-xs text-gray-500">
+				<span className="mt-1 shrink-0 select-none font-mono text-xs text-th-text-muted">
 					$
 				</span>
 				<textarea
@@ -208,14 +208,14 @@ export function AgentCommandInput({
 						historyIndexRef.current = -1;
 					}}
 					onKeyDown={handleKeyDown}
-					className="flex-1 resize-none mt-1 overflow-y-auto bg-transparent font-mono text-xs leading-4 text-gray-200 placeholder:text-gray-600 focus:outline-none disabled:cursor-not-allowed"
+					className="flex-1 resize-none mt-1 overflow-y-auto bg-transparent font-mono text-xs leading-4 text-th-text-secondary placeholder:text-th-text-muted focus:outline-none disabled:cursor-not-allowed"
 				/>
 				<button
 					type="button"
 					aria-label="Send message"
 					onClick={handleSend}
 					disabled={!enabled || sending || !value.trim()}
-					className="mt-1 shrink-0 self-end rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+					className="mt-1 shrink-0 self-end rounded p-1 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text disabled:cursor-not-allowed disabled:opacity-40"
 				>
 					<Send size={13} aria-hidden="true" />
 				</button>

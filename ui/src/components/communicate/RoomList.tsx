@@ -47,11 +47,11 @@ function isUnread(room: Room): boolean {
 function RoomTypeIcon({ type }: { type: RoomType }) {
 	switch (type) {
 		case "direct":
-			return <Lock size={14} className="shrink-0 text-gray-400" />;
+			return <Lock size={14} className="shrink-0 text-th-text-muted" />;
 		case "broadcast":
-			return <Radio size={14} className="shrink-0 text-yellow-400" />;
+			return <Radio size={14} className="shrink-0 text-th-status-warning-text" />;
 		default:
-			return <Hash size={14} className="shrink-0 text-gray-400" />;
+			return <Hash size={14} className="shrink-0 text-th-text-muted" />;
 	}
 }
 
@@ -75,8 +75,8 @@ function RoomItem({ room, selected, onClick }: RoomItemProps) {
 			className={[
 				"w-full flex items-start gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
 				selected
-					? "bg-primary-700 text-white"
-					: "text-gray-300 hover:bg-gray-700 hover:text-white",
+					? "bg-th-accent text-th-accent-text"
+					: "text-th-text-secondary hover:bg-th-surface-hover hover:text-th-text",
 			].join(" ")}
 		>
 			<span className="mt-0.5">
@@ -87,13 +87,13 @@ function RoomItem({ room, selected, onClick }: RoomItemProps) {
 					<span className="truncate font-medium">{room.name}</span>
 					{unread && !selected && (
 						<span
-							className="h-2 w-2 shrink-0 rounded-full bg-primary-400"
+							className="h-2 w-2 shrink-0 rounded-full bg-th-accent"
 							aria-label="Unread messages"
 						/>
 					)}
 				</span>
 				{room.topic && (
-					<span className="block truncate text-xs text-gray-400 mt-0.5">
+					<span className="block truncate text-xs text-th-text-muted mt-0.5">
 						{room.topic}
 					</span>
 				)}
@@ -132,14 +132,14 @@ export function RoomList({
 				<div className="relative">
 					<Search
 						size={14}
-						className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+						className="absolute left-2.5 top-1/2 -translate-y-1/2 text-th-text-muted pointer-events-none"
 					/>
 					<input
 						type="search"
 						placeholder="Find a room…"
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
-						className="w-full rounded-md bg-gray-700 pl-8 pr-3 py-1.5 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+						className="w-full rounded-md bg-th-surface-raised pl-8 pr-3 py-1.5 text-sm text-th-text placeholder-th-text-muted focus:outline-none focus:ring-2 focus:ring-th-focus-ring"
 						aria-label="Search rooms"
 					/>
 				</div>
@@ -155,12 +155,12 @@ export function RoomList({
 					Array.from({ length: 5 }).map((_, i) => (
 						<div
 							key={i}
-							className="h-10 rounded-md bg-gray-700 animate-pulse mx-1"
+							className="h-10 rounded-md bg-th-surface-raised animate-pulse mx-1"
 							aria-hidden="true"
 						/>
 					))
 				) : filtered.length === 0 ? (
-					<p className="px-3 py-4 text-center text-xs text-gray-500">
+					<p className="px-3 py-4 text-center text-xs text-th-text-muted">
 						{search ? "No rooms match your search." : "No rooms yet."}
 					</p>
 				) : (

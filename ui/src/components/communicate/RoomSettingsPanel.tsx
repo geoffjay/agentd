@@ -208,13 +208,13 @@ export function RoomSettingsPanel({
 	return (
 		<div className="flex h-full flex-col overflow-y-auto">
 			{/* Header */}
-			<div className="flex shrink-0 items-center justify-between border-b border-gray-700 px-4 py-3">
-				<h3 className="text-sm font-semibold text-white">Room Settings</h3>
+			<div className="flex shrink-0 items-center justify-between border-b border-th-border-nav px-4 py-3">
+				<h3 className="text-sm font-semibold text-th-text">Room Settings</h3>
 				<button
 					type="button"
 					onClick={onClose}
 					aria-label="Close settings"
-					className="rounded p-1 text-gray-400 hover:text-gray-200 transition-colors"
+					className="rounded p-1 text-th-text-muted hover:text-th-text transition-colors"
 				>
 					<X size={16} />
 				</button>
@@ -225,22 +225,22 @@ export function RoomSettingsPanel({
 				<section aria-labelledby="room-info-heading">
 					<h4
 						id="room-info-heading"
-						className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500"
+						className="mb-2 text-xs font-semibold uppercase tracking-wider text-th-text-muted"
 					>
 						Info
 					</h4>
 					<dl className="space-y-1 text-xs">
 						<div className="flex gap-2">
-							<dt className="w-20 shrink-0 text-gray-500">Type</dt>
-							<dd className="text-gray-300 capitalize">{room.room_type}</dd>
+							<dt className="w-20 shrink-0 text-th-text-muted">Type</dt>
+							<dd className="text-th-text-secondary capitalize">{room.room_type}</dd>
 						</div>
 						<div className="flex gap-2">
-							<dt className="w-20 shrink-0 text-gray-500">Created by</dt>
-							<dd className="text-gray-300 truncate">{room.created_by}</dd>
+							<dt className="w-20 shrink-0 text-th-text-muted">Created by</dt>
+							<dd className="text-th-text-secondary truncate">{room.created_by}</dd>
 						</div>
 						<div className="flex gap-2">
-							<dt className="w-20 shrink-0 text-gray-500">Created</dt>
-							<dd className="text-gray-300">
+							<dt className="w-20 shrink-0 text-th-text-muted">Created</dt>
+							<dd className="text-th-text-secondary">
 								{new Date(room.created_at).toLocaleDateString()}
 							</dd>
 						</div>
@@ -251,13 +251,13 @@ export function RoomSettingsPanel({
 				<section aria-labelledby="edit-room-heading">
 					<h4
 						id="edit-room-heading"
-						className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500"
+						className="mb-2 text-xs font-semibold uppercase tracking-wider text-th-text-muted"
 					>
 						Edit
 					</h4>
 					<div className="space-y-3">
 						<div>
-							<label className="mb-1 block text-xs font-medium text-gray-400">
+							<label className="mb-1 block text-xs font-medium text-th-text-muted">
 								Topic
 							</label>
 							<input
@@ -265,11 +265,11 @@ export function RoomSettingsPanel({
 								value={topic}
 								onChange={(e) => setTopic(e.target.value)}
 								placeholder="Room topic…"
-								className="w-full rounded-md border border-gray-600 bg-gray-900 px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+								className="w-full rounded-md border border-th-border-input bg-th-input px-3 py-1.5 text-xs text-th-text placeholder-th-text-faint focus:outline-none focus:ring-2 focus:ring-th-focus-ring"
 							/>
 						</div>
 						<div>
-							<label className="mb-1 block text-xs font-medium text-gray-400">
+							<label className="mb-1 block text-xs font-medium text-th-text-muted">
 								Description
 							</label>
 							<textarea
@@ -277,15 +277,15 @@ export function RoomSettingsPanel({
 								onChange={(e) => setDescription(e.target.value)}
 								placeholder="Room description…"
 								rows={2}
-								className="w-full resize-none rounded-md border border-gray-600 bg-gray-900 px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+								className="w-full resize-none rounded-md border border-th-border-input bg-th-input px-3 py-1.5 text-xs text-th-text placeholder-th-text-faint focus:outline-none focus:ring-2 focus:ring-th-focus-ring"
 							/>
 						</div>
-						{saveError && <p className="text-xs text-red-400">{saveError}</p>}
+						{saveError && <p className="text-xs text-th-status-error-text">{saveError}</p>}
 						<button
 							type="button"
 							onClick={() => void handleSaveInfo()}
 							disabled={saving}
-							className="flex items-center gap-1.5 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
+							className="flex items-center gap-1.5 rounded-md bg-th-accent px-3 py-1.5 text-xs font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors disabled:opacity-50"
 						>
 							<Save size={12} />
 							{saving ? "Saving…" : "Save changes"}
@@ -297,7 +297,7 @@ export function RoomSettingsPanel({
 				<section aria-labelledby="participants-heading">
 					<h4
 						id="participants-heading"
-						className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500"
+						className="mb-2 text-xs font-semibold uppercase tracking-wider text-th-text-muted"
 					>
 						Participants {!participantsLoading && `— ${participants.length}`}
 					</h4>
@@ -307,13 +307,13 @@ export function RoomSettingsPanel({
 						{participants.map((p) => (
 							<li
 								key={p.id}
-								className="flex items-center justify-between gap-2 rounded-md bg-gray-700/50 px-2 py-1.5"
+								className="flex items-center justify-between gap-2 rounded-md bg-th-surface-raised px-2 py-1.5"
 							>
 								<div className="min-w-0">
-									<p className="truncate text-xs font-medium text-gray-300">
+									<p className="truncate text-xs font-medium text-th-text-secondary">
 										{p.display_name}
 									</p>
-									<p className="truncate text-[10px] text-gray-500">
+									<p className="truncate text-[10px] text-th-text-muted">
 										{p.identifier}
 									</p>
 								</div>
@@ -323,7 +323,7 @@ export function RoomSettingsPanel({
 										onClick={() => void handleRemoveParticipant(p.identifier)}
 										disabled={removingIdentifier === p.identifier}
 										aria-label={`Remove ${p.display_name}`}
-										className="shrink-0 rounded p-1 text-gray-500 hover:text-red-400 transition-colors disabled:opacity-50"
+										className="shrink-0 rounded p-1 text-th-text-muted hover:text-th-status-error-text transition-colors disabled:opacity-50"
 									>
 										<UserMinus size={12} />
 									</button>
@@ -369,12 +369,12 @@ export function RoomSettingsPanel({
 								<option value="observer">Observer</option>
 							</select>
 						</div>
-						{addError && <p className="text-xs text-red-400">{addError}</p>}
+						{addError && <p className="text-xs text-th-status-error-text">{addError}</p>}
 						<button
 							type="button"
 							onClick={() => void handleAddParticipant()}
 							disabled={adding}
-							className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-400 hover:border-primary-500 hover:text-primary-400 transition-colors disabled:opacity-50"
+							className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-th-border px-3 py-1.5 text-xs font-medium text-th-text-muted hover:border-th-accent hover:text-th-text-link transition-colors disabled:opacity-50"
 						>
 							<UserPlus size={12} />
 							{adding ? "Adding…" : "Add participant"}
@@ -386,7 +386,7 @@ export function RoomSettingsPanel({
 				<section aria-labelledby="danger-heading" className="space-y-2">
 					<h4
 						id="danger-heading"
-						className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500"
+						className="mb-2 text-xs font-semibold uppercase tracking-wider text-th-text-muted"
 					>
 						Danger zone
 					</h4>
@@ -395,7 +395,7 @@ export function RoomSettingsPanel({
 						<button
 							type="button"
 							onClick={() => setShowLeaveRoom(true)}
-							className="flex w-full items-center gap-2 rounded-md border border-yellow-700/50 px-3 py-2 text-xs font-medium text-yellow-400 hover:bg-yellow-900/20 transition-colors"
+							className="flex w-full items-center gap-2 rounded-md border border-th-status-warning-border px-3 py-2 text-xs font-medium text-th-status-warning-text hover:opacity-80 transition-colors"
 						>
 							<UserMinus size={12} />
 							Leave room
@@ -405,7 +405,7 @@ export function RoomSettingsPanel({
 					<button
 						type="button"
 						onClick={() => setShowDeleteRoom(true)}
-						className="flex w-full items-center gap-2 rounded-md border border-red-700/50 px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-900/20 transition-colors"
+						className="flex w-full items-center gap-2 rounded-md border border-th-status-error-border px-3 py-2 text-xs font-medium text-th-status-error-text hover:opacity-80 transition-colors"
 					>
 						<Trash2 size={12} />
 						Delete room
@@ -441,5 +441,5 @@ export function RoomSettingsPanel({
 }
 
 function miniField(): string {
-	return "w-full rounded border border-gray-600 bg-gray-900 px-2 py-1 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500";
+	return "w-full rounded border border-th-border-input bg-th-input px-2 py-1 text-xs text-th-text placeholder-th-text-faint focus:outline-none focus:ring-1 focus:ring-th-focus-ring";
 }

@@ -26,7 +26,7 @@ export function ApprovalBadge({
 			aria-label={`${count} pending approval${count !== 1 ? "s" : ""}`}
 			className={[
 				"inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1",
-				"bg-yellow-500 text-[10px] font-bold leading-none text-gray-900",
+				"bg-th-status-warning-dot text-[10px] font-bold leading-none text-th-accent-text",
 				// Pulse animation when count > 0 to draw attention
 				count > 0 ? "animate-pulse" : "",
 				className,

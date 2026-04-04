@@ -28,13 +28,13 @@ interface ComingSoonCardProps {
 
 function ComingSoonCard({ title, icon }: ComingSoonCardProps) {
 	return (
-		<div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center dark:border-gray-600 dark:bg-gray-800">
-			<div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
+		<div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-th-border-strong bg-th-surface p-8 text-center">
+			<div className="flex h-12 w-12 items-center justify-center rounded-full bg-th-surface-sunken">
 				{icon}
 			</div>
 			<div>
-				<p className="font-medium text-gray-700 dark:text-gray-300">{title}</p>
-				<p className="mt-1 text-sm text-gray-400 dark:text-gray-500">
+				<p className="font-medium text-th-text-secondary">{title}</p>
+				<p className="mt-1 text-sm text-th-text-faint">
 					Coming Soon
 				</p>
 			</div>
@@ -81,10 +81,10 @@ export function DashboardPage() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+					<h1 className="text-2xl font-semibold text-th-text">
 						Dashboard
 					</h1>
-					<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+					<p className="mt-1 text-sm text-th-text-muted">
 						System overview and service health
 					</p>
 				</div>
@@ -93,7 +93,7 @@ export function DashboardPage() {
 					onClick={refresh}
 					disabled={healthLoading}
 					aria-label="Refresh service health"
-					className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+					className="flex items-center gap-1.5 rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-sm text-th-text-secondary hover:bg-th-surface-hover disabled:opacity-50"
 				>
 					<RefreshCw
 						size={14}
@@ -107,7 +107,7 @@ export function DashboardPage() {
 			<section aria-labelledby="service-health-heading">
 				<h2
 					id="service-health-heading"
-					className="mb-3 text-sm font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500"
+					className="mb-3 text-sm font-medium uppercase tracking-wide text-th-text-faint"
 				>
 					Service Health
 				</h2>
@@ -139,11 +139,11 @@ export function DashboardPage() {
 			<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
 				<ComingSoonCard
 					title="Monitoring"
-					icon={<BarChart2 size={24} className="text-gray-400" />}
+					icon={<BarChart2 size={24} className="text-th-text-muted" />}
 				/>
 				<ComingSoonCard
 					title="Hooks"
-					icon={<Webhook size={24} className="text-gray-400" />}
+					icon={<Webhook size={24} className="text-th-text-muted" />}
 				/>
 			</div>
 		</div>

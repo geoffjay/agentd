@@ -204,25 +204,25 @@ export function WorkflowForm({
 		>
 			{/* Backdrop */}
 			<div
-				className="absolute inset-0 bg-black/50"
+				className="absolute inset-0 bg-th-overlay"
 				onClick={onClose}
 				aria-hidden="true"
 			/>
 
 			{/* Panel */}
-			<div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white dark:bg-gray-900 shadow-xl">
+			<div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-th-surface shadow-xl">
 				{/* Header */}
-				<div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
+				<div className="sticky top-0 z-10 flex items-center justify-between border-b border-th-border bg-th-surface px-6 py-4">
 					<h2
 						id="workflow-form-title"
-						className="text-lg font-semibold text-gray-900 dark:text-white"
+						className="text-lg font-semibold text-th-text"
 					>
 						{isEditing ? "Edit Workflow" : "Create Workflow"}
 					</h2>
 					<button
 						type="button"
 						onClick={onClose}
-						className="rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+						className="rounded p-1 text-th-text-muted hover:text-th-text-secondary focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
 						aria-label="Close dialog"
 					>
 						<X size={18} />
@@ -232,15 +232,15 @@ export function WorkflowForm({
 				{/* Body */}
 				<div className="px-6 py-5 space-y-5">
 					{saveError && (
-						<p className="rounded-md bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+						<p className="rounded-md bg-th-status-error-bg px-3 py-2 text-sm text-th-status-error-text">
 							{saveError}
 						</p>
 					)}
 
 					{/* Name */}
 					<div>
-						<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-							Workflow name <span className="text-red-500">*</span>
+						<label className="block text-sm font-medium text-th-text-secondary mb-1">
+							Workflow name <span className="text-th-status-error-text">*</span>
 						</label>
 						<input
 							ref={firstFieldRef}
@@ -251,14 +251,14 @@ export function WorkflowForm({
 							className={fieldClass(errors.name)}
 						/>
 						{errors.name && (
-							<p className="mt-1 text-xs text-red-500">{errors.name}</p>
+							<p className="mt-1 text-xs text-th-status-error-text">{errors.name}</p>
 						)}
 					</div>
 
 					{/* Agent */}
 					<div>
-						<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-							Agent <span className="text-red-500">*</span>
+						<label className="block text-sm font-medium text-th-text-secondary mb-1">
+							Agent <span className="text-th-status-error-text">*</span>
 						</label>
 						<select
 							value={agentId}
@@ -273,38 +273,38 @@ export function WorkflowForm({
 							))}
 						</select>
 						{runningAgents.length === 0 && (
-							<p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+							<p className="mt-1 text-xs text-th-status-warning-text">
 								No running agents found. Start an agent first.
 							</p>
 						)}
 						{errors.agent_id && (
-							<p className="mt-1 text-xs text-red-500">{errors.agent_id}</p>
+							<p className="mt-1 text-xs text-th-status-error-text">{errors.agent_id}</p>
 						)}
 					</div>
 
 					{/* Task source type */}
 					<div>
-						<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+						<label className="block text-sm font-medium text-th-text-secondary mb-1">
 							Task source type
 						</label>
 						<select value="github_issues" disabled className={fieldClass()}>
 							<option value="github_issues">GitHub Issues</option>
 						</select>
-						<p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+						<p className="mt-1 text-xs text-th-text-faint">
 							More source types planned for future releases.
 						</p>
 					</div>
 
 					{/* GitHub Issues config */}
-					<fieldset className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">
-						<legend className="text-sm font-medium text-gray-700 dark:text-gray-300 px-1">
+					<fieldset className="rounded-lg border border-th-border p-4 space-y-3">
+						<legend className="text-sm font-medium text-th-text-secondary px-1">
 							GitHub Issues configuration
 						</legend>
 
 						<div className="grid grid-cols-2 gap-3">
 							<div>
-								<label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-									Owner <span className="text-red-500">*</span>
+								<label className="block text-xs font-medium text-th-text-muted mb-1">
+									Owner <span className="text-th-status-error-text">*</span>
 								</label>
 								<input
 									type="text"
@@ -314,12 +314,12 @@ export function WorkflowForm({
 									className={fieldClass(errors.owner, "text-sm")}
 								/>
 								{errors.owner && (
-									<p className="mt-1 text-xs text-red-500">{errors.owner}</p>
+									<p className="mt-1 text-xs text-th-status-error-text">{errors.owner}</p>
 								)}
 							</div>
 							<div>
-								<label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-									Repository <span className="text-red-500">*</span>
+								<label className="block text-xs font-medium text-th-text-muted mb-1">
+									Repository <span className="text-th-status-error-text">*</span>
 								</label>
 								<input
 									type="text"
@@ -329,14 +329,14 @@ export function WorkflowForm({
 									className={fieldClass(errors.repo, "text-sm")}
 								/>
 								{errors.repo && (
-									<p className="mt-1 text-xs text-red-500">{errors.repo}</p>
+									<p className="mt-1 text-xs text-th-status-error-text">{errors.repo}</p>
 								)}
 							</div>
 						</div>
 
 						<div>
-							<label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-								Labels <span className="text-gray-400">(comma-separated)</span>
+							<label className="block text-xs font-medium text-th-text-muted mb-1">
+								Labels <span className="text-th-text-muted">(comma-separated)</span>
 							</label>
 							<input
 								type="text"
@@ -348,7 +348,7 @@ export function WorkflowForm({
 						</div>
 
 						<div>
-							<label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+							<label className="block text-xs font-medium text-th-text-muted mb-1">
 								Issue state
 							</label>
 							<select
@@ -367,8 +367,8 @@ export function WorkflowForm({
 
 					{/* Prompt template */}
 					<div>
-						<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-							Prompt template <span className="text-red-500">*</span>
+						<label className="block text-sm font-medium text-th-text-secondary mb-1">
+							Prompt template <span className="text-th-status-error-text">*</span>
 						</label>
 						<PromptTemplateEditor
 							value={promptTemplate}
@@ -381,8 +381,8 @@ export function WorkflowForm({
 					{/* Poll interval + Enabled */}
 					<div className="grid grid-cols-2 gap-4">
 						<div>
-							<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-								Poll interval (minutes) <span className="text-red-500">*</span>
+							<label className="block text-sm font-medium text-th-text-secondary mb-1">
+								Poll interval (minutes) <span className="text-th-status-error-text">*</span>
 							</label>
 							<input
 								type="number"
@@ -392,14 +392,14 @@ export function WorkflowForm({
 								className={fieldClass(errors.poll_interval)}
 							/>
 							{errors.poll_interval && (
-								<p className="mt-1 text-xs text-red-500">
+								<p className="mt-1 text-xs text-th-status-error-text">
 									{errors.poll_interval}
 								</p>
 							)}
 						</div>
 
 						<div>
-							<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+							<label className="block text-sm font-medium text-th-text-secondary mb-3">
 								Enabled
 							</label>
 							<button
@@ -409,13 +409,13 @@ export function WorkflowForm({
 								onClick={() => setEnabled((v) => !v)}
 								className={[
 									"relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-									"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500",
-									enabled ? "bg-primary-500" : "bg-gray-200 dark:bg-gray-700",
+									"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-th-focus-ring",
+									enabled ? "bg-th-accent" : "bg-th-surface-sunken",
 								].join(" ")}
 							>
 								<span
 									className={[
-										"inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+										"inline-block h-4 w-4 rounded-full bg-th-surface shadow transition-transform",
 										enabled ? "translate-x-6" : "translate-x-1",
 									].join(" ")}
 								/>
@@ -425,12 +425,12 @@ export function WorkflowForm({
 				</div>
 
 				{/* Footer */}
-				<div className="sticky bottom-0 flex items-center justify-end gap-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
+				<div className="sticky bottom-0 flex items-center justify-end gap-3 border-t border-th-border bg-th-surface px-6 py-4">
 					<button
 						type="button"
 						onClick={onClose}
 						disabled={saving}
-						className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+						className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover transition-colors disabled:opacity-50"
 					>
 						Cancel
 					</button>
@@ -438,7 +438,7 @@ export function WorkflowForm({
 						type="button"
 						onClick={handleSave}
 						disabled={saving}
-						className="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
+						className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors disabled:opacity-50"
 					>
 						{saving
 							? "Saving…"
@@ -459,13 +459,13 @@ export function WorkflowForm({
 function fieldClass(error?: string, extra = ""): string {
 	return [
 		"w-full rounded-md border px-3 py-2 text-sm",
-		"bg-white dark:bg-gray-900",
-		"text-gray-900 dark:text-white",
-		"focus:outline-none focus:ring-2 focus:ring-primary-500",
+		"bg-th-input",
+		"text-th-text",
+		"focus:outline-none focus:ring-2 focus:ring-th-focus-ring",
 		"disabled:cursor-not-allowed disabled:opacity-50",
 		error
-			? "border-red-400 dark:border-red-500"
-			: "border-gray-300 dark:border-gray-600",
+			? "border-th-status-error-border"
+			: "border-th-border-input",
 		extra,
 	]
 		.filter(Boolean)

@@ -1,96 +1,78 @@
 @import "@animxyz/core";
 @import "tailwindcss";
 
-/* Configure class-based dark mode — adds `dark:` variant support via .dark class */
-@custom-variant dark (&:where(.dark, .dark *));
-
 @theme {
-  /* Color tokens */
-  --color-dusty-grape-50: #eff0f5;
-  --color-dusty-grape-100: #e0e1eb;
-  --color-dusty-grape-200: #c1c3d7;
-  --color-dusty-grape-300: #a2a6c3;
-  --color-dusty-grape-400: #8388af;
-  --color-dusty-grape-500: #636a9c;
-  --color-dusty-grape-600: #50557c;
-  --color-dusty-grape-700: #3c405d;
-  --color-dusty-grape-800: #282a3e;
-  --color-dusty-grape-900: #14151f;
-  --color-dusty-grape-950: #0e0f16;
+  /* ---------------------------------------------------------------------------
+     Theme-aware semantic color tokens (consumed via bg-th-*, text-th-*, etc.)
+     Values are set at runtime by themeStore.applyTheme() as --th-* CSS vars.
+     --------------------------------------------------------------------------- */
 
-  --color-amethyst-smoke-50: #f3f0f5;
-  --color-amethyst-smoke-100: #e8e1ea;
-  --color-amethyst-smoke-200: #d1c2d6;
-  --color-amethyst-smoke-300: #b9a4c1;
-  --color-amethyst-smoke-400: #a286ac;
-  --color-amethyst-smoke-500: #8b6798;
-  --color-amethyst-smoke-600: #6f5379;
-  --color-amethyst-smoke-700: #533e5b;
-  --color-amethyst-smoke-800: #38293d;
-  --color-amethyst-smoke-900: #1c151e;
-  --color-amethyst-smoke-950: #130e15;
+  /* Surfaces */
+  --color-th-page: var(--th-page);
+  --color-th-page-inset: var(--th-page-inset);
+  --color-th-surface: var(--th-surface);
+  --color-th-surface-raised: var(--th-surface-raised);
+  --color-th-surface-sunken: var(--th-surface-sunken);
+  --color-th-surface-hover: var(--th-surface-hover);
+  --color-th-overlay: var(--th-overlay);
+  --color-th-nav: var(--th-nav);
+  --color-th-nav-hover: var(--th-nav-hover);
+  --color-th-nav-active: var(--th-nav-active);
+  --color-th-input: var(--th-input);
 
-  --color-olive-leaf-50: #f4f6ee;
-  --color-olive-leaf-100: #eaeedd;
-  --color-olive-leaf-200: #d5dcbc;
-  --color-olive-leaf-300: #c0cb9a;
-  --color-olive-leaf-400: #aaba78;
-  --color-olive-leaf-500: #95a857;
-  --color-olive-leaf-600: #778745;
-  --color-olive-leaf-700: #5a6534;
-  --color-olive-leaf-800: #3c4323;
-  --color-olive-leaf-900: #1e2211;
-  --color-olive-leaf-950: #15180c;
+  /* Text */
+  --color-th-text: var(--th-text);
+  --color-th-text-secondary: var(--th-text-secondary);
+  --color-th-text-muted: var(--th-text-muted);
+  --color-th-text-faint: var(--th-text-faint);
+  --color-th-text-inverse: var(--th-text-inverse);
+  --color-th-text-nav: var(--th-text-nav);
+  --color-th-text-nav-active: var(--th-text-nav-active);
+  --color-th-text-link: var(--th-text-link);
 
-  --color-sunlit-clay-50: #fbf3ea;
-  --color-sunlit-clay-100: #f6e7d5;
-  --color-sunlit-clay-200: #edceab;
-  --color-sunlit-clay-300: #e4b681;
-  --color-sunlit-clay-400: #db9d57;
-  --color-sunlit-clay-500: #d2852d;
-  --color-sunlit-clay-600: #a86a24;
-  --color-sunlit-clay-700: #7e501b;
-  --color-sunlit-clay-800: #543512;
-  --color-sunlit-clay-900: #2a1b09;
-  --color-sunlit-clay-950: #1d1306;
+  /* Borders */
+  --color-th-border: var(--th-border);
+  --color-th-border-strong: var(--th-border-strong);
+  --color-th-border-subtle: var(--th-border-subtle);
+  --color-th-border-nav: var(--th-border-nav);
+  --color-th-border-input: var(--th-border-input);
+  --color-th-border-focus: var(--th-border-focus);
 
-  --color-primary-50: var(--color-sunlit-clay-50);
-  --color-primary-100: var(--color-sunlit-clay-100);
-  --color-primary-200: var(--color-sunlit-clay-200);
-  --color-primary-300: var(--color-sunlit-clay-300);
-  --color-primary-400: var(--color-sunlit-clay-400);
-  --color-primary-500: var(--color-sunlit-clay-500);
-  --color-primary-600: var(--color-sunlit-clay-600);
-  --color-primary-700: var(--color-sunlit-clay-700);
-  --color-primary-800: var(--color-sunlit-clay-800);
-  --color-primary-900: var(--color-sunlit-clay-900);
-  --color-primary-950: var(--color-sunlit-clay-950);
+  /* Accent / brand */
+  --color-th-accent: var(--th-accent);
+  --color-th-accent-hover: var(--th-accent-hover);
+  --color-th-accent-subtle: var(--th-accent-subtle);
+  --color-th-accent-text: var(--th-accent-text);
+  --color-th-accent-secondary: var(--th-accent-secondary);
 
-  --color-secondary-50: var(--color-olive-leaf-50);
-  --color-secondary-100: var(--color-olive-leaf-100);
-  --color-secondary-200: var(--color-olive-leaf-200);
-  --color-secondary-300: var(--color-olive-leaf-300);
-  --color-secondary-400: var(--color-olive-leaf-400);
-  --color-secondary-500: var(--color-olive-leaf-500);
-  --color-secondary-600: var(--color-olive-leaf-600);
-  --color-secondary-700: var(--color-olive-leaf-700);
-  --color-secondary-800: var(--color-olive-leaf-800);
-  --color-secondary-900: var(--color-olive-leaf-900);
-  --color-secondary-950: var(--color-olive-leaf-950);
+  /* Status -- success */
+  --color-th-status-success-bg: var(--th-status-success-bg);
+  --color-th-status-success-text: var(--th-status-success-text);
+  --color-th-status-success-dot: var(--th-status-success-dot);
+  --color-th-status-success-border: var(--th-status-success-border);
 
-  --color-success-500: #8ac926;
-  --color-warning-500: #ffca3a;
-  --color-error-500: #ff595e;
-  --color-info-500: #1982c4;
+  /* Status -- warning */
+  --color-th-status-warning-bg: var(--th-status-warning-bg);
+  --color-th-status-warning-text: var(--th-status-warning-text);
+  --color-th-status-warning-dot: var(--th-status-warning-dot);
+  --color-th-status-warning-border: var(--th-status-warning-border);
 
-  /* Spacing tokens */
-  /* --spacing-xs: 0.25rem; */
-  /* --spacing-sm: 0.5rem; */
-  /* --spacing-md: 1rem; */
-  /* --spacing-lg: 1.5rem; */
-  /* --spacing-xl: 2rem; */
-  /* --spacing-2xl: 3rem; */
-  /* --spacing-3xl: 4rem; */
+  /* Status -- error */
+  --color-th-status-error-bg: var(--th-status-error-bg);
+  --color-th-status-error-text: var(--th-status-error-text);
+  --color-th-status-error-dot: var(--th-status-error-dot);
+  --color-th-status-error-border: var(--th-status-error-border);
+
+  /* Status -- info */
+  --color-th-status-info-bg: var(--th-status-info-bg);
+  --color-th-status-info-text: var(--th-status-info-text);
+  --color-th-status-info-dot: var(--th-status-info-dot);
+  --color-th-status-info-border: var(--th-status-info-border);
+
+  /* Misc */
+  --color-th-focus-ring: var(--th-focus-ring);
+  --color-th-focus-ring-offset: var(--th-focus-ring-offset);
+  --color-th-code-bg: var(--th-code-bg);
 
   /* Typography tokens */
   --font-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -121,108 +103,6 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Semantic CSS custom properties — light theme (default)
-   --------------------------------------------------------------------------- */
-:root {
-	/* Backgrounds */
-	--bg-primary: var(--color-secondary-50);
-	--bg-secondary: var(--color-secondary-100);
-	--bg-tertiary: var(--color-secondary-200);
-
-	/* Surface (cards, panels) */
-	--surface-default: #ffffff;
-	--surface-raised: var(--color-secondary-50);
-	--surface-overlay: #ffffff;
-
-	/* Navigation */
-	--nav-bg: var(--color-secondary-900);
-	--nav-border: var(--color-secondary-700);
-	--nav-text: var(--color-secondary-400);
-	--nav-text-active: #ffffff;
-	--nav-item-hover: var(--color-secondary-700);
-	--nav-item-active: var(--color-primary-700);
-
-	/* Text */
-	--text-primary: var(--color-secondary-900);
-	--text-secondary: var(--color-secondary-700);
-	--text-muted: var(--color-secondary-500);
-	--text-inverse: #ffffff;
-
-	/* Borders */
-	--border-default: var(--color-secondary-200);
-	--border-strong: var(--color-secondary-300);
-	--border-focus: var(--color-primary-500);
-
-	/* Accent / brand */
-	--accent-primary: var(--color-primary-500);
-	--accent-primary-hover: var(--color-primary-600);
-	--accent-secondary: var(--color-primary-100);
-
-	/* Status */
-	--status-success: var(--color-success-500);
-	--status-warning: var(--color-warning-500);
-	--status-error: var(--color-error-500);
-	--status-info: var(--color-info-500);
-
-	/* Form elements */
-	--input-bg: #ffffff;
-	--input-border: var(--color-secondary-300);
-	--input-text: var(--color-secondary-900);
-	--input-placeholder: var(--color-secondary-400);
-}
-
-/* ---------------------------------------------------------------------------
-   Semantic CSS custom properties — dark theme
-   --------------------------------------------------------------------------- */
-.dark {
-	/* Backgrounds */
-	--bg-primary: var(--color-secondary-950);
-	--bg-secondary: var(--color-secondary-900);
-	--bg-tertiary: var(--color-secondary-800);
-
-	/* Surface (cards, panels) */
-	--surface-default: var(--color-secondary-900);
-	--surface-raised: var(--color-secondary-800);
-	--surface-overlay: var(--color-secondary-800);
-
-	/* Navigation */
-	--nav-bg: var(--color-secondary-900);
-	--nav-border: var(--color-secondary-700);
-	--nav-text: var(--color-secondary-400);
-	--nav-text-active: #ffffff;
-	--nav-item-hover: var(--color-secondary-700);
-	--nav-item-active: var(--color-primary-700);
-
-	/* Text */
-	--text-primary: var(--color-secondary-50);
-	--text-secondary: var(--color-secondary-300);
-	--text-muted: var(--color-secondary-400);
-	--text-inverse: var(--color-secondary-900);
-
-	/* Borders */
-	--border-default: var(--color-secondary-800);
-	--border-strong: var(--color-secondary-700);
-	--border-focus: var(--color-primary-400);
-
-	/* Accent / brand */
-	--accent-primary: var(--color-primary-400);
-	--accent-primary-hover: var(--color-primary-300);
-	--accent-secondary: var(--color-primary-900);
-
-	/* Status */
-	--status-success: var(--color-success-500);
-	--status-warning: var(--color-warning-500);
-	--status-error: var(--color-error-500);
-	--status-info: var(--color-info-500);
-
-	/* Form elements */
-	--input-bg: var(--color-secondary-800);
-	--input-border: var(--color-secondary-600);
-	--input-text: var(--color-secondary-50);
-	--input-placeholder: var(--color-secondary-500);
-}
-
-/* ---------------------------------------------------------------------------
    Base styles
    --------------------------------------------------------------------------- */
 *,
@@ -239,7 +119,7 @@ html {
 	text-rendering: optimizeLegibility;
 }
 
-/* Smooth theme transitions — only on background-color to keep performance good */
+/* Smooth theme transitions -- only on background-color to keep performance good */
 html,
 body,
 *,
@@ -261,8 +141,8 @@ svg * {
 body {
 	margin: 0;
 	min-height: 100vh;
-	background-color: var(--bg-primary);
-	color: var(--text-primary);
+	background-color: var(--th-page);
+	color: var(--th-text);
 }
 
 #root {
@@ -270,12 +150,12 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   Accessibility — focus visible
+   Accessibility -- focus visible
    Ensure visible focus outlines for keyboard navigation (WCAG 2.4.7).
    We use :focus-visible so mouse clicks don't show the ring.
    --------------------------------------------------------------------------- */
 *:focus-visible {
-	outline: 2px solid var(--color-primary-500);
+	outline: 2px solid var(--th-focus-ring);
 	outline-offset: 2px;
 }
 
@@ -296,7 +176,7 @@ textarea:focus:not(:focus-visible) {
 }
 
 /* ---------------------------------------------------------------------------
-   Accessibility — reduced motion (prefers-reduced-motion: reduce)
+   Accessibility -- reduced motion (prefers-reduced-motion: reduce)
    Disables transitions and animations for users who prefer reduced motion.
    WCAG 2.3.3 (AAA) / recommended for AA compliance.
    --------------------------------------------------------------------------- */
@@ -312,7 +192,7 @@ textarea:focus:not(:focus-visible) {
 }
 
 /* ---------------------------------------------------------------------------
-   Accessibility — high contrast / forced colors
+   Accessibility -- high contrast / forced colors
    Ensure interactive elements remain visible in Windows High Contrast mode.
    --------------------------------------------------------------------------- */
 @media (forced-colors: active) {
@@ -326,7 +206,7 @@ textarea:focus:not(:focus-visible) {
 }
 
 /* ---------------------------------------------------------------------------
-   Responsive — prevent horizontal overflow on all viewports
+   Responsive -- prevent horizontal overflow on all viewports
    --------------------------------------------------------------------------- */
 html,
 body,
@@ -335,7 +215,7 @@ body,
 	max-width: 100vw;
 }
 
-/* Touch targets — minimum 44×44px on interactive elements (WCAG 2.5.5) */
+/* Touch targets -- minimum 44x44px on interactive elements (WCAG 2.5.5) */
 @media (pointer: coarse) {
 	button,
 	[role="button"],

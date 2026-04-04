@@ -63,17 +63,17 @@ interface StatCardProps {
 function StatCard({ label, value, detail, ariaLabel }: StatCardProps) {
 	return (
 		<div
-			className="flex flex-col gap-0.5 rounded-md border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800"
+			className="flex flex-col gap-0.5 rounded-md border border-th-border bg-th-surface-sunken px-3 py-2"
 			aria-label={ariaLabel ?? `${label}: ${value}`}
 		>
-			<span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+			<span className="text-xs font-medium text-th-text-faint">
 				{label}
 			</span>
-			<span className="text-sm font-semibold text-gray-900 dark:text-white">
+			<span className="text-sm font-semibold text-th-text">
 				{value}
 			</span>
 			{detail && (
-				<span className="text-xs text-gray-400 dark:text-gray-500">
+				<span className="text-xs text-th-text-faint">
 					{detail}
 				</span>
 			)}
@@ -88,28 +88,28 @@ interface CacheEfficiencyBarProps {
 function CacheEfficiencyBar({ ratio }: CacheEfficiencyBarProps) {
 	const color =
 		ratio > 0.5
-			? "bg-green-500 dark:bg-green-400"
+			? "bg-th-status-success-dot"
 			: ratio > 0.2
-				? "bg-yellow-500 dark:bg-yellow-400"
-				: "bg-red-500 dark:bg-red-400";
+				? "bg-th-status-warning-dot"
+				: "bg-th-status-error-dot";
 
 	const label = ratio > 0.5 ? "Excellent" : ratio > 0.2 ? "Moderate" : "Low";
 
 	return (
 		<div className="flex flex-col gap-1.5">
 			<div className="flex items-center justify-between">
-				<span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+				<span className="text-xs font-medium text-th-text-faint">
 					Cache Hit Ratio
 				</span>
 				<span
-					className="text-xs font-semibold text-gray-700 dark:text-gray-300"
+					className="text-xs font-semibold text-th-text-secondary"
 					aria-label={`Cache hit ratio: ${pctFmt.format(ratio)}`}
 				>
 					{pctFmt.format(ratio)} — {label}
 				</span>
 			</div>
 			<div
-				className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+				className="h-2 w-full overflow-hidden rounded-full bg-th-surface-sunken"
 				role="progressbar"
 				aria-valuenow={Math.round(ratio * 100)}
 				aria-valuemin={0}
@@ -221,25 +221,25 @@ export function AgentUsagePanel({
 	return (
 		<section
 			aria-label="Agent usage statistics"
-			className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+			className="rounded-lg border border-th-border bg-th-surface"
 		>
 			{/* Header */}
-			<div className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-				<BarChart3 size={16} aria-hidden="true" className="text-gray-400" />
+			<div className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-th-text">
+				<BarChart3 size={16} aria-hidden="true" className="text-th-text-muted" />
 				<span>Usage</span>
 				{usage.session_count > 0 && (
-					<span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+					<span className="ml-auto rounded-full bg-th-surface-sunken px-2 py-0.5 text-xs font-medium text-th-text-muted">
 						Session {usage.session_count}
 					</span>
 				)}
 			</div>
 
-			<div className="flex flex-col gap-4 border-t border-gray-100 px-4 py-4 dark:border-gray-700">
+			<div className="flex flex-col gap-4 border-t border-th-border px-4 py-4">
 				{/* ── Current Session ──────────────────────────────────────────── */}
 				{currentSession ? (
 					<>
 						<div className="flex flex-col gap-2" aria-live="polite">
-							<h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+							<h3 className="text-xs font-semibold uppercase tracking-wide text-th-text-muted">
 								Current Session
 							</h3>
 							<SessionStats session={currentSession} label="Current session" />
@@ -252,7 +252,7 @@ export function AgentUsagePanel({
 
 						{/* Session info */}
 						{currentSession.started_at && (
-							<div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+							<div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-th-text-muted">
 								<span>
 									Started{" "}
 									<time
@@ -267,7 +267,7 @@ export function AgentUsagePanel({
 						)}
 					</>
 				) : (
-					<p className="text-sm text-gray-400 dark:text-gray-500">
+					<p className="text-sm text-th-text-faint">
 						No active session.
 					</p>
 				)}
@@ -289,7 +289,7 @@ export function AgentUsagePanel({
 						aria-expanded={cumulativeOpen}
 						aria-controls="usage-cumulative-body"
 						onClick={() => setCumulativeOpen((o) => !o)}
-						className="flex w-full items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+						className="flex w-full items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-th-text-muted hover:text-th-text-secondary"
 					>
 						{cumulativeOpen ? (
 							<ChevronDown size={14} />
@@ -309,10 +309,10 @@ export function AgentUsagePanel({
 							<SessionStats session={cumulative} label="Cumulative" />
 							<CacheEfficiencyBar ratio={cumulativeCacheRatio} />
 
-							<div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+							<div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-th-text-muted">
 								<span>
 									Avg cost / session:{" "}
-									<span className="font-medium text-gray-700 dark:text-gray-300">
+									<span className="font-medium text-th-text-secondary">
 										{costFmt.format(avgCostPerSession)}
 									</span>
 								</span>
@@ -342,16 +342,16 @@ function AutoClearProgress({
 	return (
 		<div className="flex flex-col gap-1.5">
 			<div className="flex items-center justify-between">
-				<span className="flex items-center gap-1 text-xs font-medium text-gray-400 dark:text-gray-500">
+				<span className="flex items-center gap-1 text-xs font-medium text-th-text-faint">
 					<Zap size={12} aria-hidden="true" />
 					Auto-clear Threshold
 				</span>
-				<span className="text-xs text-gray-500 dark:text-gray-400">
+				<span className="text-xs text-th-text-muted">
 					{costFmt.format(currentCost)} / {costFmt.format(threshold)}
 				</span>
 			</div>
 			<div
-				className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+				className="h-1.5 w-full overflow-hidden rounded-full bg-th-surface-sunken"
 				role="progressbar"
 				aria-valuenow={Math.round(progress * 100)}
 				aria-valuemin={0}
@@ -361,14 +361,14 @@ function AutoClearProgress({
 				<div
 					className={`h-full rounded-full transition-all duration-300 ${
 						isNear
-							? "bg-amber-500 dark:bg-amber-400"
-							: "bg-blue-500 dark:bg-blue-400"
+							? "bg-th-status-warning-dot"
+							: "bg-th-status-info-dot"
 					}`}
 					style={{ width: `${progress * 100}%` }}
 				/>
 			</div>
 			{isNear && (
-				<p className="text-xs text-amber-600 dark:text-amber-400">
+				<p className="text-xs text-th-status-warning-text">
 					Approaching auto-clear threshold
 				</p>
 			)}

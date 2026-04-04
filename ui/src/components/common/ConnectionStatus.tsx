@@ -35,19 +35,19 @@ function stateClasses(state: ConnectionState): { dot: string; text: string } {
 	switch (state) {
 		case "Connected":
 			return {
-				dot: "bg-green-500",
-				text: "text-green-500 dark:text-green-400",
+				dot: "bg-th-status-success-dot",
+				text: "text-th-status-success-text",
 			};
 		case "Connecting":
 		case "Reconnecting":
 			return {
-				dot: "animate-pulse bg-yellow-400",
-				text: "text-yellow-500 dark:text-yellow-400",
+				dot: "animate-pulse bg-th-status-warning-dot",
+				text: "text-th-status-warning-text",
 			};
 		case "Disconnected":
 			return {
-				dot: "bg-red-500",
-				text: "text-red-500 dark:text-red-400",
+				dot: "bg-th-status-error-dot",
+				text: "text-th-status-error-text",
 			};
 	}
 }

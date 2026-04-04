@@ -24,9 +24,9 @@ function minutesWaiting(createdAt: string): number {
 }
 
 function urgencyColor(minutes: number): string {
-	if (minutes >= 10) return "text-red-400";
-	if (minutes >= 5) return "text-yellow-400";
-	return "text-green-400";
+	if (minutes >= 10) return "text-th-status-error-text";
+	if (minutes >= 5) return "text-th-status-warning-text";
+	return "text-th-status-success-text";
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ function ApprovalQueueInner() {
 			key: "tool_name",
 			header: "Tool",
 			render: (a) => (
-				<span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+				<span className="font-mono text-sm font-semibold text-th-text">
 					{a.tool_name}
 				</span>
 			),
@@ -149,7 +149,7 @@ function ApprovalQueueInner() {
 			render: (a) => {
 				const agent = agentMap.get(a.agent_id);
 				return (
-					<span className="text-sm text-gray-700 dark:text-gray-300">
+					<span className="text-sm text-th-text-secondary">
 						{agent?.name ?? a.agent_id}
 					</span>
 				);
@@ -173,7 +173,7 @@ function ApprovalQueueInner() {
 			key: "status",
 			header: "Status",
 			render: (a) => (
-				<span className="text-sm capitalize text-gray-500 dark:text-gray-400">
+				<span className="text-sm capitalize text-th-text-muted">
 					{a.status}
 				</span>
 			),
@@ -182,7 +182,7 @@ function ApprovalQueueInner() {
 			key: "created_at",
 			header: "Created",
 			render: (a) => (
-				<span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+				<span className="text-sm text-th-text-muted whitespace-nowrap">
 					{new Date(a.created_at).toLocaleString()}
 				</span>
 			),
@@ -199,7 +199,7 @@ function ApprovalQueueInner() {
 						type="button"
 						disabled={busyIds.has(a.id)}
 						onClick={() => approve(a.id)}
-						className="rounded-md px-2.5 py-1 text-xs font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+						className="rounded-md px-2.5 py-1 text-xs font-medium bg-th-status-success-dot text-th-accent-text hover:opacity-90 disabled:opacity-50 transition-colors"
 					>
 						Approve
 					</button>
@@ -207,7 +207,7 @@ function ApprovalQueueInner() {
 						type="button"
 						disabled={busyIds.has(a.id)}
 						onClick={() => deny(a.id)}
-						className="rounded-md px-2.5 py-1 text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+						className="rounded-md px-2.5 py-1 text-xs font-medium bg-th-status-error-dot text-th-accent-text hover:opacity-90 disabled:opacity-50 transition-colors"
 					>
 						Deny
 					</button>
@@ -221,7 +221,7 @@ function ApprovalQueueInner() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3">
-					<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+					<h1 className="text-2xl font-semibold text-th-text">
 						Approval Queue
 					</h1>
 					<ApprovalBadge count={totalPendingCount} showZero />
@@ -234,7 +234,7 @@ function ApprovalQueueInner() {
 							aria-label="Filter by agent"
 							value={filterAgentId}
 							onChange={(e) => setFilterAgentId(e.target.value)}
-							className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
+							className="rounded-md border border-th-border-input bg-th-input px-3 py-1.5 text-sm text-th-text focus:outline-none focus:ring-2 focus:ring-th-focus-ring"
 						>
 							<option value="">All agents</option>
 							{agentOptions.map(([id, agent]) => (
@@ -250,7 +250,7 @@ function ApprovalQueueInner() {
 						type="button"
 						onClick={refetch}
 						aria-label="Refresh approvals"
-						className="rounded-md border border-gray-300 bg-white p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors"
+						className="rounded-md border border-th-border-strong bg-th-surface p-2 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text-secondary transition-colors"
 					>
 						<RefreshCw size={16} />
 					</button>
@@ -261,7 +261,7 @@ function ApprovalQueueInner() {
 			{error && (
 				<div
 					role="alert"
-					className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400"
+					className="rounded-md bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text"
 				>
 					{error}
 				</div>

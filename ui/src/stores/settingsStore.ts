@@ -13,7 +13,8 @@ export interface ServiceSettings {
 }
 
 export interface UISettings {
-	theme: "light" | "dark" | "system";
+	/** Theme ID (e.g. "tokyo-night", "catppuccin-mocha") or "system" for auto-detect. */
+	theme: string;
 	sidebarDefaultOpen: boolean;
 	refreshInterval: 30 | 60 | 120 | 300;
 	notificationsEnabled: boolean;
@@ -52,7 +53,7 @@ export function loadSettings(): Settings {
 		if (!raw) return { ...DEFAULT_SETTINGS };
 		const parsed = JSON.parse(raw) as Partial<Settings>;
 		// Deep-merge with defaults so newly added keys are always present
-		return {
+		const merged = {
 			...DEFAULT_SETTINGS,
 			...parsed,
 			services: {
@@ -64,6 +65,10 @@ export function loadSettings(): Settings {
 				...(parsed.ui ?? {}),
 			},
 		};
+		// Migrate legacy theme values to named theme IDs
+		if (merged.ui.theme === "light") merged.ui.theme = "agentd-light";
+		if (merged.ui.theme === "dark") merged.ui.theme = "agentd-dark";
+		return merged;
 	} catch {
 		return { ...DEFAULT_SETTINGS };
 	}

@@ -8,16 +8,16 @@ export function AboutSection() {
 	return (
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
-				<span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+				<span className="text-sm font-medium text-th-text-secondary">
 					Version
 				</span>
-				<span className="text-sm text-gray-600 dark:text-gray-400">
+				<span className="text-sm text-th-text-muted">
 					{APP_VERSION}
 				</span>
 			</div>
 
 			<div className="flex items-center justify-between">
-				<span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+				<span className="text-sm font-medium text-th-text-secondary">
 					Source
 				</span>
 				<a
@@ -25,14 +25,14 @@ export function AboutSection() {
 					target="_blank"
 					rel="noopener noreferrer"
 					aria-label="GitHub repository"
-					className="text-sm text-primary-600 hover:text-primary-700 hover:underline dark:text-primary-400 dark:hover:text-primary-300"
+					className="text-sm text-th-text-link hover:opacity-80 hover:underline"
 				>
 					GitHub
 				</a>
 			</div>
 
 			<div className="flex items-center justify-between">
-				<span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+				<span className="text-sm font-medium text-th-text-secondary">
 					Docs
 				</span>
 				<a
@@ -40,17 +40,17 @@ export function AboutSection() {
 					target="_blank"
 					rel="noopener noreferrer"
 					aria-label="Documentation"
-					className="text-sm text-primary-600 hover:text-primary-700 hover:underline dark:text-primary-400 dark:hover:text-primary-300"
+					className="text-sm text-th-text-link hover:opacity-80 hover:underline"
 				>
 					Documentation
 				</a>
 			</div>
 
 			<div className="flex items-center justify-between">
-				<span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+				<span className="text-sm font-medium text-th-text-secondary">
 					Built with
 				</span>
-				<span className="text-sm text-gray-600 dark:text-gray-400">
+				<span className="text-sm text-th-text-muted">
 					React + Vite + Tailwind CSS
 				</span>
 			</div>

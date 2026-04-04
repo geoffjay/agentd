@@ -137,19 +137,19 @@ export function SearchPalette({ isOpen, onClose }: SearchPaletteProps) {
 			<div
 				aria-hidden="true"
 				onClick={onClose}
-				className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+				className="absolute inset-0 bg-th-overlay backdrop-blur-sm"
 			/>
 
 			{/* Palette panel */}
 			<div
-				className="relative z-10 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+				className="relative z-10 overflow-hidden rounded-xl border border-th-border bg-th-surface shadow-2xl"
 				onKeyDown={handleKeyDown}
 			>
 				{/* Search input row */}
-				<div className="flex items-center gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+				<div className="flex items-center gap-3 border-b border-th-border px-4 py-3">
 					<Search
 						size={18}
-						className="shrink-0 text-gray-400 dark:text-gray-500"
+						className="shrink-0 text-th-text-faint"
 						aria-hidden="true"
 					/>
 					<input
@@ -164,19 +164,19 @@ export function SearchPalette({ isOpen, onClose }: SearchPaletteProps) {
 						aria-label="Search"
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
-						className="min-w-0 flex-1 bg-transparent text-sm text-gray-900 placeholder-gray-400 outline-none dark:text-white dark:placeholder-gray-500"
+						className="min-w-0 flex-1 bg-transparent text-sm text-th-text placeholder-th-text-faint outline-none"
 					/>
 					{query && (
 						<button
 							type="button"
 							aria-label="Clear search"
 							onClick={() => setQuery("")}
-							className="shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+							className="shrink-0 rounded p-0.5 text-th-text-faint hover:text-th-text-secondary"
 						>
 							<X size={14} />
 						</button>
 					)}
-					<kbd className="hidden shrink-0 rounded border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-400 dark:border-gray-600 dark:text-gray-500 sm:block">
+					<kbd className="hidden shrink-0 rounded border border-th-border px-1.5 py-0.5 text-[10px] text-th-text-faint sm:block">
 						Esc
 					</kbd>
 				</div>
@@ -201,21 +201,21 @@ export function SearchPalette({ isOpen, onClose }: SearchPaletteProps) {
 				</div>
 
 				{/* Footer hint */}
-				<div className="flex items-center gap-4 border-t border-gray-100 px-4 py-2 dark:border-gray-800">
-					<span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
-						<kbd className="rounded border border-gray-200 px-1 py-0.5 text-[10px] dark:border-gray-600">
+				<div className="flex items-center gap-4 border-t border-th-border px-4 py-2">
+					<span className="flex items-center gap-1 text-[11px] text-th-text-faint">
+						<kbd className="rounded border border-th-border px-1 py-0.5 text-[10px]">
 							↑↓
 						</kbd>
 						navigate
 					</span>
-					<span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
-						<kbd className="rounded border border-gray-200 px-1 py-0.5 text-[10px] dark:border-gray-600">
+					<span className="flex items-center gap-1 text-[11px] text-th-text-faint">
+						<kbd className="rounded border border-th-border px-1 py-0.5 text-[10px]">
 							↵
 						</kbd>
 						open
 					</span>
-					<span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
-						<kbd className="rounded border border-gray-200 px-1 py-0.5 text-[10px] dark:border-gray-600">
+					<span className="flex items-center gap-1 text-[11px] text-th-text-faint">
+						<kbd className="rounded border border-th-border px-1 py-0.5 text-[10px]">
 							Esc
 						</kbd>
 						close
