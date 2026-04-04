@@ -1,264 +1,219 @@
-//! Request and response types for the ask service.
+//! Request and response types for the ask service (redesigned for agent-driven Q&A).
 //!
 //! This module defines all data structures used in API requests and responses.
-//! Notification types are re-exported from the [`notify`] crate.
+//! The ask service is a purpose-built agent-to-human question/answer system.
 //!
 //! # Type Categories
 //!
-//! - **Notification Types**: Re-exported from `notify::types`
-//! - **Question Types**: Track questions asked to users
-//! - **Check Types**: Different kinds of environment checks
+//! - **Question Types**: Represent questions agents ask the human user
 //! - **Request/Response Types**: API endpoint request and response structures
 //!
 //! # Examples
 //!
-//! ## Creating a notification request
+//! ## Creating a question request
 //!
 //! ```
-//! use ask::types::{
-//!     CreateNotificationRequest, NotificationSource, NotificationLifetime,
-//!     NotificationPriority,
-//! };
-//! use uuid::Uuid;
+//! use ask::types::{CreateQuestionRequest, QuestionPriority};
 //!
-//! let request = CreateNotificationRequest {
-//!     source: NotificationSource::AskService { request_id: Uuid::new_v4() },
-//!     lifetime: NotificationLifetime::Persistent,
-//!     priority: NotificationPriority::Normal,
-//!     title: "Question".to_string(),
-//!     message: "Do you want to continue?".to_string(),
-//!     requires_response: true,
-//! };
-//! ```
-//!
-//! ## Working with question info
-//!
-//! ```
-//! use ask::types::{QuestionInfo, CheckType, QuestionStatus};
-//! use chrono::Utc;
-//! use uuid::Uuid;
-//!
-//! let question = QuestionInfo {
-//!     question_id: Uuid::new_v4(),
-//!     notification_id: Uuid::new_v4(),
-//!     check_type: CheckType::TmuxSessions,
-//!     asked_at: Utc::now(),
-//!     status: QuestionStatus::Pending,
-//!     answer: None,
+//! let request = CreateQuestionRequest {
+//!     agent_id: "dietician".to_string(),
+//!     workflow_id: None,
+//!     dispatch_id: None,
+//!     category: Some("health".to_string()),
+//!     question: "What did you eat yesterday?".to_string(),
+//!     context: Some("Daily nutrition tracking".to_string()),
+//!     priority: Some(QuestionPriority::Normal),
+//!     expires_in_seconds: Some(86400),
 //! };
 //! ```
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use uuid::Uuid;
 
-// Re-export notification types from the notify crate
-pub use notify::types::{
-    CreateNotificationRequest, Notification, NotificationLifetime, NotificationPriority,
-    NotificationSource, NotificationStatus, UpdateNotificationRequest,
-};
-
-/// Information about a question asked to the user.
+/// Priority of a question.
 ///
-/// Tracks the complete state of a question from creation through answer or expiration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QuestionInfo {
-    /// Unique ID for this question
-    pub question_id: Uuid,
-    /// The notification ID from the notification service
-    pub notification_id: Uuid,
-    /// Type of check that triggered this question
-    pub check_type: CheckType,
-    /// When the question was asked
-    pub asked_at: DateTime<Utc>,
-    /// Current status
-    pub status: QuestionStatus,
-    /// User's answer (if provided)
-    pub answer: Option<String>,
+/// Determines urgency and display ordering for the human user.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum QuestionPriority {
+    /// Low priority — informational, can be answered later.
+    Low,
+    /// Normal priority — standard questions (default).
+    #[default]
+    Normal,
+    /// High priority — should be answered soon.
+    High,
+    /// Urgent priority — requires prompt attention.
+    Urgent,
 }
 
-/// Type of environment check performed.
-///
-/// Each check type has its own cooldown tracking and may trigger different
-/// question templates.
-///
-/// # Note
-///
-/// This type implements `Hash` and `Eq` so it can be used as a HashMap key.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum CheckType {
-    /// Check for running tmux sessions
-    TmuxSessions,
-    /// Check that an agentd service is reachable via HTTP health endpoint
-    ServiceHealth,
-}
-
-impl CheckType {
-    /// Returns the string representation of the check type.
-    ///
-    /// Used for logging and API responses.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use ask::types::CheckType;
-    ///
-    /// assert_eq!(CheckType::TmuxSessions.as_str(), "tmux_sessions");
-    /// assert_eq!(CheckType::ServiceHealth.as_str(), "service_health");
-    /// ```
+impl QuestionPriority {
+    /// Returns the string representation for storage.
     pub fn as_str(&self) -> &'static str {
         match self {
-            CheckType::TmuxSessions => "tmux_sessions",
-            CheckType::ServiceHealth => "service_health",
+            QuestionPriority::Low => "low",
+            QuestionPriority::Normal => "normal",
+            QuestionPriority::High => "high",
+            QuestionPriority::Urgent => "urgent",
         }
     }
 }
 
-/// Status of a question.
+impl std::fmt::Display for QuestionPriority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl std::str::FromStr for QuestionPriority {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "low" => Ok(QuestionPriority::Low),
+            "normal" => Ok(QuestionPriority::Normal),
+            "high" => Ok(QuestionPriority::High),
+            "urgent" => Ok(QuestionPriority::Urgent),
+            other => anyhow::bail!("Unknown question priority: {}", other),
+        }
+    }
+}
+
+/// Status of a question in its lifecycle.
 ///
-/// Tracks whether a question is awaiting response, has been answered, or expired.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+/// Tracks the state from creation through resolution.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum QuestionStatus {
-    /// Question is awaiting user response
+    /// Question is awaiting user response.
+    #[default]
     Pending,
-    /// User has provided an answer
+    /// User has provided an answer.
     Answered,
-    /// Question expired before being answered
+    /// User dismissed the question without answering.
+    Dismissed,
+    /// Question expired before being answered.
     Expired,
 }
 
-/// Result of a tmux session check.
-///
-/// Contains information about whether tmux sessions are running and details
-/// about active sessions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TmuxCheckResult {
-    pub running: bool,
-    pub session_count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sessions: Option<Vec<String>>,
+impl QuestionStatus {
+    /// Returns the string representation for storage.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            QuestionStatus::Pending => "Pending",
+            QuestionStatus::Answered => "Answered",
+            QuestionStatus::Dismissed => "Dismissed",
+            QuestionStatus::Expired => "Expired",
+        }
+    }
 }
 
-/// Response from the `/trigger` endpoint.
-///
-/// Contains information about what checks were run, which notifications were sent,
-/// and the detailed results of each check.
-///
-/// # JSON Example
-///
-/// ```json
-/// {
-///   "checks_run": ["tmux_sessions"],
-///   "notifications_sent": ["550e8400-e29b-41d4-a716-446655440000"],
-///   "results": {
-///     "tmux_sessions": {
-///       "running": false,
-///       "session_count": 0,
-///       "sessions": []
-///     }
-///   }
-/// }
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TriggerResponse {
-    /// List of check types that were executed
-    pub checks_run: Vec<String>,
-    /// List of notification IDs that were created
-    pub notifications_sent: Vec<Uuid>,
-    /// Detailed results for each check
-    pub results: TriggerResults,
+impl std::fmt::Display for QuestionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
-/// Detailed results from each check type.
-///
-/// Maps check name (e.g. `"tmux_sessions"`) to its JSON detail payload.
-/// Using a flexible map allows the registry to grow without changing this type.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TriggerResults {
-    /// Per-check detail payloads, keyed by check name.
-    pub checks: HashMap<String, serde_json::Value>,
+impl std::str::FromStr for QuestionStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(QuestionStatus::Pending),
+            "Answered" => Ok(QuestionStatus::Answered),
+            "Dismissed" => Ok(QuestionStatus::Dismissed),
+            "Expired" => Ok(QuestionStatus::Expired),
+            other => anyhow::bail!("Unknown question status: {}", other),
+        }
+    }
 }
 
-/// Query parameters for the `GET /questions` list endpoint.
+/// A question from an agent to the human user.
 ///
-/// All fields are optional. When omitted, no filtering is applied.
-#[derive(Debug, Clone, Deserialize)]
-pub struct ListQuestionsQuery {
-    /// Optional status filter: `"pending"`, `"answered"`, or `"expired"`.
-    pub status: Option<String>,
+/// Represents the full state of a question from creation through resolution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Question {
+    /// Unique ID for this question.
+    pub id: Uuid,
+    /// Which agent asked this question.
+    pub agent_id: String,
+    /// Which workflow triggered the question (if any).
+    pub workflow_id: Option<Uuid>,
+    /// Which dispatch triggered the question (if any).
+    pub dispatch_id: Option<Uuid>,
+    /// Optional category for filtering (e.g. "health", "productivity", "deployment").
+    pub category: Option<String>,
+    /// The question text.
+    pub question: String,
+    /// Additional context for the human.
+    pub context: Option<String>,
+    /// Priority level.
+    pub priority: QuestionPriority,
+    /// Current lifecycle status.
+    pub status: QuestionStatus,
+    /// Human's response (if provided).
+    pub answer: Option<String>,
+    /// When the question was asked.
+    pub asked_at: DateTime<Utc>,
+    /// When the question was answered or dismissed.
+    pub answered_at: Option<DateTime<Utc>>,
+    /// When the question expires (optional TTL).
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
-/// Response from the `GET /questions` endpoint.
-///
-/// Returns all questions stored in the service, optionally filtered by status.
-///
-/// # JSON Example
-///
-/// ```json
-/// {
-///   "questions": [
-///     {
-///       "question_id": "550e8400-e29b-41d4-a716-446655440000",
-///       "notification_id": "660e8400-e29b-41d4-a716-446655440000",
-///       "check_type": "TmuxSessions",
-///       "asked_at": "2025-03-28T00:00:00Z",
-///       "status": "Pending",
-///       "answer": null
-///     }
-///   ],
-///   "total": 1
-/// }
-/// ```
+/// Request to create a new question (sent by an agent).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ListQuestionsResponse {
-    /// The list of questions matching the query filter.
-    pub questions: Vec<QuestionInfo>,
-    /// Total number of questions returned.
-    pub total: usize,
+pub struct CreateQuestionRequest {
+    /// Which agent is asking.
+    pub agent_id: String,
+    /// Workflow that triggered this question (optional).
+    pub workflow_id: Option<Uuid>,
+    /// Dispatch that triggered this question (optional).
+    pub dispatch_id: Option<Uuid>,
+    /// Category for filtering (optional).
+    pub category: Option<String>,
+    /// The question text (required, non-empty).
+    pub question: String,
+    /// Additional context for the human (optional).
+    pub context: Option<String>,
+    /// Priority level (default: Normal).
+    pub priority: Option<QuestionPriority>,
+    /// Time-to-live in seconds (optional).
+    pub expires_in_seconds: Option<u64>,
 }
 
-/// Request to submit an answer to a question.
-///
-/// Used by the `/answer` endpoint.
-///
-/// # JSON Example
-///
-/// ```json
-/// {
-///   "question_id": "550e8400-e29b-41d4-a716-446655440000",
-///   "answer": "yes"
-/// }
-/// ```
+/// Request to submit an answer to a question (sent by the human).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnswerRequest {
-    /// The UUID of the question being answered
-    pub question_id: Uuid,
-    /// The user's answer as free-form text
+pub struct AnswerQuestionRequest {
+    /// The human's answer text.
     pub answer: String,
 }
 
-/// Response from the `/answer` endpoint.
-///
-/// Confirms whether the answer was recorded successfully.
-///
-/// # JSON Example
-///
-/// ```json
-/// {
-///   "success": true,
-///   "message": "Answer recorded for question 550e8400-e29b-41d4-a716-446655440000",
-///   "question_id": "550e8400-e29b-41d4-a716-446655440000"
-/// }
-/// ```
+/// Query parameters for `GET /questions`.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ListQuestionsQuery {
+    /// Filter by status: `"Pending"`, `"Answered"`, `"Dismissed"`, or `"Expired"`.
+    pub status: Option<String>,
+    /// Filter by agent ID.
+    pub agent_id: Option<String>,
+    /// Filter by category.
+    pub category: Option<String>,
+    /// Maximum number of results to return (default: 50).
+    pub limit: Option<u64>,
+    /// Offset for pagination (default: 0).
+    pub offset: Option<u64>,
+}
+
+/// Response for a single question (used for create, answer, get endpoints).
+pub type QuestionResponse = Question;
+
+/// Response from the `GET /questions` endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnswerResponse {
-    /// Whether the answer was successfully recorded
-    pub success: bool,
-    /// Human-readable confirmation message
-    pub message: String,
-    /// The question ID that was answered
-    pub question_id: Uuid,
+pub struct QuestionsListResponse {
+    /// Questions matching the query.
+    pub questions: Vec<Question>,
+    /// Total count of matching questions.
+    pub total: usize,
 }
 
 // Re-export shared HealthResponse from agentd-common.
@@ -269,115 +224,104 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_check_type_as_str() {
-        assert_eq!(CheckType::TmuxSessions.as_str(), "tmux_sessions");
+    fn test_question_priority_as_str() {
+        assert_eq!(QuestionPriority::Low.as_str(), "low");
+        assert_eq!(QuestionPriority::Normal.as_str(), "normal");
+        assert_eq!(QuestionPriority::High.as_str(), "high");
+        assert_eq!(QuestionPriority::Urgent.as_str(), "urgent");
     }
 
     #[test]
-    fn test_check_type_equality() {
-        assert_eq!(CheckType::TmuxSessions, CheckType::TmuxSessions);
+    fn test_question_priority_ordering() {
+        assert!(QuestionPriority::Low < QuestionPriority::Normal);
+        assert!(QuestionPriority::Normal < QuestionPriority::High);
+        assert!(QuestionPriority::High < QuestionPriority::Urgent);
     }
 
     #[test]
-    fn test_check_type_serialization() {
-        let check_type = CheckType::TmuxSessions;
-        let json = serde_json::to_string(&check_type).unwrap();
-        let deserialized: CheckType = serde_json::from_str(&json).unwrap();
-        assert_eq!(check_type, deserialized);
+    fn test_question_priority_from_str() {
+        assert_eq!("low".parse::<QuestionPriority>().unwrap(), QuestionPriority::Low);
+        assert_eq!("normal".parse::<QuestionPriority>().unwrap(), QuestionPriority::Normal);
+        assert_eq!("high".parse::<QuestionPriority>().unwrap(), QuestionPriority::High);
+        assert_eq!("urgent".parse::<QuestionPriority>().unwrap(), QuestionPriority::Urgent);
+        assert!("invalid".parse::<QuestionPriority>().is_err());
     }
 
     #[test]
-    fn test_question_status_equality() {
-        assert_eq!(QuestionStatus::Pending, QuestionStatus::Pending);
-        assert_ne!(QuestionStatus::Pending, QuestionStatus::Answered);
+    fn test_question_priority_serialization() {
+        let p = QuestionPriority::High;
+        let json = serde_json::to_string(&p).unwrap();
+        assert_eq!(json, "\"high\"");
+        let deserialized: QuestionPriority = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, p);
     }
 
     #[test]
-    fn test_question_info_serialization() {
-        let question = QuestionInfo {
-            question_id: Uuid::new_v4(),
-            notification_id: Uuid::new_v4(),
-            check_type: CheckType::TmuxSessions,
-            asked_at: Utc::now(),
+    fn test_question_status_as_str() {
+        assert_eq!(QuestionStatus::Pending.as_str(), "Pending");
+        assert_eq!(QuestionStatus::Answered.as_str(), "Answered");
+        assert_eq!(QuestionStatus::Dismissed.as_str(), "Dismissed");
+        assert_eq!(QuestionStatus::Expired.as_str(), "Expired");
+    }
+
+    #[test]
+    fn test_question_status_from_str() {
+        assert_eq!("Pending".parse::<QuestionStatus>().unwrap(), QuestionStatus::Pending);
+        assert_eq!("Answered".parse::<QuestionStatus>().unwrap(), QuestionStatus::Answered);
+        assert_eq!("Dismissed".parse::<QuestionStatus>().unwrap(), QuestionStatus::Dismissed);
+        assert_eq!("Expired".parse::<QuestionStatus>().unwrap(), QuestionStatus::Expired);
+        assert!("invalid".parse::<QuestionStatus>().is_err());
+    }
+
+    #[test]
+    fn test_question_serialization() {
+        let q = Question {
+            id: Uuid::new_v4(),
+            agent_id: "dietician".to_string(),
+            workflow_id: None,
+            dispatch_id: None,
+            category: Some("health".to_string()),
+            question: "What did you eat yesterday?".to_string(),
+            context: None,
+            priority: QuestionPriority::Normal,
             status: QuestionStatus::Pending,
             answer: None,
+            asked_at: Utc::now(),
+            answered_at: None,
+            expires_at: None,
         };
 
-        let json = serde_json::to_string(&question).unwrap();
-        let deserialized: QuestionInfo = serde_json::from_str(&json).unwrap();
-        assert_eq!(question.question_id, deserialized.question_id);
-        assert_eq!(question.status, deserialized.status);
-        assert_eq!(question.answer, deserialized.answer);
+        let json = serde_json::to_string(&q).unwrap();
+        let deserialized: Question = serde_json::from_str(&json).unwrap();
+        assert_eq!(q.id, deserialized.id);
+        assert_eq!(q.agent_id, deserialized.agent_id);
+        assert_eq!(q.status, deserialized.status);
+        assert_eq!(q.priority, deserialized.priority);
     }
 
     #[test]
-    fn test_tmux_check_result_serialization() {
-        let result = TmuxCheckResult {
-            running: true,
-            session_count: 3,
-            sessions: Some(vec!["main".to_string(), "work".to_string()]),
+    fn test_create_question_request_serialization() {
+        let req = CreateQuestionRequest {
+            agent_id: "test-agent".to_string(),
+            workflow_id: None,
+            dispatch_id: None,
+            category: Some("deployment".to_string()),
+            question: "Should I proceed with the deploy?".to_string(),
+            context: Some("Staging environment is ready.".to_string()),
+            priority: Some(QuestionPriority::High),
+            expires_in_seconds: Some(3600),
         };
 
-        let json = serde_json::to_string(&result).unwrap();
-        let deserialized: TmuxCheckResult = serde_json::from_str(&json).unwrap();
-        assert_eq!(result.running, deserialized.running);
-        assert_eq!(result.session_count, deserialized.session_count);
-        assert_eq!(result.sessions, deserialized.sessions);
-    }
-
-    #[test]
-    fn test_tmux_check_result_skip_none_sessions() {
-        let result = TmuxCheckResult { running: false, session_count: 0, sessions: None };
-
-        let json = serde_json::to_string(&result).unwrap();
-        assert!(!json.contains("sessions"));
-    }
-
-    #[test]
-    fn test_trigger_response_serialization() {
-        let mut checks = HashMap::new();
-        checks.insert(
-            "tmux_sessions".to_string(),
-            serde_json::json!({ "running": false, "session_count": 0, "sessions": [] }),
-        );
-        let response = TriggerResponse {
-            checks_run: vec!["tmux_sessions".to_string()],
-            notifications_sent: vec![Uuid::new_v4()],
-            results: TriggerResults { checks },
-        };
-
-        let json = serde_json::to_string(&response).unwrap();
-        let deserialized: TriggerResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(response.checks_run, deserialized.checks_run);
-        assert_eq!(response.notifications_sent.len(), deserialized.notifications_sent.len());
-    }
-
-    #[test]
-    fn test_answer_request_deserialization() {
-        let json = r#"{"question_id":"550e8400-e29b-41d4-a716-446655440000","answer":"yes"}"#;
-        let request: AnswerRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(request.answer, "yes");
-    }
-
-    #[test]
-    fn test_answer_response_serialization() {
-        let response = AnswerResponse {
-            success: true,
-            message: "Answer recorded".to_string(),
-            question_id: Uuid::new_v4(),
-        };
-
-        let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("success"));
-        assert!(json.contains("message"));
-        assert!(json.contains("question_id"));
+        let json = serde_json::to_string(&req).unwrap();
+        let deserialized: CreateQuestionRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req.agent_id, deserialized.agent_id);
+        assert_eq!(req.question, deserialized.question);
+        assert_eq!(req.priority, deserialized.priority);
     }
 
     #[test]
     fn test_health_response_serialization() {
-        let response = HealthResponse::ok("agentd-ask", "0.1.0")
-            .with_detail("notification_service_url", serde_json::json!("http://localhost:7004"));
-
+        let response = HealthResponse::ok("agentd-ask", "0.1.0");
         let json = serde_json::to_string(&response).unwrap();
         let deserialized: HealthResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(response.status, deserialized.status);
