@@ -4658,6 +4658,7 @@ dependencies = [
  "hmac",
  "metrics",
  "metrics-exporter-prometheus",
+ "regex",
  "reqwest",
  "sea-orm",
  "sea-orm-migration",

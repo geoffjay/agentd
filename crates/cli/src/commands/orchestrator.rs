@@ -2897,6 +2897,17 @@ fn display_workflow(workflow: &WorkflowResponse) {
             let timeout = visibility_timeout_secs.unwrap_or(300);
             println!("{}: {}s", "Visibility Timeout".bold(), timeout);
         }
+        TriggerConfig::AskResponse { agent_id, category, response_pattern } => {
+            if let Some(a) = agent_id {
+                println!("{}: {}", "Agent Filter".bold(), a);
+            }
+            if let Some(c) = category {
+                println!("{}: {}", "Category Filter".bold(), c);
+            }
+            if let Some(p) = response_pattern {
+                println!("{}: {}", "Response Pattern".bold(), p);
+            }
+        }
     }
     let template = &workflow.prompt_template;
     let display =

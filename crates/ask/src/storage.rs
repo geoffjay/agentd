@@ -48,8 +48,11 @@ impl QuestionStorage {
         Ok(Self { db })
     }
 
-    /// Creates an in-memory storage instance for testing.
-    #[cfg(test)]
+    /// Creates an in-memory storage instance (for testing).
+    ///
+    /// Connects to `sqlite::memory:` — data is lost when the connection closes.
+    /// Suitable for unit tests, integration tests, and one-shot tooling.
+    #[allow(dead_code)]
     pub async fn in_memory() -> Result<Self> {
         use sea_orm::Database;
         let db = Database::connect("sqlite::memory:").await?;
