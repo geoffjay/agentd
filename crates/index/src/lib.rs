@@ -11,5 +11,6 @@
 //! - [`api`] — Axum HTTP route handlers
 
 pub mod api;
+pub mod chunking;
 pub mod config;
 pub mod error;
