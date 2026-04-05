@@ -1,8 +1,11 @@
 //! Code chunking pipeline for the agentd-index service.
 //!
-//! This module provides the [`Chunker`] trait and the default
-//! [`SyntacticChunker`] implementation, which uses tree-sitter to split
-//! source files into logical AST-based units.
+//! This module provides the [`Chunker`] trait and two built-in implementations:
+//!
+//! - [`SyntacticChunker`] — tree-sitter AST-based chunker that extracts
+//!   logical code units (functions, classes, structs, …).
+//! - [`SemanticChunker`] — wraps [`SyntacticChunker`] and enriches chunks
+//!   with doc comments, attributes/decorators, and configurable size limits.
 //!
 //! # Quick Start
 //!
@@ -15,9 +18,11 @@
 //! assert!(!chunks.is_empty());
 //! ```
 
+pub mod semantic;
 pub mod syntactic;
 pub mod types;
 
+pub use semantic::{SemanticChunker, SemanticConfig};
 pub use syntactic::SyntacticChunker;
 pub use types::{ChunkType, CodeChunk, Language};
 
