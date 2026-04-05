@@ -62,8 +62,44 @@ impl std::str::FromStr for Language {
     }
 }
 
+/// The abstraction level of a [`CodeChunk`] in the hierarchy.
+///
+/// Hierarchical chunks range from coarse-grained project overviews down to
+/// individual symbol-level units extracted by the syntactic/semantic chunkers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HierarchyLevel {
+    /// Top-level project summary (from README, Cargo.toml/package.json, …).
+    Repository,
+    /// Per-directory module summary.
+    Directory,
+    /// Per-file summary (exports, main types, purpose).
+    File,
+    /// Individual symbol — function, class, struct, etc.
+    #[default]
+    Symbol,
+}
+
+impl HierarchyLevel {
+    /// Returns the canonical string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HierarchyLevel::Repository => "repository",
+            HierarchyLevel::Directory => "directory",
+            HierarchyLevel::File => "file",
+            HierarchyLevel::Symbol => "symbol",
+        }
+    }
+}
+
+impl fmt::Display for HierarchyLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// The syntactic kind of a [`CodeChunk`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChunkType {
     /// A free function or standalone function declaration.
@@ -135,6 +171,14 @@ pub struct CodeChunk {
 
     /// Name of the enclosing impl block or class, if this chunk is nested.
     pub parent_symbol: Option<String>,
+
+    /// Abstraction level of this chunk in the index hierarchy.
+    ///
+    /// Defaults to [`HierarchyLevel::Symbol`] for chunks produced by the
+    /// syntactic/semantic chunkers.  Hierarchical chunks (file, directory,
+    /// repository) are produced by [`crate::chunking::hierarchical::HierarchicalChunker`].
+    #[serde(default)]
+    pub hierarchy_level: HierarchyLevel,
 }
 
 impl CodeChunk {
@@ -221,6 +265,7 @@ mod tests {
             end_line: 10,
             symbol_name: Some("foo".to_string()),
             parent_symbol: None,
+            hierarchy_level: HierarchyLevel::Symbol,
         };
         assert_eq!(chunk.line_count(), 6);
     }
@@ -236,6 +281,7 @@ mod tests {
             end_line: 1,
             symbol_name: Some("hello".to_string()),
             parent_symbol: None,
+            hierarchy_level: HierarchyLevel::Symbol,
         };
         let json = serde_json::to_string(&chunk).unwrap();
         let parsed: CodeChunk = serde_json::from_str(&json).unwrap();

@@ -104,6 +104,7 @@ fn walk(
             end_line,
             symbol_name: symbol_name.clone(),
             parent_symbol: effective_parent,
+            hierarchy_level: super::types::HierarchyLevel::Symbol,
         });
 
         // This node is a container; its children should know about it.
