@@ -43,7 +43,7 @@ use super::types::{ChunkType, CodeChunk, HierarchyLevel, Language};
 // ---------------------------------------------------------------------------
 
 /// Configuration for the hierarchical chunker.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HierarchicalConfig {
     /// Repository name to use in the top-level summary.
     ///
@@ -52,12 +52,6 @@ pub struct HierarchicalConfig {
 
     /// Optional project description to embed in the repository-level chunk.
     pub description: Option<String>,
-}
-
-impl Default for HierarchicalConfig {
-    fn default() -> Self {
-        Self { repo_name: None, description: None }
-    }
 }
 
 // ---------------------------------------------------------------------------
