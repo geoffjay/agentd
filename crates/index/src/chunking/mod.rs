@@ -1,11 +1,13 @@
 //! Code chunking pipeline for the agentd-index service.
 //!
-//! This module provides the [`Chunker`] trait and two built-in implementations:
+//! This module provides the [`Chunker`] trait and three built-in implementations:
 //!
 //! - [`SyntacticChunker`] — tree-sitter AST-based chunker that extracts
 //!   logical code units (functions, classes, structs, …).
 //! - [`SemanticChunker`] — wraps [`SyntacticChunker`] and enriches chunks
 //!   with doc comments, attributes/decorators, and configurable size limits.
+//! - [`HierarchicalChunker`] — builds multi-level index entries (file,
+//!   directory, repository) from a flat list of symbol chunks.
 //!
 //! # Quick Start
 //!
@@ -18,13 +20,15 @@
 //! assert!(!chunks.is_empty());
 //! ```
 
+pub mod hierarchical;
 pub mod semantic;
 pub mod syntactic;
 pub mod types;
 
+pub use hierarchical::{HierarchicalChunker, HierarchicalConfig};
 pub use semantic::{SemanticChunker, SemanticConfig};
 pub use syntactic::SyntacticChunker;
-pub use types::{ChunkType, CodeChunk, Language};
+pub use types::{ChunkType, CodeChunk, HierarchyLevel, Language};
 
 use anyhow::Result;
 use std::path::Path;

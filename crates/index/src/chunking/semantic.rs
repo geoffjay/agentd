@@ -270,6 +270,7 @@ fn split_chunk(chunk: CodeChunk, config: &SemanticConfig) -> Vec<CodeChunk> {
             end_line: sub_end_line,
             symbol_name: chunk.symbol_name.clone(),
             parent_symbol: chunk.parent_symbol.clone(),
+            hierarchy_level: chunk.hierarchy_level,
         });
 
         // Move forward, leaving overlap lines for the next sub-chunk.
