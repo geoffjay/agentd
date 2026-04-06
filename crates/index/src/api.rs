@@ -2,10 +2,11 @@
 //!
 //! # Endpoints
 //!
-//! | Method | Path      | Description                             |
-//! |--------|-----------|-----------------------------------------|
-//! | `GET`  | `/health` | Service health check                    |
-//! | `POST` | `/search` | Semantic vector search over code chunks |
+//! | Method | Path             | Description                             |
+//! |--------|------------------|-----------------------------------------|
+//! | `GET`  | `/health`        | Service health check                    |
+//! | `POST` | `/search`        | Semantic / hybrid vector search         |
+//! | `POST` | `/search/agentic`| Grep-based fallback search              |
 //!
 //! # State
 //!
@@ -26,6 +27,7 @@ use serde_json::json;
 
 use agentd_common::types::HealthResponse;
 
+use crate::search::agentic::{AgenticSearch, AgenticSearchRequest};
 use crate::search::hybrid::HybridSearch;
 use crate::search::vector::VectorSearch;
 use crate::search::{SearchError, SearchMode, SearchRequest, SearchStrategy};
@@ -61,6 +63,7 @@ pub fn create_router_with_state(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_handler))
         .route("/search", post(search_handler))
+        .route("/search/agentic", post(agentic_search_handler))
         .with_state(state)
 }
 
@@ -96,6 +99,35 @@ async fn search_handler(
         SearchMode::Vector => VectorSearch::new(Arc::clone(&state.store)).search(&request).await,
     };
     match result {
+        Ok(response) => (StatusCode::OK, Json(json!(response))).into_response(),
+        Err(SearchError::InvalidRequest(msg)) => {
+            (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": msg }))).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
+            .into_response(),
+    }
+}
+
+/// `POST /search/agentic` — grep-based fallback search over source files.
+///
+/// Accepts an [`AgenticSearchRequest`] and returns matching lines with context.
+/// Does not require the vector index — searches files directly via `grep`.
+///
+/// # Use Cases
+///
+/// - Specific identifiers not yet indexed
+/// - Low-confidence vector search results
+/// - Verifying index results against raw source
+async fn agentic_search_handler(
+    State(state): State<AppState>,
+    Json(request): Json<AgenticSearchRequest>,
+) -> impl IntoResponse {
+    // Root the agentic search in the process working directory.
+    // In production, `AppState` could carry a configured base path.
+    let _ = &state; // store not needed for grep-based search
+    let search = AgenticSearch::new(std::env::current_dir().unwrap_or_else(|_| ".".into()));
+
+    match search.search(&request).await {
         Ok(response) => (StatusCode::OK, Json(json!(response))).into_response(),
         Err(SearchError::InvalidRequest(msg)) => {
             (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": msg }))).into_response()
