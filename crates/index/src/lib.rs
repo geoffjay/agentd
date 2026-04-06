@@ -10,6 +10,7 @@
 //! - [`error`] — error types using `thiserror`
 //! - [`api`] — Axum HTTP route handlers
 //! - [`chunking`] — tree-sitter / semantic / hierarchical chunking pipeline
+//! - [`search`] — pluggable search strategies (vector, hybrid, rerank)
 //! - [`store`] — LanceDB vector store and embedding service
 
 pub mod api;
@@ -20,4 +21,5 @@ pub mod enrichment;
 pub mod error;
 pub mod indexer;
 pub mod metadata;
+pub mod search;
 pub mod store;
