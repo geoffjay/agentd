@@ -15,6 +15,9 @@
 pub mod api;
 pub mod chunking;
 pub mod config;
+pub mod dependencies;
+pub mod enrichment;
 pub mod error;
 pub mod indexer;
+pub mod metadata;
 pub mod store;

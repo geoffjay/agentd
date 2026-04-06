@@ -37,6 +37,7 @@ use tracing::{debug, info, warn};
 
 use crate::chunking::types::{ChunkType, CodeChunk, HierarchyLevel, Language};
 use crate::config::LanceConfig;
+use crate::metadata::{ChunkMetadata, Parameter, Visibility};
 use crate::store::error::{StoreError, StoreResult};
 use crate::store::traits::{CodeStore, EmbeddingService, SearchResult, StoredChunk};
 
@@ -105,6 +106,11 @@ impl LanceStore {
             Field::new("content", DataType::LargeUtf8, false),
             Field::new("summary", DataType::Utf8, true),
             Field::new("file_hash", DataType::Utf8, false),
+            Field::new("visibility", DataType::Utf8, true),
+            Field::new("parameters", DataType::Utf8, true), // JSON array
+            Field::new("return_type", DataType::Utf8, true),
+            Field::new("imports", DataType::Utf8, true), // JSON array
+            Field::new("imported_symbols", DataType::Utf8, true), // JSON array
             Field::new(
                 "vector",
                 DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
@@ -141,6 +147,42 @@ impl LanceStore {
             dim,
         );
 
+        // Serialize metadata fields to JSON strings for nullable columns.
+        let visibility_strs: Vec<Option<String>> =
+            chunks.iter().map(|c| c.metadata.visibility.map(|v| v.as_str().to_string())).collect();
+        let parameters_strs: Vec<Option<String>> = chunks
+            .iter()
+            .map(|c| {
+                if c.metadata.parameters.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&c.metadata.parameters).ok()
+                }
+            })
+            .collect();
+        let return_type_strs: Vec<Option<&str>> =
+            chunks.iter().map(|c| c.metadata.return_type.as_deref()).collect();
+        let imports_strs: Vec<Option<String>> = chunks
+            .iter()
+            .map(|c| {
+                if c.metadata.imports.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&c.metadata.imports).ok()
+                }
+            })
+            .collect();
+        let imported_symbols_strs: Vec<Option<String>> = chunks
+            .iter()
+            .map(|c| {
+                if c.metadata.imported_symbols.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&c.metadata.imported_symbols).ok()
+                }
+            })
+            .collect();
+
         RecordBatch::try_new(
             schema,
             vec![
@@ -171,6 +213,19 @@ impl LanceStore {
                 )),
                 make_opt_str(vec![None; n]), // summary — filled by enrichment pipeline later
                 Arc::new(StringArray::from(vec![file_hash; n])),
+                Arc::new(StringArray::from(
+                    visibility_strs.iter().map(|v| v.as_deref()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    parameters_strs.iter().map(|p| p.as_deref()).collect::<Vec<_>>(),
+                )),
+                make_opt_str(return_type_strs),
+                Arc::new(StringArray::from(
+                    imports_strs.iter().map(|i| i.as_deref()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    imported_symbols_strs.iter().map(|s| s.as_deref()).collect::<Vec<_>>(),
+                )),
                 Arc::new(vector_array),
                 Arc::new(StringArray::from(vec![now; n])),
                 Arc::new(StringArray::from(vec![now; n])),
@@ -229,6 +284,25 @@ impl LanceStore {
         let chunk_type = parse_chunk_type(&get_str("chunk_type")?)?;
         let hierarchy_level = parse_hierarchy_level(&get_str("hierarchy_level")?)?;
 
+        let metadata = {
+            let visibility =
+                get_opt_str("visibility").as_deref().and_then(|s| s.parse::<Visibility>().ok());
+            let parameters: Vec<Parameter> = get_opt_str("parameters")
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
+            let return_type = get_opt_str("return_type");
+            let imports: Vec<String> = get_opt_str("imports")
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
+            let imported_symbols: Vec<String> = get_opt_str("imported_symbols")
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
+            ChunkMetadata { visibility, parameters, return_type, imports, imported_symbols }
+        };
+
         let chunk = CodeChunk {
             content: get_large_str("content")?,
             file_path: get_str("file_path")?,
@@ -239,6 +313,7 @@ impl LanceStore {
             symbol_name: get_opt_str("symbol_name"),
             parent_symbol: get_opt_str("parent_symbol"),
             hierarchy_level,
+            metadata,
         };
 
         Ok(StoredChunk {
@@ -498,6 +573,40 @@ impl CodeStore for LanceStore {
 
         Ok(results)
     }
+
+    async fn update_summary(&self, chunk_id: &str, summary: &str) -> StoreResult<()> {
+        let table = self.open_table().await?;
+        let safe_id = escape_sql(chunk_id);
+        let safe_summary = escape_sql(summary);
+        table
+            .update()
+            .only_if(format!("id = '{}'", safe_id))
+            .column("summary", format!("'{}'", safe_summary))
+            .execute()
+            .await
+            .map_err(|e| StoreError::QueryFailed(format!("update_summary failed: {}", e)))?;
+        debug!("Updated summary for chunk '{}'", chunk_id);
+        Ok(())
+    }
+
+    async fn list_unsummarized_chunks(
+        &self,
+        repo_id: &str,
+        limit: usize,
+    ) -> StoreResult<Vec<StoredChunk>> {
+        let table = self.open_table().await?;
+        let safe_repo = escape_sql(repo_id);
+        let stream = table
+            .query()
+            .only_if(format!("repo_id = '{}' AND summary IS NULL", safe_repo))
+            .limit(limit)
+            .execute()
+            .await
+            .map_err(|e| {
+                StoreError::QueryFailed(format!("list_unsummarized_chunks failed: {}", e))
+            })?;
+        self.collect_chunks(stream).await
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -551,6 +660,11 @@ mod tests {
             Field::new("content", DataType::LargeUtf8, false),
             Field::new("summary", DataType::Utf8, true),
             Field::new("file_hash", DataType::Utf8, false),
+            Field::new("visibility", DataType::Utf8, true),
+            Field::new("parameters", DataType::Utf8, true),
+            Field::new("return_type", DataType::Utf8, true),
+            Field::new("imports", DataType::Utf8, true),
+            Field::new("imported_symbols", DataType::Utf8, true),
             Field::new(
                 "vector",
                 DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
@@ -564,7 +678,7 @@ mod tests {
     #[test]
     fn schema_field_count() {
         let schema = make_schema(768);
-        assert_eq!(schema.fields().len(), 16);
+        assert_eq!(schema.fields().len(), 21);
     }
 
     #[test]
@@ -606,6 +720,11 @@ mod tests {
         assert!(schema.field_with_name("symbol_name").unwrap().is_nullable());
         assert!(schema.field_with_name("parent_symbol").unwrap().is_nullable());
         assert!(schema.field_with_name("summary").unwrap().is_nullable());
+        assert!(schema.field_with_name("visibility").unwrap().is_nullable());
+        assert!(schema.field_with_name("parameters").unwrap().is_nullable());
+        assert!(schema.field_with_name("return_type").unwrap().is_nullable());
+        assert!(schema.field_with_name("imports").unwrap().is_nullable());
+        assert!(schema.field_with_name("imported_symbols").unwrap().is_nullable());
     }
 
     #[test]
@@ -678,6 +797,9 @@ mod tests {
         let schema = make_schema(dim);
         let now = Utc::now().to_rfc3339();
 
+        let params_json = r#"[{"name":"x","type_annotation":"i32"}]"#;
+        let imports_json = r#"["use std::sync::Arc;"]"#;
+
         let batch = RecordBatch::try_new(
             schema,
             vec![
@@ -692,8 +814,13 @@ mod tests {
                 Arc::new(UInt32Array::from(vec![1u32])),
                 Arc::new(UInt32Array::from(vec![5u32])),
                 Arc::new(arrow_array::LargeStringArray::from(vec!["fn my_fn() {}"])),
-                Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+                Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef, // summary
                 Arc::new(StringArray::from(vec!["deadbeef"])),
+                Arc::new(StringArray::from(vec![Some("public")])) as ArrayRef, // visibility
+                Arc::new(StringArray::from(vec![Some(params_json)])) as ArrayRef, // parameters
+                Arc::new(StringArray::from(vec![Some("u8")])) as ArrayRef,     // return_type
+                Arc::new(StringArray::from(vec![Some(imports_json)])) as ArrayRef, // imports
+                Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,   // imported_symbols
                 Arc::new(
                     arrow_array::FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
                         vec![Some(vec![Some(0.1), Some(0.2), Some(0.3)])],
@@ -718,6 +845,12 @@ mod tests {
         assert!(stored.chunk.parent_symbol.is_none());
         assert_eq!(stored.chunk.start_line, 1);
         assert_eq!(stored.chunk.end_line, 5);
+        // Verify metadata round-trip
+        assert_eq!(stored.chunk.metadata.visibility, Some(crate::metadata::Visibility::Public));
+        assert_eq!(stored.chunk.metadata.parameters.len(), 1);
+        assert_eq!(stored.chunk.metadata.parameters[0].name, "x");
+        assert_eq!(stored.chunk.metadata.return_type.as_deref(), Some("u8"));
+        assert_eq!(stored.chunk.metadata.imports.len(), 1);
     }
 
     #[test]
