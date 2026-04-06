@@ -1,8 +1,6 @@
 //! agentd-index service entry point.
 //!
-//! Initialises the HTTP server with health and metrics endpoints.
-//! Additional capabilities (chunking, embeddings, search) are added by
-//! subsequent issues in the v0.14.0 milestone.
+//! Initialises the HTTP server with health, metrics, and search endpoints.
 //!
 //! # Running the Service
 //!
@@ -24,10 +22,12 @@
 //!
 //! - `GET /health`  — health check
 //! - `GET /metrics` — Prometheus metrics
+//! - `POST /search` — semantic vector search over code chunks
 
 use axum::{extract::State, response::IntoResponse, routing::get};
-use index::api::create_router;
+use index::api::{create_router_with_state, AppState};
 use index::config::IndexConfig;
+use index::store::create_store;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tracing::info;
 
@@ -55,6 +55,11 @@ async fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(&config.lance.path)?;
     info!(lance_path = %config.lance.path, "LanceDB directory ready");
 
+    // ── Vector store ─────────────────────────────────────────────────────
+    let store = create_store(&config.lance, &config.embedding).await?;
+    store.initialize().await?;
+    info!("Vector store initialised");
+
     // ── Metrics ──────────────────────────────────────────────────────────
     let metrics_handle = init_metrics();
 
@@ -62,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
-    let app = create_router()
+    let app = create_router_with_state(AppState { store })
         .merge(metrics_router)
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
