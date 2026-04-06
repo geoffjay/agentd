@@ -99,6 +99,7 @@ nav:
       - Ask: public/services/ask.md
       - Wrap: public/services/wrap.md
       - Communicate: public/services/communicate.md
+      - Index: public/services/index.md
       - Memory: public/services/memory.md
       - Monitor: public/services/monitor.md
       - Hook: public/services/hook.md

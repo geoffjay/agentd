@@ -4,33 +4,6 @@ This document describes how agentd services persist data to SQLite using
 [SeaORM](https://www.sea-ql.org/SeaORM/).  Read this before writing any
 storage code.
 
-## Table of Contents
-
-- [Overview](#overview)
-- [Module Layout](#module-layout)
-- [Entity Files](#entity-files)
-- [Migration Files](#migration-files)
-- [Storage Structs](#storage-structs)
-- [Common Operations](#common-operations)
-  - [Insert with ActiveModel](#insert-with-activemodel)
-  - [Find by ID](#find-by-id)
-  - [Update Specific Fields](#update-specific-fields)
-  - [Delete](#delete)
-  - [Filtered List](#filtered-list)
-  - [Paginated List with Filters](#paginated-list-with-filters)
-- [agentd-common Integration](#agentd-common-integration)
-- [Adding a New Table](#adding-a-new-table)
-- [Modifying an Existing Table](#modifying-an-existing-table)
-- [Type Mapping Conventions](#type-mapping-conventions)
-  - [UUIDs](#uuids)
-  - [Booleans](#booleans)
-  - [Timestamps](#timestamps)
-  - [Enums](#enums)
-  - [JSON Columns](#json-columns)
-- [Testing Storage Code](#testing-storage-code)
-- [Common Pitfalls](#common-pitfalls)
-- [xtask Commands](#xtask-commands)
-
 ---
 
 ## Overview
