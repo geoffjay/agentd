@@ -281,7 +281,7 @@ fn split_chunk(chunk: CodeChunk, config: &SemanticConfig) -> Vec<CodeChunk> {
         // Safety: always advance by at least one line to avoid infinite loops
         // when overlap >= (end - start).
         if next_start <= start {
-            start = start + 1;
+            start += 1;
         } else {
             start = next_start;
         }
