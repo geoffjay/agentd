@@ -265,6 +265,73 @@ impl SummaryConfig {
 }
 
 // ---------------------------------------------------------------------------
+// RerankConfig
+// ---------------------------------------------------------------------------
+
+/// Configuration for cross-encoder reranking of search results.
+///
+/// Reranking is disabled by default to avoid adding latency.  Enable it when
+/// higher precision of the top-K results is more important than speed.
+///
+/// # Example
+///
+/// ```rust
+/// use index::config::RerankConfig;
+///
+/// let config = RerankConfig::default();
+/// assert!(!config.enabled);
+/// assert_eq!(config.candidates, 30);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RerankConfig {
+    /// Whether cross-encoder reranking is enabled.
+    ///
+    /// Defaults to `false`.
+    pub enabled: bool,
+
+    /// Ollama model used for reranking (chat/completion endpoint).
+    ///
+    /// Defaults to `"qwen2.5-coder:7b"`.
+    pub model: String,
+
+    /// Number of candidate results to fetch before reranking.
+    ///
+    /// The reranker scores this many candidates and returns the top-K.
+    /// Defaults to `30`.
+    pub candidates: usize,
+}
+
+impl Default for RerankConfig {
+    fn default() -> Self {
+        Self { enabled: false, model: "qwen2.5-coder:7b".to_string(), candidates: 30 }
+    }
+}
+
+impl RerankConfig {
+    /// Load rerank configuration from environment variables.
+    ///
+    /// | Variable                           | Default              |
+    /// |------------------------------------|----------------------|
+    /// | `AGENTD_INDEX_RERANK_ENABLED`      | `false`              |
+    /// | `AGENTD_INDEX_RERANK_MODEL`        | `"qwen2.5-coder:7b"` |
+    /// | `AGENTD_INDEX_RERANK_CANDIDATES`   | `30`                 |
+    pub fn from_env() -> Self {
+        let enabled = env::var("AGENTD_INDEX_RERANK_ENABLED")
+            .ok()
+            .and_then(|v| v.parse::<bool>().ok())
+            .unwrap_or(false);
+        let model = env::var("AGENTD_INDEX_RERANK_MODEL")
+            .unwrap_or_else(|_| "qwen2.5-coder:7b".to_string());
+        let candidates = env::var("AGENTD_INDEX_RERANK_CANDIDATES")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(30);
+        Self { enabled, model, candidates }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // IndexConfig
 // ---------------------------------------------------------------------------
 
@@ -298,6 +365,9 @@ pub struct IndexConfig {
     /// LLM summary generation configuration.
     pub summary: SummaryConfig,
 
+    /// Cross-encoder reranking configuration.
+    pub rerank: RerankConfig,
+
     /// List of supported programming languages for indexing.
     ///
     /// Defaults to `["rust", "python", "javascript", "typescript"]`.
@@ -317,6 +387,7 @@ impl Default for IndexConfig {
             lance: LanceConfig::default(),
             watch: WatchConfig::default(),
             summary: SummaryConfig::default(),
+            rerank: RerankConfig::default(),
             languages: default_languages(),
             ignore_patterns: default_ignore_patterns(),
         }
@@ -350,6 +421,7 @@ impl IndexConfig {
             lance: LanceConfig::from_env(),
             watch: WatchConfig::from_env(),
             summary: SummaryConfig::from_env(),
+            rerank: RerankConfig::from_env(),
             languages,
             ignore_patterns,
         }
