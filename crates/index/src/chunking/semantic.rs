@@ -277,9 +277,13 @@ fn split_chunk(chunk: CodeChunk, config: &SemanticConfig) -> Vec<CodeChunk> {
         if end >= content_lines.len() {
             break;
         }
-        start = end.saturating_sub(overlap);
-        if start >= end {
-            start = end; // safety: always advance
+        let next_start = end.saturating_sub(overlap);
+        // Safety: always advance by at least one line to avoid infinite loops
+        // when overlap >= (end - start).
+        if next_start <= start {
+            start += 1;
+        } else {
+            start = next_start;
         }
     }
 
