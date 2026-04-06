@@ -39,9 +39,19 @@ impl SyntacticChunker {
 
         // Attach file-level imports to every chunk in this file.
         let imports = extract_file_imports(tree.root_node(), source_bytes, language);
-        if !imports.is_empty() {
+
+        // Derive imported symbol names from the raw import strings.
+        let imported_symbols: Vec<String> = imports
+            .iter()
+            .flat_map(|imp| crate::dependencies::extract_symbols_from_import(imp, language))
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if !imports.is_empty() || !imported_symbols.is_empty() {
             for chunk in &mut chunks {
                 chunk.metadata.imports = imports.clone();
+                chunk.metadata.imported_symbols = imported_symbols.clone();
             }
         }
 
@@ -274,7 +284,8 @@ fn extract_chunk_metadata(
         visibility: extract_visibility(node, source, language, symbol_name),
         parameters: extract_parameters(node, source, language),
         return_type: extract_return_type(node, source, language),
-        imports: Vec::new(), // populated by `chunk()` after the walk
+        imports: Vec::new(),          // populated by `chunk()` after the walk
+        imported_symbols: Vec::new(), // populated by `chunk()` after the walk
     }
 }
 

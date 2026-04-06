@@ -535,6 +535,16 @@ mod tests {
         ) -> StoreResult<Vec<SearchResult>> {
             Ok(vec![])
         }
+        async fn update_summary(&self, _chunk_id: &str, _summary: &str) -> StoreResult<()> {
+            Ok(())
+        }
+        async fn list_unsummarized_chunks(
+            &self,
+            _repo_id: &str,
+            _limit: usize,
+        ) -> StoreResult<Vec<crate::store::traits::StoredChunk>> {
+            Ok(vec![])
+        }
     }
 
     // ── hex_digest ────────────────────────────────────────────────────────
