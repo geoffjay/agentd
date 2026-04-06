@@ -31,6 +31,7 @@
 pub mod apply;
 pub mod ask;
 pub mod communicate;
+pub mod index;
 pub mod memory;
 pub mod notify;
 pub mod orchestrator;
@@ -39,6 +40,7 @@ pub mod wrap;
 
 pub use ask::AskCommand;
 pub use communicate::CommunicateCommand;
+pub use index::IndexCommand;
 pub use memory::MemoryCommand;
 pub use notify::NotifyCommand;
 pub use orchestrator::OrchestratorCommand;

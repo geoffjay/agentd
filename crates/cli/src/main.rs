@@ -81,9 +81,10 @@ use ask::client::AskClient;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::*;
+use commands::index::IndexClient;
 use commands::{
-    AskCommand, CommunicateCommand, MemoryCommand, NotifyCommand, OrchestratorCommand,
-    PromptCommand, WrapCommand,
+    AskCommand, CommunicateCommand, IndexCommand, MemoryCommand, NotifyCommand,
+    OrchestratorCommand, PromptCommand, WrapCommand,
 };
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
@@ -286,6 +287,23 @@ enum Commands {
         #[command(subcommand)]
         command: PromptCommand,
     },
+
+    /// Interact with the index service
+    ///
+    /// Register repositories, trigger indexing, and search indexed code.
+    /// The index service runs on port 17012 by default.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent index add-repo --name agentd --path /home/user/agentd
+    /// agent index list-repos
+    /// agent index search "authentication middleware" --mode hybrid
+    /// ```
+    Index {
+        #[command(subcommand)]
+        command: IndexCommand,
+    },
 }
 
 /// Main entry point for the agent CLI.
@@ -404,6 +422,12 @@ async fn main() -> Result<()> {
             let orch_client = OrchestratorClient::new(orch_url);
             let comm_client = CommunicateClient::new(&comm_url);
             command.execute(&orch_client, &comm_client, cli.json).await?;
+        }
+        Commands::Index { command } => {
+            let url = env::var("AGENTD_INDEX_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:17012".to_string());
+            let client = IndexClient::new(url);
+            command.execute(&client, cli.json).await?;
         }
     }
 
