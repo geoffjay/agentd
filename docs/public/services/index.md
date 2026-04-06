@@ -23,7 +23,7 @@ source files
   Chunker (tree-sitter)         ← semantic / hierarchical split
      │
      ▼
-  Embedder (Ollama / OpenAI)    ← nomic-embed-code by default
+  Embedder (Ollama / OpenAI)    ← nomic-embed-text by default
      │
      ▼
   LanceDB vector store          ← ANN index for fast retrieval
@@ -46,7 +46,7 @@ source files
 |---------------------------------------|--------------------------------------|---------------------------------------|
 | `AGENTD_PORT`                         | `17012`                              | HTTP listen port                      |
 | `AGENTD_INDEX_EMBEDDING_PROVIDER`     | `ollama`                             | Embedding provider (`ollama`/`openai`)|
-| `AGENTD_INDEX_EMBEDDING_MODEL`        | `manutic/nomic-embed-code`           | Embedding model name                  |
+| `AGENTD_INDEX_EMBEDDING_MODEL`        | `nomic-embed-text`           | Embedding model name                  |
 | `AGENTD_INDEX_EMBEDDING_ENDPOINT`     | `http://localhost:11434/v1`          | Ollama / OpenAI API endpoint          |
 | `AGENTD_INDEX_LANCE_PATH`             | XDG data dir / `lancedb`             | LanceDB directory path                |
 | `AGENTD_INDEX_LANCE_TABLE`            | `code_chunks`                        | LanceDB table name                    |

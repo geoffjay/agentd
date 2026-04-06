@@ -34,7 +34,7 @@
         <key>AGENTD_INDEX_EMBEDDING_PROVIDER</key>
         <string>ollama</string>
         <key>AGENTD_INDEX_EMBEDDING_MODEL</key>
-        <string>manutic/nomic-embed-code</string>
+        <string>nomic-embed-text</string>
         <key>AGENTD_INDEX_EMBEDDING_ENDPOINT</key>
         <string>http://localhost:11434/v1</string>
         <!--

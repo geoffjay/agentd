@@ -18,7 +18,7 @@
 //! | `RUST_LOG`                      | `info`                         | Log level                 |
 //! | `AGENTD_PORT`                   | `17012`                        | HTTP listen port          |
 //! | `AGENTD_INDEX_LANCE_PATH`       | XDG data dir / `lancedb`       | LanceDB directory         |
-//! | `AGENTD_INDEX_EMBEDDING_MODEL`  | `nomic-embed-code`             | Embedding model           |
+//! | `AGENTD_INDEX_EMBEDDING_MODEL`  | `nomic-embed-text`             | Embedding model           |
 //!
 //! # Endpoints
 //!

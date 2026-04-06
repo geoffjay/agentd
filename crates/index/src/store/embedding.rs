@@ -10,7 +10,7 @@
 //! # Ollama usage (default)
 //!
 //! The default configuration points at `http://localhost:11434/v1` with
-//! `nomic-embed-code` (768 dimensions).  No API key is required.
+//! `nomic-embed-text` (768 dimensions).  No API key is required.
 //!
 //! # OpenAI usage
 //!
@@ -25,7 +25,7 @@
 //!
 //! let config = EmbeddingConfig::default();
 //! let svc = create_embedding_service(&config).unwrap();
-//! assert_eq!(svc.dimension("nomic-embed-code"), 768);
+//! assert_eq!(svc.dimension("nomic-embed-text"), 768);
 //! ```
 
 use async_trait::async_trait;
@@ -43,12 +43,11 @@ use crate::store::traits::EmbeddingService;
 
 /// Return the known vector dimension for `model`, or 768 as a default.
 ///
-/// Code-specialised models default to 768 (nomic-embed-code). Unknown models
+/// Code-specialised models default to 768 (nomic-embed-text). Unknown models
 /// fall back to 768.
 pub fn model_dimension(model: &str) -> usize {
     match model {
         // Ollama / code-specialised
-        "nomic-embed-code" => 768,
         "nomic-embed-text" => 768,
         "mxbai-embed-large" => 1024,
         "all-minilm" => 384,
@@ -57,7 +56,7 @@ pub fn model_dimension(model: &str) -> usize {
         "text-embedding-3-small" => 1536,
         "text-embedding-3-large" => 3072,
         "text-embedding-ada-002" => 1536,
-        _ => 768, // nomic-embed-code default
+        _ => 768, // nomic-embed-text default
     }
 }
 
@@ -282,11 +281,6 @@ mod tests {
     // ── model_dimension ────────────────────────────────────────────────────
 
     #[test]
-    fn nomic_embed_code_is_768() {
-        assert_eq!(model_dimension("nomic-embed-code"), 768);
-    }
-
-    #[test]
     fn nomic_embed_text_is_768() {
         assert_eq!(model_dimension("nomic-embed-text"), 768);
     }
@@ -315,7 +309,7 @@ mod tests {
 
     #[test]
     fn ollama_no_key_for_localhost() {
-        let config = ollama_config("nomic-embed-code");
+        let config = ollama_config("nomic-embed-text");
         assert!(OllamaEmbedding::new(&config).is_ok());
     }
 
@@ -340,13 +334,13 @@ mod tests {
 
     #[test]
     fn dimension_uses_configured_model_when_arg_empty() {
-        let svc = OllamaEmbedding::new(&ollama_config("nomic-embed-code")).unwrap();
+        let svc = OllamaEmbedding::new(&ollama_config("nomic-embed-text")).unwrap();
         assert_eq!(svc.dimension(""), 768);
     }
 
     #[test]
     fn dimension_uses_arg_when_provided() {
-        let svc = OllamaEmbedding::new(&ollama_config("nomic-embed-code")).unwrap();
+        let svc = OllamaEmbedding::new(&ollama_config("nomic-embed-text")).unwrap();
         assert_eq!(svc.dimension("mxbai-embed-large"), 1024);
     }
 
@@ -354,7 +348,7 @@ mod tests {
 
     #[test]
     fn noop_dimension_is_zero() {
-        assert_eq!(NoOpEmbedding::new().dimension("nomic-embed-code"), 0);
+        assert_eq!(NoOpEmbedding::new().dimension("nomic-embed-text"), 0);
     }
 
     #[tokio::test]
@@ -367,7 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn embed_empty_returns_empty() {
-        let svc = OllamaEmbedding::new(&ollama_config("nomic-embed-code")).unwrap();
+        let svc = OllamaEmbedding::new(&ollama_config("nomic-embed-text")).unwrap();
         // Empty slice should short-circuit without network call.
         let result = svc.embed(&[]).await.unwrap();
         assert!(result.is_empty());
@@ -377,9 +371,9 @@ mod tests {
 
     #[test]
     fn factory_ollama_provider() {
-        let config = ollama_config("nomic-embed-code");
+        let config = ollama_config("nomic-embed-text");
         let svc = create_embedding_service(&config).unwrap();
-        assert_eq!(svc.dimension("nomic-embed-code"), 768);
+        assert_eq!(svc.dimension("nomic-embed-text"), 768);
     }
 
     #[test]
@@ -416,7 +410,7 @@ mod tests {
     fn factory_case_insensitive() {
         let config = EmbeddingConfig {
             provider: "Ollama".to_string(),
-            model: "nomic-embed-code".to_string(),
+            model: "nomic-embed-text".to_string(),
             endpoint: "http://localhost:11434/v1".to_string(),
             api_key: None,
         };

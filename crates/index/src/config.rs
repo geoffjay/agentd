@@ -10,7 +10,7 @@
 //! |---------------------------------------|--------------------------------------|--------------------------------------|
 //! | `AGENTD_PORT`                         | `17012`                              | HTTP listen port                     |
 //! | `AGENTD_INDEX_EMBEDDING_PROVIDER`     | `ollama`                             | Embedding provider                   |
-//! | `AGENTD_INDEX_EMBEDDING_MODEL`        | `nomic-embed-code`                   | Embedding model name                 |
+//! | `AGENTD_INDEX_EMBEDDING_MODEL`        | `nomic-embed-text`                   | Embedding model name                 |
 //! | `AGENTD_INDEX_EMBEDDING_ENDPOINT`     | `http://localhost:11434/v1`          | Ollama API endpoint                  |
 //! | `AGENTD_INDEX_LANCE_PATH`             | XDG data dir / `lancedb`            | LanceDB directory path               |
 //! | `AGENTD_INDEX_LANCE_TABLE`            | `code_chunks`                        | LanceDB table name                   |
@@ -29,7 +29,7 @@ use std::path::PathBuf;
 
 /// Configuration for the embedding provider used by the index service.
 ///
-/// Defaults to a local Ollama instance with the `nomic-embed-code` model.
+/// Defaults to a local Ollama instance with the `nomic-embed-text` model.
 ///
 /// # Example
 ///
@@ -38,7 +38,7 @@ use std::path::PathBuf;
 ///
 /// let config = EmbeddingConfig::default();
 /// assert_eq!(config.provider, "ollama");
-/// assert_eq!(config.model, "nomic-embed-code");
+/// assert_eq!(config.model, "nomic-embed-text");
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -48,7 +48,7 @@ pub struct EmbeddingConfig {
 
     /// Model name understood by the provider.
     ///
-    /// Defaults to `"nomic-embed-code"` for Ollama.
+    /// Defaults to `"nomic-embed-text"` for Ollama.
     pub model: String,
 
     /// API endpoint for the embedding provider.
@@ -65,7 +65,7 @@ impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
             provider: "ollama".to_string(),
-            model: "nomic-embed-code".to_string(),
+            model: "nomic-embed-text".to_string(),
             endpoint: "http://localhost:11434/v1".to_string(),
             api_key: None,
         }
@@ -78,7 +78,7 @@ impl EmbeddingConfig {
     /// | Variable                              | Default                        |
     /// |---------------------------------------|--------------------------------|
     /// | `AGENTD_INDEX_EMBEDDING_PROVIDER`     | `"ollama"`                     |
-    /// | `AGENTD_INDEX_EMBEDDING_MODEL`        | `"nomic-embed-code"`           |
+    /// | `AGENTD_INDEX_EMBEDDING_MODEL`        | `"nomic-embed-text"`           |
     /// | `AGENTD_INDEX_EMBEDDING_ENDPOINT`     | `"http://localhost:11434/v1"`  |
     /// | `AGENTD_INDEX_EMBEDDING_API_KEY`      | `None`                         |
     pub fn from_env() -> Self {
@@ -86,7 +86,7 @@ impl EmbeddingConfig {
             provider: env::var("AGENTD_INDEX_EMBEDDING_PROVIDER")
                 .unwrap_or_else(|_| "ollama".to_string()),
             model: env::var("AGENTD_INDEX_EMBEDDING_MODEL")
-                .unwrap_or_else(|_| "nomic-embed-code".to_string()),
+                .unwrap_or_else(|_| "nomic-embed-text".to_string()),
             endpoint: env::var("AGENTD_INDEX_EMBEDDING_ENDPOINT")
                 .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
             api_key: env::var("AGENTD_INDEX_EMBEDDING_API_KEY").ok(),
@@ -494,7 +494,7 @@ mod tests {
     #[test]
     fn test_embedding_default_model() {
         let config = EmbeddingConfig::default();
-        assert_eq!(config.model, "nomic-embed-code");
+        assert_eq!(config.model, "nomic-embed-text");
     }
 
     #[test]
