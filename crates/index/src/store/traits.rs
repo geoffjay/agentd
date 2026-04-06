@@ -105,6 +105,20 @@ pub trait CodeStore: Send + Sync {
         repo_id: Option<&str>,
         limit: usize,
     ) -> StoreResult<Vec<SearchResult>>;
+
+    /// Update the LLM-generated summary for a stored chunk.
+    ///
+    /// Used by the enrichment pipeline after generating a summary.
+    async fn update_summary(&self, chunk_id: &str, summary: &str) -> StoreResult<()>;
+
+    /// Return up to `limit` stored chunks that have no summary yet.
+    ///
+    /// Used by the background enrichment task to find chunks to process.
+    async fn list_unsummarized_chunks(
+        &self,
+        repo_id: &str,
+        limit: usize,
+    ) -> StoreResult<Vec<StoredChunk>>;
 }
 
 // ---------------------------------------------------------------------------

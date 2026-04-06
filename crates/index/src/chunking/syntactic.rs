@@ -8,6 +8,7 @@ use std::path::Path;
 use tree_sitter::{Node, Parser};
 
 use super::types::{ChunkType, CodeChunk, Language};
+use crate::metadata::{ChunkMetadata, Parameter, Visibility};
 
 /// Tree-sitter backed chunker that splits source files into logical AST units.
 pub struct SyntacticChunker;
@@ -35,6 +36,25 @@ impl SyntacticChunker {
         let source_bytes = source.as_bytes();
         let mut chunks = Vec::new();
         walk(tree.root_node(), source_bytes, file_path, language, None, None, &mut chunks);
+
+        // Attach file-level imports to every chunk in this file.
+        let imports = extract_file_imports(tree.root_node(), source_bytes, language);
+
+        // Derive imported symbol names from the raw import strings.
+        let imported_symbols: Vec<String> = imports
+            .iter()
+            .flat_map(|imp| crate::dependencies::extract_symbols_from_import(imp, language))
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if !imports.is_empty() || !imported_symbols.is_empty() {
+            for chunk in &mut chunks {
+                chunk.metadata.imports = imports.clone();
+                chunk.metadata.imported_symbols = imported_symbols.clone();
+            }
+        }
+
         Ok(chunks)
     }
 
@@ -95,6 +115,8 @@ fn walk(
         let effective_parent =
             if chunk_type == ChunkType::Method { parent_name.map(|s| s.to_string()) } else { None };
 
+        let metadata = extract_chunk_metadata(&node, source, language, &symbol_name);
+
         chunks.push(CodeChunk {
             content,
             file_path: file_path.to_string(),
@@ -105,6 +127,7 @@ fn walk(
             symbol_name: symbol_name.clone(),
             parent_symbol: effective_parent,
             hierarchy_level: super::types::HierarchyLevel::Symbol,
+            metadata,
         });
 
         // This node is a container; its children should know about it.
@@ -244,6 +267,244 @@ fn has_function_value(node: &Node<'_>) -> bool {
 /// Extract the UTF-8 text of a named field child.
 fn field_text(node: &Node<'_>, field: &str, source: &[u8]) -> Option<String> {
     node.child_by_field_name(field).and_then(|n| n.utf8_text(source).ok()).map(|s| s.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Metadata extraction
+// ---------------------------------------------------------------------------
+
+/// Build a [`ChunkMetadata`] for a classified AST node.
+fn extract_chunk_metadata(
+    node: &Node<'_>,
+    source: &[u8],
+    language: Language,
+    symbol_name: &Option<String>,
+) -> ChunkMetadata {
+    ChunkMetadata {
+        visibility: extract_visibility(node, source, language, symbol_name),
+        parameters: extract_parameters(node, source, language),
+        return_type: extract_return_type(node, source, language),
+        imports: Vec::new(),          // populated by `chunk()` after the walk
+        imported_symbols: Vec::new(), // populated by `chunk()` after the walk
+    }
+}
+
+/// Extract the visibility modifier of a node.
+fn extract_visibility(
+    node: &Node<'_>,
+    source: &[u8],
+    language: Language,
+    symbol_name: &Option<String>,
+) -> Option<Visibility> {
+    match language {
+        Language::Rust => {
+            // Look for a `visibility_modifier` child (it is not a named field in
+            // tree-sitter-rust, but appears as an unnamed child).
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "visibility_modifier" {
+                    let text = child.utf8_text(source).unwrap_or("");
+                    return Some(if text == "pub" {
+                        Visibility::Public
+                    } else if text.contains("crate") {
+                        Visibility::Crate
+                    } else {
+                        // pub(super), pub(in path), etc.
+                        Visibility::Module
+                    });
+                }
+            }
+            Some(Visibility::Private)
+        }
+        Language::Python => {
+            // Python encodes visibility by naming convention.
+            let name = symbol_name.as_deref().unwrap_or("");
+            if name.starts_with("__") && !name.ends_with("__") {
+                Some(Visibility::Private)
+            } else if name.starts_with('_') {
+                Some(Visibility::Protected)
+            } else {
+                Some(Visibility::Public)
+            }
+        }
+        Language::JavaScript => {
+            // Plain JS has no explicit visibility keywords at the function level.
+            None
+        }
+        Language::TypeScript => {
+            // TypeScript class members may carry an `accessibility_modifier`.
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "accessibility_modifier" {
+                    let text = child.utf8_text(source).unwrap_or("");
+                    return Some(match text {
+                        "public" => Visibility::Public,
+                        "protected" => Visibility::Protected,
+                        "private" => Visibility::Private,
+                        _ => Visibility::Public,
+                    });
+                }
+            }
+            // Top-level TS declarations are implicitly public.
+            Some(Visibility::Public)
+        }
+    }
+}
+
+/// Extract function/method parameters from a node.
+fn extract_parameters(node: &Node<'_>, source: &[u8], language: Language) -> Vec<Parameter> {
+    let params_node = match language {
+        Language::JavaScript | Language::TypeScript => node.child_by_field_name("parameters"),
+        _ => node.child_by_field_name("parameters"),
+    };
+
+    let Some(params_node) = params_node else { return Vec::new() };
+
+    let mut params = Vec::new();
+    let mut cursor = params_node.walk();
+
+    for child in params_node.children(&mut cursor) {
+        match language {
+            Language::Rust => {
+                if child.kind() == "parameter" {
+                    // `pattern` field: the parameter name
+                    // `type` field: the type annotation
+                    let name = field_text(&child, "pattern", source).unwrap_or_default();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    let type_annotation = field_text(&child, "type", source);
+                    params.push(Parameter { name, type_annotation });
+                }
+                // self_parameter, variadic_parameter: skip
+            }
+            Language::Python => {
+                match child.kind() {
+                    "identifier" => {
+                        let name = child.utf8_text(source).unwrap_or("").to_string();
+                        if !name.is_empty() && name != "self" && name != "cls" {
+                            params.push(Parameter { name, type_annotation: None });
+                        }
+                    }
+                    "typed_parameter" => {
+                        // First named identifier child = name; subsequent = type
+                        let mut inner = child.walk();
+                        let mut name = String::new();
+                        let mut typ: Option<String> = None;
+                        for gc in child.children(&mut inner) {
+                            if gc.kind() == "identifier" && name.is_empty() {
+                                name = gc.utf8_text(source).unwrap_or("").to_string();
+                            } else if gc.is_named() && gc.kind() != "identifier" {
+                                typ = gc.utf8_text(source).ok().map(|s| s.trim().to_string());
+                            }
+                        }
+                        if !name.is_empty() && name != "self" && name != "cls" {
+                            params.push(Parameter { name, type_annotation: typ });
+                        }
+                    }
+                    "typed_default_parameter" | "default_parameter" => {
+                        let name = child
+                            .child_by_field_name("name")
+                            .and_then(|n| n.utf8_text(source).ok())
+                            .unwrap_or("")
+                            .to_string();
+                        let type_annotation = child
+                            .child_by_field_name("type")
+                            .and_then(|n| n.utf8_text(source).ok())
+                            .map(|s| s.to_string());
+                        if !name.is_empty() && name != "self" && name != "cls" {
+                            params.push(Parameter { name, type_annotation });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Language::JavaScript | Language::TypeScript => match child.kind() {
+                "identifier" => {
+                    let name = child.utf8_text(source).unwrap_or("").to_string();
+                    if !name.is_empty() {
+                        params.push(Parameter { name, type_annotation: None });
+                    }
+                }
+                "required_parameter" | "optional_parameter" => {
+                    let name = child
+                        .child_by_field_name("pattern")
+                        .and_then(|n| n.utf8_text(source).ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let type_annotation = child
+                        .child_by_field_name("type")
+                        .and_then(|n| n.utf8_text(source).ok())
+                        .map(|s| s.trim_start_matches(':').trim().to_string());
+                    if !name.is_empty() {
+                        params.push(Parameter { name, type_annotation });
+                    }
+                }
+                "assignment_pattern" => {
+                    let name = child
+                        .child_by_field_name("left")
+                        .and_then(|n| n.utf8_text(source).ok())
+                        .unwrap_or("")
+                        .to_string();
+                    if !name.is_empty() {
+                        params.push(Parameter { name, type_annotation: None });
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+
+    params
+}
+
+/// Extract the return type annotation from a function node.
+fn extract_return_type(node: &Node<'_>, source: &[u8], language: Language) -> Option<String> {
+    match language {
+        Language::Rust => {
+            // `return_type` field is the `_type` after `->` (arrow not included)
+            field_text(node, "return_type", source)
+        }
+        Language::Python => {
+            // `return_type` field is the annotation after `->`
+            field_text(node, "return_type", source)
+        }
+        Language::JavaScript => None,
+        Language::TypeScript => {
+            // `return_type` is a `type_annotation` node whose text starts with `:`
+            node.child_by_field_name("return_type")
+                .and_then(|n| n.utf8_text(source).ok())
+                .map(|s| s.trim_start_matches(':').trim().to_string())
+                .filter(|s| !s.is_empty())
+        }
+    }
+}
+
+/// Collect top-level import/use declarations from the file root node.
+///
+/// These are attached to every chunk in the file so that search results carry
+/// context about what symbols the file depends on.
+fn extract_file_imports(root: Node<'_>, source: &[u8], language: Language) -> Vec<String> {
+    let mut imports = Vec::new();
+    let mut cursor = root.walk();
+    for child in root.children(&mut cursor) {
+        let is_import = match language {
+            Language::Rust => child.kind() == "use_declaration",
+            Language::Python => {
+                matches!(child.kind(), "import_statement" | "import_from_statement")
+            }
+            Language::JavaScript | Language::TypeScript => child.kind() == "import_statement",
+        };
+        if is_import {
+            if let Ok(text) = child.utf8_text(source) {
+                let trimmed = text.trim().to_string();
+                if !trimmed.is_empty() {
+                    imports.push(trimmed);
+                }
+            }
+        }
+    }
+    imports
 }
 
 // ---------------------------------------------------------------------------
