@@ -41,7 +41,24 @@ tree-sitter-python = "0.25"
 tree-sitter-javascript = "0.25"
 tree-sitter-typescript = "0.23"
 
+# Vector storage (pin arrow versions to match lancedb 0.27)
+lancedb = "0.27.1"
+arrow-array = "57.2"
+arrow-schema = "57.2"
+
+# HTTP client for embedding API calls
+reqwest = { workspace = true, features = ["json"] }
+
+# Async traits and stream utilities
+async-trait = "0.1"
+futures = "0.3"
+
+# File hashing and directory walking
+sha2 = "0.10"
+ignore = "0.4"
+
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 hyper = "1.0"
+tempfile = "3.14"
