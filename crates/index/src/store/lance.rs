@@ -555,6 +555,40 @@ impl CodeStore for LanceStore {
 
         Ok(results)
     }
+
+    async fn update_summary(&self, chunk_id: &str, summary: &str) -> StoreResult<()> {
+        let table = self.open_table().await?;
+        let safe_id = escape_sql(chunk_id);
+        let safe_summary = escape_sql(summary);
+        table
+            .update()
+            .only_if(format!("id = '{}'", safe_id))
+            .column("summary", format!("'{}'", safe_summary))
+            .execute()
+            .await
+            .map_err(|e| StoreError::QueryFailed(format!("update_summary failed: {}", e)))?;
+        debug!("Updated summary for chunk '{}'", chunk_id);
+        Ok(())
+    }
+
+    async fn list_unsummarized_chunks(
+        &self,
+        repo_id: &str,
+        limit: usize,
+    ) -> StoreResult<Vec<StoredChunk>> {
+        let table = self.open_table().await?;
+        let safe_repo = escape_sql(repo_id);
+        let stream = table
+            .query()
+            .only_if(format!("repo_id = '{}' AND summary IS NULL", safe_repo))
+            .limit(limit)
+            .execute()
+            .await
+            .map_err(|e| {
+                StoreError::QueryFailed(format!("list_unsummarized_chunks failed: {}", e))
+            })?;
+        self.collect_chunks(stream).await
+    }
 }
 
 // ---------------------------------------------------------------------------

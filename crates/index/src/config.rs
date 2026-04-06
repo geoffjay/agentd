@@ -201,6 +201,70 @@ impl WatchConfig {
 }
 
 // ---------------------------------------------------------------------------
+// SummaryConfig
+// ---------------------------------------------------------------------------
+
+/// Configuration for LLM-generated code summaries.
+///
+/// # Example
+///
+/// ```rust
+/// use index::config::SummaryConfig;
+///
+/// let config = SummaryConfig::default();
+/// assert!(!config.enabled);
+/// assert_eq!(config.model, "qwen2.5-coder:7b");
+/// assert_eq!(config.concurrency, 4);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SummaryConfig {
+    /// Whether LLM summary generation is enabled.
+    ///
+    /// Defaults to `false` to avoid blocking initial indexing.
+    pub enabled: bool,
+
+    /// Ollama model used for generating summaries.
+    ///
+    /// Defaults to `"qwen2.5-coder:7b"`.
+    pub model: String,
+
+    /// Maximum number of concurrent summary requests to Ollama.
+    ///
+    /// Defaults to `4`.
+    pub concurrency: usize,
+}
+
+impl Default for SummaryConfig {
+    fn default() -> Self {
+        Self { enabled: false, model: "qwen2.5-coder:7b".to_string(), concurrency: 4 }
+    }
+}
+
+impl SummaryConfig {
+    /// Load summary configuration from environment variables.
+    ///
+    /// | Variable                           | Default              |
+    /// |------------------------------------|----------------------|
+    /// | `AGENTD_INDEX_SUMMARY_ENABLED`     | `false`              |
+    /// | `AGENTD_INDEX_SUMMARY_MODEL`       | `"qwen2.5-coder:7b"` |
+    /// | `AGENTD_INDEX_SUMMARY_CONCURRENCY` | `4`                  |
+    pub fn from_env() -> Self {
+        let enabled = env::var("AGENTD_INDEX_SUMMARY_ENABLED")
+            .ok()
+            .and_then(|v| v.parse::<bool>().ok())
+            .unwrap_or(false);
+        let model = env::var("AGENTD_INDEX_SUMMARY_MODEL")
+            .unwrap_or_else(|_| "qwen2.5-coder:7b".to_string());
+        let concurrency = env::var("AGENTD_INDEX_SUMMARY_CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(4);
+        Self { enabled, model, concurrency }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // IndexConfig
 // ---------------------------------------------------------------------------
 
@@ -231,6 +295,9 @@ pub struct IndexConfig {
     /// File watcher configuration.
     pub watch: WatchConfig,
 
+    /// LLM summary generation configuration.
+    pub summary: SummaryConfig,
+
     /// List of supported programming languages for indexing.
     ///
     /// Defaults to `["rust", "python", "javascript", "typescript"]`.
@@ -249,6 +316,7 @@ impl Default for IndexConfig {
             embedding: EmbeddingConfig::default(),
             lance: LanceConfig::default(),
             watch: WatchConfig::default(),
+            summary: SummaryConfig::default(),
             languages: default_languages(),
             ignore_patterns: default_ignore_patterns(),
         }
@@ -258,11 +326,12 @@ impl Default for IndexConfig {
 impl IndexConfig {
     /// Load configuration from environment variables, falling back to defaults.
     ///
-    /// | Variable                         | Default                             |
-    /// |----------------------------------|-------------------------------------|
-    /// | `AGENTD_PORT`                    | `17012`                             |
-    /// | `AGENTD_INDEX_LANGUAGES`         | `rust,python,javascript,typescript` |
-    /// | `AGENTD_INDEX_IGNORE_PATTERNS`   | `.git,target,node_modules,dist`     |
+    /// | Variable                           | Default                             |
+    /// |------------------------------------|-------------------------------------|
+    /// | `AGENTD_PORT`                      | `17012`                             |
+    /// | `AGENTD_INDEX_LANGUAGES`           | `rust,python,javascript,typescript` |
+    /// | `AGENTD_INDEX_IGNORE_PATTERNS`     | `.git,target,node_modules,dist`     |
+    /// | `AGENTD_INDEX_SUMMARY_ENABLED`     | `false`                             |
     pub fn from_env() -> Self {
         let port =
             env::var("AGENTD_PORT").ok().and_then(|v| v.parse::<u16>().ok()).unwrap_or(17012);
@@ -280,6 +349,7 @@ impl IndexConfig {
             embedding: EmbeddingConfig::from_env(),
             lance: LanceConfig::from_env(),
             watch: WatchConfig::from_env(),
+            summary: SummaryConfig::from_env(),
             languages,
             ignore_patterns,
         }
@@ -468,6 +538,43 @@ mod tests {
         let config = WatchConfig::default();
         let cloned = config.clone();
         assert_eq!(cloned.interval_secs, config.interval_secs);
+    }
+
+    // ── SummaryConfig ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_summary_default_disabled() {
+        let config = SummaryConfig::default();
+        assert!(!config.enabled);
+    }
+
+    #[test]
+    fn test_summary_default_model() {
+        let config = SummaryConfig::default();
+        assert_eq!(config.model, "qwen2.5-coder:7b");
+    }
+
+    #[test]
+    fn test_summary_default_concurrency() {
+        let config = SummaryConfig::default();
+        assert_eq!(config.concurrency, 4);
+    }
+
+    #[test]
+    fn test_summary_from_env_defaults() {
+        let config = SummaryConfig::from_env();
+        assert!(!config.enabled);
+        assert!(!config.model.is_empty());
+        assert!(config.concurrency > 0);
+    }
+
+    #[test]
+    fn test_summary_clone() {
+        let config = SummaryConfig::default();
+        let cloned = config.clone();
+        assert_eq!(cloned.enabled, config.enabled);
+        assert_eq!(cloned.model, config.model);
+        assert_eq!(cloned.concurrency, config.concurrency);
     }
 
     // ── IndexConfig ────────────────────────────────────────────────────────
