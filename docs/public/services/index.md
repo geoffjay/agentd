@@ -46,9 +46,9 @@ source files
 |---------------------------------------|--------------------------------------|---------------------------------------|
 | `AGENTD_PORT`                         | `17012`                              | HTTP listen port                      |
 | `AGENTD_INDEX_EMBEDDING_PROVIDER`     | `ollama`                             | Embedding provider (`ollama`/`openai`)|
-| `AGENTD_INDEX_EMBEDDING_MODEL`        | `nomic-embed-code`                   | Embedding model name                  |
+| `AGENTD_INDEX_EMBEDDING_MODEL`        | `manutic/nomic-embed-code`           | Embedding model name                  |
 | `AGENTD_INDEX_EMBEDDING_ENDPOINT`     | `http://localhost:11434/v1`          | Ollama / OpenAI API endpoint          |
-| `AGENTD_INDEX_LANCE_PATH`             | XDG data dir / `lancedb`            | LanceDB directory path                |
+| `AGENTD_INDEX_LANCE_PATH`             | XDG data dir / `lancedb`             | LanceDB directory path                |
 | `AGENTD_INDEX_LANCE_TABLE`            | `code_chunks`                        | LanceDB table name                    |
 | `AGENTD_INDEX_WATCH_INTERVAL`         | `30`                                 | File watch poll interval (seconds)    |
 | `AGENTD_INDEX_LANGUAGES`              | `rust,python,javascript,typescript`  | Comma-separated languages to index    |
