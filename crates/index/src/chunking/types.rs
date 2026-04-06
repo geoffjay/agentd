@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::Path;
 
+use crate::metadata::ChunkMetadata;
+
 /// A supported programming language for indexing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -179,6 +181,12 @@ pub struct CodeChunk {
     /// repository) are produced by [`crate::chunking::hierarchical::HierarchicalChunker`].
     #[serde(default)]
     pub hierarchy_level: HierarchyLevel,
+
+    /// Rich structural metadata extracted from the AST (visibility, parameters,
+    /// return type, and file-level imports).  Defaults to an empty [`ChunkMetadata`]
+    /// for hierarchy-level chunks that are not backed by a parsed symbol.
+    #[serde(default)]
+    pub metadata: ChunkMetadata,
 }
 
 impl CodeChunk {
@@ -266,6 +274,7 @@ mod tests {
             symbol_name: Some("foo".to_string()),
             parent_symbol: None,
             hierarchy_level: HierarchyLevel::Symbol,
+            metadata: Default::default(),
         };
         assert_eq!(chunk.line_count(), 6);
     }
@@ -282,6 +291,7 @@ mod tests {
             symbol_name: Some("hello".to_string()),
             parent_symbol: None,
             hierarchy_level: HierarchyLevel::Symbol,
+            metadata: Default::default(),
         };
         let json = serde_json::to_string(&chunk).unwrap();
         let parsed: CodeChunk = serde_json::from_str(&json).unwrap();

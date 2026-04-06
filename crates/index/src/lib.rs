@@ -17,4 +17,5 @@ pub mod chunking;
 pub mod config;
 pub mod error;
 pub mod indexer;
+pub mod metadata;
 pub mod store;

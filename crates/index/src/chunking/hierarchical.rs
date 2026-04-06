@@ -138,6 +138,7 @@ impl HierarchicalChunker {
             symbol_name: Some(file_path.to_string()),
             parent_symbol: None,
             hierarchy_level: HierarchyLevel::File,
+            metadata: Default::default(),
         }
     }
 
@@ -191,6 +192,7 @@ impl HierarchicalChunker {
             symbol_name: Some(dir.to_string()),
             parent_symbol: None,
             hierarchy_level: HierarchyLevel::Directory,
+            metadata: Default::default(),
         }
     }
 
@@ -226,6 +228,7 @@ impl HierarchicalChunker {
             symbol_name: Some(repo_name.to_string()),
             parent_symbol: None,
             hierarchy_level: HierarchyLevel::Repository,
+            metadata: Default::default(),
         }
     }
 }
