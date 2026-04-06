@@ -2,31 +2,38 @@
 //!
 //! # Endpoints
 //!
-//! | Method | Path             | Description                             |
-//! |--------|------------------|-----------------------------------------|
-//! | `GET`  | `/health`        | Service health check                    |
-//! | `POST` | `/search`        | Semantic / hybrid vector search         |
-//! | `POST` | `/search/agentic`| Grep-based fallback search              |
+//! | Method   | Path                          | Description                              |
+//! |----------|-------------------------------|------------------------------------------|
+//! | `GET`    | `/health`                     | Service health check                     |
+//! | `POST`   | `/search`                     | Semantic / hybrid vector search          |
+//! | `POST`   | `/search/agentic`             | Grep-based fallback search               |
+//! | `POST`   | `/repositories`               | Register a repository                    |
+//! | `GET`    | `/repositories`               | List all repositories                    |
+//! | `GET`    | `/repositories/:id`           | Get repository by ID                     |
+//! | `DELETE` | `/repositories/:id`           | Remove a repository                      |
+//! | `GET`    | `/repositories/:id/status`    | Get repository indexing status           |
+//! | `POST`   | `/repositories/:id/reindex`   | Trigger re-indexing                      |
 //!
 //! # State
 //!
-//! Full search functionality requires an [`AppState`] containing a live
-//! [`CodeStore`].  Use [`create_router_with_state`] when a store is available,
-//! or [`create_router`] for the health-only router (useful in tests).
+//! Full functionality requires an [`AppState`] containing a live [`CodeStore`]
+//! and a [`RepoStore`].  Use [`create_router_with_state`] for production, or
+//! [`create_router`] for the health-only router (useful in tests).
 
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde_json::json;
 
 use agentd_common::types::HealthResponse;
 
+use crate::repository::{AddRepoRequest, RepoStatus, RepoStore};
 use crate::search::agentic::{AgenticSearch, AgenticSearchRequest};
 use crate::search::hybrid::HybridSearch;
 use crate::search::vector::VectorSearch;
@@ -42,6 +49,9 @@ use crate::store::CodeStore;
 pub struct AppState {
     /// The backing vector store used for search.
     pub store: Arc<dyn CodeStore>,
+
+    /// File-backed repository registry.
+    pub repo_store: Arc<RepoStore>,
 }
 
 // ---------------------------------------------------------------------------
@@ -55,7 +65,7 @@ pub fn create_router() -> Router {
     Router::new().route("/health", get(health_handler))
 }
 
-/// Creates the full Axum router, including the `POST /search` endpoint.
+/// Creates the full Axum router including search and repository management.
 ///
 /// The provided `state` is injected into all stateful handlers via
 /// Axum's [`State`] extractor.
@@ -64,17 +74,27 @@ pub fn create_router_with_state(state: AppState) -> Router {
         .route("/health", get(health_handler))
         .route("/search", post(search_handler))
         .route("/search/agentic", post(agentic_search_handler))
+        .route("/repositories", post(create_repo_handler))
+        .route("/repositories", get(list_repos_handler))
+        .route("/repositories/{id}", get(get_repo_handler))
+        .route("/repositories/{id}", delete(delete_repo_handler))
+        .route("/repositories/{id}/status", get(get_repo_status_handler))
+        .route("/repositories/{id}/reindex", post(reindex_repo_handler))
         .with_state(state)
 }
 
 // ---------------------------------------------------------------------------
-// Handlers
+// Health handler
 // ---------------------------------------------------------------------------
 
 /// `GET /health` — returns service health status.
 async fn health_handler() -> impl IntoResponse {
     Json(HealthResponse::ok("agentd-index", env!("CARGO_PKG_VERSION")))
 }
+
+// ---------------------------------------------------------------------------
+// Search handlers
+// ---------------------------------------------------------------------------
 
 /// `POST /search` — semantic vector search over indexed code chunks.
 ///
@@ -123,7 +143,6 @@ async fn agentic_search_handler(
     Json(request): Json<AgenticSearchRequest>,
 ) -> impl IntoResponse {
     // Root the agentic search in the process working directory.
-    // In production, `AppState` could carry a configured base path.
     let _ = &state; // store not needed for grep-based search
     let search = AgenticSearch::new(std::env::current_dir().unwrap_or_else(|_| ".".into()));
 
@@ -132,6 +151,111 @@ async fn agentic_search_handler(
         Err(SearchError::InvalidRequest(msg)) => {
             (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": msg }))).into_response()
         }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
+            .into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Repository handlers
+// ---------------------------------------------------------------------------
+
+/// `POST /repositories` — register a new repository.
+///
+/// # Request body
+///
+/// ```json
+/// { "name": "agentd", "path": "/home/user/agentd" }
+/// ```
+///
+/// # Responses
+///
+/// - `201 Created` — repository registered; returns the [`RepoRecord`][crate::repository::RepoRecord].
+/// - `500 Internal Server Error` — storage write failed.
+async fn create_repo_handler(
+    State(state): State<AppState>,
+    Json(request): Json<AddRepoRequest>,
+) -> impl IntoResponse {
+    match state.repo_store.add(&request.name, &request.path).await {
+        Ok(record) => (StatusCode::CREATED, Json(json!(record))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
+            .into_response(),
+    }
+}
+
+/// `GET /repositories` — list all registered repositories.
+async fn list_repos_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let repos = state.repo_store.list().await;
+    Json(json!({ "repositories": repos, "total": repos.len() }))
+}
+
+/// `GET /repositories/:id` — get a single repository by ID.
+///
+/// Returns `404 Not Found` if the ID is not registered.
+async fn get_repo_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.repo_store.get(&id).await {
+        Some(record) => (StatusCode::OK, Json(json!(record))).into_response(),
+        None => (StatusCode::NOT_FOUND, Json(json!({ "error": "repository not found" })))
+            .into_response(),
+    }
+}
+
+/// `DELETE /repositories/:id` — remove a registered repository.
+///
+/// Returns `204 No Content` on success, `404 Not Found` if the ID is unknown.
+async fn delete_repo_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.repo_store.remove(&id).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => (StatusCode::NOT_FOUND, Json(json!({ "error": "repository not found" })))
+            .into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
+            .into_response(),
+    }
+}
+
+/// `GET /repositories/:id/status` — return just the indexing status.
+///
+/// Returns `404 Not Found` if the ID is unknown.
+async fn get_repo_status_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.repo_store.get(&id).await {
+        Some(record) => (
+            StatusCode::OK,
+            Json(json!({
+                "id": record.id,
+                "status": record.status,
+                "last_indexed": record.last_indexed,
+                "error_message": record.error_message,
+            })),
+        )
+            .into_response(),
+        None => (StatusCode::NOT_FOUND, Json(json!({ "error": "repository not found" })))
+            .into_response(),
+    }
+}
+
+/// `POST /repositories/:id/reindex` — mark a repository for re-indexing.
+///
+/// Sets the repository status to [`RepoStatus::Pending`] so that the background
+/// watcher loop will pick it up and trigger a full re-index.
+///
+/// Returns `202 Accepted` on success, `404 Not Found` if the ID is unknown.
+async fn reindex_repo_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.repo_store.update_status(&id, RepoStatus::Pending, None).await {
+        Ok(true) => (StatusCode::ACCEPTED, Json(json!({ "status": "pending" }))).into_response(),
+        Ok(false) => (StatusCode::NOT_FOUND, Json(json!({ "error": "repository not found" })))
+            .into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
             .into_response(),
     }
@@ -231,6 +355,21 @@ mod tests {
         }
     }
 
+    fn make_app(results: Vec<SearchResult>) -> Router {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_store = RepoStore::new(dir.path().join("repos.json"));
+        let state = AppState { store: Arc::new(MockStore { results }), repo_store };
+        create_router_with_state(state)
+    }
+
+    async fn make_app_with_repo() -> (Router, String, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_store = RepoStore::new(dir.path().join("repos.json"));
+        let repo = repo_store.add("test-repo", "/tmp/test-repo").await.unwrap();
+        let state = AppState { store: Arc::new(MockStore { results: vec![] }), repo_store };
+        (create_router_with_state(state), repo.id, dir)
+    }
+
     // ── Health (no state needed) ───────────────────────────────────────────
 
     #[tokio::test]
@@ -254,14 +393,9 @@ mod tests {
 
     // ── Search endpoint ────────────────────────────────────────────────────
 
-    fn search_app(results: Vec<SearchResult>) -> Router {
-        let state = AppState { store: Arc::new(MockStore { results }) };
-        create_router_with_state(state)
-    }
-
     #[tokio::test]
     async fn search_returns_200_with_results() {
-        let app = search_app(vec![make_result("my_fn", 0.9)]);
+        let app = make_app(vec![make_result("my_fn", 0.9)]);
         let body = serde_json::json!({ "query": "authentication function" });
         let request = Request::builder()
             .method("POST")
@@ -279,7 +413,7 @@ mod tests {
 
     #[tokio::test]
     async fn search_empty_query_returns_422() {
-        let app = search_app(vec![]);
+        let app = make_app(vec![]);
         let body = serde_json::json!({ "query": "" });
         let request = Request::builder()
             .method("POST")
@@ -293,7 +427,7 @@ mod tests {
 
     #[tokio::test]
     async fn search_returns_query_time_ms() {
-        let app = search_app(vec![]);
+        let app = make_app(vec![]);
         let body = serde_json::json!({ "query": "hello" });
         let request = Request::builder()
             .method("POST")
@@ -309,8 +443,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn search_bad_json_returns_422() {
-        let app = search_app(vec![]);
+    async fn search_bad_json_returns_400() {
+        let app = make_app(vec![]);
         let request = Request::builder()
             .method("POST")
             .uri("/search")
@@ -320,5 +454,130 @@ mod tests {
         let response = app.oneshot(request).await.unwrap();
         // Axum returns 400 Bad Request for malformed JSON bodies.
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ── Repository endpoints ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn create_repo_returns_201() {
+        let app = make_app(vec![]);
+        let body = serde_json::json!({ "name": "my-repo", "path": "/tmp/my-repo" });
+        let request = Request::builder()
+            .method("POST")
+            .uri("/repositories")
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["name"], "my-repo");
+        assert_eq!(json["status"], "pending");
+        assert!(json["id"].is_string());
+    }
+
+    #[tokio::test]
+    async fn list_repos_returns_200() {
+        let app = make_app(vec![]);
+        let request =
+            Request::builder().method("GET").uri("/repositories").body(Body::empty()).unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(json["repositories"].is_array());
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn get_repo_returns_record() {
+        let (app, id, _dir) = make_app_with_repo().await;
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/repositories/{id}"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["id"], id);
+    }
+
+    #[tokio::test]
+    async fn get_repo_missing_returns_404() {
+        let app = make_app(vec![]);
+        let request = Request::builder()
+            .method("GET")
+            .uri("/repositories/nonexistent")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn delete_repo_returns_204() {
+        let (app, id, _dir) = make_app_with_repo().await;
+        let request = Request::builder()
+            .method("DELETE")
+            .uri(format!("/repositories/{id}"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn delete_repo_missing_returns_404() {
+        let app = make_app(vec![]);
+        let request = Request::builder()
+            .method("DELETE")
+            .uri("/repositories/nonexistent")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn get_repo_status_returns_status_field() {
+        let (app, id, _dir) = make_app_with_repo().await;
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/repositories/{id}/status"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["status"], "pending");
+        assert_eq!(json["id"], id);
+    }
+
+    #[tokio::test]
+    async fn reindex_repo_returns_202() {
+        let (app, id, _dir) = make_app_with_repo().await;
+        let request = Request::builder()
+            .method("POST")
+            .uri(format!("/repositories/{id}/reindex"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn reindex_repo_missing_returns_404() {
+        let app = make_app(vec![]);
+        let request = Request::builder()
+            .method("POST")
+            .uri("/repositories/nonexistent/reindex")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

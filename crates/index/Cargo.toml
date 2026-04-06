@@ -60,6 +60,9 @@ tantivy = { version = "0.22", default-features = false, features = ["mmap"] }
 sha2 = "0.10"
 ignore = "0.4"
 
+# File-system change notifications (watcher)
+notify = "6"
+
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
