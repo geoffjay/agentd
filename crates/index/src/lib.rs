@@ -9,8 +9,12 @@
 //! - [`config`] — service configuration loaded from environment variables
 //! - [`error`] — error types using `thiserror`
 //! - [`api`] — Axum HTTP route handlers
+//! - [`chunking`] — tree-sitter / semantic / hierarchical chunking pipeline
+//! - [`store`] — LanceDB vector store and embedding service
 
 pub mod api;
 pub mod chunking;
 pub mod config;
 pub mod error;
+pub mod indexer;
+pub mod store;
