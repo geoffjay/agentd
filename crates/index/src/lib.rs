@@ -21,5 +21,7 @@ pub mod enrichment;
 pub mod error;
 pub mod indexer;
 pub mod metadata;
+pub mod repository;
 pub mod search;
 pub mod store;
+pub mod watcher;
