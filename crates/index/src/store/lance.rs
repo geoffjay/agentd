@@ -110,6 +110,7 @@ impl LanceStore {
             Field::new("parameters", DataType::Utf8, true), // JSON array
             Field::new("return_type", DataType::Utf8, true),
             Field::new("imports", DataType::Utf8, true), // JSON array
+            Field::new("imported_symbols", DataType::Utf8, true), // JSON array
             Field::new(
                 "vector",
                 DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
@@ -171,6 +172,16 @@ impl LanceStore {
                 }
             })
             .collect();
+        let imported_symbols_strs: Vec<Option<String>> = chunks
+            .iter()
+            .map(|c| {
+                if c.metadata.imported_symbols.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&c.metadata.imported_symbols).ok()
+                }
+            })
+            .collect();
 
         RecordBatch::try_new(
             schema,
@@ -211,6 +222,9 @@ impl LanceStore {
                 make_opt_str(return_type_strs),
                 Arc::new(StringArray::from(
                     imports_strs.iter().map(|i| i.as_deref()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    imported_symbols_strs.iter().map(|s| s.as_deref()).collect::<Vec<_>>(),
                 )),
                 Arc::new(vector_array),
                 Arc::new(StringArray::from(vec![now; n])),
@@ -282,7 +296,11 @@ impl LanceStore {
                 .as_deref()
                 .and_then(|s| serde_json::from_str(s).ok())
                 .unwrap_or_default();
-            ChunkMetadata { visibility, parameters, return_type, imports }
+            let imported_symbols: Vec<String> = get_opt_str("imported_symbols")
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
+            ChunkMetadata { visibility, parameters, return_type, imports, imported_symbols }
         };
 
         let chunk = CodeChunk {
@@ -646,6 +664,7 @@ mod tests {
             Field::new("parameters", DataType::Utf8, true),
             Field::new("return_type", DataType::Utf8, true),
             Field::new("imports", DataType::Utf8, true),
+            Field::new("imported_symbols", DataType::Utf8, true),
             Field::new(
                 "vector",
                 DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
@@ -659,7 +678,7 @@ mod tests {
     #[test]
     fn schema_field_count() {
         let schema = make_schema(768);
-        assert_eq!(schema.fields().len(), 20);
+        assert_eq!(schema.fields().len(), 21);
     }
 
     #[test]
@@ -705,6 +724,7 @@ mod tests {
         assert!(schema.field_with_name("parameters").unwrap().is_nullable());
         assert!(schema.field_with_name("return_type").unwrap().is_nullable());
         assert!(schema.field_with_name("imports").unwrap().is_nullable());
+        assert!(schema.field_with_name("imported_symbols").unwrap().is_nullable());
     }
 
     #[test]
@@ -800,6 +820,7 @@ mod tests {
                 Arc::new(StringArray::from(vec![Some(params_json)])) as ArrayRef, // parameters
                 Arc::new(StringArray::from(vec![Some("u8")])) as ArrayRef,     // return_type
                 Arc::new(StringArray::from(vec![Some(imports_json)])) as ArrayRef, // imports
+                Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,   // imported_symbols
                 Arc::new(
                     arrow_array::FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
                         vec![Some(vec![Some(0.1), Some(0.2), Some(0.3)])],

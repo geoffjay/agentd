@@ -16,6 +16,7 @@
 //!     ],
 //!     return_type: Some("i32".to_string()),
 //!     imports: vec!["use std::sync::Arc;".to_string()],
+//!     imported_symbols: vec!["Arc".to_string()],
 //! };
 //! assert_eq!(meta.visibility.unwrap().as_str(), "public");
 //! ```
@@ -112,6 +113,13 @@ pub struct ChunkMetadata {
     /// Import/use declarations found at the top level of the source file
     /// that contains this chunk.  Provides context about available symbols.
     pub imports: Vec<String>,
+
+    /// Specific symbol names imported by the file containing this chunk.
+    ///
+    /// Extracted by parsing the raw [`Self::imports`] statements.
+    /// Empty for chunks whose file has no imports or only wildcard imports.
+    #[serde(default)]
+    pub imported_symbols: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +214,7 @@ mod tests {
             ],
             return_type: Some("bool".to_string()),
             imports: vec!["use std::sync::Arc;".to_string()],
+            imported_symbols: vec!["Arc".to_string()],
         };
         let json = serde_json::to_string(&meta).unwrap();
         let parsed: ChunkMetadata = serde_json::from_str(&json).unwrap();
