@@ -25,6 +25,7 @@ A modular daemon system for managing AI agents, notifications, interactive quest
 - **agentd-notify** — Notification service with REST API and SQLite storage
 - **agentd-ask** — Interactive question service with tmux integration
 - **agentd-wrap** — Tmux session management for launching and managing agents
+- **agentd-index** — Semantic code search service: tree-sitter chunking, LanceDB vector storage, BM25 hybrid search, and repository watcher
 - **agentd-mcp** — MCP server exposing agent management, diagnostics, and self-healing tools for Claude and other MCP clients
 - **agentd-common** — Shared types, error handling, and utilities
 - **agentd-hook** — Shell hook integration service (planned)
@@ -349,6 +350,7 @@ For the complete configuration reference including all environment variables, da
 | agentd-notify | 17004 | 7004 | Notification service |
 | agentd-wrap | 17005 | 7005 | Tmux session management |
 | agentd-orchestrator | 17006 | 7006 | Agent orchestration |
+| agentd-index | 17012 | 17012 | Semantic code search and indexing |
 | agentd-mcp | — | — | MCP server (stdio transport, no HTTP port) |
 
 ### Environment Variables
@@ -357,6 +359,7 @@ For the complete configuration reference including all environment variables, da
 - `AGENTD_LOG_FORMAT` — Set to `json` for structured JSON output
 - `AGENTD_PORT` — Override the default port for any service
 - `AGENTD_ORCHESTRATOR_SERVICE_URL` — Override orchestrator URL for CLI (default: `http://localhost:7006`)
+- `AGENTD_INDEX_SERVICE_URL` — Override index service URL for CLI (default: `http://localhost:17012`)
 
 ## Project Status
 
