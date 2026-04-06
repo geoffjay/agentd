@@ -53,6 +53,9 @@ reqwest = { workspace = true, features = ["json"] }
 async-trait = "0.1"
 futures = "0.3"
 
+# Full-text keyword search (BM25) for hybrid search
+tantivy = { version = "0.22", default-features = false, features = ["mmap"] }
+
 # File hashing and directory walking
 sha2 = "0.10"
 ignore = "0.4"

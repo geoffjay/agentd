@@ -8,8 +8,8 @@
 //! | Module              | Strategy       | Description                         |
 //! |---------------------|----------------|-------------------------------------|
 //! | [`vector`]          | `VectorSearch` | Pure semantic (ANN) similarity      |
-//! | `keyword` (#950)    | `KeywordSearch`| BM25 full-text search via tantivy   |
-//! | `hybrid`  (#950)    | `HybridSearch` | Vector + BM25 combined with RRF     |
+//! | [`keyword`]         | `KeywordIndex` | BM25 full-text search via tantivy   |
+//! | [`hybrid`]          | `HybridSearch` | Vector + BM25 combined with RRF     |
 //! | `rerank`  (#951)    | `Reranker`     | Cross-encoder reranking             |
 //! | `agentic` (#951)    | `AgenticSearch`| grep/find-based fallback            |
 
@@ -17,6 +17,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod hybrid;
+pub mod keyword;
 pub mod vector;
 
 // ---------------------------------------------------------------------------

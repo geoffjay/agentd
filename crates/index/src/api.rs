@@ -26,8 +26,9 @@ use serde_json::json;
 
 use agentd_common::types::HealthResponse;
 
+use crate::search::hybrid::HybridSearch;
 use crate::search::vector::VectorSearch;
-use crate::search::{SearchError, SearchRequest, SearchStrategy};
+use crate::search::{SearchError, SearchMode, SearchRequest, SearchStrategy};
 use crate::store::CodeStore;
 
 // ---------------------------------------------------------------------------
@@ -85,11 +86,16 @@ async fn search_handler(
     State(state): State<AppState>,
     Json(request): Json<SearchRequest>,
 ) -> impl IntoResponse {
-    // For now, always use VectorSearch regardless of `search_mode`.
-    // Keyword / Hybrid strategies are wired in #950.
-    let strategy = VectorSearch::new(Arc::clone(&state.store));
-
-    match strategy.search(&request).await {
+    // Dispatch to the appropriate search strategy based on `search_mode`.
+    // Keyword-only mode falls back to hybrid with alpha=0 (pure BM25 ranking).
+    let result = match request.search_mode {
+        SearchMode::Hybrid | SearchMode::Keyword => {
+            let alpha = if request.search_mode == SearchMode::Keyword { 0.0 } else { 0.7 };
+            HybridSearch::with_alpha(Arc::clone(&state.store), alpha).search(&request).await
+        }
+        SearchMode::Vector => VectorSearch::new(Arc::clone(&state.store)).search(&request).await,
+    };
+    match result {
         Ok(response) => (StatusCode::OK, Json(json!(response))).into_response(),
         Err(SearchError::InvalidRequest(msg)) => {
             (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": msg }))).into_response()
