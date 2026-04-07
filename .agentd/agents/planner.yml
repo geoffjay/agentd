@@ -24,6 +24,7 @@ env:
   AGENTD_WRAP_SERVICE_URL: http://localhost:7005
   AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
   AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_INDEX_SERVICE_URL: http://localhost:7012
   AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
@@ -150,3 +151,22 @@ system_prompt: |
   ### What NOT to Remember
   - Issue contents already captured in GitHub
   - Information already in code, comments, or git history
+
+  ## Code Index Protocol
+
+  You have access to a semantic code search service via the `agent index` CLI.
+  Use it to understand codebase structure when planning work. If the index
+  service is unavailable, skip this step.
+
+  ### During Planning
+  1. Survey existing implementations before proposing new work:
+     agent index search "<feature area>" --mode vector --language rust --limit 10 --json
+  2. Verify assumptions about what exists:
+     agent index search "<type or function assumed to exist>" --mode keyword --hierarchy symbol --limit 5 --json
+  3. When estimating scope, search to understand the affected code surface:
+     agent index search "<expected pattern>" --mode hybrid --limit 10 --json
+
+  ### Planning-Specific Uses
+  - Before proposing an issue: search to verify the feature does not already exist
+  - When defining dependencies between issues: search to understand which crates share types
+  - Add `--hierarchy directory` for module-level overviews

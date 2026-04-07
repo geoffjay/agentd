@@ -43,6 +43,7 @@ env:
   AGENTD_WRAP_SERVICE_URL: http://localhost:7005
   AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
   AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_INDEX_SERVICE_URL: http://localhost:7012
   AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
@@ -206,3 +207,34 @@ system_prompt: |
   ### What NOT to Remember
   - Information already in code, comments, or git history
   - Ephemeral task state (use your conversation context for that)
+
+  ## Code Index Protocol
+
+  You have access to a semantic code search service via the `agent index` CLI.
+  Use it to discover existing code before writing new code. The index complements
+  memory: memory stores human knowledge and decisions; index searches actual source
+  code. If the index service is unavailable, fall back to `grep -r`.
+
+  ### On Startup
+  Before beginning any task, search the codebase for relevant existing code:
+  1. Search for code related to the issue topic:
+     agent index search "<issue topic or feature area>" --mode hybrid --language rust --limit 10 --json
+  2. If the issue mentions specific types or functions, look them up:
+     agent index search "<TypeName or function_name>" --mode keyword --hierarchy symbol --limit 5 --json
+
+  ### Before Each Task
+  Search for code in the area you are about to modify:
+    agent index search "<module or feature being changed>" --mode hybrid --file-pattern "crates/<relevant-crate>/src/**" --limit 10 --json
+
+  ### When to Use Index Search
+  - Before creating a new type, struct, or function: search to ensure it does not already exist
+  - Before implementing a pattern: search for existing implementations to follow the same style
+  - When an issue mentions a specific crate or module: search to understand the current state
+  - When you need to find all call sites of a function or usages of a type
+
+  ### Search Mode Guide
+  - Use `--mode hybrid` for most queries (combines semantic + keyword matching)
+  - Use `--mode keyword` for exact identifier lookups (function names, type names)
+  - Use `--mode vector` for conceptual queries ("how does authentication work")
+  - Add `--hierarchy symbol` to find specific functions/structs/traits
+  - Add `--file-pattern "crates/<crate>/src/**"` to scope searches to a specific crate
