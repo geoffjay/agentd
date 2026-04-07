@@ -7,6 +7,7 @@ import {
 	CommunicatePage,
 	DashboardPage,
 	HooksPage,
+	IndexPage,
 	MemoriesPage,
 	MonitoringPage,
 	NotFoundPage,
@@ -39,6 +40,7 @@ function App() {
 						<Route path="/settings" element={<SettingsPage />} />
 						<Route path="/approvals" element={<ApprovalQueuePage />} />
 						<Route path="/memories" element={<MemoriesPage />} />
+						<Route path="/code-index" element={<IndexPage />} />
 						<Route path="/communicate" element={<CommunicatePage />} />
 					</Route>
 

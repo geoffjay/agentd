@@ -3,6 +3,7 @@ export { ApprovalQueuePage } from "./approvals/ApprovalQueue";
 export { CommunicatePage } from "./communicate/CommunicatePage";
 export { DashboardPage } from "./DashboardPage";
 export { HooksPage } from "./HooksPage";
+export { IndexPage } from "./IndexPage";
 export { MemoriesPage } from "./MemoriesPage";
 export { MonitoringPage } from "./MonitoringPage";
 export { NotFoundPage } from "./NotFoundPage";

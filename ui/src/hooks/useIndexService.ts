@@ -83,10 +83,10 @@ export function useIndexService(): UseIndexServiceResult {
 		setHealth((prev) => ({ ...prev, checking: true }));
 		try {
 			const res = (await indexClient.getHealth()) as HealthResponse;
-			if (\!mountedRef.current) return;
+			if (!mountedRef.current) return;
 			setHealth({ reachable: true, checking: false, version: res.version });
 		} catch {
-			if (\!mountedRef.current) return;
+			if (!mountedRef.current) return;
 			setHealth({ reachable: false, checking: false });
 		}
 	}, []);
@@ -100,15 +100,15 @@ export function useIndexService(): UseIndexServiceResult {
 	// -------------------------------------------------------------------------
 
 	const fetchRepos = useCallback(async () => {
-		if (\!mountedRef.current) return;
+		if (!mountedRef.current) return;
 		setReposLoading(true);
 		setReposError(undefined);
 		try {
 			const res = await indexClient.listRepositories();
-			if (\!mountedRef.current) return;
+			if (!mountedRef.current) return;
 			setRepositories(res.repositories);
 		} catch (err) {
-			if (\!mountedRef.current) return;
+			if (!mountedRef.current) return;
 			setReposError(
 				err instanceof Error ? err.message : "Failed to load repositories",
 			);
@@ -146,7 +146,7 @@ export function useIndexService(): UseIndexServiceResult {
 		async (req: AddRepoRequest): Promise<boolean> => {
 			try {
 				const repo = await indexClient.addRepository(req);
-				if (\!mountedRef.current) return false;
+				if (!mountedRef.current) return false;
 				setRepositories((prev) => [...prev, repo]);
 				return true;
 			} catch (err) {
@@ -163,8 +163,8 @@ export function useIndexService(): UseIndexServiceResult {
 		setRepoBusy(id, true);
 		try {
 			await indexClient.deleteRepository(id);
-			if (\!mountedRef.current) return false;
-			setRepositories((prev) => prev.filter((r) => r.id \!== id));
+			if (!mountedRef.current) return false;
+			setRepositories((prev) => prev.filter((r) => r.id !== id));
 			return true;
 		} catch (err) {
 			setReposError(
@@ -181,7 +181,7 @@ export function useIndexService(): UseIndexServiceResult {
 			setRepoBusy(id, true);
 			try {
 				const updated = await indexClient.reindexRepository(id);
-				if (\!mountedRef.current) return false;
+				if (!mountedRef.current) return false;
 				setRepositories((prev) =>
 					prev.map((r) => (r.id === id ? updated : r)),
 				);
@@ -207,12 +207,12 @@ export function useIndexService(): UseIndexServiceResult {
 		setSearchError(undefined);
 		try {
 			const res = await indexClient.search(req);
-			if (\!mountedRef.current) return;
+			if (!mountedRef.current) return;
 			setSearchResults(res.results);
 			setSearchTotal(res.total);
 			setSearchQueryMs(res.query_time_ms);
 		} catch (err) {
-			if (\!mountedRef.current) return;
+			if (!mountedRef.current) return;
 			setSearchError(
 				err instanceof Error ? err.message : "Search failed",
 			);
