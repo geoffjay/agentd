@@ -10,8 +10,9 @@
  * - Submitted answer for Answered questions
  */
 
-import { ChevronDown, ChevronRight, Clock, User } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock, ExternalLink, User } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import type { Question } from "@/types/ask";
 
@@ -82,6 +83,13 @@ export function QuestionCard({ question, onAnswer, onDismiss }: QuestionCardProp
 					<p className="mt-1 text-sm font-medium text-th-text line-clamp-2">
 						{question.question}
 					</p>
+					<Link
+						to={`/questions/${question.id}`}
+						className="mt-1 inline-flex items-center gap-1 text-xs text-th-text-link hover:underline"
+					>
+						<ExternalLink size={10} />
+						View detail
+					</Link>
 				</div>
 				<StatusBadge status={question.status} />
 			</div>
