@@ -2,16 +2,17 @@
  * AnswerDialog — modal for submitting an answer to a pending question.
  *
  * Shows:
- * - Question context (check type, what triggered it)
- * - Text input for free-form answer
+ * - Question text, category, priority, context
+ * - Agent ID and asked timestamp
  * - Quick-answer buttons for common responses
- * - Submit via POST /answer
+ * - Text input for free-form answer
+ * - Submit via POST /questions/{id}/answer
  * - Success/error feedback
  */
 
 import { MessageSquare, X, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { QuestionInfo } from "@/types/ask";
+import type { Question } from "@/types/ask";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,7 +20,7 @@ import type { QuestionInfo } from "@/types/ask";
 
 export interface AnswerDialogProps {
 	open: boolean;
-	question: QuestionInfo | null;
+	question: Question | null;
 	answering: boolean;
 	answerError?: string;
 	onSubmit: (questionId: string, answer: string) => void;
@@ -31,9 +32,10 @@ export interface AnswerDialogProps {
 // ---------------------------------------------------------------------------
 
 const QUICK_ANSWERS = [
-	{ label: "Yes, start sessions", value: "yes" },
-	{ label: "No, ignore for now", value: "no" },
+	{ label: "Yes", value: "yes" },
+	{ label: "No", value: "no" },
 	{ label: "Acknowledged", value: "acknowledged" },
+	{ label: "Need more info", value: "need_more_info" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -50,16 +52,14 @@ export function AnswerDialog({
 }: AnswerDialogProps) {
 	const [answer, setAnswer] = useState("");
 	const inputRef = useRef<HTMLTextAreaElement>(null);
-	const dialogRef = useRef<HTMLDivElement>(null);
 
 	// Reset answer text when dialog opens for a new question
 	useEffect(() => {
 		if (open) {
 			setAnswer("");
-			// Focus the textarea after the dialog opens
 			setTimeout(() => inputRef.current?.focus(), 50);
 		}
-	}, [open, question?.question_id]);
+	}, [open, question?.id]);
 
 	// Close on Escape
 	useEffect(() => {
@@ -75,17 +75,12 @@ export function AnswerDialog({
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!answer.trim()) return;
-		onSubmit(question.question_id, answer.trim());
+		onSubmit(question.id, answer.trim());
 	};
 
 	const handleQuickAnswer = (value: string) => {
-		onSubmit(question.question_id, value);
+		onSubmit(question.id, value);
 	};
-
-	const checkLabel =
-		question.check_type === "TmuxSessions"
-			? "tmux session check"
-			: question.check_type;
 
 	return (
 		<>
@@ -98,7 +93,6 @@ export function AnswerDialog({
 
 			{/* Dialog */}
 			<div
-				ref={dialogRef}
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="answer-dialog-title"
@@ -131,19 +125,22 @@ export function AnswerDialog({
 								Answer Question
 							</h2>
 							<p className="text-xs text-th-text-faint">
-								From {checkLabel}
+								{question.category} · {question.priority} priority
 							</p>
 						</div>
 					</div>
 
-					{/* Context */}
+					{/* Question text */}
+					<div className="rounded-md bg-th-surface-sunken border border-th-border px-3 py-2.5">
+						<p className="text-sm text-th-text">{question.question}</p>
+					</div>
+
+					{/* Context block */}
 					<div className="rounded-md bg-th-surface-sunken border border-th-border p-3 space-y-1.5 text-xs">
 						<div className="flex justify-between">
-							<span className="text-th-text-faint">
-								Check type
-							</span>
-							<span className="font-medium text-th-text-secondary">
-								{question.check_type}
+							<span className="text-th-text-faint">Agent</span>
+							<span className="font-mono font-medium text-th-text-secondary truncate max-w-[200px]">
+								{question.agent_id}
 							</span>
 						</div>
 						<div className="flex justify-between">
@@ -152,14 +149,14 @@ export function AnswerDialog({
 								{new Date(question.asked_at).toLocaleString()}
 							</span>
 						</div>
-						<div className="flex justify-between">
-							<span className="text-th-text-faint">
-								Notification
-							</span>
-							<span className="font-mono font-medium text-th-text-secondary truncate max-w-[180px]">
-								{question.notification_id}
-							</span>
-						</div>
+						{question.context && (
+							<div className="pt-1 border-t border-th-border">
+								<p className="text-th-text-faint mb-1">Context</p>
+								<p className="text-th-text-secondary whitespace-pre-wrap">
+									{question.context}
+								</p>
+							</div>
+						)}
 					</div>
 
 					{/* Quick answers */}
@@ -205,9 +202,7 @@ export function AnswerDialog({
 
 						{/* Error */}
 						{answerError && (
-							<p className="text-xs text-th-status-error-text">
-								{answerError}
-							</p>
+							<p className="text-xs text-th-status-error-text">{answerError}</p>
 						)}
 
 						{/* Actions */}
