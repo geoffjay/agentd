@@ -7,7 +7,7 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAskService } from "@/hooks/useAskService";
 import { askClient } from "@/services/ask";
-import { makeQuestion, makeQuestionActionResponse, resetQuestionSeq } from "@/test/mocks/factories";
+import { makeQuestion, resetQuestionSeq } from "@/test/mocks/factories";
 import { server } from "@/test/mocks/server";
 
 const BASE = "http://localhost:17001";
@@ -105,7 +105,7 @@ describe("useAskService", () => {
 				makePaginatedList([q]),
 			);
 			vi.spyOn(askClient, "answerQuestion").mockResolvedValue(
-				makeQuestionActionResponse({ success: true, question_id: q.id }),
+				makeQuestion({ id: q.id, status: "Answered", answer: "yes" }),
 			);
 
 			const { result } = renderHook(() => useAskService());
@@ -153,7 +153,7 @@ describe("useAskService", () => {
 				makePaginatedList([q]),
 			);
 			vi.spyOn(askClient, "dismissQuestion").mockResolvedValue(
-				makeQuestionActionResponse({ success: true, question_id: q.id }),
+				makeQuestion({ id: q.id, status: "Dismissed" }),
 			);
 
 			const { result } = renderHook(() => useAskService());

@@ -108,16 +108,22 @@ describe("AskClient", () => {
 	});
 
 	describe("answerQuestion", () => {
-		it("calls POST /questions/:id/answer", async () => {
+		it("calls POST /questions/:id/answer and returns updated Question", async () => {
 			mockFetch(200, {
-				success: true,
-				message: "Answer recorded",
-				question_id: "q-1",
+				id: "q-1",
+				agent_id: "agent-1",
+				category: "general",
+				question: "Proceed?",
+				priority: "Normal",
+				status: "Answered",
+				answer: "yes",
+				asked_at: "2024-01-01T00:00:00Z",
 			});
 
 			const result = await client.answerQuestion("q-1", { answer: "yes" });
-			expect(result.success).toBe(true);
-			expect(result.question_id).toBe("q-1");
+			expect(result.id).toBe("q-1");
+			expect(result.status).toBe("Answered");
+			expect(result.answer).toBe("yes");
 
 			const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
 			expect(calledUrl).toContain("/questions/q-1/answer");
@@ -128,29 +134,23 @@ describe("AskClient", () => {
 			const body = JSON.parse(callInit.body as string);
 			expect(body.answer).toBe("yes");
 		});
-
-		it("handles failure response", async () => {
-			mockFetch(200, {
-				success: false,
-				message: "Question already answered",
-				question_id: "q-1",
-			});
-
-			const result = await client.answerQuestion("q-1", { answer: "no" });
-			expect(result.success).toBe(false);
-		});
 	});
 
 	describe("dismissQuestion", () => {
-		it("calls POST /questions/:id/dismiss", async () => {
+		it("calls POST /questions/:id/dismiss and returns updated Question", async () => {
 			mockFetch(200, {
-				success: true,
-				message: "Question dismissed",
-				question_id: "q-2",
+				id: "q-2",
+				agent_id: "agent-1",
+				category: "general",
+				question: "Proceed?",
+				priority: "Normal",
+				status: "Dismissed",
+				asked_at: "2024-01-01T00:00:00Z",
 			});
 
 			const result = await client.dismissQuestion("q-2");
-			expect(result.success).toBe(true);
+			expect(result.id).toBe("q-2");
+			expect(result.status).toBe("Dismissed");
 
 			const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
 			expect(calledUrl).toContain("/questions/q-2/dismiss");

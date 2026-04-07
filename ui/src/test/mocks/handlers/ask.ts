@@ -10,7 +10,6 @@ import { HttpResponse, http } from "msw";
 import {
 	makeAnswerResponse,
 	makeQuestion,
-	makeQuestionActionResponse,
 	makeTriggerResponse,
 } from "../factories";
 
@@ -48,20 +47,22 @@ export const askHandlers = [
 		);
 	}),
 
-	http.post(`${BASE}/questions/:id/answer`, ({ params }) =>
-		HttpResponse.json(
-			makeQuestionActionResponse({
-				question_id: String(params.id),
-				message: "Answer recorded",
+	http.post(`${BASE}/questions/:id/answer`, async ({ params, request }) => {
+		const body = (await request.json()) as Record<string, unknown>;
+		return HttpResponse.json(
+			makeQuestion({
+				id: String(params.id),
+				status: "Answered",
+				answer: String(body.answer ?? ""),
 			}),
-		),
-	),
+		);
+	}),
 
 	http.post(`${BASE}/questions/:id/dismiss`, ({ params }) =>
 		HttpResponse.json(
-			makeQuestionActionResponse({
-				question_id: String(params.id),
-				message: "Question dismissed",
+			makeQuestion({
+				id: String(params.id),
+				status: "Dismissed",
 			}),
 		),
 	),

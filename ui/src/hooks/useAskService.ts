@@ -220,14 +220,10 @@ export function useAskService({
 			setBusy(id, true);
 			setActionError(undefined);
 			try {
-				const res = await askClient.answerQuestion(id, { answer });
-				if (res.success) {
-					updateLocal(id, { status: "Answered", answer });
-					return true;
-				} else {
-					setActionError(res.message);
-					return false;
-				}
+				const updated = await askClient.answerQuestion(id, { answer });
+				// Backend returns the updated Question — apply it directly.
+				updateLocal(id, { status: updated.status, answer: updated.answer ?? answer });
+				return true;
 			} catch (err) {
 				setActionError(
 					err instanceof Error ? err.message : "Failed to submit answer",
@@ -244,14 +240,10 @@ export function useAskService({
 		setBusy(id, true);
 		setActionError(undefined);
 		try {
-			const res = await askClient.dismissQuestion(id);
-			if (res.success) {
-				updateLocal(id, { status: "Dismissed" });
-				return true;
-			} else {
-				setActionError(res.message);
-				return false;
-			}
+			const updated = await askClient.dismissQuestion(id);
+			// Backend returns the updated Question — apply it directly.
+			updateLocal(id, { status: updated.status });
+			return true;
 		} catch (err) {
 			setActionError(
 				err instanceof Error ? err.message : "Failed to dismiss question",

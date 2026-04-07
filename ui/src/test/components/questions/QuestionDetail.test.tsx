@@ -194,11 +194,9 @@ describe("QuestionDetail", () => {
 
 	it("submits an answer via the dialog", async () => {
 		vi.spyOn(askClient, "getQuestion").mockResolvedValue(makeQuestion());
-		vi.spyOn(askClient, "answerQuestion").mockResolvedValue({
-			success: true,
-			message: "Answered",
-			question_id: "q-1",
-		});
+		vi.spyOn(askClient, "answerQuestion").mockResolvedValue(
+			makeQuestion({ id: "q-1", status: "Answered", answer: "yes, proceed" }),
+		);
 		renderDetail();
 		await waitFor(() => expect(screen.getByText("Answer")).toBeTruthy());
 		fireEvent.click(screen.getByText("Answer"));
@@ -215,11 +213,9 @@ describe("QuestionDetail", () => {
 
 	it("calls dismissQuestion when Dismiss is clicked", async () => {
 		vi.spyOn(askClient, "getQuestion").mockResolvedValue(makeQuestion());
-		vi.spyOn(askClient, "dismissQuestion").mockResolvedValue({
-			success: true,
-			message: "Dismissed",
-			question_id: "q-1",
-		});
+		vi.spyOn(askClient, "dismissQuestion").mockResolvedValue(
+			makeQuestion({ id: "q-1", status: "Dismissed" }),
+		);
 		renderDetail();
 		await waitFor(() => expect(screen.getByText("Dismiss")).toBeTruthy());
 		await act(async () => {

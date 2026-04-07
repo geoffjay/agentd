@@ -14,7 +14,6 @@ import type {
 	CreateQuestionRequest,
 	ListQuestionsParams,
 	Question,
-	QuestionActionResponse,
 	QuestionsListResponse,
 	TriggerResponse,
 } from "@/types/ask";
@@ -60,20 +59,17 @@ export class AskClient extends ApiClient {
 		return this.post<Question>("/questions", request);
 	}
 
-	/** Submit an answer to a pending question */
+	/** Submit an answer to a pending question — returns the updated Question */
 	answerQuestion(
 		id: string,
 		request: AnswerQuestionRequest,
-	): Promise<QuestionActionResponse> {
-		return this.post<QuestionActionResponse>(
-			`/questions/${id}/answer`,
-			request,
-		);
+	): Promise<Question> {
+		return this.post<Question>(`/questions/${id}/answer`, request);
 	}
 
-	/** Dismiss a pending question */
-	dismissQuestion(id: string): Promise<QuestionActionResponse> {
-		return this.post<QuestionActionResponse>(`/questions/${id}/dismiss`);
+	/** Dismiss a pending question — returns the updated Question */
+	dismissQuestion(id: string): Promise<Question> {
+		return this.post<Question>(`/questions/${id}/dismiss`);
 	}
 
 	// -------------------------------------------------------------------------
