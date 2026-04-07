@@ -15,6 +15,7 @@ import type {
 	ListQuestionsParams,
 	Question,
 	QuestionActionResponse,
+	QuestionsListResponse,
 	TriggerResponse,
 } from "@/types/ask";
 import { ApiClient } from "./base";
@@ -34,13 +35,19 @@ export class AskClient extends ApiClient {
 	// -------------------------------------------------------------------------
 
 	/** List questions with optional filters */
-	listQuestions(
+	async listQuestions(
 		params?: ListQuestionsParams,
 	): Promise<PaginatedResponse<Question>> {
-		return this.get<PaginatedResponse<Question>>(
+		const raw = await this.get<QuestionsListResponse>(
 			"/questions",
 			params as Record<string, string>,
 		);
+		return {
+			items: raw.questions ?? [],
+			total: raw.total ?? 0,
+			limit: params?.limit ?? 0,
+			offset: params?.offset ?? 0,
+		};
 	}
 
 	/** Get a single question by ID */

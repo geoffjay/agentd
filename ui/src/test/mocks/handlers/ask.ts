@@ -31,10 +31,8 @@ export const askHandlers = [
 
 	http.get(`${BASE}/questions`, () =>
 		HttpResponse.json({
-			items: [makeQuestion(), makeQuestion({ status: "Answered" })],
+			questions: [makeQuestion(), makeQuestion({ status: "Answered" })],
 			total: 2,
-			limit: 20,
-			offset: 0,
 		}),
 	),
 

@@ -75,6 +75,15 @@ export interface ListQuestionsParams {
 	offset?: number;
 }
 
+/**
+ * Raw response shape from GET /questions.
+ * The backend returns `questions` (not `items`) plus `total`.
+ */
+export interface QuestionsListResponse {
+	questions: Question[];
+	total: number;
+}
+
 // ---------------------------------------------------------------------------
 // Legacy types — kept for backwards compatibility during migration.
 // Will be removed once all components are updated.

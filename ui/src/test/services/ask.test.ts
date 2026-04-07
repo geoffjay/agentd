@@ -51,7 +51,7 @@ describe("AskClient", () => {
 	describe("listQuestions", () => {
 		it("calls GET /questions and returns paginated result", async () => {
 			const mockResponse = {
-				items: [
+				questions: [
 					{
 						id: "q-1",
 						agent_id: "agent-1",
@@ -63,8 +63,6 @@ describe("AskClient", () => {
 					},
 				],
 				total: 1,
-				limit: 20,
-				offset: 0,
 			};
 			mockFetch(200, mockResponse);
 
@@ -77,7 +75,7 @@ describe("AskClient", () => {
 		});
 
 		it("passes query params as URL search params", async () => {
-			mockFetch(200, { items: [], total: 0, limit: 20, offset: 0 });
+			mockFetch(200, { questions: [], total: 0 });
 
 			await client.listQuestions({ status: "Pending", limit: 10 });
 
