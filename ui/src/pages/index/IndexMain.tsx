@@ -36,6 +36,7 @@ import { AddRepositoryDialog } from "@/components/index/AddRepositoryDialog";
 import { RepositoryList } from "@/components/index/RepositoryList";
 import { SearchBar } from "@/components/index/SearchBar";
 import { SearchResultsTable } from "@/components/index/SearchResultsTable";
+import { SearchScatterPlot } from "@/components/index/SearchScatterPlot";
 import { useIndexService } from "@/hooks/useIndexService";
 import type { CodeSearchMode } from "@/types/codeindex";
 
@@ -374,6 +375,11 @@ export function IndexMain() {
 							results={searchResults}
 							loading={searchLoading}
 						/>
+					)}
+
+					{/* Score distribution scatter plot */}
+					{hasResults && !searchLoading && (
+						<SearchScatterPlot results={searchResults} />
 					)}
 
 					{/* Empty search state */}
