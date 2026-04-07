@@ -691,15 +691,13 @@ mod tests {
 
     #[test]
     fn test_index_validate_zero_port_fails() {
-        let mut config = IndexConfig::default();
-        config.port = 0;
+        let config = IndexConfig { port: 0, ..Default::default() };
         assert!(config.validate().is_err());
     }
 
     #[test]
     fn test_index_validate_empty_languages_fails() {
-        let mut config = IndexConfig::default();
-        config.languages = vec![];
+        let config = IndexConfig { languages: vec![], ..Default::default() };
         assert!(config.validate().is_err());
     }
 

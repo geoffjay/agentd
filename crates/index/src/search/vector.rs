@@ -167,7 +167,7 @@ mod tests {
             _repo_id: Option<&str>,
             limit: usize,
         ) -> StoreResult<Vec<SearchResult>> {
-            Ok(self.results.iter().cloned().take(limit).collect())
+            Ok(self.results.iter().take(limit).cloned().collect())
         }
         async fn update_summary(&self, _chunk_id: &str, _summary: &str) -> StoreResult<()> {
             Ok(())

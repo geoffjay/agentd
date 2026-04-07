@@ -614,7 +614,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let result = resolve_route("planner", &orch, &comm).await.unwrap();
 
@@ -650,7 +650,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let result = resolve_route("PLANNER", &orch, &comm).await.unwrap();
         assert!(matches!(result, Some(RouteTarget::Agent { .. })));
@@ -679,7 +679,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         // "worker agent" (space) should match "worker-agent" (hyphen)
         let result = resolve_route("worker agent", &orch, &comm).await.unwrap();
@@ -709,7 +709,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let result = resolve_route("engineering", &orch, &comm).await.unwrap();
         assert!(matches!(
@@ -746,7 +746,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let result = resolve_route("shared-name", &orch, &comm).await.unwrap();
         // Must be the agent, not the room.
@@ -775,7 +775,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let result = resolve_route("nonexistent-bot", &orch, &comm).await.unwrap();
         assert!(result.is_none());
@@ -822,7 +822,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let target = RouteTarget::Agent {
             id: Uuid::parse_str(agent_id).unwrap(),
@@ -851,7 +851,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let target = RouteTarget::Agent {
             id: Uuid::parse_str(agent_id).unwrap(),
@@ -879,7 +879,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let target = RouteTarget::Room {
             id: Uuid::parse_str(room_id).unwrap(),
@@ -908,7 +908,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let target = RouteTarget::Room {
             id: Uuid::parse_str(room_id).unwrap(),
@@ -936,7 +936,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let target = RouteTarget::Agent {
             id: Uuid::parse_str(agent_id).unwrap(),
@@ -965,7 +965,7 @@ mod tests {
             .await;
 
         let orch = OrchestratorClient::new(orch_server.url());
-        let comm = CommunicateClient::new(&comm_server.url());
+        let comm = CommunicateClient::new(comm_server.url());
 
         let target = RouteTarget::Room {
             id: Uuid::parse_str(room_id).unwrap(),

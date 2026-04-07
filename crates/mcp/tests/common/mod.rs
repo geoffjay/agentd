@@ -4,6 +4,8 @@
 //! service APIs. Tests bind on a random OS-assigned port so multiple test
 //! processes can run concurrently without port conflicts.
 
+#![allow(dead_code)]
+
 use agentd_mcp::{client::AgentdClient, config::AgentdMcpConfig};
 use axum::{
     extract::Path,

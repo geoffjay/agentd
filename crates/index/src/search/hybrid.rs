@@ -253,7 +253,7 @@ mod tests {
             _: Option<&str>,
             limit: usize,
         ) -> StoreResult<Vec<SearchResult>> {
-            Ok(self.results.iter().cloned().take(limit).collect())
+            Ok(self.results.iter().take(limit).cloned().collect())
         }
         async fn update_summary(&self, _: &str, _: &str) -> StoreResult<()> {
             Ok(())
