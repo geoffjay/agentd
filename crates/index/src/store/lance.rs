@@ -67,12 +67,23 @@ fn chunk_id(repo_id: &str, file_path: &str, seq: usize) -> String {
 /// LanceDB implementation of [`CodeStore`].
 pub struct LanceStore {
     db: lancedb::Connection,
+    /// Filesystem path to the LanceDB directory (used in diagnostic messages).
+    lance_path: String,
     table_name: String,
     embedding_service: Arc<dyn EmbeddingService>,
+    /// The actual embedding dimension, probed from the live API at construction
+    /// time.  Used for schema creation and batch building to ensure the stored
+    /// vector column always matches the model's real output size.
+    embedding_dim: usize,
 }
 
 impl LanceStore {
     /// Open (or create) a LanceDB store at `config.path`.
+    ///
+    /// Probes the embedding API to discover the actual vector dimension so the
+    /// table schema always matches the model's real output size.  When the API
+    /// is unreachable the static lookup in [`model_dimension`] is used as a
+    /// fallback (with a warning).
     ///
     /// Call [`CodeStore::initialize`] before first use to ensure the table
     /// exists.
@@ -85,13 +96,43 @@ impl LanceStore {
             .await
             .map_err(|e| StoreError::ConnectionFailed(format!("LanceDB connect failed: {}", e)))?;
 
-        Ok(Self { db, table_name: config.table.clone(), embedding_service })
+        // Probe the live embedding API to get the real vector dimension.
+        // Falls back to the static lookup when the server is not yet reachable.
+        let embedding_dim = match embedding_service.embed(&[" ".to_string()]).await {
+            Ok(vecs) => {
+                let dim = vecs
+                    .into_iter()
+                    .next()
+                    .map(|v| v.len())
+                    .unwrap_or_else(|| embedding_service.dimension(""));
+                info!(dim, "Probed embedding dimension from live API");
+                dim
+            }
+            Err(e) => {
+                let fallback = embedding_service.dimension("");
+                warn!(
+                    fallback_dim = fallback,
+                    error = %e,
+                    "Could not probe embedding dimension — embedding server may not be running. \
+                     Using static lookup value; ensure the model is running before indexing."
+                );
+                fallback
+            }
+        };
+
+        Ok(Self {
+            db,
+            lance_path: config.path.clone(),
+            table_name: config.table.clone(),
+            embedding_service,
+            embedding_dim,
+        })
     }
 
     // ── Schema ────────────────────────────────────────────────────────────
 
     fn chunk_schema(&self) -> SchemaRef {
-        let dim = self.embedding_service.dimension("") as i32;
+        let dim = self.embedding_dim as i32;
         Arc::new(Schema::new(vec![
             Field::new("id", DataType::Utf8, false),
             Field::new("repo_id", DataType::Utf8, false),
@@ -135,7 +176,7 @@ impl LanceStore {
         now: &str,
     ) -> StoreResult<RecordBatch> {
         let schema = self.chunk_schema();
-        let dim = self.embedding_service.dimension("") as i32;
+        let dim = self.embedding_dim as i32;
         let n = ids.len();
 
         // Build nullable string columns.
@@ -370,6 +411,33 @@ impl CodeStore for LanceStore {
         })?;
 
         if tables.contains(&self.table_name) {
+            // Verify the existing table's vector column dimension matches our
+            // probed dimension.  A mismatch means the table was created with a
+            // different model and vector search will always fail.
+            if let Ok(table) = self.db.open_table(&self.table_name).execute().await {
+                if let Ok(schema) = table.schema().await {
+                    for field in schema.fields() {
+                        if field.name() == "vector" {
+                            if let DataType::FixedSizeList(_, existing_dim) = field.data_type() {
+                                let existing_dim = *existing_dim as usize;
+                                if existing_dim != self.embedding_dim && self.embedding_dim != 0 {
+                                    warn!(
+                                        existing_dim,
+                                        probed_dim = self.embedding_dim,
+                                        table = %self.table_name,
+                                        "Vector column dimension mismatch: the table was created \
+                                         with a different embedding model. Vector search will fail. \
+                                         Delete the LanceDB directory and restart to rebuild with \
+                                         the current model: rm -rf '{}'",
+                                        self.lance_path
+                                    );
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
             debug!("LanceDB table '{}' already exists", self.table_name);
             return Ok(());
         }

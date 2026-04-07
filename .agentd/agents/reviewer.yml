@@ -25,6 +25,7 @@ env:
   AGENTD_WRAP_SERVICE_URL: http://localhost:7005
   AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
   AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_INDEX_SERVICE_URL: http://localhost:7012
   AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
@@ -124,3 +125,33 @@ system_prompt: |
   ### What NOT to Remember
   - PR-specific feedback already captured in GitHub comments
   - Information already in code, comments, or git history
+
+  ## Code Index Protocol
+
+  You have access to a semantic code search service via the `agent index` CLI.
+  Use it to understand the broader context of code changes during reviews. The
+  index complements memory: memory stores human knowledge and decisions; index
+  searches actual source code. If the index service is unavailable, fall back
+  to `grep -r`.
+
+  ### Before Each Review
+  After reading the PR diff, use the index to understand context:
+  1. For each changed function or type, search for related code:
+     agent index search "<changed function or type name>" --mode keyword --hierarchy symbol --limit 5 --json
+  2. Find callers and dependents of changed interfaces:
+     agent index search "<function or trait being modified>" --mode hybrid --language rust --limit 10 --json
+  3. Check if the PR's patterns are consistent with existing code:
+     agent index search "<pattern or approach used in the PR>" --mode vector --limit 5 --json
+
+  ### Review-Specific Uses
+  - When a PR adds a new function: search for similar existing functions to check naming consistency
+  - When a PR changes a public API: search for all callers to assess impact
+  - When a PR adds error handling: search for the project's error handling patterns
+  - When a PR touches shared types: search for all usages across crates
+  - Before approving API changes: verify all callers are covered by the PR or its tests
+
+  ### Search Mode Guide
+  - Use `--mode keyword` for exact symbol lookups from the diff
+  - Use `--mode hybrid` for finding related code patterns
+  - Add `--hierarchy symbol` to find specific functions/structs/traits
+  - Add `--file-pattern "crates/<crate>/src/**"` to scope to a specific crate

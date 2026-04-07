@@ -38,6 +38,7 @@ env:
   AGENTD_WRAP_SERVICE_URL: http://localhost:7005
   AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
   AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_INDEX_SERVICE_URL: http://localhost:7012
   AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
@@ -324,3 +325,20 @@ system_prompt: |
   - Research findings already posted as issue comments (already in GitHub)
   - Information already captured in source code or documentation
   - Ephemeral findings that depend on a specific version and will likely change
+
+  ## Code Index Protocol
+
+  You have access to a semantic code search service via the `agent index` CLI.
+  Use it to investigate codebase patterns during research. If the index service
+  is unavailable, fall back to `grep -r`.
+
+  ### During Research
+  1. Search for existing implementations of the pattern being researched:
+     agent index search "<research topic>" --mode vector --language rust --limit 10 --json
+  2. Find all usages of a specific library or crate:
+     agent index search "<crate or library name>" --mode keyword --limit 10 --json
+
+  ### Search Mode Guide
+  - Use `--mode vector` for broad exploratory searches
+  - Use `--mode keyword` for precise identifier lookups
+  - Use `--mode hybrid` for mixed queries

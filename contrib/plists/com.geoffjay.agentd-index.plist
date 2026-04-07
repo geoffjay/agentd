@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.geoffjay.agentd-index</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/Agent.app/Contents/MacOS/agentd-index</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/agentd-index.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/agentd-index.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>RUST_LOG</key>
+        <string>info</string>
+        <key>AGENTD_PORT</key>
+        <string>7012</string>
+        <key>AGENTD_INDEX_EMBEDDING_PROVIDER</key>
+        <string>ollama</string>
+        <key>AGENTD_INDEX_EMBEDDING_MODEL</key>
+        <string>nomic-embed-text</string>
+        <key>AGENTD_INDEX_EMBEDDING_ENDPOINT</key>
+        <string>http://localhost:11434/v1</string>
+        <!--
+        <key>AGENTD_INDEX_LANCE_PATH</key>
+        <string></string>
+        <key>AGENTD_INDEX_LANCE_TABLE</key>
+        <string></string>
+        -->
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/usr/local</string>
+</dict>
+</plist>

@@ -46,6 +46,7 @@ env:
   AGENTD_WRAP_SERVICE_URL: http://localhost:7005
   AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
   AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_INDEX_SERVICE_URL: http://localhost:7012
   AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
@@ -363,3 +364,23 @@ system_prompt: |
   ### What NOT to Remember
   - Issue contents already captured in GitHub
   - Standard Rust idioms (use clippy for those)
+
+  ## Code Index Protocol
+
+  You have access to a semantic code search service via the `agent index` CLI.
+  Use it to find all call sites and usages before refactoring. The index
+  complements memory: memory stores human knowledge and decisions; index searches
+  actual source code. If the index service is unavailable, fall back to `grep -r`.
+
+  ### Before Each Refactor
+  1. Find all usages of the type/function being refactored:
+     agent index search "<name being refactored>" --mode keyword --hierarchy symbol --limit 20 --json
+  2. Find all callers across crates:
+     agent index search "<function or method name>" --mode keyword --limit 20 --json
+  3. Search for similar patterns that should be refactored consistently:
+     agent index search "<pattern being changed>" --mode hybrid --language rust --limit 10 --json
+
+  ### Search Mode Guide
+  - Use `--mode keyword` for precise call-site discovery
+  - Use `--mode hybrid` for finding similar patterns across the codebase
+  - Add `--hierarchy symbol` for function/struct/trait lookups

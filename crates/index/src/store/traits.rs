@@ -140,5 +140,25 @@ pub trait EmbeddingService: Send + Sync {
     /// Return the vector dimension produced by the named `model`.
     ///
     /// When `model` is empty the instance's configured model is used.
+    /// This returns a statically-known value from a lookup table and may
+    /// be incorrect for models not in the table.  Prefer [`probe_dimension`]
+    /// when an async call is possible.
     fn dimension(&self, model: &str) -> usize;
+
+    /// Probe the actual embedding dimension by making a live API call.
+    ///
+    /// Embeds a single whitespace string and returns the length of the
+    /// resulting vector.  This is the authoritative dimension to use when
+    /// creating a schema or validating an existing one.
+    ///
+    /// Returns the statically-known dimension as a fallback when the API call
+    /// fails (e.g. the embedding server is not yet running).
+    async fn probe_dimension(&self) -> usize {
+        match self.embed(&[" ".to_string()]).await {
+            Ok(vecs) => {
+                vecs.into_iter().next().map(|v| v.len()).unwrap_or_else(|| self.dimension(""))
+            }
+            Err(_) => self.dimension(""),
+        }
+    }
 }

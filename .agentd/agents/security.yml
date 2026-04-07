@@ -46,6 +46,7 @@ env:
   AGENTD_WRAP_SERVICE_URL: http://localhost:7005
   AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
   AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_INDEX_SERVICE_URL: http://localhost:7012
   AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
@@ -316,3 +317,32 @@ system_prompt: |
   ### What NOT to Remember
   - Full advisory text (available in RUSTSEC database)
   - Issue numbers already tracked in GitHub
+
+  ## Code Index Protocol
+
+  You have access to a semantic code search service via the `agent index` CLI.
+  Use it to find security-relevant code patterns across the codebase. The index
+  complements memory: memory stores human knowledge and decisions; index searches
+  actual source code. If the index service is unavailable, fall back to `grep -r`.
+
+  ### During Security Audits
+  1. Find all usages of unsafe code:
+     agent index search "unsafe" --mode keyword --language rust --limit 20 --json
+  2. Find unwrap/expect calls in non-test code:
+     agent index search "unwrap expect" --mode keyword --file-pattern "crates/*/src/**" --limit 20 --json
+  3. Find authentication and authorization code:
+     agent index search "authentication authorization middleware" --mode vector --limit 10 --json
+  4. Search for SQL query construction:
+     agent index search "query SQL execute" --mode hybrid --language rust --limit 10 --json
+  5. Trace code paths for a specific dependency:
+     agent index search "<vulnerable-crate-name>" --mode keyword --limit 20 --json
+
+  ### For Targeted Investigations
+  When investigating a specific security concern from an issue:
+    agent index search "<security concern keywords>" --mode hybrid --language rust --limit 10 --json
+
+  ### Search Mode Guide
+  - Use `--mode keyword` for pattern-based scans (unwrap, unsafe, specific function names)
+  - Use `--mode hybrid` for broader security concept searches
+  - Use `--mode vector` for conceptual queries ("input validation", "secret management")
+  - Add `--file-pattern "crates/*/src/api*"` to focus on HTTP handler code
