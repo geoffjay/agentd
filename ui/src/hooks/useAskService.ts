@@ -1,17 +1,16 @@
 /**
- * useAskService — state management for the Ask service.
+ * useAskService — state management for the Ask service Q&A workflow.
  *
  * Provides:
- * - Service health (reachability, connected notify URL)
- * - Trigger: run environment checks, track results and history
- * - Auto-trigger: optional interval-based triggering
- * - Questions: the list of QuestionInfo items from recent triggers
- * - Answer: submit answers to pending questions
+ * - Service health (reachability, version)
+ * - Questions: paginated list with optional filters
+ * - Actions: answer and dismiss pending questions
+ * - Polling: auto-refresh configurable interval
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askClient } from "@/services/ask";
-import type { QuestionInfo, TriggerResponse } from "@/types/ask";
+import type { ListQuestionsParams, Question, QuestionStatus } from "@/types/ask";
 import type { HealthResponse } from "@/types/common";
 
 // ---------------------------------------------------------------------------
@@ -21,70 +20,83 @@ import type { HealthResponse } from "@/types/common";
 export interface AskServiceHealth {
 	reachable: boolean;
 	checking: boolean;
-	/** URL the ask service uses to reach notify (from /health response) */
-	notifyUrl?: string;
 	version?: string;
 }
 
-export type AutoTriggerInterval = 30_000 | 60_000 | 300_000 | 600_000;
+export type PollingInterval = 5_000 | 15_000 | 30_000 | 60_000;
+
+export const POLLING_INTERVAL_OPTIONS: PollingInterval[] = [
+	5_000, 15_000, 30_000, 60_000,
+];
+
+export interface UseAskServiceOptions {
+	/** Initial filter params passed to GET /questions */
+	params?: ListQuestionsParams;
+	/** Polling interval in ms; 0 = disabled (default 15 000) */
+	pollingInterval?: number;
+}
 
 export interface UseAskServiceResult {
 	// Health
 	health: AskServiceHealth;
 	recheckHealth: () => void;
 
-	// Triggering
-	triggering: boolean;
-	lastTriggerResult?: TriggerResponse;
-	lastTriggerAt?: Date;
-	triggerError?: string;
-	runTrigger: () => Promise<void>;
+	// Questions list
+	questions: Question[];
+	total: number;
+	loading: boolean;
+	error?: string;
 
-	// Auto-trigger
-	autoTrigger: boolean;
-	autoTriggerInterval: AutoTriggerInterval;
-	setAutoTrigger: (enabled: boolean) => void;
-	setAutoTriggerInterval: (ms: AutoTriggerInterval) => void;
+	// Filters
+	filters: ListQuestionsParams;
+	setFilters: (f: ListQuestionsParams) => void;
+	setStatusFilter: (status: QuestionStatus | undefined) => void;
 
-	// Questions (derived from triggers + manual additions)
-	questions: QuestionInfo[];
-	addQuestion: (q: QuestionInfo) => void;
+	// Actions
+	busyIds: Set<string>;
+	answerQuestion: (id: string, answer: string) => Promise<boolean>;
+	dismissQuestion: (id: string) => Promise<boolean>;
+	actionError?: string;
 
-	// Answering
-	answering: boolean;
-	answerError?: string;
-	submitAnswer: (questionId: string, answer: string) => Promise<boolean>;
+	// Polling
+	pollingEnabled: boolean;
+	pollingInterval: PollingInterval;
+	setPollingEnabled: (enabled: boolean) => void;
+	setPollingInterval: (ms: PollingInterval) => void;
+
+	// Manual refresh
+	refetch: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
-const AUTO_TRIGGER_OPTIONS: AutoTriggerInterval[] = [
-	30_000, 60_000, 300_000, 600_000,
-];
+const DEFAULT_POLLING: PollingInterval = 15_000;
 
-export { AUTO_TRIGGER_OPTIONS };
-
-export function useAskService(): UseAskServiceResult {
+export function useAskService({
+	params: initialParams = {},
+	pollingInterval: initialPollingInterval = DEFAULT_POLLING,
+}: UseAskServiceOptions = {}): UseAskServiceResult {
 	const [health, setHealth] = useState<AskServiceHealth>({
 		reachable: false,
 		checking: true,
 	});
-	const [triggering, setTriggering] = useState(false);
-	const [lastTriggerResult, setLastTriggerResult] = useState<
-		TriggerResponse | undefined
-	>();
-	const [lastTriggerAt, setLastTriggerAt] = useState<Date | undefined>();
-	const [triggerError, setTriggerError] = useState<string | undefined>();
-	const [autoTrigger, setAutoTrigger] = useState(false);
-	const [autoTriggerInterval, setAutoTriggerInterval] =
-		useState<AutoTriggerInterval>(60_000);
-	const [questions, setQuestions] = useState<QuestionInfo[]>([]);
-	const [answering, setAnswering] = useState(false);
-	const [answerError, setAnswerError] = useState<string | undefined>();
+	const [questions, setQuestions] = useState<Question[]>([]);
+	const [total, setTotal] = useState(0);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | undefined>();
+	const [filters, setFiltersState] = useState<ListQuestionsParams>(
+		initialParams,
+	);
+	const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+	const [actionError, setActionError] = useState<string | undefined>();
+	const [pollingEnabled, setPollingEnabled] = useState(false);
+	const [pollingInterval, setPollingInterval] =
+		useState<PollingInterval>(initialPollingInterval as PollingInterval);
 
-	const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const mountedRef = useRef(true);
+	const pollingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
 	// -------------------------------------------------------------------------
 	// Health check
@@ -93,16 +105,11 @@ export function useAskService(): UseAskServiceResult {
 	const recheckHealth = useCallback(async () => {
 		setHealth((prev) => ({ ...prev, checking: true }));
 		try {
-			const res = (await askClient.getHealth()) as HealthResponse & {
-				notify_url?: string;
-			};
-			setHealth({
-				reachable: true,
-				checking: false,
-				notifyUrl: res.notify_url,
-				version: res.version,
-			});
+			const res = (await askClient.getHealth()) as HealthResponse;
+			if (!mountedRef.current) return;
+			setHealth({ reachable: true, checking: false, version: res.version });
 		} catch {
+			if (!mountedRef.current) return;
 			setHealth({ reachable: false, checking: false });
 		}
 	}, []);
@@ -112,127 +119,161 @@ export function useAskService(): UseAskServiceResult {
 	}, [recheckHealth]);
 
 	// -------------------------------------------------------------------------
-	// Trigger
+	// Fetch questions
 	// -------------------------------------------------------------------------
 
-	const runTrigger = useCallback(async () => {
-		setTriggering(true);
-		setTriggerError(undefined);
-		try {
-			const result = await askClient.trigger();
-			setLastTriggerResult(result);
-			setLastTriggerAt(new Date());
-
-			// Extract question info from trigger results if notifications were sent.
-			// The ask service creates questions client-side based on notifications_sent
-			// since the trigger endpoint doesn't return QuestionInfo directly.
-			if (result.notifications_sent.length > 0) {
-				const newQuestions: QuestionInfo[] = result.notifications_sent.map(
-					(notifId) => ({
-						question_id: crypto.randomUUID(),
-						notification_id: notifId,
-						check_type: "TmuxSessions",
-						asked_at: new Date().toISOString(),
-						status: "Pending" as const,
-					}),
-				);
-				setQuestions((prev) => {
-					// Deduplicate by notification_id
-					const existingNotifIds = new Set(prev.map((q) => q.notification_id));
-					const deduped = newQuestions.filter(
-						(q) => !existingNotifIds.has(q.notification_id),
-					);
-					return [...deduped, ...prev];
-				});
+	const fetchQuestions = useCallback(
+		async (showLoading = true) => {
+			if (!mountedRef.current) return;
+			if (showLoading) {
+				setLoading(true);
+				setError(undefined);
 			}
-		} catch (err) {
-			setTriggerError(
-				err instanceof Error ? err.message : "Failed to run checks",
-			);
-		} finally {
-			setTriggering(false);
-		}
-	}, []);
+			try {
+				const result = await askClient.listQuestions(filters);
+				if (!mountedRef.current) return;
+				setQuestions(result.items);
+				setTotal(result.total);
+				setError(undefined);
+			} catch (err) {
+				if (!mountedRef.current) return;
+				setError(
+					err instanceof Error ? err.message : "Failed to load questions",
+				);
+			} finally {
+				if (mountedRef.current) setLoading(false);
+			}
+		},
+		[filters],
+	);
+
+	useEffect(() => {
+		mountedRef.current = true;
+		void fetchQuestions(true);
+		return () => {
+			mountedRef.current = false;
+		};
+	}, [fetchQuestions]);
 
 	// -------------------------------------------------------------------------
-	// Auto-trigger timer
+	// Auto-enable polling when pending questions exist
 	// -------------------------------------------------------------------------
 
 	useEffect(() => {
-		if (autoTimerRef.current) clearInterval(autoTimerRef.current);
-		if (!autoTrigger) return;
-		autoTimerRef.current = setInterval(
-			() => void runTrigger(),
-			autoTriggerInterval,
+		const hasPending = questions.some((q) => q.status === "Pending");
+		setPollingEnabled(hasPending);
+	}, [questions]);
+
+	// -------------------------------------------------------------------------
+	// Polling timer
+	// -------------------------------------------------------------------------
+
+	useEffect(() => {
+		if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+		if (!pollingEnabled || !pollingInterval) return;
+		pollingTimerRef.current = setInterval(
+			() => void fetchQuestions(false),
+			pollingInterval,
 		);
 		return () => {
-			if (autoTimerRef.current) clearInterval(autoTimerRef.current);
+			if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
 		};
-	}, [autoTrigger, autoTriggerInterval, runTrigger]);
+	}, [pollingEnabled, pollingInterval, fetchQuestions]);
 
 	// -------------------------------------------------------------------------
-	// Questions
+	// Filters
 	// -------------------------------------------------------------------------
 
-	const addQuestion = useCallback((q: QuestionInfo) => {
-		setQuestions((prev) => {
-			if (prev.some((existing) => existing.question_id === q.question_id))
-				return prev;
-			return [q, ...prev];
-		});
+	const setFilters = useCallback((f: ListQuestionsParams) => {
+		setFiltersState(f);
+	}, []);
+
+	const setStatusFilter = useCallback((status: QuestionStatus | undefined) => {
+		setFiltersState((prev) => ({ ...prev, status }));
 	}, []);
 
 	// -------------------------------------------------------------------------
-	// Answer
+	// Busy state helpers
 	// -------------------------------------------------------------------------
 
-	const submitAnswer = useCallback(
-		async (questionId: string, answer: string): Promise<boolean> => {
-			setAnswering(true);
-			setAnswerError(undefined);
+	const setBusy = (id: string, busy: boolean) => {
+		setBusyIds((prev) => {
+			const next = new Set(prev);
+			if (busy) next.add(id);
+			else next.delete(id);
+			return next;
+		});
+	};
+
+	const updateLocal = (id: string, patch: Partial<Question>) => {
+		setQuestions((prev) =>
+			prev.map((q) => (q.id === id ? { ...q, ...patch } : q)),
+		);
+	};
+
+	// -------------------------------------------------------------------------
+	// Actions
+	// -------------------------------------------------------------------------
+
+	const answerQuestion = useCallback(
+		async (id: string, answer: string): Promise<boolean> => {
+			setBusy(id, true);
+			setActionError(undefined);
 			try {
-				const res = await askClient.answer({ question_id: questionId, answer });
-				if (res.success) {
-					setQuestions((prev) =>
-						prev.map((q) =>
-							q.question_id === questionId
-								? { ...q, status: "Answered" as const, answer }
-								: q,
-						),
-					);
-					return true;
-				} else {
-					setAnswerError(res.message);
-					return false;
-				}
+				const updated = await askClient.answerQuestion(id, { answer });
+				// Backend returns the updated Question — apply it directly.
+				updateLocal(id, { status: updated.status, answer: updated.answer ?? answer });
+				return true;
 			} catch (err) {
-				setAnswerError(
+				setActionError(
 					err instanceof Error ? err.message : "Failed to submit answer",
 				);
 				return false;
 			} finally {
-				setAnswering(false);
+				setBusy(id, false);
 			}
 		},
 		[],
 	);
 
+	const dismissQuestion = useCallback(async (id: string): Promise<boolean> => {
+		setBusy(id, true);
+		setActionError(undefined);
+		try {
+			const updated = await askClient.dismissQuestion(id);
+			// Backend returns the updated Question — apply it directly.
+			updateLocal(id, { status: updated.status });
+			return true;
+		} catch (err) {
+			setActionError(
+				err instanceof Error ? err.message : "Failed to dismiss question",
+			);
+			return false;
+		} finally {
+			setBusy(id, false);
+		}
+	}, []);
+
 	return {
 		health,
 		recheckHealth,
-		triggering,
-		lastTriggerResult,
-		lastTriggerAt,
-		triggerError,
-		runTrigger,
-		autoTrigger,
-		autoTriggerInterval,
-		setAutoTrigger,
-		setAutoTriggerInterval,
 		questions,
-		addQuestion,
-		answering,
-		answerError,
-		submitAnswer,
+		total,
+		loading,
+		error,
+		filters,
+		setFilters,
+		setStatusFilter,
+		busyIds,
+		answerQuestion,
+		dismissQuestion,
+		actionError,
+		pollingEnabled,
+		pollingInterval,
+		setPollingEnabled,
+		setPollingInterval,
+		refetch: () => {
+			void fetchQuestions(false);
+		},
 	};
 }

@@ -1,37 +1,41 @@
 /**
- * Tests for useAskService hook.
+ * Tests for useAskService hook (v0.12.0 Q&A model).
  */
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAskService } from "@/hooks/useAskService";
-import {
-	makeAnswerResponse,
-	makeTriggerResponse,
-	resetQuestionSeq,
-} from "@/test/mocks/factories";
+import { askClient } from "@/services/ask";
+import { makeQuestion, resetQuestionSeq } from "@/test/mocks/factories";
 import { server } from "@/test/mocks/server";
 
 const BASE = "http://localhost:17001";
 
+function makePaginatedList(items = [makeQuestion()]) {
+	return { items, total: items.length, limit: 20, offset: 0 };
+}
+
 beforeEach(() => {
 	resetQuestionSeq();
-});
-
-afterEach(() => {
-	vi.useRealTimers();
+	vi.restoreAllMocks();
 });
 
 describe("useAskService", () => {
 	describe("health", () => {
 		it("reports reachable when health check succeeds", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([]),
+			);
 			const { result } = renderHook(() => useAskService());
 			await waitFor(() => expect(result.current.health.reachable).toBe(true));
 			expect(result.current.health.checking).toBe(false);
 		});
 
 		it("reports unreachable when health check fails", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([]),
+			);
 			server.use(http.get(`${BASE}/health`, () => HttpResponse.error()));
 			const { result } = renderHook(() => useAskService());
 			await waitFor(() => expect(result.current.health.checking).toBe(false));
@@ -39,6 +43,9 @@ describe("useAskService", () => {
 		});
 
 		it("recheckHealth re-runs the health check", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([]),
+			);
 			const { result } = renderHook(() => useAskService());
 			await waitFor(() => expect(result.current.health.reachable).toBe(true));
 
@@ -50,202 +57,220 @@ describe("useAskService", () => {
 		});
 	});
 
-	describe("runTrigger", () => {
-		it("calls POST /trigger and sets result", async () => {
-			const triggerData = makeTriggerResponse({
-				checks_run: ["TmuxSessions"],
-				notifications_sent: [],
-			});
-			server.use(
-				http.post(`${BASE}/trigger`, () => HttpResponse.json(triggerData)),
+	describe("questions loading", () => {
+		it("fetches questions on mount", async () => {
+			const q = makeQuestion();
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([q]),
 			);
 
 			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
+			await waitFor(() => expect(result.current.loading).toBe(false));
 
-			await act(async () => {
-				await result.current.runTrigger();
-			});
-
-			expect(result.current.lastTriggerResult).toEqual(triggerData);
-			expect(result.current.lastTriggerAt).toBeDefined();
-			expect(result.current.triggering).toBe(false);
+			expect(result.current.questions).toHaveLength(1);
+			expect(result.current.questions[0].id).toBe(q.id);
+			expect(result.current.total).toBe(1);
 		});
 
-		it("sets triggerError when trigger fails", async () => {
-			server.use(http.post(`${BASE}/trigger`, () => HttpResponse.error()));
-
-			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
-
-			await act(async () => {
-				await result.current.runTrigger();
-			});
-
-			expect(result.current.triggerError).toBeDefined();
-		});
-
-		it("adds pending questions when notifications are sent", async () => {
-			const triggerData = makeTriggerResponse({
-				notifications_sent: ["notif-abc"],
-			});
-			server.use(
-				http.post(`${BASE}/trigger`, () => HttpResponse.json(triggerData)),
+		it("sets error when fetch fails", async () => {
+			vi.spyOn(askClient, "listQuestions").mockRejectedValue(
+				new Error("Network error"),
 			);
 
 			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
-
-			await act(async () => {
-				await result.current.runTrigger();
-			});
-
-			await waitFor(() => expect(result.current.questions).toHaveLength(1));
-			expect(result.current.questions[0].status).toBe("Pending");
-			expect(result.current.questions[0].notification_id).toBe("notif-abc");
+			await waitFor(() => expect(result.current.loading).toBe(false));
+			expect(result.current.error).toBeDefined();
 		});
 
-		it("deduplicates questions by notification_id", async () => {
-			const triggerData = makeTriggerResponse({
-				notifications_sent: ["notif-abc"],
-			});
-			server.use(
-				http.post(`${BASE}/trigger`, () => HttpResponse.json(triggerData)),
-			);
+		it("refetch re-loads questions", async () => {
+			const spy = vi
+				.spyOn(askClient, "listQuestions")
+				.mockResolvedValue(makePaginatedList([]));
 
 			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
+			await waitFor(() => expect(result.current.loading).toBe(false));
+			expect(spy).toHaveBeenCalledTimes(1);
 
 			await act(async () => {
-				await result.current.runTrigger();
+				result.current.refetch();
 			});
-			await act(async () => {
-				await result.current.runTrigger();
-			});
-
-			await waitFor(() => expect(result.current.questions).toHaveLength(1));
+			expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2);
 		});
 	});
 
-	describe("submitAnswer", () => {
+	describe("answerQuestion", () => {
 		it("marks question as Answered on success", async () => {
-			const triggerData = makeTriggerResponse({
-				notifications_sent: ["notif-1"],
-			});
-			server.use(
-				http.post(`${BASE}/trigger`, () => HttpResponse.json(triggerData)),
+			const q = makeQuestion({ status: "Pending" });
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([q]),
 			);
-			server.use(
-				http.post(`${BASE}/answer`, () =>
-					HttpResponse.json(makeAnswerResponse({ success: true })),
-				),
+			vi.spyOn(askClient, "answerQuestion").mockResolvedValue(
+				makeQuestion({ id: q.id, status: "Answered", answer: "yes" }),
 			);
 
 			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
+			await waitFor(() => expect(result.current.loading).toBe(false));
 
-			await act(async () => {
-				await result.current.runTrigger();
-			});
-			await waitFor(() => expect(result.current.questions).toHaveLength(1));
-
-			const questionId = result.current.questions[0].question_id;
 			let success = false;
 			await act(async () => {
-				success = await result.current.submitAnswer(questionId, "yes");
+				success = await result.current.answerQuestion(q.id, "yes");
 			});
 
 			expect(success).toBe(true);
 			await waitFor(() =>
-				expect(result.current.questions[0].status).toBe("Answered"),
+				expect(
+					result.current.questions.find((q2) => q2.id === q.id)?.status,
+				).toBe("Answered"),
 			);
 		});
 
-		it("sets answerError on failure", async () => {
-			server.use(http.post(`${BASE}/answer`, () => HttpResponse.error()));
+		it("sets actionError on network failure", async () => {
+			const q = makeQuestion({ status: "Pending" });
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([q]),
+			);
+			vi.spyOn(askClient, "answerQuestion").mockRejectedValue(
+				new Error("Network error"),
+			);
 
 			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
-
-			act(() => {
-				result.current.addQuestion({
-					question_id: "q-1",
-					notification_id: "n-1",
-					check_type: "TmuxSessions",
-					asked_at: "2024-01-01T00:00:00Z",
-					status: "Pending",
-				});
-			});
+			await waitFor(() => expect(result.current.loading).toBe(false));
 
 			let success = true;
 			await act(async () => {
-				success = await result.current.submitAnswer("q-1", "yes");
+				success = await result.current.answerQuestion(q.id, "yes");
 			});
 
 			expect(success).toBe(false);
-			expect(result.current.answerError).toBeDefined();
+			expect(result.current.actionError).toBeDefined();
 		});
 	});
 
-	describe("addQuestion", () => {
-		it("adds a question to the list", async () => {
-			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
+	describe("dismissQuestion", () => {
+		it("marks question as Dismissed on success", async () => {
+			const q = makeQuestion({ status: "Pending" });
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([q]),
+			);
+			vi.spyOn(askClient, "dismissQuestion").mockResolvedValue(
+				makeQuestion({ id: q.id, status: "Dismissed" }),
+			);
 
-			act(() => {
-				result.current.addQuestion({
-					question_id: "q-1",
-					notification_id: "n-1",
-					check_type: "TmuxSessions",
-					asked_at: "2024-01-01T00:00:00Z",
-					status: "Pending",
-				});
+			const { result } = renderHook(() => useAskService());
+			await waitFor(() => expect(result.current.loading).toBe(false));
+
+			let success = false;
+			await act(async () => {
+				success = await result.current.dismissQuestion(q.id);
 			});
-			await waitFor(() => expect(result.current.questions).toHaveLength(1));
+
+			expect(success).toBe(true);
+			await waitFor(() =>
+				expect(
+					result.current.questions.find((q2) => q2.id === q.id)?.status,
+				).toBe("Dismissed"),
+			);
 		});
 
-		it("does not add duplicate questions", async () => {
-			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
+		it("sets actionError on failure", async () => {
+			const q = makeQuestion({ status: "Pending" });
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([q]),
+			);
+			vi.spyOn(askClient, "dismissQuestion").mockRejectedValue(
+				new Error("Network error"),
+			);
 
-			const q = {
-				question_id: "q-1",
-				notification_id: "n-1",
-				check_type: "TmuxSessions" as const,
-				asked_at: "2024-01-01T00:00:00Z",
-				status: "Pending" as const,
-			};
-			act(() => {
-				result.current.addQuestion(q);
-				result.current.addQuestion(q);
+			const { result } = renderHook(() => useAskService());
+			await waitFor(() => expect(result.current.loading).toBe(false));
+
+			let success = true;
+			await act(async () => {
+				success = await result.current.dismissQuestion(q.id);
 			});
-			await waitFor(() => expect(result.current.questions).toHaveLength(1));
+
+			expect(success).toBe(false);
+			expect(result.current.actionError).toBeDefined();
 		});
 	});
 
-	describe("auto-trigger", () => {
-		it("starts with auto-trigger disabled", async () => {
+	describe("filters", () => {
+		it("starts with empty filters", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([]),
+			);
 			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
-			expect(result.current.autoTrigger).toBe(false);
+			await waitFor(() => expect(result.current.loading).toBe(false));
+			expect(result.current.filters).toEqual({});
 		});
 
-		it("toggles auto-trigger on and off", async () => {
+		it("setStatusFilter updates filters", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([]),
+			);
 			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
+			await waitFor(() => expect(result.current.loading).toBe(false));
 
-			act(() => result.current.setAutoTrigger(true));
-			expect(result.current.autoTrigger).toBe(true);
-			act(() => result.current.setAutoTrigger(false));
-			expect(result.current.autoTrigger).toBe(false);
+			act(() => result.current.setStatusFilter("Pending"));
+			expect(result.current.filters.status).toBe("Pending");
 		});
 
-		it("updates interval", async () => {
+		it("setFilters replaces all filters", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([]),
+			);
 			const { result } = renderHook(() => useAskService());
-			await waitFor(() => expect(result.current.health.checking).toBe(false));
+			await waitFor(() => expect(result.current.loading).toBe(false));
 
-			act(() => result.current.setAutoTriggerInterval(300_000));
-			expect(result.current.autoTriggerInterval).toBe(300_000);
+			act(() =>
+				result.current.setFilters({ status: "Answered", category: "deploy" }),
+			);
+			expect(result.current.filters.status).toBe("Answered");
+			expect(result.current.filters.category).toBe("deploy");
+		});
+	});
+
+	describe("polling", () => {
+		it("starts with polling disabled when no pending questions", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([makeQuestion({ status: "Answered" })]),
+			);
+			const { result } = renderHook(() => useAskService());
+			await waitFor(() => expect(result.current.loading).toBe(false));
+			expect(result.current.pollingEnabled).toBe(false);
+		});
+
+		it("auto-enables polling when there are pending questions", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([makeQuestion({ status: "Pending" })]),
+			);
+			const { result } = renderHook(() => useAskService());
+			await waitFor(() => expect(result.current.pollingEnabled).toBe(true));
+		});
+
+		it("setPollingEnabled toggles polling on and off", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([]),
+			);
+			const { result } = renderHook(() => useAskService());
+			await waitFor(() => expect(result.current.loading).toBe(false));
+
+			act(() => result.current.setPollingEnabled(true));
+			expect(result.current.pollingEnabled).toBe(true);
+
+			act(() => result.current.setPollingEnabled(false));
+			expect(result.current.pollingEnabled).toBe(false);
+		});
+
+		it("setPollingInterval updates the interval", async () => {
+			vi.spyOn(askClient, "listQuestions").mockResolvedValue(
+				makePaginatedList([]),
+			);
+			const { result } = renderHook(() => useAskService());
+			await waitFor(() => expect(result.current.loading).toBe(false));
+
+			act(() => result.current.setPollingInterval(30_000));
+			expect(result.current.pollingInterval).toBe(30_000);
 		});
 	});
 });

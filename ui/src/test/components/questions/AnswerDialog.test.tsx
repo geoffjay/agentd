@@ -1,18 +1,20 @@
 /**
- * Tests for AnswerDialog component.
+ * Tests for AnswerDialog component (v0.12.0 model).
  */
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AnswerDialog } from "@/components/questions/AnswerDialog";
-import type { QuestionInfo } from "@/types/ask";
+import type { Question } from "@/types/ask";
 
-const QUESTION: QuestionInfo = {
-	question_id: "q-1",
-	notification_id: "notif-abc",
-	check_type: "TmuxSessions",
-	asked_at: "2024-06-01T12:00:00Z",
+const QUESTION: Question = {
+	id: "q-1",
+	agent_id: "agent-abc",
+	category: "deployment",
+	question: "Should we proceed with the rollout?",
+	priority: "High",
 	status: "Pending",
+	asked_at: "2024-06-01T12:00:00Z",
 };
 
 describe("AnswerDialog", () => {
@@ -55,7 +57,7 @@ describe("AnswerDialog", () => {
 		expect(screen.getByText("Answer Question")).toBeTruthy();
 	});
 
-	it("shows notification ID in context", () => {
+	it("shows the question text", () => {
 		render(
 			<AnswerDialog
 				open
@@ -65,7 +67,22 @@ describe("AnswerDialog", () => {
 				onClose={vi.fn()}
 			/>,
 		);
-		expect(screen.getByText("notif-abc")).toBeTruthy();
+		expect(
+			screen.getByText("Should we proceed with the rollout?"),
+		).toBeTruthy();
+	});
+
+	it("shows the agent ID in context block", () => {
+		render(
+			<AnswerDialog
+				open
+				question={QUESTION}
+				answering={false}
+				onSubmit={vi.fn()}
+				onClose={vi.fn()}
+			/>,
+		);
+		expect(screen.getByText("agent-abc")).toBeTruthy();
 	});
 
 	it("shows quick answer buttons", () => {
@@ -78,9 +95,10 @@ describe("AnswerDialog", () => {
 				onClose={vi.fn()}
 			/>,
 		);
-		expect(screen.getByText("Yes, start sessions")).toBeTruthy();
-		expect(screen.getByText("No, ignore for now")).toBeTruthy();
+		expect(screen.getByText("Yes")).toBeTruthy();
+		expect(screen.getByText("No")).toBeTruthy();
 		expect(screen.getByText("Acknowledged")).toBeTruthy();
+		expect(screen.getByText("Need more info")).toBeTruthy();
 	});
 
 	it("calls onSubmit with quick answer value when clicked", () => {
@@ -94,7 +112,7 @@ describe("AnswerDialog", () => {
 				onClose={vi.fn()}
 			/>,
 		);
-		fireEvent.click(screen.getByText("Yes, start sessions"));
+		fireEvent.click(screen.getByText("Yes"));
 		expect(onSubmit).toHaveBeenCalledWith("q-1", "yes");
 	});
 
@@ -190,5 +208,18 @@ describe("AnswerDialog", () => {
 			/>,
 		);
 		expect(screen.getByText("Submitting…")).toBeTruthy();
+	});
+
+	it("shows context when provided", () => {
+		render(
+			<AnswerDialog
+				open
+				question={{ ...QUESTION, context: "Deploy to staging first" }}
+				answering={false}
+				onSubmit={vi.fn()}
+				onClose={vi.fn()}
+			/>,
+		);
+		expect(screen.getByText("Deploy to staging first")).toBeTruthy();
 	});
 });
