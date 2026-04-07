@@ -1,19 +1,15 @@
 /**
- * Service configuration with environment variable defaults
+ * Service configuration — all services are accessed through the UI proxy server.
+ *
+ * The UI server at `/api/<service>/**` proxies requests to the appropriate
+ * backend service, eliminating port mismatch issues when running in production.
  */
 export const serviceConfig = {
-	askServiceUrl:
-		import.meta.env.VITE_AGENTD_ASK_SERVICE_URL ?? "http://localhost:17001",
-	notifyServiceUrl:
-		import.meta.env.VITE_AGENTD_NOTIFY_SERVICE_URL ?? "http://localhost:17004",
-	orchestratorServiceUrl:
-		import.meta.env.VITE_AGENTD_ORCHESTRATOR_SERVICE_URL ??
-		"http://localhost:17006",
-	memoryServiceUrl:
-		import.meta.env.VITE_AGENTD_MEMORY_SERVICE_URL ?? "http://localhost:17008",
-	communicateServiceUrl:
-		import.meta.env.VITE_AGENTD_COMMUNICATE_SERVICE_URL ??
-		"http://localhost:17010",
+	askServiceUrl: "/api/ask",
+	notifyServiceUrl: "/api/notify",
+	orchestratorServiceUrl: "/api/orchestrator",
+	memoryServiceUrl: "/api/memory",
+	communicateServiceUrl: "/api/communicate",
 } as const;
 
 export type ServiceConfig = typeof serviceConfig;

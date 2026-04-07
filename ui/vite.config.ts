@@ -13,6 +13,10 @@ export default defineConfig(({ mode }) => {
 		env.VITE_AGENTD_NOTIFY_SERVICE_URL || "http://localhost:17004";
 	const orchestratorServiceUrl =
 		env.VITE_AGENTD_ORCHESTRATOR_SERVICE_URL || "http://localhost:17006";
+	const memoryServiceUrl =
+		env.VITE_AGENTD_MEMORY_SERVICE_URL || "http://localhost:17008";
+	const communicateServiceUrl =
+		env.VITE_AGENTD_COMMUNICATE_SERVICE_URL || "http://localhost:17010";
 
 	return {
 		plugins: [react(), tailwindcss()],
@@ -48,6 +52,18 @@ export default defineConfig(({ mode }) => {
 					target: orchestratorServiceUrl,
 					changeOrigin: true,
 					rewrite: (path) => path.replace(/^\/api\/orchestrator/, ""),
+				},
+				"/api/memory": {
+					target: memoryServiceUrl,
+					changeOrigin: true,
+					ws: true,
+					rewrite: (path) => path.replace(/^\/api\/memory/, ""),
+				},
+				"/api/communicate": {
+					target: communicateServiceUrl,
+					changeOrigin: true,
+					ws: true,
+					rewrite: (path) => path.replace(/^\/api\/communicate/, ""),
 				},
 			},
 			watch: {

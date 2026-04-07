@@ -11,6 +11,8 @@ pub struct ProxyState {
     pub ask_url: String,
     pub notify_url: String,
     pub orchestrator_url: String,
+    pub memory_url: String,
+    pub communicate_url: String,
 }
 
 /// Proxy requests under `/api/ask/**` to the ask service.
@@ -35,6 +37,22 @@ pub async fn proxy_orchestrator(
     req: Request<Body>,
 ) -> Result<Response, StatusCode> {
     proxy_request(&state.client, &state.orchestrator_url, "/api/orchestrator", req).await
+}
+
+/// Proxy requests under `/api/memory/**` to the memory service.
+pub async fn proxy_memory(
+    State(state): State<ProxyState>,
+    req: Request<Body>,
+) -> Result<Response, StatusCode> {
+    proxy_request(&state.client, &state.memory_url, "/api/memory", req).await
+}
+
+/// Proxy requests under `/api/communicate/**` to the communicate service.
+pub async fn proxy_communicate(
+    State(state): State<ProxyState>,
+    req: Request<Body>,
+) -> Result<Response, StatusCode> {
+    proxy_request(&state.client, &state.communicate_url, "/api/communicate", req).await
 }
 
 /// Forward an inbound request to an upstream service, stripping the prefix.
