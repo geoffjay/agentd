@@ -35,6 +35,7 @@ import { useSearchParams } from "react-router-dom";
 import { AddRepositoryDialog } from "@/components/index/AddRepositoryDialog";
 import { RepositoryList } from "@/components/index/RepositoryList";
 import { SearchBar } from "@/components/index/SearchBar";
+import { SearchResultsTable } from "@/components/index/SearchResultsTable";
 import { useIndexService } from "@/hooks/useIndexService";
 import type { CodeSearchMode } from "@/types/codeindex";
 
@@ -367,34 +368,12 @@ export function IndexMain() {
 						<SearchSummary total={searchTotal} queryMs={searchQueryMs} />
 					)}
 
-					{/* Results placeholder — SearchResultsTable (issue-1036) renders here */}
-					{hasResults && (
-						<div className="divide-y divide-th-border rounded-md border border-th-border">
-							{searchResults.map((result) => (
-								<div key={result.id} className="px-4 py-3 space-y-1">
-									<div className="flex items-center justify-between gap-2">
-										<span className="text-sm font-medium text-th-text font-mono">
-											{result.file_path}
-										</span>
-										<span className="shrink-0 rounded-full bg-th-surface-sunken px-2 py-0.5 text-xs text-th-text-muted">
-											{result.language}
-										</span>
-									</div>
-									<p className="text-xs text-th-text-muted">
-										Lines {result.start_line}–{result.end_line}
-										{result.symbol_name && (
-											<span className="ml-2 font-mono">{result.symbol_name}</span>
-										)}
-										<span className="ml-2 opacity-60">
-											score {result.score.toFixed(3)}
-										</span>
-									</p>
-									<pre className="mt-1 overflow-x-auto rounded bg-th-surface-sunken px-3 py-2 text-xs text-th-text-secondary whitespace-pre-wrap line-clamp-4">
-										{result.content}
-									</pre>
-								</div>
-							))}
-						</div>
+					{/* Results table with drawer */}
+					{(hasResults || searchLoading) && (
+						<SearchResultsTable
+							results={searchResults}
+							loading={searchLoading}
+						/>
 					)}
 
 					{/* Empty search state */}
