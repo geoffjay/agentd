@@ -34,6 +34,8 @@ pub struct ApiState {
     pub app_state: AppState,
     /// Optional orchestrator callback URL for ask_response events.
     pub orchestrator_url: Option<String>,
+    /// Shared HTTP client for outbound requests (e.g. orchestrator callbacks).
+    pub http_client: reqwest::Client,
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +85,7 @@ async fn answer_question_handler(
 
     // Fire-and-forget orchestrator callback.
     if let Some(ref url) = state.orchestrator_url {
-        fire_orchestrator_callback(url, &question, "question_answered");
+        fire_orchestrator_callback(&state.http_client, url, &question, "question_answered");
     }
 
     Ok(Json(question))
@@ -100,7 +102,7 @@ async fn dismiss_question_handler(
 
     // Fire-and-forget orchestrator callback.
     if let Some(ref url) = state.orchestrator_url {
-        fire_orchestrator_callback(url, &question, "question_dismissed");
+        fire_orchestrator_callback(&state.http_client, url, &question, "question_dismissed");
     }
 
     Ok(Json(question))
@@ -156,7 +158,12 @@ async fn get_question_handler(
 /// Spawns a background task that POSTs the ask event to the orchestrator.
 ///
 /// Failures are logged but do not block the API response.
-fn fire_orchestrator_callback(orchestrator_url: &str, question: &Question, event_type: &str) {
+fn fire_orchestrator_callback(
+    client: &reqwest::Client,
+    orchestrator_url: &str,
+    question: &Question,
+    event_type: &str,
+) {
     let url = format!("{}/events/ask", orchestrator_url.trim_end_matches('/'));
     let payload = serde_json::json!({
         "event_type": event_type,
@@ -170,8 +177,8 @@ fn fire_orchestrator_callback(orchestrator_url: &str, question: &Question, event
         "answered_at": question.answered_at,
     });
 
+    let client = client.clone();
     tokio::spawn(async move {
-        let client = reqwest::Client::new();
         match client.post(&url).json(&payload).send().await {
             Ok(resp) if resp.status().is_success() => {
                 tracing::debug!("Orchestrator callback sent to {}", url);

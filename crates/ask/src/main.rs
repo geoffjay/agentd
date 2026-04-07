@@ -66,8 +66,11 @@ async fn main() -> Result<()> {
 
     let app_state = AppState::new_with_storage(storage);
 
-    let api_state =
-        ApiState { app_state: app_state.clone(), orchestrator_url: Some(orchestrator_url) };
+    let api_state = ApiState {
+        app_state: app_state.clone(),
+        orchestrator_url: Some(orchestrator_url),
+        http_client: reqwest::Client::new(),
+    };
 
     let metrics_handle = init_metrics();
     let metrics_router =

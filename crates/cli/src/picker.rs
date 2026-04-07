@@ -167,6 +167,7 @@ pub fn select_recipient<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::IsTerminal;
 
     fn make_agent(name: &str) -> RecipientOption {
         RecipientOption::agent(name, Uuid::new_v4(), AgentStatus::Running, ActivityState::Idle)
@@ -270,14 +271,16 @@ mod tests {
 
     #[test]
     fn select_recipient_errors_without_tty() {
-        // In CI / test environments there is no interactive terminal, so
-        // dialoguer will fail.  We just verify it returns an error rather than
-        // panicking.
+        // When a TTY is attached (developer terminal), dialoguer will render
+        // an interactive picker and block on input, so skip this test.
+        // In CI / piped environments there is no TTY, so dialoguer will fail
+        // gracefully -- we verify it returns an error rather than panicking.
+        if std::io::stdin().is_terminal() {
+            return;
+        }
         let options = vec![make_agent("planner"), make_room("engineering", "group")];
         let result = select_recipient(&options, "Choose:");
-        // May succeed if somehow a TTY is attached, otherwise must be an error.
-        // We don't assert Ok because that would be environment-dependent.
-        let _ = result; // either path is acceptable — no panic is the contract.
+        assert!(result.is_err(), "expected error without a TTY");
     }
 
     // -----------------------------------------------------------------------

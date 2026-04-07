@@ -24,7 +24,7 @@ use uuid::Uuid;
 async fn make_app() -> axum::Router {
     let storage = QuestionStorage::in_memory().await.unwrap();
     let app_state = AppState::new_with_storage(storage);
-    let api_state = ApiState { app_state, orchestrator_url: None };
+    let api_state = ApiState { app_state, orchestrator_url: None, http_client: reqwest::Client::new() };
     create_router_with_tracing(api_state)
 }
 
@@ -430,7 +430,7 @@ async fn get_question_nonexistent_returns_404() {
 
 // ─── Orchestrator callback (fire-and-forget) ─────────────────────────────────
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn answer_fires_orchestrator_callback() {
     // Start a mock HTTP server to capture the callback.
     let mut server = mockito::Server::new_async().await;
@@ -439,7 +439,7 @@ async fn answer_fires_orchestrator_callback() {
 
     let storage = QuestionStorage::in_memory().await.unwrap();
     let app_state = AppState::new_with_storage(storage);
-    let api_state = ApiState { app_state, orchestrator_url: Some(server.url()) };
+    let api_state = ApiState { app_state, orchestrator_url: Some(server.url()), http_client: reqwest::Client::new() };
     let app = create_router_with_tracing(api_state);
 
     let q = create_question(app.clone(), &create_question_request()).await;
@@ -460,7 +460,7 @@ async fn answer_fires_orchestrator_callback() {
     mock.assert_async().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dismiss_fires_orchestrator_callback() {
     let mut server = mockito::Server::new_async().await;
     let mock =
@@ -468,7 +468,7 @@ async fn dismiss_fires_orchestrator_callback() {
 
     let storage = QuestionStorage::in_memory().await.unwrap();
     let app_state = AppState::new_with_storage(storage);
-    let api_state = ApiState { app_state, orchestrator_url: Some(server.url()) };
+    let api_state = ApiState { app_state, orchestrator_url: Some(server.url()), http_client: reqwest::Client::new() };
     let app = create_router_with_tracing(api_state);
 
     let q = create_question(app.clone(), &create_question_request()).await;
@@ -491,7 +491,7 @@ async fn callback_failure_does_not_block_answer_response() {
     let storage = QuestionStorage::in_memory().await.unwrap();
     let app_state = AppState::new_with_storage(storage);
     let api_state =
-        ApiState { app_state, orchestrator_url: Some("http://127.0.0.1:19999".to_string()) };
+        ApiState { app_state, orchestrator_url: Some("http://127.0.0.1:19999".to_string()), http_client: reqwest::Client::new() };
     let app = create_router_with_tracing(api_state);
 
     let q = create_question(app.clone(), &create_question_request()).await;

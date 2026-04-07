@@ -225,8 +225,9 @@ async fn test_fetch_tasks_http_error_returns_err() {
 
     let result = source.fetch_tasks().await;
     assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("401") && msg.contains("Linear page fetch"), "error: {}", msg);
+    let err = result.unwrap_err();
+    let chain = format!("{:#}", err);
+    assert!(chain.contains("401") && chain.contains("Linear page fetch"), "error: {}", chain);
 }
 
 #[tokio::test]
