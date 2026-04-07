@@ -42,6 +42,8 @@ export {
 } from "./notification";
 export {
 	makeAnswerResponse,
+	makeQuestion,
+	makeQuestionActionResponse,
 	makeQuestionInfo,
 	makeTriggerResponse,
 	resetQuestionSeq,

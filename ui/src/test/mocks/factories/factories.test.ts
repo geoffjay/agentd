@@ -18,6 +18,8 @@ import {
 	makeNotificationList,
 	makePendingApproval,
 	makePrivateMemory,
+	makeQuestion,
+	makeQuestionActionResponse,
 	makeQuestionInfo,
 	makeQuestionMemory,
 	makeRequestMemory,
@@ -198,6 +200,57 @@ describe("makeTriggerResponse", () => {
 describe("makeAnswerResponse", () => {
 	it("defaults success to true", () => {
 		expect(makeAnswerResponse().success).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// New Question factory
+// ---------------------------------------------------------------------------
+
+describe("makeQuestion", () => {
+	it("defaults to Pending status", () => {
+		expect(makeQuestion().status).toBe("Pending");
+	});
+
+	it("defaults to Normal priority", () => {
+		expect(makeQuestion().priority).toBe("Normal");
+	});
+
+	it("includes required fields", () => {
+		const q = makeQuestion();
+		expect(q.id).toBeDefined();
+		expect(q.agent_id).toBeDefined();
+		expect(q.category).toBeDefined();
+		expect(q.question).toBeDefined();
+		expect(q.asked_at).toBeDefined();
+	});
+
+	it("applies overrides", () => {
+		const q = makeQuestion({
+			status: "Answered",
+			answer: "yes",
+			priority: "High",
+			category: "deployment",
+		});
+		expect(q.status).toBe("Answered");
+		expect(q.answer).toBe("yes");
+		expect(q.priority).toBe("High");
+		expect(q.category).toBe("deployment");
+	});
+});
+
+describe("makeQuestionActionResponse", () => {
+	it("defaults success to true", () => {
+		expect(makeQuestionActionResponse().success).toBe(true);
+	});
+
+	it("applies overrides", () => {
+		const r = makeQuestionActionResponse({
+			success: false,
+			message: "Already answered",
+		});
+		expect(r.success).toBe(false);
+		expect(r.message).toBe("Already answered");
 	});
 });
 
