@@ -179,6 +179,16 @@ mod tests {
         ) -> StoreResult<Vec<StoredChunk>> {
             Ok(vec![])
         }
+        async fn count_chunks(&self, _repo_id: &str) -> StoreResult<usize> {
+            Ok(0)
+        }
+        async fn sample_chunks(
+            &self,
+            _repo_id: &str,
+            _limit: usize,
+        ) -> StoreResult<Vec<StoredChunk>> {
+            Ok(vec![])
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
