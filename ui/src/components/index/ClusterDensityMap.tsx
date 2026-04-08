@@ -401,7 +401,7 @@ export function ClusterDensityMap({
 
 							{/* Plot */}
 							<div
-								style={{ height: 320 }}
+								style={{ height: 480 }}
 								aria-label={`Embedding distribution scatter plot for ${repoName}`}
 							>
 								<ResponsiveScatterPlotCanvas<ChartDatum>

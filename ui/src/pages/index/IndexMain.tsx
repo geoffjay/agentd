@@ -35,6 +35,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AddRepositoryDialog } from "@/components/index/AddRepositoryDialog";
 import { ClusterDensityMap } from "@/components/index/ClusterDensityMap";
+import { EmbeddingHeatMap } from "@/components/index/EmbeddingHeatMap";
 import { RepositoryList } from "@/components/index/RepositoryList";
 import { SearchBar } from "@/components/index/SearchBar";
 import { SearchResultsTable } from "@/components/index/SearchResultsTable";
@@ -140,7 +141,17 @@ export function IndexMain() {
 		embeddingError,
 		fetchEmbeddingSample,
 		clearEmbeddingSample,
+		hexbinCells,
+		hexbinTotal,
+		hexbinBinsParam,
+		hexbinLoading,
+		hexbinError,
+		fetchEmbeddingHexbin,
+		clearEmbeddingHexbin,
 	} = useIndexService();
+
+	// Threshold above which the heatmap is used instead of the scatter plot.
+	const HEATMAP_THRESHOLD = 5000;
 
 	const [searchParams, setSearchParams] = useSearchParams();
 
@@ -153,6 +164,24 @@ export function IndexMain() {
 	);
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [healthRepoId, setHealthRepoId] = useState<string>("");
+
+	// Once a fetch reveals that a repo exceeds HEATMAP_THRESHOLD we latch that
+	// decision here so that clearEmbeddingSample() (called when ClusterDensityMap
+	// unmounts) resetting embeddingTotal to 0 cannot flip useHeatmap back to false
+	// and trigger an infinite mount/unmount loop.
+	const [confirmedLargeRepoId, setConfirmedLargeRepoId] = useState<string | null>(null);
+
+	// Clear the latch whenever the selected repo changes.
+	useEffect(() => {
+		setConfirmedLargeRepoId(null);
+	}, [healthRepoId]);
+
+	// Latch once the scatter sample confirms the repo is above the threshold.
+	useEffect(() => {
+		if (!embeddingLoading && embeddingTotal > HEATMAP_THRESHOLD && healthRepoId) {
+			setConfirmedLargeRepoId(healthRepoId);
+		}
+	}, [embeddingLoading, embeddingTotal, healthRepoId]);
 
 	// Search filter state — kept here so IndexMain can sync them to the URL.
 	const [searchQuery, setSearchQuery] = useState(
@@ -461,23 +490,47 @@ export function IndexMain() {
 								</select>
 							</div>
 
-							{/* Density map */}
-							{healthRepoId && (
-								<ClusterDensityMap
-									repoId={healthRepoId}
-									repoName={
-										repositories.find((r) => r.id === healthRepoId)?.name ??
-										healthRepoId
-									}
-									embeddingPoints={embeddingPoints}
-									embeddingTotal={embeddingTotal}
-									embeddingSampled={embeddingSampled}
-									embeddingLoading={embeddingLoading}
-									embeddingError={embeddingError}
-									onFetch={fetchEmbeddingSample}
-									onClear={clearEmbeddingSample}
-								/>
-							)}
+							{/* Density map — scatter plot for small repos, heatmap for large.
+							    We show the scatter while loading (it reveals the total_chunks).
+							    Once the total is known, switch to the heatmap for large repos. */}
+							{healthRepoId && (() => {
+								const repoName =
+									repositories.find((r) => r.id === healthRepoId)?.name ??
+									healthRepoId;
+								// Use heatmap once we have confirmed total > threshold.
+								// Also accept the live value so the switch happens in the same
+								// render where the fetch completes (before the latch effect runs).
+								const useHeatmap =
+									!!healthRepoId &&
+									(confirmedLargeRepoId === healthRepoId ||
+										(!embeddingLoading && embeddingTotal > HEATMAP_THRESHOLD));
+
+								return useHeatmap ? (
+									<EmbeddingHeatMap
+										repoId={healthRepoId}
+										repoName={repoName}
+										hexbinCells={hexbinCells}
+										hexbinTotal={hexbinTotal}
+										hexbinBinsParam={hexbinBinsParam}
+										hexbinLoading={hexbinLoading}
+										hexbinError={hexbinError}
+										onFetch={fetchEmbeddingHexbin}
+										onClear={clearEmbeddingHexbin}
+									/>
+								) : (
+									<ClusterDensityMap
+										repoId={healthRepoId}
+										repoName={repoName}
+										embeddingPoints={embeddingPoints}
+										embeddingTotal={embeddingTotal}
+										embeddingSampled={embeddingSampled}
+										embeddingLoading={embeddingLoading}
+										embeddingError={embeddingError}
+										onFetch={fetchEmbeddingSample}
+										onClear={clearEmbeddingSample}
+									/>
+								);
+							})()}
 
 							{!healthRepoId && (
 								<div className="flex flex-col items-center justify-center py-16 text-center">
