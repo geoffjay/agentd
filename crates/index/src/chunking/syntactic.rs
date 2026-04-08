@@ -85,6 +85,7 @@ fn ts_language_for(language: Language) -> tree_sitter::Language {
         Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         Language::Swift => tree_sitter_swift::LANGUAGE.into(),
         Language::Zig => tree_sitter_zig::LANGUAGE.into(),
+        Language::Go => tree_sitter_go::LANGUAGE.into(),
     }
 }
 
@@ -165,6 +166,7 @@ fn classify(
         Language::TypeScript => classify_js(kind, node, source), // TS grammar reuses JS node kinds
         Language::Swift => classify_swift(kind, node, source, parent_kind),
         Language::Zig => classify_zig(kind, node, source, parent_kind),
+        Language::Go => classify_go(kind, node, source),
     }
 }
 
@@ -361,6 +363,35 @@ fn swift_first_simple_identifier(node: &Node<'_>, source: &[u8]) -> Option<Strin
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// Go
+// ---------------------------------------------------------------------------
+
+/// Classify a Go AST node.
+///
+/// Go source constructs mapped to chunk types:
+/// - `function_declaration` → [`ChunkType::Function`]
+/// - `method_declaration`   → [`ChunkType::Method`]
+/// - `type_spec` with `struct_type` body → [`ChunkType::Struct`]
+/// - `type_spec` with `interface_type` body → [`ChunkType::Trait`]
+fn classify_go(kind: &str, node: &Node<'_>, source: &[u8]) -> Option<(ChunkType, Option<String>)> {
+    match kind {
+        "function_declaration" => Some((ChunkType::Function, field_text(node, "name", source))),
+        "method_declaration" => Some((ChunkType::Method, field_text(node, "name", source))),
+        "type_spec" => {
+            let name = field_text(node, "name", source);
+            let type_node = node.child_by_field_name("type")?;
+            let chunk_type = match type_node.kind() {
+                "struct_type" => ChunkType::Struct,
+                "interface_type" => ChunkType::Trait,
+                _ => return None,
+            };
+            Some((chunk_type, name))
+        }
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -625,6 +656,16 @@ fn extract_visibility(
             }
             Some(Visibility::Private)
         }
+        Language::Go => {
+            // Go uses capitalisation for export visibility.
+            // An identifier starting with an uppercase letter is exported (public).
+            let name = symbol_name.as_deref().unwrap_or("");
+            if name.starts_with(|c: char| c.is_uppercase()) {
+                Some(Visibility::Public)
+            } else {
+                Some(Visibility::Private)
+            }
+        }
     }
 }
 
@@ -798,6 +839,27 @@ fn extract_parameters(node: &Node<'_>, source: &[u8], language: Language) -> Vec
                     params.push(Parameter { name, type_annotation });
                 }
             }
+            Language::Go => {
+                // `parameter_declaration` holds one or more names plus a type.
+                if child.kind() == "parameter_declaration" {
+                    let type_annotation = child
+                        .child_by_field_name("type")
+                        .and_then(|n| n.utf8_text(source).ok())
+                        .map(|s| s.to_string());
+                    let mut name_cursor = child.walk();
+                    for gc in child.children(&mut name_cursor) {
+                        if gc.kind() == "identifier" {
+                            let name = gc.utf8_text(source).unwrap_or("").to_string();
+                            if !name.is_empty() {
+                                params.push(Parameter {
+                                    name,
+                                    type_annotation: type_annotation.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -888,6 +950,13 @@ fn extract_return_type(node: &Node<'_>, source: &[u8], language: Language) -> Op
             }
             None
         }
+        Language::Go => {
+            // `result` field: either a single type or a `parameter_list` of named returns.
+            node.child_by_field_name("result")
+                .and_then(|n| n.utf8_text(source).ok())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        }
     }
 }
 
@@ -913,6 +982,7 @@ fn extract_file_imports(root: Node<'_>, source: &[u8], language: Language) -> Ve
                 (child.kind() == "variable_declaration" || child.kind() == "VarDecl")
                     && zig_is_import_decl(&child, source)
             }
+            Language::Go => child.kind() == "import_declaration",
         };
         if is_import {
             if let Ok(text) = child.utf8_text(source) {
@@ -1553,5 +1623,161 @@ test "struct init" {
         let add =
             chunks.iter().find(|c| c.symbol_name.as_deref() == Some("add")).expect("add chunk");
         assert_eq!(add.metadata.visibility, Some(crate::metadata::Visibility::Public));
+    }
+
+    // ── Go ────────────────────────────────────────────────────────────────
+
+    const GO_SOURCE: &str = r#"package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Add adds two integers and returns the result.
+func Add(a, b int) int {
+	return a + b
+}
+
+// Format formats a string.
+func Format(s string) string {
+	return strings.TrimSpace(s)
+}
+
+func (r *Receiver) Method() string {
+	return fmt.Sprintf("receiver")
+}
+
+type Point struct {
+	X, Y float64
+}
+
+type Config struct {
+	Name    string
+	Enabled bool
+}
+
+type Stringer interface {
+	String() string
+}
+
+type ReadWriter interface {
+	Read() string
+	Write(s string)
+}
+"#;
+
+    #[test]
+    fn go_extracts_functions() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let fns: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Function).collect();
+        assert!(
+            fns.iter().any(|c| c.symbol_name.as_deref() == Some("Add")),
+            "should extract Add function"
+        );
+        assert!(
+            fns.iter().any(|c| c.symbol_name.as_deref() == Some("Format")),
+            "should extract Format function"
+        );
+    }
+
+    #[test]
+    fn go_extracts_method() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let methods: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Method).collect();
+        assert!(!methods.is_empty(), "should extract at least one method");
+        assert!(
+            methods.iter().any(|c| c.symbol_name.as_deref() == Some("Method")),
+            "should extract Method"
+        );
+    }
+
+    #[test]
+    fn go_extracts_structs() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let structs: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Struct).collect();
+        assert!(
+            structs.iter().any(|c| c.symbol_name.as_deref() == Some("Point")),
+            "should extract Point struct"
+        );
+        assert!(
+            structs.iter().any(|c| c.symbol_name.as_deref() == Some("Config")),
+            "should extract Config struct"
+        );
+    }
+
+    #[test]
+    fn go_extracts_interfaces() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let interfaces: Vec<_> =
+            chunks.iter().filter(|c| c.chunk_type == ChunkType::Trait).collect();
+        assert!(
+            interfaces.iter().any(|c| c.symbol_name.as_deref() == Some("Stringer")),
+            "should extract Stringer interface"
+        );
+        assert!(
+            interfaces.iter().any(|c| c.symbol_name.as_deref() == Some("ReadWriter")),
+            "should extract ReadWriter interface"
+        );
+    }
+
+    #[test]
+    fn go_exported_symbol_is_public() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let add = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("Add")).unwrap();
+        assert_eq!(add.metadata.visibility, Some(crate::metadata::Visibility::Public));
+    }
+
+    #[test]
+    fn go_unexported_symbol_is_private() {
+        let source = "package main\nfunc privateHelper() {}\n";
+        let chunks = chunker().chunk("main.go", source, Language::Go).unwrap();
+        let f = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("privateHelper")).unwrap();
+        assert_eq!(f.metadata.visibility, Some(crate::metadata::Visibility::Private));
+    }
+
+    #[test]
+    fn go_function_extracts_parameters() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let add = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("Add")).unwrap();
+        let params = &add.metadata.parameters;
+        assert_eq!(params.len(), 2, "Add should have 2 parameters");
+        let names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"a"), "should include param 'a'");
+        assert!(names.contains(&"b"), "should include param 'b'");
+    }
+
+    #[test]
+    fn go_function_extracts_return_type() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let add = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("Add")).unwrap();
+        assert_eq!(add.metadata.return_type.as_deref(), Some("int"));
+    }
+
+    #[test]
+    fn go_chunk_line_numbers_are_nonzero() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        for chunk in &chunks {
+            assert!(chunk.start_line >= 1, "start_line should be 1-based");
+            assert!(chunk.end_line >= chunk.start_line);
+        }
+    }
+
+    #[test]
+    fn go_chunk_path_via_extension() {
+        let path = Path::new("pkg/util.go");
+        let source = "package util\nfunc Helper() {}\n";
+        let chunks = chunker().chunk_path(path, source).unwrap();
+        assert!(!chunks.is_empty());
+        assert_eq!(chunks[0].language, Language::Go);
+    }
+
+    #[test]
+    fn go_import_declaration_collected() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let fn_chunk = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("Add")).unwrap();
+        assert!(!fn_chunk.metadata.imports.is_empty(), "imports should be attached to chunks");
+        let imports_text = fn_chunk.metadata.imports.join("\n");
+        assert!(imports_text.contains("fmt"), "should include fmt import");
     }
 }
