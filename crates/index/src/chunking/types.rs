@@ -17,6 +17,7 @@ pub enum Language {
     Python,
     JavaScript,
     TypeScript,
+    Swift,
 }
 
 impl Language {
@@ -29,6 +30,7 @@ impl Language {
             "py" => Some(Language::Python),
             "js" | "mjs" | "cjs" => Some(Language::JavaScript),
             "ts" | "mts" | "cts" => Some(Language::TypeScript),
+            "swift" => Some(Language::Swift),
             _ => None,
         }
     }
@@ -40,6 +42,7 @@ impl Language {
             Language::Python => "python",
             Language::JavaScript => "javascript",
             Language::TypeScript => "typescript",
+            Language::Swift => "swift",
         }
     }
 }
@@ -59,6 +62,7 @@ impl std::str::FromStr for Language {
             "python" | "py" => Ok(Language::Python),
             "javascript" | "js" => Ok(Language::JavaScript),
             "typescript" | "ts" => Ok(Language::TypeScript),
+            "swift" => Ok(Language::Swift),
             other => anyhow::bail!("Unknown language: {other}"),
         }
     }
@@ -106,13 +110,13 @@ impl fmt::Display for HierarchyLevel {
 pub enum ChunkType {
     /// A free function or standalone function declaration.
     Function,
-    /// A class definition (Python, JS/TS).
+    /// A class definition (Python, JS/TS, Swift).
     Class,
     /// A method defined inside a class or impl block.
     Method,
-    /// A struct definition (Rust).
+    /// A struct definition (Rust, Swift).
     Struct,
-    /// An enum definition (Rust).
+    /// An enum definition (Rust, Swift).
     Enum,
     /// A trait definition (Rust).
     Trait,
@@ -120,6 +124,10 @@ pub enum ChunkType {
     Impl,
     /// A module declaration (Rust `mod`).
     Module,
+    /// A protocol definition (Swift).
+    Protocol,
+    /// An extension declaration (Swift — adds methods to an existing type).
+    Extension,
 }
 
 impl ChunkType {
@@ -134,6 +142,8 @@ impl ChunkType {
             ChunkType::Trait => "trait",
             ChunkType::Impl => "impl",
             ChunkType::Module => "module",
+            ChunkType::Protocol => "protocol",
+            ChunkType::Extension => "extension",
         }
     }
 }
@@ -223,6 +233,11 @@ mod tests {
     }
 
     #[test]
+    fn test_language_from_path_swift() {
+        assert_eq!(Language::from_path(Path::new("App.swift")), Some(Language::Swift));
+    }
+
+    #[test]
     fn test_language_from_path_unknown() {
         assert_eq!(Language::from_path(Path::new("readme.md")), None);
         assert_eq!(Language::from_path(Path::new("noext")), None);
@@ -234,6 +249,7 @@ mod tests {
         assert_eq!(Language::Python.as_str(), "python");
         assert_eq!(Language::JavaScript.as_str(), "javascript");
         assert_eq!(Language::TypeScript.as_str(), "typescript");
+        assert_eq!(Language::Swift.as_str(), "swift");
     }
 
     #[test]
@@ -242,6 +258,7 @@ mod tests {
         assert_eq!("py".parse::<Language>().unwrap(), Language::Python);
         assert_eq!("js".parse::<Language>().unwrap(), Language::JavaScript);
         assert_eq!("ts".parse::<Language>().unwrap(), Language::TypeScript);
+        assert_eq!("swift".parse::<Language>().unwrap(), Language::Swift);
         assert!("cobol".parse::<Language>().is_err());
     }
 
@@ -260,6 +277,8 @@ mod tests {
         assert_eq!(ChunkType::Trait.as_str(), "trait");
         assert_eq!(ChunkType::Impl.as_str(), "impl");
         assert_eq!(ChunkType::Module.as_str(), "module");
+        assert_eq!(ChunkType::Protocol.as_str(), "protocol");
+        assert_eq!(ChunkType::Extension.as_str(), "extension");
     }
 
     #[test]

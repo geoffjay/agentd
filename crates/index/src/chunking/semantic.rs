@@ -222,6 +222,14 @@ fn is_prefix_line(line: &str, language: Language) -> bool {
                 || line.starts_with("// ")
                 || line.starts_with("@")
         }
+        Language::Swift => {
+            // Swift doc comments use `///` or `/** */`; attributes use `@`.
+            line.starts_with("///")
+                || line.starts_with("/**")
+                || line.starts_with("* ")
+                || line.starts_with("*/")
+                || line.starts_with("@")
+        }
     }
 }
 
