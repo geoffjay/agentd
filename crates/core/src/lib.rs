@@ -5,3 +5,6 @@
 //! full binary.
 
 pub mod api;
+pub mod entity;
+pub mod migration;
+pub mod storage;
