@@ -29,6 +29,14 @@ tool_policy:
     - "Bash(git push --force*)"
     # Block direct deletion of issues or milestones — always human
     - "Bash(gh issue delete *)"
+  # Bypass the Claude Code sandbox for commands that require direct TLS to
+  # GitHub. The sandbox intercepts outbound HTTPS with its own proxy cert,
+  # which causes x509 failures for git-spice and gh when talking to the
+  # GitHub GraphQL / REST APIs.
+  sandbox_bypass:
+    - "Bash(git-spice branch submit *)"
+    - "Bash(git-spice repo sync*)"
+    - "Bash(gh pr create *)"
 
 rooms:
   - engineering

@@ -280,10 +280,7 @@ impl AgentStorage {
                     session_entity::Column::TotalCostUsd,
                     Expr::value(snapshot.total_cost_usd),
                 )
-                .col_expr(
-                    session_entity::Column::NumTurns,
-                    Expr::value(snapshot.num_turns as i64),
-                )
+                .col_expr(session_entity::Column::NumTurns, Expr::value(snapshot.num_turns as i64))
                 .col_expr(
                     session_entity::Column::DurationMs,
                     Expr::value(snapshot.duration_ms as i64),

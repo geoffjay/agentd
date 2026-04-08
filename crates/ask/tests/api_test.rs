@@ -24,7 +24,8 @@ use uuid::Uuid;
 async fn make_app() -> axum::Router {
     let storage = QuestionStorage::in_memory().await.unwrap();
     let app_state = AppState::new_with_storage(storage);
-    let api_state = ApiState { app_state, orchestrator_url: None, http_client: reqwest::Client::new() };
+    let api_state =
+        ApiState { app_state, orchestrator_url: None, http_client: reqwest::Client::new() };
     create_router_with_tracing(api_state)
 }
 
@@ -439,7 +440,11 @@ async fn answer_fires_orchestrator_callback() {
 
     let storage = QuestionStorage::in_memory().await.unwrap();
     let app_state = AppState::new_with_storage(storage);
-    let api_state = ApiState { app_state, orchestrator_url: Some(server.url()), http_client: reqwest::Client::new() };
+    let api_state = ApiState {
+        app_state,
+        orchestrator_url: Some(server.url()),
+        http_client: reqwest::Client::new(),
+    };
     let app = create_router_with_tracing(api_state);
 
     let q = create_question(app.clone(), &create_question_request()).await;
@@ -468,7 +473,11 @@ async fn dismiss_fires_orchestrator_callback() {
 
     let storage = QuestionStorage::in_memory().await.unwrap();
     let app_state = AppState::new_with_storage(storage);
-    let api_state = ApiState { app_state, orchestrator_url: Some(server.url()), http_client: reqwest::Client::new() };
+    let api_state = ApiState {
+        app_state,
+        orchestrator_url: Some(server.url()),
+        http_client: reqwest::Client::new(),
+    };
     let app = create_router_with_tracing(api_state);
 
     let q = create_question(app.clone(), &create_question_request()).await;
@@ -490,8 +499,11 @@ async fn callback_failure_does_not_block_answer_response() {
     // Point at a URL that will refuse the connection.
     let storage = QuestionStorage::in_memory().await.unwrap();
     let app_state = AppState::new_with_storage(storage);
-    let api_state =
-        ApiState { app_state, orchestrator_url: Some("http://127.0.0.1:19999".to_string()), http_client: reqwest::Client::new() };
+    let api_state = ApiState {
+        app_state,
+        orchestrator_url: Some("http://127.0.0.1:19999".to_string()),
+        http_client: reqwest::Client::new(),
+    };
     let app = create_router_with_tracing(api_state);
 
     let q = create_question(app.clone(), &create_question_request()).await;

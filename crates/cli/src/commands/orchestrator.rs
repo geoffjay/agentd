@@ -2149,31 +2149,45 @@ fn format_duration_ms(ms: u64) -> String {
 
 fn display_policy(policy: &ToolPolicy) {
     match policy {
-        ToolPolicy::AllowAll => {
+        ToolPolicy::AllowAll { sandbox_bypass } => {
             println!("{}: {}", "Mode".bold(), "allow_all".green());
             println!("{}: all tools permitted", "Effect".bold());
+            display_sandbox_bypass(sandbox_bypass);
         }
-        ToolPolicy::DenyAll => {
+        ToolPolicy::DenyAll { sandbox_bypass } => {
             println!("{}: {}", "Mode".bold(), "deny_all".red());
             println!("{}: no tools permitted", "Effect".bold());
+            display_sandbox_bypass(sandbox_bypass);
         }
-        ToolPolicy::AllowList { tools } => {
+        ToolPolicy::AllowList { tools, sandbox_bypass } => {
             println!("{}: {}", "Mode".bold(), "allow_list".yellow());
             println!("{}: only these tools permitted:", "Effect".bold());
             for tool in tools {
                 println!("  - {}", tool.cyan());
             }
+            display_sandbox_bypass(sandbox_bypass);
         }
-        ToolPolicy::DenyList { tools } => {
+        ToolPolicy::DenyList { tools, sandbox_bypass } => {
             println!("{}: {}", "Mode".bold(), "deny_list".yellow());
             println!("{}: all tools except these:", "Effect".bold());
             for tool in tools {
                 println!("  - {}", tool.red());
             }
+            display_sandbox_bypass(sandbox_bypass);
         }
-        ToolPolicy::RequireApproval => {
+        ToolPolicy::RequireApproval { sandbox_bypass } => {
             println!("{}: {}", "Mode".bold(), "require_approval".bright_yellow());
             println!("{}: every tool request requires human approval", "Effect".bold());
+            display_sandbox_bypass(sandbox_bypass);
+        }
+    }
+}
+
+fn display_sandbox_bypass(globs: &[String]) {
+    if !globs.is_empty() {
+        println!("{}: (sandbox disabled for these commands)", "Bypass".bold().bright_yellow());
+        for glob in globs {
+            println!("  - {}", glob.yellow());
         }
     }
 }
@@ -2765,15 +2779,15 @@ fn display_agent(agent: &AgentResponse) {
         println!("{}: {}", "Model".bold(), model.cyan());
     }
     let policy_display = match &agent.config.tool_policy {
-        ToolPolicy::AllowAll => "allow_all".green().to_string(),
-        ToolPolicy::DenyAll => "deny_all".red().to_string(),
-        ToolPolicy::AllowList { tools } => {
+        ToolPolicy::AllowAll { .. } => "allow_all".green().to_string(),
+        ToolPolicy::DenyAll { .. } => "deny_all".red().to_string(),
+        ToolPolicy::AllowList { tools, .. } => {
             format!("{} [{}]", "allow_list".yellow(), tools.join(", "))
         }
-        ToolPolicy::DenyList { tools } => {
+        ToolPolicy::DenyList { tools, .. } => {
             format!("{} [{}]", "deny_list".yellow(), tools.join(", "))
         }
-        ToolPolicy::RequireApproval => "require_approval".bright_yellow().to_string(),
+        ToolPolicy::RequireApproval { .. } => "require_approval".bright_yellow().to_string(),
     };
     println!("{}: {}", "Tool Policy".bold(), policy_display);
 

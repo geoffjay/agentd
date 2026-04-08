@@ -624,8 +624,22 @@ async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &Connect
             let policy = registry.get_policy(agent_id).await;
             let policy_mode = policy.mode_str();
 
+            // Check sandbox_bypass first — takes priority over all other policy rules.
+            // A matching glob auto-approves the call with dangerouslyDisableSandbox injected.
+            if policy.matches_sandbox_bypass(&tool_name, Some(&input)) {
+                info!(
+                    %agent_id, %tool_name, decision = "sandbox_bypass",
+                    "Tool call matches sandbox_bypass glob — auto-approving with sandbox disabled"
+                );
+                let response = make_sandbox_bypass_response(&request_id, &input);
+                if let Err(e) = send_raw(agent_id, &response, registry).await {
+                    error!(%agent_id, %e, "Failed to send sandbox-bypass response");
+                }
+                return;
+            }
+
             match policy {
-                ToolPolicy::RequireApproval => {
+                ToolPolicy::RequireApproval { .. } => {
                     // Spawn a separate task that holds the response until a human decides.
                     // The recv loop continues immediately so keep_alive etc. are processed.
                     info!(%agent_id, %tool_name, %policy_mode, "Tool use requires human approval, holding...");
@@ -736,6 +750,30 @@ fn make_allow_response(request_id: &str, input: &Value) -> Value {
             "subtype": "success",
             "request_id": request_id,
             "response": { "behavior": "allow", "updatedInput": input }
+        }
+    })
+}
+
+/// Build a control response that allows the tool call with the sandbox disabled.
+///
+/// Injects `"dangerouslyDisableSandbox": true` into the `updatedInput` object so
+/// that Claude Code skips TLS interception and filesystem sandboxing for this
+/// specific tool call. Used when the tool matches a `sandbox_bypass` glob in the
+/// agent's tool policy.
+fn make_sandbox_bypass_response(request_id: &str, input: &Value) -> Value {
+    // Clone the input and inject dangerouslyDisableSandbox into the updatedInput map.
+    let mut updated = match input.as_object() {
+        Some(map) => map.clone(),
+        None => serde_json::Map::new(),
+    };
+    updated.insert("dangerouslyDisableSandbox".to_string(), serde_json::json!(true));
+
+    serde_json::json!({
+        "type": "control_response",
+        "response": {
+            "subtype": "success",
+            "request_id": request_id,
+            "response": { "behavior": "allow", "updatedInput": updated }
         }
     })
 }
