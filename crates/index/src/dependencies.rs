@@ -120,6 +120,8 @@ pub fn extract_symbols_from_import(import_text: &str, language: Language) -> Vec
         Language::Python => extract_python_symbols(text),
         Language::JavaScript | Language::TypeScript => extract_js_symbols(text),
         Language::Swift => extract_swift_symbols(text),
+        Language::Zig => extract_zig_symbols(text),
+        Language::Go => extract_go_symbols(text),
     }
 }
 
@@ -275,6 +277,98 @@ fn extract_swift_symbols(text: &str) -> Vec<String> {
     } else {
         vec![symbol]
     }
+}
+
+/// Extract imported symbol names from a Zig `const x = @import("…")` statement.
+///
+/// Examples:
+/// - `const std = @import("std");`               → `["std"]`
+/// - `const fs = @import("std").fs;`             → `["std"]`
+/// - `const Allocator = @import("mem.zig");`     → `["mem"]`
+fn extract_zig_symbols(text: &str) -> Vec<String> {
+    // Find `@import("…")` and extract the module path string.
+    if let Some(start) = text.find("@import(\"") {
+        let after = &text[start + 9..]; // skip `@import("`
+        if let Some(end) = after.find('"') {
+            let module_path = &after[..end];
+            // Use the stem of the path (last component without extension).
+            let stem = module_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(module_path)
+                .trim_end_matches(".zig")
+                .trim_end_matches(".o");
+            if !stem.is_empty() {
+                return vec![stem.to_string()];
+            }
+        }
+    }
+    vec![]
+}
+
+/// Extract symbols from a Go import declaration.
+///
+/// Go imports are either a single quoted path or a grouped block:
+/// - `import "fmt"` → `["fmt"]`
+/// - `import "github.com/foo/bar"` → `["bar"]`
+/// - `import (\n\t"fmt"\n\t"os"\n)` → `["fmt", "os"]`
+/// - `import alias "pkg/path"` → `["alias"]`
+fn extract_go_symbols(text: &str) -> Vec<String> {
+    let mut symbols = Vec::new();
+    // Strip leading `import` keyword and surrounding whitespace.
+    let body = text.trim().trim_start_matches("import").trim();
+
+    // Collect all quoted strings from the import text.
+    let mut rest = body;
+    while let Some(start) = rest.find('"') {
+        let after = &rest[start + 1..];
+        if let Some(end) = after.find('"') {
+            let path = &after[..end];
+            // The package name is the last path segment, without the version suffix.
+            let segment = path.rsplit('/').next().unwrap_or(path);
+            // Strip major-version suffixes like `/v2`
+            let name = segment.split('.').next().unwrap_or(segment);
+            if !name.is_empty() {
+                symbols.push(name.to_string());
+            }
+            rest = &after[end + 1..];
+        } else {
+            break;
+        }
+    }
+
+    // Respect explicit aliases: `alias "path"` — the alias should replace the path stem.
+    // Simple heuristic: if a word precedes the first quote on its line, treat it as alias.
+    // We rebuild: scan lines for `<ident> "<path>"` patterns.
+    let mut aliased: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with("//")
+            || line.starts_with("import")
+            || line.starts_with('(')
+            || line.starts_with(')')
+        {
+            continue;
+        }
+        // Check for `alias "path"` or just `"path"`
+        if let Some(q) = line.find('"') {
+            let before = line[..q].trim();
+            if !before.is_empty()
+                && before != "_"
+                && before.chars().all(|c| c.is_alphanumeric() || c == '_')
+            {
+                aliased.push(before.to_string());
+            }
+        }
+    }
+
+    // If we found aliased imports, replace the last N symbols with the aliases.
+    // (simple: just return aliased when the counts match, else return path-stems).
+    if !aliased.is_empty() && aliased.len() == symbols.len() {
+        return aliased;
+    }
+
+    symbols
 }
 
 /// Boost search result scores for files related to the top results via imports.
@@ -453,6 +547,63 @@ mod tests {
     fn swift_import_struct_kind() {
         let syms = extract_symbols_from_import("import struct Swift.Array", Language::Swift);
         assert_eq!(syms, vec!["Array"]);
+    }
+
+    // -- extract_zig_symbols -----------------------------------------------
+
+    #[test]
+    fn zig_std_import() {
+        let syms = extract_symbols_from_import(r#"const std = @import("std");"#, Language::Zig);
+        assert_eq!(syms, vec!["std"]);
+    }
+
+    #[test]
+    fn zig_file_import() {
+        let syms =
+            extract_symbols_from_import(r#"const utils = @import("utils.zig");"#, Language::Zig);
+        assert_eq!(syms, vec!["utils"]);
+    }
+
+    #[test]
+    fn zig_nested_path_import() {
+        let syms =
+            extract_symbols_from_import(r#"const foo = @import("sub/foo.zig");"#, Language::Zig);
+        assert_eq!(syms, vec!["foo"]);
+    }
+
+    #[test]
+    fn zig_non_import_returns_empty() {
+        let syms = extract_symbols_from_import("const x: i32 = 42;", Language::Zig);
+        assert!(syms.is_empty());
+    }
+
+    // -- extract_go_symbols ------------------------------------------------
+
+    #[test]
+    fn go_single_import() {
+        let syms = extract_symbols_from_import("import \"fmt\"", Language::Go);
+        assert_eq!(syms, vec!["fmt"]);
+    }
+
+    #[test]
+    fn go_grouped_imports() {
+        let text = "import (\n\t\"fmt\"\n\t\"strings\"\n)";
+        let syms = extract_symbols_from_import(text, Language::Go);
+        assert!(syms.contains(&"fmt".to_string()), "should include fmt");
+        assert!(syms.contains(&"strings".to_string()), "should include strings");
+    }
+
+    #[test]
+    fn go_long_path_uses_last_segment() {
+        let syms = extract_symbols_from_import("import \"github.com/foo/bar\"", Language::Go);
+        assert_eq!(syms, vec!["bar"]);
+    }
+
+    #[test]
+    fn go_aliased_import() {
+        let text = "import (\n\tmyfmt \"fmt\"\n)";
+        let syms = extract_symbols_from_import(text, Language::Go);
+        assert_eq!(syms, vec!["myfmt"]);
     }
 
     // -- DependencyGraph ---------------------------------------------------

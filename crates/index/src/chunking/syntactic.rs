@@ -84,6 +84,8 @@ fn ts_language_for(language: Language) -> tree_sitter::Language {
         Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
         Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         Language::Swift => tree_sitter_swift::LANGUAGE.into(),
+        Language::Zig => tree_sitter_zig::LANGUAGE.into(),
+        Language::Go => tree_sitter_go::LANGUAGE.into(),
     }
 }
 
@@ -163,6 +165,8 @@ fn classify(
         Language::JavaScript => classify_js(kind, node, source),
         Language::TypeScript => classify_js(kind, node, source), // TS grammar reuses JS node kinds
         Language::Swift => classify_swift(kind, node, source, parent_kind),
+        Language::Zig => classify_zig(kind, node, source, parent_kind),
+        Language::Go => classify_go(kind, node, source),
     }
 }
 
@@ -362,6 +366,163 @@ fn swift_first_simple_identifier(node: &Node<'_>, source: &[u8]) -> Option<Strin
 }
 
 // ---------------------------------------------------------------------------
+// Go
+// ---------------------------------------------------------------------------
+
+/// Classify a Go AST node.
+///
+/// Go source constructs mapped to chunk types:
+/// - `function_declaration` → [`ChunkType::Function`]
+/// - `method_declaration`   → [`ChunkType::Method`]
+/// - `type_spec` with `struct_type` body → [`ChunkType::Struct`]
+/// - `type_spec` with `interface_type` body → [`ChunkType::Trait`]
+fn classify_go(kind: &str, node: &Node<'_>, source: &[u8]) -> Option<(ChunkType, Option<String>)> {
+    match kind {
+        "function_declaration" => Some((ChunkType::Function, field_text(node, "name", source))),
+        "method_declaration" => Some((ChunkType::Method, field_text(node, "name", source))),
+        "type_spec" => {
+            let name = field_text(node, "name", source);
+            let type_node = node.child_by_field_name("type")?;
+            let chunk_type = match type_node.kind() {
+                "struct_type" => ChunkType::Struct,
+                "interface_type" => ChunkType::Trait,
+                _ => return None,
+            };
+            Some((chunk_type, name))
+        }
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Zig
+// ---------------------------------------------------------------------------
+
+/// Classify a Zig AST node.
+///
+/// Zig source constructs mapped to chunk types:
+/// - `function_declaration` → [`ChunkType::Function`] or [`ChunkType::Method`]
+/// - `test_declaration`     → [`ChunkType::Test`]
+/// - `variable_declaration` with struct/enum/union/error initialiser
+///   → [`ChunkType::Struct`] / [`ChunkType::Enum`] / [`ChunkType::ErrorSet`]
+///
+/// Note: in tree-sitter-zig the grammar node names may vary by version.
+/// The classifier tries multiple candidate names for robustness.
+fn classify_zig(
+    kind: &str,
+    node: &Node<'_>,
+    source: &[u8],
+    parent_kind: Option<&str>,
+) -> Option<(ChunkType, Option<String>)> {
+    match kind {
+        // ── Functions ──────────────────────────────────────────────────────
+        "function_declaration" => {
+            // Name is the first `identifier` child (field_text works since the
+            // grammar exposes it as the `name` field in tree-sitter-zig 1.x).
+            let name =
+                field_text(node, "name", source).or_else(|| zig_first_identifier(node, source));
+            // When a function_declaration is nested inside a variable_declaration
+            // (i.e. inside a struct/enum/union body), classify it as a method.
+            let chunk_type = if parent_kind
+                .is_some_and(|k| k == "variable_declaration" || k.contains("struct"))
+            {
+                ChunkType::Method
+            } else {
+                ChunkType::Function
+            };
+            Some((chunk_type, name))
+        }
+        // ── Tests ──────────────────────────────────────────────────────────
+        "test_declaration" => {
+            // Test name is inside a `string` → `string_content` child.
+            let name = zig_test_name(node, source);
+            Some((ChunkType::Test, name))
+        }
+        // ── Named type declarations via `const Name = <type> { … }` ───────
+        "variable_declaration" => {
+            // Only chunk const declarations that initialise a container type.
+            // The declared name is in the first `identifier` child.
+            let name = zig_first_identifier(node, source);
+            let chunk_type = zig_container_kind(node)?;
+            Some((chunk_type, name))
+        }
+        _ => None,
+    }
+}
+
+/// Infer the chunk type from a Zig variable declaration's initialiser value.
+///
+/// Returns `Some(...)` only when the value is a container literal (struct,
+/// enum, union) or an error set.  Returns `None` for plain value assignments.
+fn zig_container_kind(decl: &Node<'_>) -> Option<ChunkType> {
+    let mut cursor = decl.walk();
+    for child in decl.children(&mut cursor) {
+        match child.kind() {
+            "struct_declaration" => return Some(ChunkType::Struct),
+            "enum_declaration" => return Some(ChunkType::Enum),
+            "union_declaration" => return Some(ChunkType::Struct), // unions → Struct
+            "error_set_declaration" => return Some(ChunkType::ErrorSet),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Extract the test name from a Zig `test "…" { }` declaration.
+///
+/// In tree-sitter-zig 1.x the string node structure is:
+/// `test_declaration → string → string_content`.
+fn zig_test_name(node: &Node<'_>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "string" {
+            // Look for the string_content grandchild.
+            let mut inner = child.walk();
+            for gc in child.children(&mut inner) {
+                if gc.kind() == "string_content" {
+                    if let Ok(text) = gc.utf8_text(source) {
+                        let s = text.trim().to_string();
+                        if !s.is_empty() {
+                            return Some(s);
+                        }
+                    }
+                }
+            }
+            // Fallback: use the whole string node text stripped of quotes.
+            if let Ok(text) = child.utf8_text(source) {
+                let s = text.trim().trim_matches('"').to_string();
+                if !s.is_empty() {
+                    return Some(s);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Returns `true` when a Zig `const x = @import("…")` declaration is an import.
+fn zig_is_import_decl(node: &Node<'_>, source: &[u8]) -> bool {
+    let text = node.utf8_text(source).unwrap_or("");
+    text.contains("@import(")
+}
+
+/// Return the text of the first `IDENTIFIER` / `identifier` direct child.
+fn zig_first_identifier(node: &Node<'_>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "IDENTIFIER" || child.kind() == "identifier" {
+            if let Ok(text) = child.utf8_text(source) {
+                let s = text.trim().to_string();
+                if !s.is_empty() {
+                    return Some(s);
+                }
+            }
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -483,6 +644,27 @@ fn extract_visibility(
             }
             // Swift default visibility is `internal` — closest mapping is Module.
             Some(Visibility::Module)
+        }
+        Language::Zig => {
+            // Zig uses `pub` as the sole visibility keyword.
+            // Scan children for a `pub` keyword node.
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if !child.is_named() && child.utf8_text(source).ok() == Some("pub") {
+                    return Some(Visibility::Public);
+                }
+            }
+            Some(Visibility::Private)
+        }
+        Language::Go => {
+            // Go uses capitalisation for export visibility.
+            // An identifier starting with an uppercase letter is exported (public).
+            let name = symbol_name.as_deref().unwrap_or("");
+            if name.starts_with(|c: char| c.is_uppercase()) {
+                Some(Visibility::Public)
+            } else {
+                Some(Visibility::Private)
+            }
         }
     }
 }
@@ -643,6 +825,41 @@ fn extract_parameters(node: &Node<'_>, source: &[u8], language: Language) -> Vec
                     params.push(Parameter { name, type_annotation });
                 }
             }
+            Language::Zig => {
+                // Zig parameters are `param_decl` nodes.
+                // Fields: `name` (IDENTIFIER) and `type` (the type expression).
+                if child.kind() == "param_decl" || child.kind() == "ParamDecl" {
+                    let name = field_text(&child, "name", source)
+                        .or_else(|| zig_first_identifier(&child, source))
+                        .unwrap_or_default();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    let type_annotation = field_text(&child, "type", source);
+                    params.push(Parameter { name, type_annotation });
+                }
+            }
+            Language::Go => {
+                // `parameter_declaration` holds one or more names plus a type.
+                if child.kind() == "parameter_declaration" {
+                    let type_annotation = child
+                        .child_by_field_name("type")
+                        .and_then(|n| n.utf8_text(source).ok())
+                        .map(|s| s.to_string());
+                    let mut name_cursor = child.walk();
+                    for gc in child.children(&mut name_cursor) {
+                        if gc.kind() == "identifier" {
+                            let name = gc.utf8_text(source).unwrap_or("").to_string();
+                            if !name.is_empty() {
+                                params.push(Parameter {
+                                    name,
+                                    type_annotation: type_annotation.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -699,6 +916,47 @@ fn extract_return_type(node: &Node<'_>, source: &[u8], language: Language) -> Op
             }
             None
         }
+        Language::Zig => {
+            // Zig return type follows `fn name(…) ReturnType { … }`.
+            // Try the `return_type` named field first.
+            if let Some(rt) = field_text(node, "return_type", source) {
+                return Some(rt);
+            }
+            // Fallback: the return type is the token between `)` and `{`.
+            // We find the closing `)` of the parameter list, then take the
+            // next named sibling as the return type.
+            let mut cursor = node.walk();
+            let children: Vec<_> = node.children(&mut cursor).collect();
+            let mut after_params = false;
+            for child in &children {
+                let k = child.kind();
+                if after_params {
+                    // Skip `callconv` and `align` modifiers.
+                    if k == "CallConv" || k == "AlignExpr" || k == "block" || k == "Block" {
+                        break;
+                    }
+                    if child.is_named() {
+                        if let Ok(text) = child.utf8_text(source) {
+                            let s = text.trim().to_string();
+                            if !s.is_empty() {
+                                return Some(s);
+                            }
+                        }
+                    }
+                }
+                if k == "param_list" || k == "FnProtoParamList" {
+                    after_params = true;
+                }
+            }
+            None
+        }
+        Language::Go => {
+            // `result` field: either a single type or a `parameter_list` of named returns.
+            node.child_by_field_name("result")
+                .and_then(|n| n.utf8_text(source).ok())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        }
     }
 }
 
@@ -717,6 +975,14 @@ fn extract_file_imports(root: Node<'_>, source: &[u8], language: Language) -> Ve
             }
             Language::JavaScript | Language::TypeScript => child.kind() == "import_statement",
             Language::Swift => child.kind() == "import_declaration",
+            // In Zig, `const x = @import("…")` at the top level acts as an import.
+            // We detect these as variable_declaration / VarDecl nodes whose init
+            // contains a `@import` builtin call.
+            Language::Zig => {
+                (child.kind() == "variable_declaration" || child.kind() == "VarDecl")
+                    && zig_is_import_decl(&child, source)
+            }
+            Language::Go => child.kind() == "import_declaration",
         };
         if is_import {
             if let Ok(text) = child.utf8_text(source) {
@@ -1187,5 +1453,331 @@ func fetchData(from url: String) async throws -> Data {
                 chunk.symbol_name.as_deref().unwrap_or("<anon>")
             );
         }
+    }
+
+    // ── Zig ───────────────────────────────────────────────────────────────
+
+    /// Representative Zig source covering the major symbol kinds.
+    const ZIG_SOURCE: &str = r#"
+const std = @import("std");
+const mem = @import("std").mem;
+
+/// Adds two integers.
+pub fn add(a: i32, b: i32) i32 {
+    return a + b;
+}
+
+pub fn main() void {
+    std.debug.print("Hello\n", .{});
+}
+
+/// A simple struct with a method.
+pub const MyStruct = struct {
+    value: i32,
+
+    pub fn init(v: i32) MyStruct {
+        return MyStruct{ .value = v };
+    }
+
+    pub fn getValue(self: MyStruct) i32 {
+        return self.value;
+    }
+};
+
+/// Colour enum.
+pub const Color = enum {
+    red,
+    green,
+    blue,
+};
+
+/// Tagged union.
+pub const MyUnion = union(enum) {
+    int: i32,
+    float: f64,
+};
+
+/// Error set.
+pub const MyError = error {
+    OutOfMemory,
+    InvalidInput,
+};
+
+test "basic addition" {
+    const result = add(1, 2);
+    try std.testing.expectEqual(result, 3);
+}
+
+test "struct init" {
+    const s = MyStruct.init(42);
+    try std.testing.expectEqual(s.getValue(), 42);
+}
+"#;
+
+    #[test]
+    fn zig_extracts_functions() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        let fns: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Function).collect();
+        let names: Vec<_> = fns.iter().flat_map(|c| &c.symbol_name).collect();
+        assert!(names.iter().any(|n| n.as_str() == "add"), "expected add function");
+        assert!(names.iter().any(|n| n.as_str() == "main"), "expected main function");
+    }
+
+    #[test]
+    fn zig_extracts_struct() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        let structs: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Struct).collect();
+        assert!(!structs.is_empty(), "expected at least one struct");
+        let names: Vec<_> = structs.iter().flat_map(|c| &c.symbol_name).collect();
+        assert!(names.iter().any(|n| n.as_str() == "MyStruct"), "expected MyStruct");
+    }
+
+    #[test]
+    fn zig_extracts_union_as_struct() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        let structs: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Struct).collect();
+        let names: Vec<_> = structs.iter().flat_map(|c| &c.symbol_name).collect();
+        assert!(names.iter().any(|n| n.as_str() == "MyUnion"), "expected MyUnion as struct");
+    }
+
+    #[test]
+    fn zig_extracts_enum() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        let enums: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Enum).collect();
+        assert_eq!(enums.len(), 1, "expected one enum");
+        assert_eq!(enums[0].symbol_name.as_deref(), Some("Color"));
+    }
+
+    #[test]
+    fn zig_extracts_error_set() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        let errors: Vec<_> =
+            chunks.iter().filter(|c| c.chunk_type == ChunkType::ErrorSet).collect();
+        assert_eq!(errors.len(), 1, "expected one error set");
+        assert_eq!(errors[0].symbol_name.as_deref(), Some("MyError"));
+    }
+
+    #[test]
+    fn zig_extracts_tests() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        let tests: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Test).collect();
+        assert_eq!(tests.len(), 2, "expected two test declarations");
+        let names: Vec<_> = tests.iter().flat_map(|c| &c.symbol_name).collect();
+        assert!(
+            names.iter().any(|n| n.as_str() == "basic addition"),
+            "expected 'basic addition' test"
+        );
+    }
+
+    #[test]
+    fn zig_extracts_methods() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        let methods: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Method).collect();
+        assert!(!methods.is_empty(), "expected methods inside struct");
+        let names: Vec<_> = methods.iter().flat_map(|c| &c.symbol_name).collect();
+        assert!(names.iter().any(|n| n.as_str() == "init"), "expected init method");
+        assert!(names.iter().any(|n| n.as_str() == "getValue"), "expected getValue method");
+    }
+
+    #[test]
+    fn zig_method_has_parent_symbol() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        let init =
+            chunks.iter().find(|c| c.symbol_name.as_deref() == Some("init")).expect("init chunk");
+        assert_eq!(init.parent_symbol.as_deref(), Some("MyStruct"));
+    }
+
+    #[test]
+    fn zig_chunk_path_detects_language() {
+        let path = Path::new("main.zig");
+        let chunks = chunker().chunk_path(path, "pub fn hello() void {}\n").unwrap();
+        assert!(!chunks.is_empty());
+        assert_eq!(chunks[0].language, Language::Zig);
+    }
+
+    #[test]
+    fn zig_chunk_line_numbers_are_nonzero() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        for chunk in &chunks {
+            assert!(chunk.start_line >= 1, "start_line should be 1-based");
+            assert!(chunk.end_line >= chunk.start_line);
+        }
+    }
+
+    #[test]
+    fn zig_imports_attached_to_chunks() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        // Every chunk should have the file-level @import declarations attached.
+        for chunk in &chunks {
+            assert!(
+                !chunk.metadata.imports.is_empty(),
+                "chunk '{}' should have imports attached",
+                chunk.symbol_name.as_deref().unwrap_or("<anon>")
+            );
+        }
+    }
+
+    #[test]
+    fn zig_public_function_is_public() {
+        let chunks = chunker().chunk("main.zig", ZIG_SOURCE, Language::Zig).unwrap();
+        let add =
+            chunks.iter().find(|c| c.symbol_name.as_deref() == Some("add")).expect("add chunk");
+        assert_eq!(add.metadata.visibility, Some(crate::metadata::Visibility::Public));
+    }
+
+    // ── Go ────────────────────────────────────────────────────────────────
+
+    const GO_SOURCE: &str = r#"package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Add adds two integers and returns the result.
+func Add(a, b int) int {
+	return a + b
+}
+
+// Format formats a string.
+func Format(s string) string {
+	return strings.TrimSpace(s)
+}
+
+func (r *Receiver) Method() string {
+	return fmt.Sprintf("receiver")
+}
+
+type Point struct {
+	X, Y float64
+}
+
+type Config struct {
+	Name    string
+	Enabled bool
+}
+
+type Stringer interface {
+	String() string
+}
+
+type ReadWriter interface {
+	Read() string
+	Write(s string)
+}
+"#;
+
+    #[test]
+    fn go_extracts_functions() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let fns: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Function).collect();
+        assert!(
+            fns.iter().any(|c| c.symbol_name.as_deref() == Some("Add")),
+            "should extract Add function"
+        );
+        assert!(
+            fns.iter().any(|c| c.symbol_name.as_deref() == Some("Format")),
+            "should extract Format function"
+        );
+    }
+
+    #[test]
+    fn go_extracts_method() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let methods: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Method).collect();
+        assert!(!methods.is_empty(), "should extract at least one method");
+        assert!(
+            methods.iter().any(|c| c.symbol_name.as_deref() == Some("Method")),
+            "should extract Method"
+        );
+    }
+
+    #[test]
+    fn go_extracts_structs() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let structs: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Struct).collect();
+        assert!(
+            structs.iter().any(|c| c.symbol_name.as_deref() == Some("Point")),
+            "should extract Point struct"
+        );
+        assert!(
+            structs.iter().any(|c| c.symbol_name.as_deref() == Some("Config")),
+            "should extract Config struct"
+        );
+    }
+
+    #[test]
+    fn go_extracts_interfaces() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let interfaces: Vec<_> =
+            chunks.iter().filter(|c| c.chunk_type == ChunkType::Trait).collect();
+        assert!(
+            interfaces.iter().any(|c| c.symbol_name.as_deref() == Some("Stringer")),
+            "should extract Stringer interface"
+        );
+        assert!(
+            interfaces.iter().any(|c| c.symbol_name.as_deref() == Some("ReadWriter")),
+            "should extract ReadWriter interface"
+        );
+    }
+
+    #[test]
+    fn go_exported_symbol_is_public() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let add = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("Add")).unwrap();
+        assert_eq!(add.metadata.visibility, Some(crate::metadata::Visibility::Public));
+    }
+
+    #[test]
+    fn go_unexported_symbol_is_private() {
+        let source = "package main\nfunc privateHelper() {}\n";
+        let chunks = chunker().chunk("main.go", source, Language::Go).unwrap();
+        let f = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("privateHelper")).unwrap();
+        assert_eq!(f.metadata.visibility, Some(crate::metadata::Visibility::Private));
+    }
+
+    #[test]
+    fn go_function_extracts_parameters() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let add = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("Add")).unwrap();
+        let params = &add.metadata.parameters;
+        assert_eq!(params.len(), 2, "Add should have 2 parameters");
+        let names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"a"), "should include param 'a'");
+        assert!(names.contains(&"b"), "should include param 'b'");
+    }
+
+    #[test]
+    fn go_function_extracts_return_type() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let add = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("Add")).unwrap();
+        assert_eq!(add.metadata.return_type.as_deref(), Some("int"));
+    }
+
+    #[test]
+    fn go_chunk_line_numbers_are_nonzero() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        for chunk in &chunks {
+            assert!(chunk.start_line >= 1, "start_line should be 1-based");
+            assert!(chunk.end_line >= chunk.start_line);
+        }
+    }
+
+    #[test]
+    fn go_chunk_path_via_extension() {
+        let path = Path::new("pkg/util.go");
+        let source = "package util\nfunc Helper() {}\n";
+        let chunks = chunker().chunk_path(path, source).unwrap();
+        assert!(!chunks.is_empty());
+        assert_eq!(chunks[0].language, Language::Go);
+    }
+
+    #[test]
+    fn go_import_declaration_collected() {
+        let chunks = chunker().chunk("main.go", GO_SOURCE, Language::Go).unwrap();
+        let fn_chunk = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("Add")).unwrap();
+        assert!(!fn_chunk.metadata.imports.is_empty(), "imports should be attached to chunks");
+        let imports_text = fn_chunk.metadata.imports.join("\n");
+        assert!(imports_text.contains("fmt"), "should include fmt import");
     }
 }
