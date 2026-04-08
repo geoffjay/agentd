@@ -230,6 +230,10 @@ fn is_prefix_line(line: &str, language: Language) -> bool {
                 || line.starts_with("*/")
                 || line.starts_with("@")
         }
+        Language::Zig => {
+            // Zig doc comments use `///` (doc) or `//!` (module-level doc).
+            line.starts_with("///") || line.starts_with("//!")
+        }
     }
 }
 

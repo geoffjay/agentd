@@ -18,6 +18,7 @@ pub enum Language {
     JavaScript,
     TypeScript,
     Swift,
+    Zig,
 }
 
 impl Language {
@@ -31,6 +32,7 @@ impl Language {
             "js" | "mjs" | "cjs" => Some(Language::JavaScript),
             "ts" | "mts" | "cts" => Some(Language::TypeScript),
             "swift" => Some(Language::Swift),
+            "zig" => Some(Language::Zig),
             _ => None,
         }
     }
@@ -43,6 +45,7 @@ impl Language {
             Language::JavaScript => "javascript",
             Language::TypeScript => "typescript",
             Language::Swift => "swift",
+            Language::Zig => "zig",
         }
     }
 }
@@ -63,6 +66,7 @@ impl std::str::FromStr for Language {
             "javascript" | "js" => Ok(Language::JavaScript),
             "typescript" | "ts" => Ok(Language::TypeScript),
             "swift" => Ok(Language::Swift),
+            "zig" => Ok(Language::Zig),
             other => anyhow::bail!("Unknown language: {other}"),
         }
     }
@@ -128,6 +132,10 @@ pub enum ChunkType {
     Protocol,
     /// An extension declaration (Swift — adds methods to an existing type).
     Extension,
+    /// A test declaration (Zig `test "…" { }`).
+    Test,
+    /// An error set declaration (Zig `const E = error { … }`).
+    ErrorSet,
 }
 
 impl ChunkType {
@@ -144,6 +152,8 @@ impl ChunkType {
             ChunkType::Module => "module",
             ChunkType::Protocol => "protocol",
             ChunkType::Extension => "extension",
+            ChunkType::Test => "test",
+            ChunkType::ErrorSet => "error_set",
         }
     }
 }
@@ -238,6 +248,11 @@ mod tests {
     }
 
     #[test]
+    fn test_language_from_path_zig() {
+        assert_eq!(Language::from_path(Path::new("main.zig")), Some(Language::Zig));
+    }
+
+    #[test]
     fn test_language_from_path_unknown() {
         assert_eq!(Language::from_path(Path::new("readme.md")), None);
         assert_eq!(Language::from_path(Path::new("noext")), None);
@@ -250,6 +265,7 @@ mod tests {
         assert_eq!(Language::JavaScript.as_str(), "javascript");
         assert_eq!(Language::TypeScript.as_str(), "typescript");
         assert_eq!(Language::Swift.as_str(), "swift");
+        assert_eq!(Language::Zig.as_str(), "zig");
     }
 
     #[test]
@@ -259,6 +275,7 @@ mod tests {
         assert_eq!("js".parse::<Language>().unwrap(), Language::JavaScript);
         assert_eq!("ts".parse::<Language>().unwrap(), Language::TypeScript);
         assert_eq!("swift".parse::<Language>().unwrap(), Language::Swift);
+        assert_eq!("zig".parse::<Language>().unwrap(), Language::Zig);
         assert!("cobol".parse::<Language>().is_err());
     }
 
@@ -279,6 +296,8 @@ mod tests {
         assert_eq!(ChunkType::Module.as_str(), "module");
         assert_eq!(ChunkType::Protocol.as_str(), "protocol");
         assert_eq!(ChunkType::Extension.as_str(), "extension");
+        assert_eq!(ChunkType::Test.as_str(), "test");
+        assert_eq!(ChunkType::ErrorSet.as_str(), "error_set");
     }
 
     #[test]
