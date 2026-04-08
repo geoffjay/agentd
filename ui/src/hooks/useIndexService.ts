@@ -106,6 +106,11 @@ export function useIndexService(): UseIndexServiceResult {
 	const [hexbinError, setHexbinError] = useState<string | undefined>();
 
 	const mountedRef = useRef(true);
+	// Generation counters — incremented by the corresponding clear function so that
+	// any in-flight fetch whose generation no longer matches the current counter can
+	// be discarded without writing stale data into shared state.
+	const embeddingSampleGenRef = useRef(0);
+	const hexbinGenRef = useRef(0);
 
 	// -------------------------------------------------------------------------
 	// Health check
@@ -268,11 +273,12 @@ export function useIndexService(): UseIndexServiceResult {
 
 	const fetchEmbeddingSample = useCallback(
 		async (repoId: string, limit = 2000): Promise<void> => {
+			const gen = embeddingSampleGenRef.current;
 			setEmbeddingLoading(true);
 			setEmbeddingError(undefined);
 			try {
 				const res = await indexClient.getEmbeddingSample(repoId, limit);
-				if (!mountedRef.current) return;
+				if (!mountedRef.current || gen !== embeddingSampleGenRef.current) return;
 				if (!res || !Array.isArray(res.points)) {
 					setEmbeddingError("Unexpected response from server — try again");
 					return;
@@ -281,7 +287,7 @@ export function useIndexService(): UseIndexServiceResult {
 				setEmbeddingTotal(res.total_chunks ?? 0);
 				setEmbeddingSampled(res.sampled ?? res.points.length);
 			} catch (err) {
-				if (!mountedRef.current) return;
+				if (!mountedRef.current || gen !== embeddingSampleGenRef.current) return;
 				setEmbeddingError(
 					err instanceof Error ? err.message : "Failed to fetch embedding sample",
 				);
@@ -289,13 +295,16 @@ export function useIndexService(): UseIndexServiceResult {
 				setEmbeddingTotal(0);
 				setEmbeddingSampled(0);
 			} finally {
-				if (mountedRef.current) setEmbeddingLoading(false);
+				if (mountedRef.current && gen === embeddingSampleGenRef.current) {
+					setEmbeddingLoading(false);
+				}
 			}
 		},
 		[],
 	);
 
 	const clearEmbeddingSample = useCallback(() => {
+		embeddingSampleGenRef.current += 1;
 		setEmbeddingPoints([]);
 		setEmbeddingTotal(0);
 		setEmbeddingSampled(0);
@@ -308,11 +317,12 @@ export function useIndexService(): UseIndexServiceResult {
 
 	const fetchEmbeddingHexbin = useCallback(
 		async (repoId: string, bins = 40): Promise<void> => {
+			const gen = hexbinGenRef.current;
 			setHexbinLoading(true);
 			setHexbinError(undefined);
 			try {
 				const res = await indexClient.getEmbeddingHexbin(repoId, bins);
-				if (!mountedRef.current) return;
+				if (!mountedRef.current || gen !== hexbinGenRef.current) return;
 				if (!res || !Array.isArray(res.bins)) {
 					setHexbinError("Unexpected response from server — try again");
 					return;
@@ -321,20 +331,23 @@ export function useIndexService(): UseIndexServiceResult {
 				setHexbinTotal(res.total_chunks ?? 0);
 				setHexbinBinsParam(res.bins_param ?? bins);
 			} catch (err) {
-				if (!mountedRef.current) return;
+				if (!mountedRef.current || gen !== hexbinGenRef.current) return;
 				setHexbinError(
 					err instanceof Error ? err.message : "Failed to fetch hex-bin data",
 				);
 				setHexbinCells([]);
 				setHexbinTotal(0);
 			} finally {
-				if (mountedRef.current) setHexbinLoading(false);
+				if (mountedRef.current && gen === hexbinGenRef.current) {
+					setHexbinLoading(false);
+				}
 			}
 		},
 		[],
 	);
 
 	const clearEmbeddingHexbin = useCallback(() => {
+		hexbinGenRef.current += 1;
 		setHexbinCells([]);
 		setHexbinTotal(0);
 		setHexbinBinsParam(40);
