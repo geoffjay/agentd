@@ -80,6 +80,7 @@ impl Default for IndexerConfig {
                 "ts".to_string(),
                 "swift".to_string(),
                 "zig".to_string(),
+                "go".to_string(),
             ],
             ignore_dirs: vec![
                 ".git".to_string(),

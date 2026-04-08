@@ -234,6 +234,10 @@ fn is_prefix_line(line: &str, language: Language) -> bool {
             // Zig doc comments use `///` (doc) or `//!` (module-level doc).
             line.starts_with("///") || line.starts_with("//!")
         }
+        Language::Go => {
+            // Go doc comments use `//` immediately before a declaration.
+            line.starts_with("// ")
+        }
     }
 }
 

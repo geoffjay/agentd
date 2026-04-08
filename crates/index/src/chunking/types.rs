@@ -19,6 +19,7 @@ pub enum Language {
     TypeScript,
     Swift,
     Zig,
+    Go,
 }
 
 impl Language {
@@ -33,6 +34,7 @@ impl Language {
             "ts" | "mts" | "cts" => Some(Language::TypeScript),
             "swift" => Some(Language::Swift),
             "zig" => Some(Language::Zig),
+            "go" => Some(Language::Go),
             _ => None,
         }
     }
@@ -46,6 +48,7 @@ impl Language {
             Language::TypeScript => "typescript",
             Language::Swift => "swift",
             Language::Zig => "zig",
+            Language::Go => "go",
         }
     }
 }
@@ -67,6 +70,7 @@ impl std::str::FromStr for Language {
             "typescript" | "ts" => Ok(Language::TypeScript),
             "swift" => Ok(Language::Swift),
             "zig" => Ok(Language::Zig),
+            "go" => Ok(Language::Go),
             other => anyhow::bail!("Unknown language: {other}"),
         }
     }
@@ -253,6 +257,11 @@ mod tests {
     }
 
     #[test]
+    fn test_language_from_path_go() {
+        assert_eq!(Language::from_path(Path::new("main.go")), Some(Language::Go));
+    }
+
+    #[test]
     fn test_language_from_path_unknown() {
         assert_eq!(Language::from_path(Path::new("readme.md")), None);
         assert_eq!(Language::from_path(Path::new("noext")), None);
@@ -266,6 +275,7 @@ mod tests {
         assert_eq!(Language::TypeScript.as_str(), "typescript");
         assert_eq!(Language::Swift.as_str(), "swift");
         assert_eq!(Language::Zig.as_str(), "zig");
+        assert_eq!(Language::Go.as_str(), "go");
     }
 
     #[test]
@@ -276,6 +286,7 @@ mod tests {
         assert_eq!("ts".parse::<Language>().unwrap(), Language::TypeScript);
         assert_eq!("swift".parse::<Language>().unwrap(), Language::Swift);
         assert_eq!("zig".parse::<Language>().unwrap(), Language::Zig);
+        assert_eq!("go".parse::<Language>().unwrap(), Language::Go);
         assert!("cobol".parse::<Language>().is_err());
     }
 
