@@ -91,21 +91,56 @@ impl std::str::FromStr for AgentStatus {
 /// When a Claude Code agent requests permission to use a tool (via the
 /// `can_use_tool` control request), this policy is evaluated to decide
 /// whether to allow or deny the request.
+///
+/// All variants accept an optional `sandbox_bypass` list of tool+command globs.
+/// When a Bash call matches a glob in this list, the orchestrator auto-approves
+/// it with `dangerouslyDisableSandbox: true` injected into the tool input,
+/// bypassing the Claude Code sandbox for that specific call.
+///
+/// Example glob syntax:
+/// - `"Bash(git-spice *)"` — any git-spice command
+/// - `"Bash(gh pr *)"` — any `gh pr` subcommand
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
-#[derive(Default)]
 pub enum ToolPolicy {
     /// Allow all tools without restriction (default).
-    #[default]
-    AllowAll,
+    AllowAll {
+        /// Tool+command globs auto-approved with sandbox disabled.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sandbox_bypass: Vec<String>,
+    },
     /// Deny all tool usage.
-    DenyAll,
+    DenyAll {
+        /// Tool+command globs auto-approved with sandbox disabled.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sandbox_bypass: Vec<String>,
+    },
     /// Only allow the listed tools; deny everything else.
-    AllowList { tools: Vec<String> },
+    AllowList {
+        tools: Vec<String>,
+        /// Tool+command globs auto-approved with sandbox disabled.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sandbox_bypass: Vec<String>,
+    },
     /// Allow everything except the listed tools.
-    DenyList { tools: Vec<String> },
+    DenyList {
+        tools: Vec<String>,
+        /// Tool+command globs auto-approved with sandbox disabled.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sandbox_bypass: Vec<String>,
+    },
     /// Hold every tool request for human approval before permitting it.
-    RequireApproval,
+    RequireApproval {
+        /// Tool+command globs auto-approved with sandbox disabled.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sandbox_bypass: Vec<String>,
+    },
+}
+
+impl Default for ToolPolicy {
+    fn default() -> Self {
+        ToolPolicy::AllowAll { sandbox_bypass: vec![] }
+    }
 }
 
 impl ToolPolicy {
@@ -117,29 +152,57 @@ impl ToolPolicy {
     ///
     /// Note: `RequireApproval` returns `false` here as a fallback — the actual
     /// approval logic is handled in `websocket.rs` before `evaluate` is called.
+    /// Note: sandbox_bypass matching is handled before `evaluate` is called in
+    /// `websocket.rs`; it does not affect the return value of this method.
     pub fn evaluate(&self, tool_name: &str, input: Option<&serde_json::Value>) -> bool {
         match self {
-            ToolPolicy::AllowAll => true,
-            ToolPolicy::DenyAll => false,
-            ToolPolicy::AllowList { tools } => {
+            ToolPolicy::AllowAll { .. } => true,
+            ToolPolicy::DenyAll { .. } => false,
+            ToolPolicy::AllowList { tools, .. } => {
                 tools.iter().any(|t| match_tool(t, tool_name, input))
             }
-            ToolPolicy::DenyList { tools } => {
+            ToolPolicy::DenyList { tools, .. } => {
                 !tools.iter().any(|t| match_tool(t, tool_name, input))
             }
-            ToolPolicy::RequireApproval => false,
+            ToolPolicy::RequireApproval { .. } => false,
         }
     }
 
     /// Returns the policy mode as a string for logging.
     pub fn mode_str(&self) -> &'static str {
         match self {
-            ToolPolicy::AllowAll => "allow_all",
-            ToolPolicy::DenyAll => "deny_all",
+            ToolPolicy::AllowAll { .. } => "allow_all",
+            ToolPolicy::DenyAll { .. } => "deny_all",
             ToolPolicy::AllowList { .. } => "allow_list",
             ToolPolicy::DenyList { .. } => "deny_list",
-            ToolPolicy::RequireApproval => "require_approval",
+            ToolPolicy::RequireApproval { .. } => "require_approval",
         }
+    }
+
+    /// Returns the sandbox_bypass glob list for this policy.
+    ///
+    /// A Bash call matching any of these globs is auto-approved with
+    /// `dangerouslyDisableSandbox: true` injected into the tool input.
+    pub fn sandbox_bypass(&self) -> &[String] {
+        match self {
+            ToolPolicy::AllowAll { sandbox_bypass }
+            | ToolPolicy::DenyAll { sandbox_bypass }
+            | ToolPolicy::RequireApproval { sandbox_bypass } => sandbox_bypass,
+            ToolPolicy::AllowList { sandbox_bypass, .. }
+            | ToolPolicy::DenyList { sandbox_bypass, .. } => sandbox_bypass,
+        }
+    }
+
+    /// Check whether a tool call matches any sandbox_bypass glob.
+    ///
+    /// Returns `true` if the call should be auto-approved with the sandbox
+    /// disabled. Uses the same glob matching as the tool policy list.
+    pub fn matches_sandbox_bypass(
+        &self,
+        tool_name: &str,
+        input: Option<&serde_json::Value>,
+    ) -> bool {
+        self.sandbox_bypass().iter().any(|pattern| match_tool(pattern, tool_name, input))
     }
 }
 
@@ -189,10 +252,15 @@ fn parse_tool_pattern(pattern: &str) -> Option<(&str, &str)> {
 ///
 /// Supported forms:
 /// - `"*"` — matches anything.
-/// - `"prefix *"` — matches commands that start with `prefix`.
+/// - `"prefix *"` — matches commands that start with `prefix ` (space-delimited token).
+/// - `"prefix*"` — matches commands that start with `prefix` (no space required).
 /// - `"* suffix"` — matches commands that end with `suffix`.
 /// - `"* word *"` — matches commands that contain `word` as a token.
 /// - `"exact"` — exact match (after leading whitespace is trimmed).
+///
+/// The `"prefix*"` form is useful for commands that may have zero or more
+/// arguments without a guaranteed leading space, e.g. `"git-spice repo sync*"`
+/// matches both `"git-spice repo sync"` and `"git-spice repo sync --remote"`.
 fn match_command_pattern(pattern: &str, command: &str) -> bool {
     let cmd = command.trim_start();
 
@@ -210,8 +278,18 @@ fn match_command_pattern(pattern: &str, command: &str) -> bool {
         return cmd.ends_with(&format!(" {suffix}")) || cmd == suffix;
     }
 
+    // Space-delimited prefix: "prefix *" matches "prefix" or "prefix <args>".
     if let Some(prefix) = pattern.strip_suffix(" *") {
         return cmd == prefix || cmd.starts_with(&format!("{prefix} "));
+    }
+
+    // No-space trailing wildcard: "prefix*" matches any command beginning with
+    // `prefix`. Useful for patterns like "git-spice repo sync*" that should
+    // match both the bare command and any flags appended to it.
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        if !prefix.is_empty() && !prefix.contains('*') {
+            return cmd.starts_with(prefix);
+        }
     }
 
     cmd == pattern
@@ -757,7 +835,7 @@ mod tests {
 
     #[test]
     fn test_tool_policy_allow_all() {
-        let policy = ToolPolicy::AllowAll;
+        let policy = ToolPolicy::AllowAll { sandbox_bypass: vec![] };
         assert!(policy.evaluate("Bash", None));
         assert!(policy.evaluate("Read", None));
         assert!(policy.evaluate("Write", None));
@@ -766,7 +844,7 @@ mod tests {
 
     #[test]
     fn test_tool_policy_deny_all() {
-        let policy = ToolPolicy::DenyAll;
+        let policy = ToolPolicy::DenyAll { sandbox_bypass: vec![] };
         assert!(!policy.evaluate("Bash", None));
         assert!(!policy.evaluate("Read", None));
         assert!(!policy.evaluate("anything", None));
@@ -774,7 +852,10 @@ mod tests {
 
     #[test]
     fn test_tool_policy_allow_list() {
-        let policy = ToolPolicy::AllowList { tools: vec!["Read".to_string(), "Grep".to_string()] };
+        let policy = ToolPolicy::AllowList {
+            tools: vec!["Read".to_string(), "Grep".to_string()],
+            sandbox_bypass: vec![],
+        };
         assert!(policy.evaluate("Read", None));
         assert!(policy.evaluate("Grep", None));
         assert!(!policy.evaluate("Bash", None));
@@ -783,7 +864,10 @@ mod tests {
 
     #[test]
     fn test_tool_policy_deny_list() {
-        let policy = ToolPolicy::DenyList { tools: vec!["Bash".to_string(), "Write".to_string()] };
+        let policy = ToolPolicy::DenyList {
+            tools: vec!["Bash".to_string(), "Write".to_string()],
+            sandbox_bypass: vec![],
+        };
         assert!(!policy.evaluate("Bash", None));
         assert!(!policy.evaluate("Write", None));
         assert!(policy.evaluate("Read", None));
@@ -793,23 +877,26 @@ mod tests {
     #[test]
     fn test_tool_policy_default_is_allow_all() {
         let policy = ToolPolicy::default();
-        assert_eq!(policy, ToolPolicy::AllowAll);
+        assert_eq!(policy, ToolPolicy::AllowAll { sandbox_bypass: vec![] });
         assert!(policy.evaluate("anything", None));
     }
 
     #[test]
     fn test_tool_policy_serialization_allow_all() {
-        let policy = ToolPolicy::AllowAll;
+        let policy = ToolPolicy::AllowAll { sandbox_bypass: vec![] };
         let json = serde_json::to_string(&policy).unwrap();
         assert!(json.contains("allow_all"));
 
         let deserialized: ToolPolicy = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, ToolPolicy::AllowAll);
+        assert_eq!(deserialized, ToolPolicy::AllowAll { sandbox_bypass: vec![] });
     }
 
     #[test]
     fn test_tool_policy_serialization_deny_list() {
-        let policy = ToolPolicy::DenyList { tools: vec!["Bash".to_string(), "Write".to_string()] };
+        let policy = ToolPolicy::DenyList {
+            tools: vec!["Bash".to_string(), "Write".to_string()],
+            sandbox_bypass: vec![],
+        };
         let json = serde_json::to_string(&policy).unwrap();
         assert!(json.contains("deny_list"));
         assert!(json.contains("Bash"));
@@ -820,7 +907,8 @@ mod tests {
 
     #[test]
     fn test_tool_policy_serialization_allow_list() {
-        let policy = ToolPolicy::AllowList { tools: vec!["Read".to_string()] };
+        let policy =
+            ToolPolicy::AllowList { tools: vec!["Read".to_string()], sandbox_bypass: vec![] };
         let json = serde_json::to_string(&policy).unwrap();
 
         let deserialized: ToolPolicy = serde_json::from_str(&json).unwrap();
@@ -829,21 +917,21 @@ mod tests {
 
     #[test]
     fn test_tool_policy_empty_allow_list_denies_all() {
-        let policy = ToolPolicy::AllowList { tools: vec![] };
+        let policy = ToolPolicy::AllowList { tools: vec![], sandbox_bypass: vec![] };
         assert!(!policy.evaluate("Read", None));
         assert!(!policy.evaluate("Bash", None));
     }
 
     #[test]
     fn test_tool_policy_empty_deny_list_allows_all() {
-        let policy = ToolPolicy::DenyList { tools: vec![] };
+        let policy = ToolPolicy::DenyList { tools: vec![], sandbox_bypass: vec![] };
         assert!(policy.evaluate("Read", None));
         assert!(policy.evaluate("Bash", None));
     }
 
     #[test]
     fn test_tool_policy_require_approval() {
-        let policy = ToolPolicy::RequireApproval;
+        let policy = ToolPolicy::RequireApproval { sandbox_bypass: vec![] };
         // evaluate returns false as fallback — actual logic is in websocket.rs
         assert!(!policy.evaluate("Bash", None));
         assert!(!policy.evaluate("Read", None));
@@ -851,12 +939,12 @@ mod tests {
 
     #[test]
     fn test_tool_policy_serialization_require_approval() {
-        let policy = ToolPolicy::RequireApproval;
+        let policy = ToolPolicy::RequireApproval { sandbox_bypass: vec![] };
         let json = serde_json::to_string(&policy).unwrap();
         assert!(json.contains("require_approval"));
 
         let deserialized: ToolPolicy = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, ToolPolicy::RequireApproval);
+        assert_eq!(deserialized, ToolPolicy::RequireApproval { sandbox_bypass: vec![] });
     }
 
     #[test]
@@ -1141,9 +1229,12 @@ mod tests {
 
     #[test]
     fn test_tool_policy_mode_str() {
-        assert_eq!(ToolPolicy::AllowAll.mode_str(), "allow_all");
-        assert_eq!(ToolPolicy::DenyAll.mode_str(), "deny_all");
-        assert_eq!(ToolPolicy::RequireApproval.mode_str(), "require_approval");
+        assert_eq!(ToolPolicy::AllowAll { sandbox_bypass: vec![] }.mode_str(), "allow_all");
+        assert_eq!(ToolPolicy::DenyAll { sandbox_bypass: vec![] }.mode_str(), "deny_all");
+        assert_eq!(
+            ToolPolicy::RequireApproval { sandbox_bypass: vec![] }.mode_str(),
+            "require_approval"
+        );
     }
 
     // -- Docker config types --
@@ -1435,6 +1526,7 @@ mod tests {
                 "Bash(cargo *)".to_string(),
                 "Bash(git *)".to_string(),
             ],
+            sandbox_bypass: vec![],
         };
 
         // Plain tools work as before
@@ -1461,6 +1553,7 @@ mod tests {
     fn test_tool_policy_deny_list_with_bash_pattern() {
         let policy = ToolPolicy::DenyList {
             tools: vec!["Bash(rm *)".to_string(), "Bash(sudo *)".to_string()],
+            sandbox_bypass: vec![],
         };
 
         // Dangerous commands denied
@@ -1478,7 +1571,8 @@ mod tests {
 
     #[test]
     fn test_tool_policy_bash_wildcard_pattern() {
-        let policy = ToolPolicy::AllowList { tools: vec!["Bash(*)".to_string()] };
+        let policy =
+            ToolPolicy::AllowList { tools: vec!["Bash(*)".to_string()], sandbox_bypass: vec![] };
         assert!(policy.evaluate("Bash", Some(&make_input("anything"))));
         assert!(policy.evaluate("Bash", Some(&make_input("rm -rf /"))));
         // Still requires input for pattern match
@@ -1488,7 +1582,10 @@ mod tests {
     #[test]
     fn test_tool_policy_backward_compat_plain_bash() {
         // Plain "Bash" in the list should still allow any Bash call regardless of input
-        let policy = ToolPolicy::AllowList { tools: vec!["Bash".to_string(), "Read".to_string()] };
+        let policy = ToolPolicy::AllowList {
+            tools: vec!["Bash".to_string(), "Read".to_string()],
+            sandbox_bypass: vec![],
+        };
         assert!(policy.evaluate("Bash", None));
         assert!(policy.evaluate("Bash", Some(&make_input("rm -rf /"))));
         assert!(policy.evaluate("Read", None));
@@ -1564,6 +1661,7 @@ mod tests {
         // Documenter: deny writes to Rust source files
         let policy = ToolPolicy::DenyList {
             tools: vec!["Write(crates/**/*.rs)".to_string(), "Edit(crates/**/*.rs)".to_string()],
+            sandbox_bypass: vec![],
         };
 
         // Writing to docs is allowed
@@ -1588,6 +1686,7 @@ mod tests {
                 "Write(.agentd/**)".to_string(),
                 "Edit(.agentd/**)".to_string(),
             ],
+            sandbox_bypass: vec![],
         };
 
         // ui/ writes are allowed
@@ -1614,6 +1713,7 @@ mod tests {
                 "Write(.github/workflows/**)".to_string(),
                 "Edit(.github/workflows/**)".to_string(),
             ],
+            sandbox_bypass: vec![],
         };
 
         // Writing to integration test directory is allowed
@@ -1688,5 +1788,93 @@ mod tests {
         // The JSON representation should contain the activity field.
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"activity\":\"idle\""));
+    }
+
+    // -- sandbox_bypass tests --
+
+    #[test]
+    fn test_sandbox_bypass_empty_by_default() {
+        let policy = ToolPolicy::default();
+        assert!(policy.sandbox_bypass().is_empty());
+        assert!(!policy.matches_sandbox_bypass("Bash", None));
+    }
+
+    #[test]
+    fn test_sandbox_bypass_matches_bash_pattern() {
+        let policy = ToolPolicy::AllowAll {
+            sandbox_bypass: vec![
+                "Bash(git-spice branch submit *)".to_string(),
+                "Bash(git-spice repo sync*)".to_string(),
+                "Bash(gh pr create *)".to_string(),
+            ],
+        };
+
+        let submit_input = make_input("git-spice branch submit --no-prompt issue-1042");
+        let sync_input = make_input("git-spice repo sync");
+        let pr_input = make_input("gh pr create --title foo");
+        let safe_input = make_input("cargo test");
+
+        assert!(policy.matches_sandbox_bypass("Bash", Some(&submit_input)));
+        assert!(policy.matches_sandbox_bypass("Bash", Some(&sync_input)));
+        assert!(policy.matches_sandbox_bypass("Bash", Some(&pr_input)));
+
+        // Non-matching commands are not bypassed
+        assert!(!policy.matches_sandbox_bypass("Bash", Some(&safe_input)));
+        assert!(!policy.matches_sandbox_bypass("Bash", None));
+
+        // Non-Bash tools are not bypassed
+        assert!(!policy.matches_sandbox_bypass("Read", Some(&submit_input)));
+    }
+
+    #[test]
+    fn test_sandbox_bypass_on_deny_list_policy() {
+        let policy = ToolPolicy::DenyList {
+            tools: vec!["Bash(rm *)".to_string()],
+            sandbox_bypass: vec!["Bash(git-spice *)".to_string()],
+        };
+
+        let spice_input = make_input("git-spice branch submit");
+        let rm_input = make_input("rm -rf /");
+
+        // Sandbox bypass matches git-spice commands
+        assert!(policy.matches_sandbox_bypass("Bash", Some(&spice_input)));
+        // rm is not in sandbox_bypass
+        assert!(!policy.matches_sandbox_bypass("Bash", Some(&rm_input)));
+    }
+
+    #[test]
+    fn test_sandbox_bypass_serialization_round_trip() {
+        let policy = ToolPolicy::AllowAll {
+            sandbox_bypass: vec![
+                "Bash(git-spice branch submit *)".to_string(),
+                "Bash(gh pr create *)".to_string(),
+            ],
+        };
+        let json = serde_json::to_string(&policy).unwrap();
+        assert!(json.contains("sandbox_bypass"));
+        assert!(json.contains("git-spice branch submit *"));
+
+        let deserialized: ToolPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, policy);
+    }
+
+    #[test]
+    fn test_sandbox_bypass_omitted_when_empty() {
+        // When sandbox_bypass is empty, it should not appear in JSON
+        let policy = ToolPolicy::AllowAll { sandbox_bypass: vec![] };
+        let json = serde_json::to_string(&policy).unwrap();
+        assert!(!json.contains("sandbox_bypass"));
+    }
+
+    #[test]
+    fn test_sandbox_bypass_backward_compat_no_field() {
+        // Old JSON without sandbox_bypass should deserialize with an empty list
+        let json = r#"{"mode":"allow_all"}"#;
+        let policy: ToolPolicy = serde_json::from_str(json).unwrap();
+        assert!(policy.sandbox_bypass().is_empty());
+
+        let json = r#"{"mode":"deny_list","tools":["Bash(rm *)"]}"#;
+        let policy: ToolPolicy = serde_json::from_str(json).unwrap();
+        assert!(policy.sandbox_bypass().is_empty());
     }
 }

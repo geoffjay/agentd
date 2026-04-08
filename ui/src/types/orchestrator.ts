@@ -13,12 +13,22 @@ export type ApprovalStatus = "pending" | "approved" | "denied" | "timed_out";
 // ToolPolicy – discriminated union mirroring the Rust enum
 // ---------------------------------------------------------------------------
 
+/**
+ * Globs in `sandbox_bypass` are matched against tool+command patterns.
+ * When a Bash call matches, the orchestrator auto-approves it with
+ * `dangerouslyDisableSandbox: true` so the Claude Code sandbox is skipped
+ * for that specific call (e.g. git-spice branch submit requires direct TLS).
+ *
+ * Glob syntax (same as the tools list):
+ *   "Bash(git-spice *)"  — any git-spice command
+ *   "Bash(gh pr *)"      — any gh pr subcommand
+ */
 export type ToolPolicy =
-	| { mode: "allow_all" }
-	| { mode: "deny_all" }
-	| { mode: "allow_list"; tools: string[] }
-	| { mode: "deny_list"; tools: string[] }
-	| { mode: "require_approval" };
+	| { mode: "allow_all"; sandbox_bypass?: string[] }
+	| { mode: "deny_all"; sandbox_bypass?: string[] }
+	| { mode: "allow_list"; tools: string[]; sandbox_bypass?: string[] }
+	| { mode: "deny_list"; tools: string[]; sandbox_bypass?: string[] }
+	| { mode: "require_approval"; sandbox_bypass?: string[] };
 
 // ---------------------------------------------------------------------------
 // AgentConfig

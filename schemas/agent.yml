@@ -231,6 +231,20 @@ examples:
       env:
         GITHUB_TOKEN: ${GITHUB_TOKEN}
   -
+    - "Worker agent with sandbox bypass for git-spice and gh PR commands"
+    - |
+      name: worker
+      model: claude-sonnet-4-6
+      tool_policy:
+        mode: deny_list
+        tools:
+          - "Bash(git push --force*)"
+          - "Bash(gh issue delete *)"
+        sandbox_bypass:
+          - "Bash(git-spice branch submit *)"
+          - "Bash(git-spice repo sync*)"
+          - "Bash(gh pr create *)"
+  -
     - "Docker-backed agent with resource limits"
     - |
       name: sandbox-worker

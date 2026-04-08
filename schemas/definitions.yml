@@ -20,6 +20,12 @@ definitions:
         - "Bash"             — plain name match, ignores input.
         - "Bash(cargo *)"    — matches tool name + command glob.
         - "Write(docs/**)"   — matches tool name + file-path glob.
+
+      All variants accept an optional `sandbox_bypass` list. Commands
+      matching a glob in this list are auto-approved with the Claude Code
+      sandbox disabled (`dangerouslyDisableSandbox: true`), bypassing TLS
+      interception for outbound HTTPS. Use this for tools such as git-spice
+      or gh that require direct TLS connections to GitHub.
     oneOf:
       - description: "Allow all tools without restriction (default)."
         type: object
@@ -27,6 +33,15 @@ definitions:
           mode:
             type: string
             enum: [allow_all]
+          sandbox_bypass:
+            description: |
+              List of tool+command globs auto-approved with sandbox disabled.
+              Uses the same glob syntax as the tools list:
+                - "Bash(git-spice *)"   — any git-spice command
+                - "Bash(gh pr *)"       — any gh pr subcommand
+            type: array
+            items:
+              type: string
         required: [mode]
         additionalProperties: false
 
@@ -36,6 +51,15 @@ definitions:
           mode:
             type: string
             enum: [deny_all]
+          sandbox_bypass:
+            description: |
+              List of tool+command globs auto-approved with sandbox disabled.
+              Uses the same glob syntax as the tools list:
+                - "Bash(git-spice *)"   — any git-spice command
+                - "Bash(gh pr *)"       — any gh pr subcommand
+            type: array
+            items:
+              type: string
         required: [mode]
         additionalProperties: false
 
@@ -50,6 +74,15 @@ definitions:
             items:
               type: string
             minItems: 1
+          sandbox_bypass:
+            description: |
+              List of tool+command globs auto-approved with sandbox disabled.
+              Uses the same glob syntax as the tools list:
+                - "Bash(git-spice *)"   — any git-spice command
+                - "Bash(gh pr *)"       — any gh pr subcommand
+            type: array
+            items:
+              type: string
         required: [mode, tools]
         additionalProperties: false
 
@@ -64,6 +97,15 @@ definitions:
             items:
               type: string
             minItems: 1
+          sandbox_bypass:
+            description: |
+              List of tool+command globs auto-approved with sandbox disabled.
+              Uses the same glob syntax as the tools list:
+                - "Bash(git-spice *)"   — any git-spice command
+                - "Bash(gh pr *)"       — any gh pr subcommand
+            type: array
+            items:
+              type: string
         required: [mode, tools]
         additionalProperties: false
 
@@ -73,6 +115,15 @@ definitions:
           mode:
             type: string
             enum: [require_approval]
+          sandbox_bypass:
+            description: |
+              List of tool+command globs auto-approved with sandbox disabled.
+              Uses the same glob syntax as the tools list:
+                - "Bash(git-spice *)"   — any git-spice command
+                - "Bash(gh pr *)"       — any gh pr subcommand
+            type: array
+            items:
+              type: string
         required: [mode]
         additionalProperties: false
 
@@ -97,6 +148,24 @@ definitions:
         - "Require human approval for every tool"
         - |
           mode: require_approval
+      -
+        - "Allow all, but bypass sandbox for git-spice and gh PR commands"
+        - |
+          mode: allow_all
+          sandbox_bypass:
+            - "Bash(git-spice branch submit *)"
+            - "Bash(git-spice repo sync*)"
+            - "Bash(gh pr create *)"
+      -
+        - "Deny list with sandbox bypass for VCS tooling"
+        - |
+          mode: deny_list
+          tools:
+            - "Bash(rm *)"
+            - "Bash(git push --force*)"
+          sandbox_bypass:
+            - "Bash(git-spice *)"
+            - "Bash(gh pr *)"
 
   # ---------------------------------------------------------------------------
   # Volume mount (Docker backend)
