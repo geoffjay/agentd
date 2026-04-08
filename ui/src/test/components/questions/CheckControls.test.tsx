@@ -5,7 +5,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CheckControls } from "@/components/questions/CheckControls";
-import type { AutoTriggerInterval } from "@/hooks/useAskService";
+import type { PollingInterval as AutoTriggerInterval } from "@/hooks/useAskService";
 import { makeTriggerResponse } from "@/test/mocks/factories";
 
 const DEFAULT_PROPS = {

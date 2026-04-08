@@ -34,6 +34,11 @@ export { useAllAgentsStream } from "./useAllAgentsStream";
 export type { UseApprovalsOptions, UseApprovalsResult } from "./useApprovals";
 export { useApprovals } from "./useApprovals";
 export type {
+	IndexServiceHealth,
+	UseIndexServiceResult,
+} from "./useIndexService";
+export { useIndexService } from "./useIndexService";
+export type {
 	MemoryFilters,
 	MemorySortDir,
 	MemorySortField,

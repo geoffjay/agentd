@@ -12,6 +12,7 @@
  */
 
 import { askHandlers } from "./ask";
+import { codeIndexHandlers } from "./codeindex";
 import { communicateHandlers } from "./communicate";
 import { memoryHandlers } from "./memory";
 import { notifyHandlers } from "./notify";
@@ -23,10 +24,12 @@ export const handlers = [
 	...askHandlers,
 	...memoryHandlers,
 	...communicateHandlers,
+	...codeIndexHandlers,
 ];
 
 export {
 	askHandlers,
+	codeIndexHandlers,
 	communicateHandlers,
 	memoryHandlers,
 	notifyHandlers,
