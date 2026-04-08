@@ -33,6 +33,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentd-core"
+version = "0.2.0"
+dependencies = [
+ "agentd-common",
+ "anyhow",
+ "axum",
+ "chrono",
+ "http-body-util",
+ "hyper",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "agentd-mcp"
 version = "0.2.0"
 dependencies = [

@@ -6,6 +6,7 @@ members = [
     "crates/cli",
     "crates/common",
     "crates/communicate",
+    "crates/core",
     "crates/hook",
     "crates/index",
     "crates/mcp",
