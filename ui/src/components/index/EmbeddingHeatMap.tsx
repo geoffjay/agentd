@@ -285,7 +285,7 @@ export function EmbeddingHeatMap({
 					{hexbinLoading && (
 						<div
 							className="flex items-center justify-center"
-							style={{ height: 320 }}
+							style={{ height: 480 }}
 							aria-label="Loading density heatmap"
 						>
 							<Loader2 size={24} className="animate-spin text-th-text-muted" />
@@ -297,13 +297,13 @@ export function EmbeddingHeatMap({
 						<>
 							<div
 								aria-label={`Density heatmap for ${repoName}`}
-								style={{ height: 320 }}
+								style={{ height: 480 }}
 								className="w-full"
 							>
 								<canvas
 									ref={canvasRef}
 									width={700}
-									height={320}
+									height={480}
 									className="w-full h-full"
 									aria-hidden="true"
 								/>

@@ -165,6 +165,24 @@ export function IndexMain() {
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [healthRepoId, setHealthRepoId] = useState<string>("");
 
+	// Once a fetch reveals that a repo exceeds HEATMAP_THRESHOLD we latch that
+	// decision here so that clearEmbeddingSample() (called when ClusterDensityMap
+	// unmounts) resetting embeddingTotal to 0 cannot flip useHeatmap back to false
+	// and trigger an infinite mount/unmount loop.
+	const [confirmedLargeRepoId, setConfirmedLargeRepoId] = useState<string | null>(null);
+
+	// Clear the latch whenever the selected repo changes.
+	useEffect(() => {
+		setConfirmedLargeRepoId(null);
+	}, [healthRepoId]);
+
+	// Latch once the scatter sample confirms the repo is above the threshold.
+	useEffect(() => {
+		if (!embeddingLoading && embeddingTotal > HEATMAP_THRESHOLD && healthRepoId) {
+			setConfirmedLargeRepoId(healthRepoId);
+		}
+	}, [embeddingLoading, embeddingTotal, healthRepoId]);
+
 	// Search filter state — kept here so IndexMain can sync them to the URL.
 	const [searchQuery, setSearchQuery] = useState(
 		searchParams.get("q") ?? "",
@@ -480,8 +498,12 @@ export function IndexMain() {
 									repositories.find((r) => r.id === healthRepoId)?.name ??
 									healthRepoId;
 								// Use heatmap once we have confirmed total > threshold.
+								// Also accept the live value so the switch happens in the same
+								// render where the fetch completes (before the latch effect runs).
 								const useHeatmap =
-									!embeddingLoading && embeddingTotal > HEATMAP_THRESHOLD;
+									!!healthRepoId &&
+									(confirmedLargeRepoId === healthRepoId ||
+										(!embeddingLoading && embeddingTotal > HEATMAP_THRESHOLD));
 
 								return useHeatmap ? (
 									<EmbeddingHeatMap
