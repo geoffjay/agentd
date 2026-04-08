@@ -122,6 +122,7 @@ pub fn extract_symbols_from_import(import_text: &str, language: Language) -> Vec
         Language::Swift => extract_swift_symbols(text),
         Language::Zig => extract_zig_symbols(text),
         Language::Go => extract_go_symbols(text),
+        Language::Ruby => extract_ruby_symbols(text),
     }
 }
 
@@ -371,6 +372,39 @@ fn extract_go_symbols(text: &str) -> Vec<String> {
     symbols
 }
 
+/// Extract symbols from a Ruby `require` or `require_relative` call.
+///
+/// Examples:
+/// - `require 'ostruct'`          → `["ostruct"]`
+/// - `require_relative './base'`  → `["base"]`
+/// - `require "net/http"`         → `["http"]`
+fn extract_ruby_symbols(text: &str) -> Vec<String> {
+    let text = text.trim();
+    // Strip the method name prefix.
+    let after = if let Some(rest) = text.strip_prefix("require_relative") {
+        rest
+    } else if let Some(rest) = text.strip_prefix("require") {
+        rest
+    } else {
+        return vec![];
+    };
+    let after = after.trim().trim_start_matches('(').trim_end_matches(')');
+    // Extract the string literal contents (single or double quoted).
+    let inner = after.trim().trim_start_matches(['"', '\'']).trim_end_matches(['"', '\'']);
+    if inner.is_empty() {
+        return vec![];
+    }
+    // Use last path segment as the symbol name (strip leading `./`, `../`).
+    let segment = inner.rsplit('/').next().unwrap_or(inner);
+    // Strip file extension if present.
+    let name = segment.split('.').next().unwrap_or(segment).trim_matches('_');
+    if name.is_empty() {
+        vec![]
+    } else {
+        vec![name.to_string()]
+    }
+}
+
 /// Boost search result scores for files related to the top results via imports.
 ///
 /// For each result in the top `top_n` results, files that import it or are
@@ -604,6 +638,32 @@ mod tests {
         let text = "import (\n\tmyfmt \"fmt\"\n)";
         let syms = extract_symbols_from_import(text, Language::Go);
         assert_eq!(syms, vec!["myfmt"]);
+    }
+
+    // -- extract_ruby_symbols ----------------------------------------------
+
+    #[test]
+    fn ruby_require_simple() {
+        let syms = extract_symbols_from_import("require 'ostruct'", Language::Ruby);
+        assert_eq!(syms, vec!["ostruct"]);
+    }
+
+    #[test]
+    fn ruby_require_double_quotes() {
+        let syms = extract_symbols_from_import("require \"net/http\"", Language::Ruby);
+        assert_eq!(syms, vec!["http"]);
+    }
+
+    #[test]
+    fn ruby_require_relative() {
+        let syms = extract_symbols_from_import("require_relative './base'", Language::Ruby);
+        assert_eq!(syms, vec!["base"]);
+    }
+
+    #[test]
+    fn ruby_require_relative_parent() {
+        let syms = extract_symbols_from_import("require_relative '../models/user'", Language::Ruby);
+        assert_eq!(syms, vec!["user"]);
     }
 
     // -- DependencyGraph ---------------------------------------------------

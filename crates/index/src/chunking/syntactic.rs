@@ -86,6 +86,7 @@ fn ts_language_for(language: Language) -> tree_sitter::Language {
         Language::Swift => tree_sitter_swift::LANGUAGE.into(),
         Language::Zig => tree_sitter_zig::LANGUAGE.into(),
         Language::Go => tree_sitter_go::LANGUAGE.into(),
+        Language::Ruby => tree_sitter_ruby::LANGUAGE.into(),
     }
 }
 
@@ -167,6 +168,7 @@ fn classify(
         Language::Swift => classify_swift(kind, node, source, parent_kind),
         Language::Zig => classify_zig(kind, node, source, parent_kind),
         Language::Go => classify_go(kind, node, source),
+        Language::Ruby => classify_ruby(kind, node, source, parent_kind),
     }
 }
 
@@ -523,6 +525,49 @@ fn zig_first_identifier(node: &Node<'_>, source: &[u8]) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Ruby
+// ---------------------------------------------------------------------------
+
+/// Classify a Ruby AST node.
+///
+/// Ruby source constructs mapped to chunk types:
+/// - `method`           → [`ChunkType::Method`] or [`ChunkType::Function`]
+/// - `singleton_method` → [`ChunkType::Method`] (class/singleton method)
+/// - `class`            → [`ChunkType::Class`]
+/// - `module`           → [`ChunkType::Module`]
+fn classify_ruby(
+    kind: &str,
+    node: &Node<'_>,
+    source: &[u8],
+    parent_kind: Option<&str>,
+) -> Option<(ChunkType, Option<String>)> {
+    match kind {
+        "method" => {
+            let name = field_text(node, "name", source);
+            let chunk_type = if parent_kind == Some("class") || parent_kind == Some("module") {
+                ChunkType::Method
+            } else {
+                ChunkType::Function
+            };
+            Some((chunk_type, name))
+        }
+        "singleton_method" => {
+            let name = field_text(node, "name", source);
+            Some((ChunkType::Method, name))
+        }
+        "class" => {
+            let name = field_text(node, "name", source)?;
+            Some((ChunkType::Class, Some(name)))
+        }
+        "module" => {
+            let name = field_text(node, "name", source)?;
+            Some((ChunkType::Module, Some(name)))
+        }
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -664,6 +709,17 @@ fn extract_visibility(
                 Some(Visibility::Public)
             } else {
                 Some(Visibility::Private)
+            }
+        }
+        Language::Ruby => {
+            // Ruby uses naming convention: methods starting with `_` are conventionally private.
+            // `protected` and `private` are runtime calls, not syntax — we can't detect them
+            // from the AST node alone without tracking call context. Default to public.
+            let name = symbol_name.as_deref().unwrap_or("");
+            if name.starts_with('_') {
+                Some(Visibility::Protected)
+            } else {
+                Some(Visibility::Public)
             }
         }
     }
@@ -860,6 +916,25 @@ fn extract_parameters(node: &Node<'_>, source: &[u8], language: Language) -> Vec
                     }
                 }
             }
+            Language::Ruby => {
+                // Ruby method parameters: `method_parameters` contains `identifier`,
+                // `optional_parameter`, `splat_parameter`, `block_parameter`, etc.
+                if child.kind() == "identifier" {
+                    let name = child.utf8_text(source).unwrap_or("").to_string();
+                    if !name.is_empty() {
+                        params.push(Parameter { name, type_annotation: None });
+                    }
+                } else if child.kind() == "optional_parameter" {
+                    let name = child
+                        .child_by_field_name("name")
+                        .and_then(|n| n.utf8_text(source).ok())
+                        .unwrap_or("")
+                        .to_string();
+                    if !name.is_empty() {
+                        params.push(Parameter { name, type_annotation: None });
+                    }
+                }
+            }
         }
     }
 
@@ -957,6 +1032,8 @@ fn extract_return_type(node: &Node<'_>, source: &[u8], language: Language) -> Op
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
         }
+        // Ruby has no static return type annotations.
+        Language::Ruby => None,
     }
 }
 
@@ -983,6 +1060,14 @@ fn extract_file_imports(root: Node<'_>, source: &[u8], language: Language) -> Ve
                     && zig_is_import_decl(&child, source)
             }
             Language::Go => child.kind() == "import_declaration",
+            Language::Ruby => {
+                // Only collect `require` / `require_relative` top-level calls.
+                child.kind() == "call"
+                    && child
+                        .child_by_field_name("method")
+                        .and_then(|m| m.utf8_text(source).ok())
+                        .is_some_and(|m| m == "require" || m == "require_relative")
+            }
         };
         if is_import {
             if let Ok(text) = child.utf8_text(source) {
@@ -1779,5 +1864,133 @@ type ReadWriter interface {
         assert!(!fn_chunk.metadata.imports.is_empty(), "imports should be attached to chunks");
         let imports_text = fn_chunk.metadata.imports.join("\n");
         assert!(imports_text.contains("fmt"), "should include fmt import");
+    }
+
+    // ── Ruby ──────────────────────────────────────────────────────────────
+
+    const RUBY_SOURCE: &str = r#"require 'ostruct'
+require_relative './base'
+
+# A simple animal class.
+class Animal
+  attr_accessor :name
+
+  def initialize(name)
+    @name = name
+  end
+
+  def speak
+    "..."
+  end
+
+  def self.create(name)
+    new(name)
+  end
+end
+
+module Greetable
+  def greet
+    "Hello, I am #{name}"
+  end
+end
+
+def standalone_helper(x, y)
+  x + y
+end
+"#;
+
+    #[test]
+    fn ruby_extracts_class() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        let classes: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Class).collect();
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0].symbol_name.as_deref(), Some("Animal"));
+    }
+
+    #[test]
+    fn ruby_extracts_module() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        let mods: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Module).collect();
+        assert_eq!(mods.len(), 1);
+        assert_eq!(mods[0].symbol_name.as_deref(), Some("Greetable"));
+    }
+
+    #[test]
+    fn ruby_extracts_instance_methods() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        let methods: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Method).collect();
+        let names: Vec<&str> =
+            methods.iter().flat_map(|c| &c.symbol_name).map(|s| s.as_str()).collect();
+        assert!(names.contains(&"initialize"), "should extract initialize");
+        assert!(names.contains(&"speak"), "should extract speak");
+    }
+
+    #[test]
+    fn ruby_extracts_singleton_method() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        let methods: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Method).collect();
+        let names: Vec<&str> =
+            methods.iter().flat_map(|c| &c.symbol_name).map(|s| s.as_str()).collect();
+        assert!(names.contains(&"create"), "should extract singleton method create");
+    }
+
+    #[test]
+    fn ruby_extracts_standalone_function() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        let fns: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Function).collect();
+        assert!(
+            fns.iter().any(|c| c.symbol_name.as_deref() == Some("standalone_helper")),
+            "should extract standalone_helper as a function"
+        );
+    }
+
+    #[test]
+    fn ruby_method_has_parent_symbol() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        let speak = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("speak")).unwrap();
+        assert_eq!(speak.parent_symbol.as_deref(), Some("Animal"));
+    }
+
+    #[test]
+    fn ruby_function_extracts_parameters() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        let helper =
+            chunks.iter().find(|c| c.symbol_name.as_deref() == Some("standalone_helper")).unwrap();
+        let names: Vec<&str> = helper.metadata.parameters.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"x"), "should extract param x");
+        assert!(names.contains(&"y"), "should extract param y");
+    }
+
+    #[test]
+    fn ruby_chunk_line_numbers_are_nonzero() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        for chunk in &chunks {
+            assert!(chunk.start_line >= 1, "start_line should be 1-based");
+            assert!(chunk.end_line >= chunk.start_line);
+        }
+    }
+
+    #[test]
+    fn ruby_chunk_path_via_extension() {
+        let path = Path::new("lib/util.rb");
+        let chunks = chunker().chunk_path(path, "def helper; end\n").unwrap();
+        assert!(!chunks.is_empty());
+        assert_eq!(chunks[0].language, Language::Ruby);
+    }
+
+    #[test]
+    fn ruby_require_imports_collected() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        let fn_chunk =
+            chunks.iter().find(|c| c.symbol_name.as_deref() == Some("standalone_helper")).unwrap();
+        let imports_text = fn_chunk.metadata.imports.join("\n");
+        assert!(imports_text.contains("ostruct"), "should include ostruct require");
+    }
+
+    #[test]
+    fn ruby_module_method_has_parent() {
+        let chunks = chunker().chunk("app.rb", RUBY_SOURCE, Language::Ruby).unwrap();
+        let greet = chunks.iter().find(|c| c.symbol_name.as_deref() == Some("greet")).unwrap();
+        assert_eq!(greet.parent_symbol.as_deref(), Some("Greetable"));
     }
 }

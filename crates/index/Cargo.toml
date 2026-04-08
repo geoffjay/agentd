@@ -43,6 +43,7 @@ tree-sitter-typescript = "0.23"
 tree-sitter-swift = "0.7.1"
 tree-sitter-zig = "1.1.2"
 tree-sitter-go = "0.25"
+tree-sitter-ruby = "0.23"
 
 # Vector storage (pin arrow versions to match lancedb 0.27)
 lancedb = "0.27.1"

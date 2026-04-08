@@ -20,6 +20,7 @@ pub enum Language {
     Swift,
     Zig,
     Go,
+    Ruby,
 }
 
 impl Language {
@@ -27,6 +28,12 @@ impl Language {
     ///
     /// Returns `None` for unrecognized extensions.
     pub fn from_path(path: &Path) -> Option<Self> {
+        // Handle extensionless Ruby files (Gemfile, Rakefile, etc.)
+        if let Some(stem) = path.file_name().and_then(|n| n.to_str()) {
+            if matches!(stem, "Gemfile" | "Rakefile" | "Guardfile" | "Capfile" | "Brewfile") {
+                return Some(Language::Ruby);
+            }
+        }
         match path.extension()?.to_str()? {
             "rs" => Some(Language::Rust),
             "py" => Some(Language::Python),
@@ -35,6 +42,7 @@ impl Language {
             "swift" => Some(Language::Swift),
             "zig" => Some(Language::Zig),
             "go" => Some(Language::Go),
+            "rb" | "rake" | "gemspec" | "ru" => Some(Language::Ruby),
             _ => None,
         }
     }
@@ -49,6 +57,7 @@ impl Language {
             Language::Swift => "swift",
             Language::Zig => "zig",
             Language::Go => "go",
+            Language::Ruby => "ruby",
         }
     }
 }
@@ -71,6 +80,7 @@ impl std::str::FromStr for Language {
             "swift" => Ok(Language::Swift),
             "zig" => Ok(Language::Zig),
             "go" => Ok(Language::Go),
+            "ruby" | "rb" => Ok(Language::Ruby),
             other => anyhow::bail!("Unknown language: {other}"),
         }
     }
@@ -276,6 +286,14 @@ mod tests {
         assert_eq!(Language::Swift.as_str(), "swift");
         assert_eq!(Language::Zig.as_str(), "zig");
         assert_eq!(Language::Go.as_str(), "go");
+        assert_eq!(Language::Ruby.as_str(), "ruby");
+    }
+
+    #[test]
+    fn test_language_from_path_ruby() {
+        assert_eq!(Language::from_path(Path::new("app.rb")), Some(Language::Ruby));
+        assert_eq!(Language::from_path(Path::new("Gemfile")), Some(Language::Ruby));
+        assert_eq!(Language::from_path(Path::new("Rakefile")), Some(Language::Ruby));
     }
 
     #[test]
@@ -287,6 +305,8 @@ mod tests {
         assert_eq!("swift".parse::<Language>().unwrap(), Language::Swift);
         assert_eq!("zig".parse::<Language>().unwrap(), Language::Zig);
         assert_eq!("go".parse::<Language>().unwrap(), Language::Go);
+        assert_eq!("ruby".parse::<Language>().unwrap(), Language::Ruby);
+        assert_eq!("rb".parse::<Language>().unwrap(), Language::Ruby);
         assert!("cobol".parse::<Language>().is_err());
     }
 
