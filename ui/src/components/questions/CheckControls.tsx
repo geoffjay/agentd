@@ -16,7 +16,7 @@ import {
 	ToggleLeft,
 	ToggleRight,
 } from "lucide-react";
-import type { AutoTriggerInterval } from "@/hooks/useAskService";
+import type { PollingInterval as AutoTriggerInterval } from "@/hooks/useAskService";
 import type { TriggerResponse } from "@/types/ask";
 
 // ---------------------------------------------------------------------------

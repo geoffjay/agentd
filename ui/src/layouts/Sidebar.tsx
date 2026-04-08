@@ -12,6 +12,7 @@ import {
 	Bot,
 	Brain,
 	CheckSquare,
+	Code2,
 	GitBranch,
 	HelpCircle,
 	Hexagon,
@@ -59,6 +60,7 @@ const NAV_ITEMS: NavItem[] = [
 	},
 	{ label: "Questions", path: "/questions", icon: <HelpCircle size={20} /> },
 	{ label: "Workflows", path: "/workflows", icon: <GitBranch size={20} /> },
+	{ label: "Code Index", path: "/code-index", icon: <Code2 size={20} /> },
 	{ label: "Memories", path: "/memories", icon: <Brain size={20} /> },
 	{
 		label: "Communicate",
