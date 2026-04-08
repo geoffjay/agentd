@@ -33,6 +33,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use futures::TryStreamExt;
 use lancedb::query::{ExecutableQuery, QueryBase};
+use tokio::sync::OnceCell;
 use tracing::{debug, info, warn};
 
 use crate::chunking::types::{ChunkType, CodeChunk, HierarchyLevel, Language};
@@ -75,6 +76,11 @@ pub struct LanceStore {
     /// time.  Used for schema creation and batch building to ensure the stored
     /// vector column always matches the model's real output size.
     embedding_dim: usize,
+    /// Cached table handle.  Opened once on first use and reused for all
+    /// subsequent operations to avoid exhausting OS file descriptors under
+    /// concurrent query load (lance opens multiple mmap'd file handles per
+    /// `open_table` call, which quickly hits `EMFILE` / os error 24).
+    table_cache: OnceCell<lancedb::Table>,
 }
 
 impl LanceStore {
@@ -126,6 +132,7 @@ impl LanceStore {
             table_name: config.table.clone(),
             embedding_service,
             embedding_dim,
+            table_cache: OnceCell::new(),
         })
     }
 
@@ -389,13 +396,23 @@ impl LanceStore {
         Ok(chunks)
     }
 
+    /// Return a handle to the LanceDB table, opening it once and caching the
+    /// result.  Subsequent calls clone the cached handle (cheap — the table is
+    /// backed by an `Arc` internally) rather than re-opening it, which would
+    /// consume a fresh set of OS file descriptors on every query.
     async fn open_table(&self) -> StoreResult<lancedb::Table> {
-        self.db.open_table(&self.table_name).execute().await.map_err(|e| {
-            StoreError::InitializationFailed(format!(
-                "Failed to open LanceDB table '{}': {}",
-                self.table_name, e
-            ))
-        })
+        let table = self
+            .table_cache
+            .get_or_try_init(|| async {
+                self.db.open_table(&self.table_name).execute().await.map_err(|e| {
+                    StoreError::InitializationFailed(format!(
+                        "Failed to open LanceDB table '{}': {}",
+                        self.table_name, e
+                    ))
+                })
+            })
+            .await?;
+        Ok(table.clone())
     }
 }
 
@@ -676,11 +693,7 @@ impl CodeStore for LanceStore {
         self.collect_chunks(stream).await
     }
 
-    async fn sample_chunks(
-        &self,
-        repo_id: &str,
-        limit: usize,
-    ) -> StoreResult<Vec<StoredChunk>> {
+    async fn sample_chunks(&self, repo_id: &str, limit: usize) -> StoreResult<Vec<StoredChunk>> {
         let table = self.open_table().await?;
         let safe_repo = escape_sql(repo_id);
         let stream = table
