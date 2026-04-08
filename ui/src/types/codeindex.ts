@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 /** Search strategy to use for code search. */
-export type CodeSearchMode = "Vector" | "Keyword" | "Hybrid";
+export type CodeSearchMode = "vector" | "keyword" | "hybrid";
 
 /** Request body for POST /search */
 export interface CodeSearchRequest {
@@ -24,7 +24,7 @@ export interface CodeSearchRequest {
 	hierarchy_level?: string;
 	/** Maximum results to return (default 10, clamped [1, 100]). */
 	limit?: number;
-	/** Search strategy (default "Vector"). */
+	/** Search strategy (default "hybrid"). */
 	search_mode: CodeSearchMode;
 }
 
@@ -111,7 +111,7 @@ export interface CodeAgenticSearchResponse {
 // ---------------------------------------------------------------------------
 
 /** Current indexing status of a repository. */
-export type RepoStatus = "Pending" | "Indexing" | "Ready" | "Error";
+export type RepoStatus = "pending" | "indexing" | "ready" | "error";
 
 /** A registered repository entry. */
 export interface RepoRecord {

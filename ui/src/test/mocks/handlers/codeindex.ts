@@ -35,7 +35,7 @@ export const codeIndexHandlers = [
 		const repo = makeRepoRecord({
 			name: String(body.name ?? "new-repo"),
 			path: String(body.path ?? "/projects/new-repo"),
-			status: "Pending",
+			status: "pending",
 		});
 		return HttpResponse.json(repo, { status: 201 });
 	}),
@@ -63,7 +63,7 @@ export const codeIndexHandlers = [
 		const repo =
 			DEFAULT_REPOS.find((r) => r.id === params.id) ??
 			makeRepoRecord({ id: String(params.id) });
-		return HttpResponse.json({ ...repo, status: "Indexing" });
+		return HttpResponse.json({ ...repo, status: "indexing" });
 	}),
 
 	// Vector / keyword / hybrid search

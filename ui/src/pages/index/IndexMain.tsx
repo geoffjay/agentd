@@ -12,7 +12,7 @@
  * URL query params are synced for deep-linking and browser back/forward:
  *   tab             "repositories" | "search"
  *   q               search query string
- *   mode            "Hybrid" | "Vector" | "Keyword"
+ *   mode            "hybrid" | "vector" | "keyword"
  *   repo            repository ID filter
  *   lang            language filter
  *   file_pattern    file glob filter
@@ -159,7 +159,7 @@ export function IndexMain() {
 		searchParams.get("q") ?? "",
 	);
 	const [searchMode, setSearchMode] = useState<CodeSearchMode>(
-		(searchParams.get("mode") as CodeSearchMode | null) ?? "Hybrid",
+		(searchParams.get("mode") as CodeSearchMode | null) ?? "hybrid",
 	);
 	const [searchRepoId, setSearchRepoId] = useState(
 		searchParams.get("repo") ?? "",
@@ -183,7 +183,7 @@ export function IndexMain() {
 
 		if (activeTab !== "repositories") params.tab = activeTab;
 		if (searchQuery) params.q = searchQuery;
-		if (searchMode !== "Hybrid") params.mode = searchMode;
+		if (searchMode !== "hybrid") params.mode = searchMode;
 		if (searchRepoId) params.repo = searchRepoId;
 		if (searchLanguage) params.lang = searchLanguage;
 		if (searchFilePattern) params.file_pattern = searchFilePattern;

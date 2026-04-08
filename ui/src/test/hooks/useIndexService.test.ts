@@ -187,8 +187,8 @@ describe("useIndexService", () => {
 		});
 
 		it("reindexRepository updates the repo status in the list", async () => {
-			const repo = makeRepoRecord({ id: "repo-ri", status: "Ready" });
-			const updated = { ...repo, status: "Indexing" as const };
+			const repo = makeRepoRecord({ id: "repo-ri", status: "ready" });
+			const updated = { ...repo, status: "indexing" as const };
 			server.use(
 				http.get(`${BASE}/health`, () =>
 					HttpResponse.json({ service: "index", status: "ok" }),
@@ -206,7 +206,7 @@ describe("useIndexService", () => {
 				await result.current.reindexRepository("repo-ri");
 			});
 
-			expect(result.current.repositories[0].status).toBe("Indexing");
+			expect(result.current.repositories[0].status).toBe("indexing");
 		});
 	});
 
@@ -229,7 +229,7 @@ describe("useIndexService", () => {
 			await waitFor(() => expect(result.current.reposLoading).toBe(false));
 
 			await act(async () => {
-				await result.current.runSearch({ query: "fn main", search_mode: "Hybrid" });
+				await result.current.runSearch({ query: "fn main", search_mode: "hybrid" });
 			});
 
 			expect(result.current.searchResults).toHaveLength(resp.results.length);
@@ -251,7 +251,7 @@ describe("useIndexService", () => {
 			await waitFor(() => expect(result.current.reposLoading).toBe(false));
 
 			await act(async () => {
-				await result.current.runSearch({ query: "fn main", search_mode: "Vector" });
+				await result.current.runSearch({ query: "fn main", search_mode: "vector" });
 			});
 
 			expect(result.current.searchError).toBeDefined();
@@ -272,7 +272,7 @@ describe("useIndexService", () => {
 			await waitFor(() => expect(result.current.reposLoading).toBe(false));
 
 			await act(async () => {
-				await result.current.runSearch({ query: "test", search_mode: "Keyword" });
+				await result.current.runSearch({ query: "test", search_mode: "keyword" });
 			});
 			expect(result.current.searchResults.length).toBeGreaterThan(0);
 
