@@ -78,6 +78,9 @@ impl Default for IndexerConfig {
                 "py".to_string(),
                 "js".to_string(),
                 "ts".to_string(),
+                "swift".to_string(),
+                "zig".to_string(),
+                "go".to_string(),
             ],
             ignore_dirs: vec![
                 ".git".to_string(),

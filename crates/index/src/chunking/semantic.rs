@@ -222,6 +222,22 @@ fn is_prefix_line(line: &str, language: Language) -> bool {
                 || line.starts_with("// ")
                 || line.starts_with("@")
         }
+        Language::Swift => {
+            // Swift doc comments use `///` or `/** */`; attributes use `@`.
+            line.starts_with("///")
+                || line.starts_with("/**")
+                || line.starts_with("* ")
+                || line.starts_with("*/")
+                || line.starts_with("@")
+        }
+        Language::Zig => {
+            // Zig doc comments use `///` (doc) or `//!` (module-level doc).
+            line.starts_with("///") || line.starts_with("//!")
+        }
+        Language::Go => {
+            // Go doc comments use `//` immediately before a declaration.
+            line.starts_with("// ")
+        }
     }
 }
 
