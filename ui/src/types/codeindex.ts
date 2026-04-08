@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 /** Search strategy to use for code search. */
-export type CodeSearchMode = "Vector" | "Keyword" | "Hybrid";
+export type CodeSearchMode = "vector" | "keyword" | "hybrid";
 
 /** Request body for POST /search */
 export interface CodeSearchRequest {
@@ -24,7 +24,7 @@ export interface CodeSearchRequest {
 	hierarchy_level?: string;
 	/** Maximum results to return (default 10, clamped [1, 100]). */
 	limit?: number;
-	/** Search strategy (default "Vector"). */
+	/** Search strategy (default "hybrid"). */
 	search_mode: CodeSearchMode;
 }
 
@@ -111,7 +111,7 @@ export interface CodeAgenticSearchResponse {
 // ---------------------------------------------------------------------------
 
 /** Current indexing status of a repository. */
-export type RepoStatus = "Pending" | "Indexing" | "Ready" | "Error";
+export type RepoStatus = "pending" | "indexing" | "ready" | "error";
 
 /** A registered repository entry. */
 export interface RepoRecord {
@@ -153,4 +153,34 @@ export interface RepoStatusResponse {
 	status: RepoStatus;
 	last_indexed?: string;
 	error_message?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Embedding sample types
+// ---------------------------------------------------------------------------
+
+/** A single chunk represented as a projected 2D point. */
+export interface EmbeddingSamplePoint {
+	/** X coordinate in the projected space (approx −1 to 1). */
+	x: number;
+	/** Y coordinate in the projected space (approx −1 to 1). */
+	y: number;
+	/** Source file path. */
+	file_path: string;
+	/** Programming language, e.g. "rust". */
+	language: string;
+	/** Syntactic kind, e.g. "function". */
+	chunk_type: string;
+	/** Symbol name if present. */
+	symbol_name?: string;
+}
+
+/** Response body from GET /repositories/:id/embeddings/sample */
+export interface EmbeddingSampleResponse {
+	/** Sampled points with 2D projection coordinates. */
+	points: EmbeddingSamplePoint[];
+	/** Total chunks in the repository (may be approximate). */
+	total_chunks: number;
+	/** Number of points actually returned. */
+	sampled: number;
 }

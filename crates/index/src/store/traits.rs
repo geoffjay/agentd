@@ -119,6 +119,19 @@ pub trait CodeStore: Send + Sync {
         repo_id: &str,
         limit: usize,
     ) -> StoreResult<Vec<StoredChunk>>;
+
+    /// Return the total number of chunks stored for a repository.
+    ///
+    /// Used by the embeddings/sample endpoint to report the true total
+    /// alongside the sampled subset, so the UI can display accurate
+    /// "N / TOTAL chunks" statistics.
+    async fn count_chunks(&self, repo_id: &str) -> StoreResult<usize>;
+
+    /// Return up to `limit` stored chunks for a repository (any summary state).
+    ///
+    /// Used for embedding visualisation — returns a representative sample of
+    /// all indexed chunks regardless of whether they have been summarised.
+    async fn sample_chunks(&self, repo_id: &str, limit: usize) -> StoreResult<Vec<StoredChunk>>;
 }
 
 // ---------------------------------------------------------------------------

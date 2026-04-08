@@ -17,9 +17,9 @@ import type { CodeSearchMode, CodeSearchRequest, RepoRecord } from "@/types/code
 // ---------------------------------------------------------------------------
 
 const SEARCH_MODES: Array<{ value: CodeSearchMode; label: string }> = [
-	{ value: "Hybrid", label: "Hybrid" },
-	{ value: "Vector", label: "Vector" },
-	{ value: "Keyword", label: "Keyword" },
+	{ value: "hybrid", label: "Hybrid" },
+	{ value: "vector", label: "Vector" },
+	{ value: "keyword", label: "Keyword" },
 ];
 
 const HIERARCHY_LEVELS: Array<{ value: string; label: string }> = [
@@ -60,7 +60,7 @@ export function SearchBar({
 	onClear,
 	hasResults,
 	initialQuery = "",
-	initialMode = "Hybrid",
+	initialMode = "hybrid",
 	initialRepoId = "",
 	initialLanguage = "",
 	initialFilePattern = "",

@@ -63,6 +63,10 @@ ignore = "0.4"
 # File-system change notifications (watcher)
 notify = "6"
 
+# OS-level resource limits (raising RLIMIT_NOFILE so Lance can mmap many files)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
