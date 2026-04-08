@@ -120,6 +120,7 @@ pub fn extract_symbols_from_import(import_text: &str, language: Language) -> Vec
         Language::Python => extract_python_symbols(text),
         Language::JavaScript | Language::TypeScript => extract_js_symbols(text),
         Language::Swift => extract_swift_symbols(text),
+        Language::Zig => extract_zig_symbols(text),
     }
 }
 
@@ -275,6 +276,33 @@ fn extract_swift_symbols(text: &str) -> Vec<String> {
     } else {
         vec![symbol]
     }
+}
+
+/// Extract imported symbol names from a Zig `const x = @import("…")` statement.
+///
+/// Examples:
+/// - `const std = @import("std");`               → `["std"]`
+/// - `const fs = @import("std").fs;`             → `["std"]`
+/// - `const Allocator = @import("mem.zig");`     → `["mem"]`
+fn extract_zig_symbols(text: &str) -> Vec<String> {
+    // Find `@import("…")` and extract the module path string.
+    if let Some(start) = text.find("@import(\"") {
+        let after = &text[start + 9..]; // skip `@import("`
+        if let Some(end) = after.find('"') {
+            let module_path = &after[..end];
+            // Use the stem of the path (last component without extension).
+            let stem = module_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(module_path)
+                .trim_end_matches(".zig")
+                .trim_end_matches(".o");
+            if !stem.is_empty() {
+                return vec![stem.to_string()];
+            }
+        }
+    }
+    vec![]
 }
 
 /// Boost search result scores for files related to the top results via imports.
@@ -453,6 +481,34 @@ mod tests {
     fn swift_import_struct_kind() {
         let syms = extract_symbols_from_import("import struct Swift.Array", Language::Swift);
         assert_eq!(syms, vec!["Array"]);
+    }
+
+    // -- extract_zig_symbols -----------------------------------------------
+
+    #[test]
+    fn zig_std_import() {
+        let syms = extract_symbols_from_import(r#"const std = @import("std");"#, Language::Zig);
+        assert_eq!(syms, vec!["std"]);
+    }
+
+    #[test]
+    fn zig_file_import() {
+        let syms =
+            extract_symbols_from_import(r#"const utils = @import("utils.zig");"#, Language::Zig);
+        assert_eq!(syms, vec!["utils"]);
+    }
+
+    #[test]
+    fn zig_nested_path_import() {
+        let syms =
+            extract_symbols_from_import(r#"const foo = @import("sub/foo.zig");"#, Language::Zig);
+        assert_eq!(syms, vec!["foo"]);
+    }
+
+    #[test]
+    fn zig_non_import_returns_empty() {
+        let syms = extract_symbols_from_import("const x: i32 = 42;", Language::Zig);
+        assert!(syms.is_empty());
     }
 
     // -- DependencyGraph ---------------------------------------------------
