@@ -3226,6 +3226,7 @@ dependencies = [
  "hyper",
  "ignore",
  "lancedb",
+ "libc",
  "metrics",
  "metrics-exporter-prometheus",
  "notify 6.1.1",
