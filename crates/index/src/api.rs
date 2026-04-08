@@ -135,10 +135,7 @@ pub fn create_router_with_state(state: AppState) -> Router {
         .route("/repositories/{id}", delete(delete_repo_handler))
         .route("/repositories/{id}/status", get(get_repo_status_handler))
         .route("/repositories/{id}/reindex", post(reindex_repo_handler))
-        .route(
-            "/repositories/{id}/embeddings/sample",
-            get(embeddings_sample_handler),
-        )
+        .route("/repositories/{id}/embeddings/sample", get(embeddings_sample_handler))
         .with_state(state)
 }
 
@@ -449,11 +446,7 @@ mod tests {
         ) -> StoreResult<Vec<StoredChunk>> {
             Ok(vec![])
         }
-        async fn sample_chunks(
-            &self,
-            _: &str,
-            _: usize,
-        ) -> StoreResult<Vec<StoredChunk>> {
+        async fn sample_chunks(&self, _: &str, _: usize) -> StoreResult<Vec<StoredChunk>> {
             Ok(vec![])
         }
     }

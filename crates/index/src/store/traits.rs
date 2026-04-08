@@ -124,11 +124,7 @@ pub trait CodeStore: Send + Sync {
     ///
     /// Used for embedding visualisation — returns a representative sample of
     /// all indexed chunks regardless of whether they have been summarised.
-    async fn sample_chunks(
-        &self,
-        repo_id: &str,
-        limit: usize,
-    ) -> StoreResult<Vec<StoredChunk>>;
+    async fn sample_chunks(&self, repo_id: &str, limit: usize) -> StoreResult<Vec<StoredChunk>>;
 }
 
 // ---------------------------------------------------------------------------

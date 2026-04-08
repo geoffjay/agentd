@@ -265,11 +265,7 @@ mod tests {
         ) -> StoreResult<Vec<StoredChunk>> {
             Ok(vec![])
         }
-        async fn sample_chunks(
-            &self,
-            _: &str,
-            _: usize,
-        ) -> StoreResult<Vec<StoredChunk>> {
+        async fn sample_chunks(&self, _: &str, _: usize) -> StoreResult<Vec<StoredChunk>> {
             Ok(vec![])
         }
     }
