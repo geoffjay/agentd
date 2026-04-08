@@ -6,5 +6,7 @@
 
 pub mod api;
 pub mod entity;
+pub mod membership_storage;
 pub mod migration;
+pub mod organization_storage;
 pub mod storage;
