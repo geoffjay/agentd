@@ -14,6 +14,7 @@ import type {
 	AddRepoRequest,
 	CodeSearchRequest,
 	CodeSearchResultItem,
+	EmbeddingSamplePoint,
 	RepoRecord,
 } from "@/types/codeindex";
 import type { HealthResponse } from "@/types/common";
@@ -51,6 +52,15 @@ export interface UseIndexServiceResult {
 	searchQueryMs?: number;
 	runSearch: (req: CodeSearchRequest) => Promise<void>;
 	clearSearch: () => void;
+
+	// Embedding sample
+	embeddingPoints: EmbeddingSamplePoint[];
+	embeddingTotal: number;
+	embeddingSampled: number;
+	embeddingLoading: boolean;
+	embeddingError?: string;
+	fetchEmbeddingSample: (repoId: string, limit?: number) => Promise<void>;
+	clearEmbeddingSample: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +82,12 @@ export function useIndexService(): UseIndexServiceResult {
 	const [searchLoading, setSearchLoading] = useState(false);
 	const [searchError, setSearchError] = useState<string | undefined>();
 	const [searchQueryMs, setSearchQueryMs] = useState<number | undefined>();
+
+	const [embeddingPoints, setEmbeddingPoints] = useState<EmbeddingSamplePoint[]>([]);
+	const [embeddingTotal, setEmbeddingTotal] = useState(0);
+	const [embeddingSampled, setEmbeddingSampled] = useState(0);
+	const [embeddingLoading, setEmbeddingLoading] = useState(false);
+	const [embeddingError, setEmbeddingError] = useState<string | undefined>();
 
 	const mountedRef = useRef(true);
 
@@ -230,6 +246,46 @@ export function useIndexService(): UseIndexServiceResult {
 		setSearchQueryMs(undefined);
 	}, []);
 
+	// -------------------------------------------------------------------------
+	// Embedding sample
+	// -------------------------------------------------------------------------
+
+	const fetchEmbeddingSample = useCallback(
+		async (repoId: string, limit = 500): Promise<void> => {
+			setEmbeddingLoading(true);
+			setEmbeddingError(undefined);
+			try {
+				const res = await indexClient.getEmbeddingSample(repoId, limit);
+				if (!mountedRef.current) return;
+				if (!res || !Array.isArray(res.points)) {
+					setEmbeddingError("Unexpected response from server — try again");
+					return;
+				}
+				setEmbeddingPoints(res.points);
+				setEmbeddingTotal(res.total_chunks ?? 0);
+				setEmbeddingSampled(res.sampled ?? res.points.length);
+			} catch (err) {
+				if (!mountedRef.current) return;
+				setEmbeddingError(
+					err instanceof Error ? err.message : "Failed to fetch embedding sample",
+				);
+				setEmbeddingPoints([]);
+				setEmbeddingTotal(0);
+				setEmbeddingSampled(0);
+			} finally {
+				if (mountedRef.current) setEmbeddingLoading(false);
+			}
+		},
+		[],
+	);
+
+	const clearEmbeddingSample = useCallback(() => {
+		setEmbeddingPoints([]);
+		setEmbeddingTotal(0);
+		setEmbeddingSampled(0);
+		setEmbeddingError(undefined);
+	}, []);
+
 	return {
 		health,
 		recheckHealth,
@@ -248,5 +304,12 @@ export function useIndexService(): UseIndexServiceResult {
 		searchQueryMs,
 		runSearch,
 		clearSearch,
+		embeddingPoints,
+		embeddingTotal,
+		embeddingSampled,
+		embeddingLoading,
+		embeddingError,
+		fetchEmbeddingSample,
+		clearEmbeddingSample,
 	};
 }

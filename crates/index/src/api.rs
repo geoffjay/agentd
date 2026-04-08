@@ -23,12 +23,13 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use agentd_common::types::HealthResponse;
@@ -52,6 +53,60 @@ pub struct AppState {
 
     /// File-backed repository registry.
     pub repo_store: Arc<RepoStore>,
+}
+
+// ---------------------------------------------------------------------------
+// Embeddings sample types
+// ---------------------------------------------------------------------------
+
+/// Query parameters for `GET /repositories/{id}/embeddings/sample`.
+#[derive(Debug, Deserialize)]
+struct EmbeddingsSampleParams {
+    /// Maximum number of chunks to return (default 500, capped at 1000).
+    limit: Option<usize>,
+}
+
+/// A single point in the 2D embedding projection.
+#[derive(Debug, Serialize)]
+struct EmbeddingPoint {
+    /// X coordinate in the projected 2D space (range approximately −1.0 to 1.0).
+    x: f32,
+    /// Y coordinate in the projected 2D space (range approximately −1.0 to 1.0).
+    y: f32,
+    /// Source file path of the chunk.
+    file_path: String,
+    /// Programming language (e.g. "rust").
+    language: String,
+    /// Syntactic kind (e.g. "function").
+    chunk_type: String,
+    /// Top-level symbol name if present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    symbol_name: Option<String>,
+}
+
+/// Deterministic hash-based 2D projection for a chunk ID.
+///
+/// Maps a string ID to (x, y) coordinates in the range [−1, 1] using two
+/// independent FNV-1a hash passes with alternating byte scheduling. This
+/// provides a stable, uniform scatter without requiring actual embedding
+/// vectors.
+fn pseudo_project(id: &str) -> (f32, f32) {
+    const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
+    const FNV_PRIME: u64 = 1_099_511_628_211;
+    let mut h1: u64 = FNV_OFFSET;
+    let mut h2: u64 = FNV_OFFSET ^ 0xDEAD_BEEF_CAFE_BABE;
+    for (i, b) in id.bytes().enumerate() {
+        if i % 2 == 0 {
+            h1 ^= b as u64;
+            h1 = h1.wrapping_mul(FNV_PRIME);
+        } else {
+            h2 ^= b as u64;
+            h2 = h2.wrapping_mul(FNV_PRIME);
+        }
+    }
+    let x = ((h1 & 0xFFFF) as f32 / 32_767.5) - 1.0;
+    let y = ((h2 & 0xFFFF) as f32 / 32_767.5) - 1.0;
+    (x, y)
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +135,10 @@ pub fn create_router_with_state(state: AppState) -> Router {
         .route("/repositories/{id}", delete(delete_repo_handler))
         .route("/repositories/{id}/status", get(get_repo_status_handler))
         .route("/repositories/{id}/reindex", post(reindex_repo_handler))
+        .route(
+            "/repositories/{id}/embeddings/sample",
+            get(embeddings_sample_handler),
+        )
         .with_state(state)
 }
 
@@ -262,6 +321,69 @@ async fn reindex_repo_handler(
 }
 
 // ---------------------------------------------------------------------------
+// Embeddings sample handler
+// ---------------------------------------------------------------------------
+
+/// `GET /repositories/{id}/embeddings/sample?limit=500`
+///
+/// Returns a sample of indexed chunks with deterministic 2D-projected
+/// coordinates suitable for scatter-plot visualisation.
+///
+/// The projection is a hash-based pseudo-projection that provides a stable,
+/// uniform scatter of points without requiring access to raw embedding
+/// vectors.  Future versions can replace this with a real PCA or UMAP
+/// projection once vector read APIs are available.
+///
+/// # Responses
+///
+/// - `200 OK` — `{ points, total_chunks, sampled }`
+/// - `404 Not Found` — repository not registered
+/// - `500 Internal Server Error` — store query failed
+async fn embeddings_sample_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(params): Query<EmbeddingsSampleParams>,
+) -> impl IntoResponse {
+    if state.repo_store.get(&id).await.is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": "repository not found" })))
+            .into_response();
+    }
+
+    let limit = params.limit.unwrap_or(500).min(1000);
+
+    match state.store.sample_chunks(&id, limit).await {
+        Ok(chunks) => {
+            let sampled = chunks.len();
+            let points: Vec<EmbeddingPoint> = chunks
+                .iter()
+                .map(|c| {
+                    let (x, y) = pseudo_project(&c.id);
+                    EmbeddingPoint {
+                        x,
+                        y,
+                        file_path: c.chunk.file_path.clone(),
+                        language: c.chunk.language.to_string(),
+                        chunk_type: c.chunk.chunk_type.to_string(),
+                        symbol_name: c.chunk.symbol_name.clone(),
+                    }
+                })
+                .collect();
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "points": points,
+                    "total_chunks": sampled,
+                    "sampled": sampled,
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
+            .into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -321,6 +443,13 @@ mod tests {
             Ok(())
         }
         async fn list_unsummarized_chunks(
+            &self,
+            _: &str,
+            _: usize,
+        ) -> StoreResult<Vec<StoredChunk>> {
+            Ok(vec![])
+        }
+        async fn sample_chunks(
             &self,
             _: &str,
             _: usize,

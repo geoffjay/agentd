@@ -265,6 +265,13 @@ mod tests {
         ) -> StoreResult<Vec<StoredChunk>> {
             Ok(vec![])
         }
+        async fn sample_chunks(
+            &self,
+            _: &str,
+            _: usize,
+        ) -> StoreResult<Vec<StoredChunk>> {
+            Ok(vec![])
+        }
     }
 
     fn make_result(id: &str, content: &str, symbol: &str, score: f32) -> SearchResult {

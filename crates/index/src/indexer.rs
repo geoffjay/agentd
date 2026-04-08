@@ -545,6 +545,13 @@ mod tests {
         ) -> StoreResult<Vec<crate::store::traits::StoredChunk>> {
             Ok(vec![])
         }
+        async fn sample_chunks(
+            &self,
+            _repo_id: &str,
+            _limit: usize,
+        ) -> StoreResult<Vec<crate::store::traits::StoredChunk>> {
+            Ok(vec![])
+        }
     }
 
     // ── hex_digest ────────────────────────────────────────────────────────

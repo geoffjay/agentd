@@ -26,6 +26,7 @@ import {
 	CheckCircle,
 	Database,
 	Loader2,
+	Map as MapIcon,
 	Plus,
 	RefreshCw,
 	Search,
@@ -33,6 +34,7 @@ import {
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AddRepositoryDialog } from "@/components/index/AddRepositoryDialog";
+import { ClusterDensityMap } from "@/components/index/ClusterDensityMap";
 import { RepositoryList } from "@/components/index/RepositoryList";
 import { SearchBar } from "@/components/index/SearchBar";
 import { SearchResultsTable } from "@/components/index/SearchResultsTable";
@@ -44,7 +46,7 @@ import type { CodeSearchMode } from "@/types/codeindex";
 // Tab types
 // ---------------------------------------------------------------------------
 
-type Tab = "repositories" | "search";
+type Tab = "repositories" | "search" | "health";
 
 // ---------------------------------------------------------------------------
 // Health indicator
@@ -131,6 +133,13 @@ export function IndexMain() {
 		searchQueryMs,
 		runSearch,
 		clearSearch,
+		embeddingPoints,
+		embeddingTotal,
+		embeddingSampled,
+		embeddingLoading,
+		embeddingError,
+		fetchEmbeddingSample,
+		clearEmbeddingSample,
 	} = useIndexService();
 
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -143,6 +152,7 @@ export function IndexMain() {
 		(searchParams.get("tab") as Tab | null) ?? "repositories",
 	);
 	const [showAddDialog, setShowAddDialog] = useState(false);
+	const [healthRepoId, setHealthRepoId] = useState<string>("");
 
 	// Search filter state — kept here so IndexMain can sync them to the URL.
 	const [searchQuery, setSearchQuery] = useState(
@@ -292,6 +302,22 @@ export function IndexMain() {
 						</span>
 					)}
 				</button>
+
+				<button
+					role="tab"
+					type="button"
+					aria-selected={activeTab === "health"}
+					onClick={() => setActiveTab("health")}
+					className={[
+						"flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
+						activeTab === "health"
+							? "bg-th-surface text-th-text shadow-sm"
+							: "text-th-text-muted hover:text-th-text",
+					].join(" ")}
+				>
+					<MapIcon size={15} aria-hidden="true" />
+					Index Health
+				</button>
 			</div>
 
 			{/* ============================================================ */}
@@ -397,6 +423,75 @@ export function IndexMain() {
 								Enter a query above to search across all indexed repositories.
 							</p>
 						</div>
+					)}
+				</div>
+			)}
+
+			{/* ============================================================ */}
+			{/* Index Health tab                                            */}
+			{/* ============================================================ */}
+			{activeTab === "health" && (
+				<div className="space-y-4">
+					{repositories.length === 0 ? (
+						<p className="text-sm text-th-text-muted py-8 text-center">
+							No repositories registered. Add one first.
+						</p>
+					) : (
+						<>
+							{/* Repository selector */}
+							<div className="flex items-center gap-3">
+								<label
+									htmlFor="health-repo-select"
+									className="text-sm text-th-text-muted shrink-0"
+								>
+									Repository
+								</label>
+								<select
+									id="health-repo-select"
+									value={healthRepoId}
+									onChange={(e) => setHealthRepoId(e.target.value)}
+									className="rounded-md border border-th-border-input bg-th-input px-3 py-1.5 text-sm text-th-text focus:outline-none focus:ring-2 focus:ring-th-focus-ring"
+								>
+									<option value="">Select a repository…</option>
+									{repositories.map((r) => (
+										<option key={r.id} value={r.id}>
+											{r.name}
+										</option>
+									))}
+								</select>
+							</div>
+
+							{/* Density map */}
+							{healthRepoId && (
+								<ClusterDensityMap
+									repoId={healthRepoId}
+									repoName={
+										repositories.find((r) => r.id === healthRepoId)?.name ??
+										healthRepoId
+									}
+									embeddingPoints={embeddingPoints}
+									embeddingTotal={embeddingTotal}
+									embeddingSampled={embeddingSampled}
+									embeddingLoading={embeddingLoading}
+									embeddingError={embeddingError}
+									onFetch={fetchEmbeddingSample}
+									onClear={clearEmbeddingSample}
+								/>
+							)}
+
+							{!healthRepoId && (
+								<div className="flex flex-col items-center justify-center py-16 text-center">
+									<MapIcon
+										size={36}
+										className="text-th-text-muted opacity-40 mb-3"
+										aria-hidden="true"
+									/>
+									<p className="text-sm font-medium text-th-text-muted">
+										Select a repository to view its embedding distribution
+									</p>
+								</div>
+							)}
+						</>
 					)}
 				</div>
 			)}

@@ -675,6 +675,23 @@ impl CodeStore for LanceStore {
             })?;
         self.collect_chunks(stream).await
     }
+
+    async fn sample_chunks(
+        &self,
+        repo_id: &str,
+        limit: usize,
+    ) -> StoreResult<Vec<StoredChunk>> {
+        let table = self.open_table().await?;
+        let safe_repo = escape_sql(repo_id);
+        let stream = table
+            .query()
+            .only_if(format!("repo_id = '{}'", safe_repo))
+            .limit(limit)
+            .execute()
+            .await
+            .map_err(|e| StoreError::QueryFailed(format!("sample_chunks failed: {}", e)))?;
+        self.collect_chunks(stream).await
+    }
 }
 
 // ---------------------------------------------------------------------------

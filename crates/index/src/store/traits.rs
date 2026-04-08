@@ -119,6 +119,16 @@ pub trait CodeStore: Send + Sync {
         repo_id: &str,
         limit: usize,
     ) -> StoreResult<Vec<StoredChunk>>;
+
+    /// Return up to `limit` stored chunks for a repository (any summary state).
+    ///
+    /// Used for embedding visualisation — returns a representative sample of
+    /// all indexed chunks regardless of whether they have been summarised.
+    async fn sample_chunks(
+        &self,
+        repo_id: &str,
+        limit: usize,
+    ) -> StoreResult<Vec<StoredChunk>>;
 }
 
 // ---------------------------------------------------------------------------
