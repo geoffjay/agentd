@@ -81,6 +81,11 @@ pub struct LanceStore {
     /// concurrent query load (lance opens multiple mmap'd file handles per
     /// `open_table` call, which quickly hits `EMFILE` / os error 24).
     table_cache: OnceCell<lancedb::Table>,
+    /// Limits the number of vector searches that may execute concurrently.
+    /// Even with the table handle cached, each `execute()` call mmap-opens the
+    /// relevant data-fragment files for the duration of the stream.  Without a
+    /// cap, a burst of UI requests can still exhaust the OS fd limit.
+    search_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
 impl LanceStore {
@@ -133,6 +138,10 @@ impl LanceStore {
             embedding_service,
             embedding_dim,
             table_cache: OnceCell::new(),
+            // Allow up to 16 concurrent vector searches.  Each search mmap-opens
+            // all data-fragment files for the table; 16 is generous for a
+            // single-user service while still leaving headroom in the fd budget.
+            search_semaphore: Arc::new(tokio::sync::Semaphore::new(16)),
         })
     }
 
@@ -626,6 +635,15 @@ impl CodeStore for LanceStore {
         repo_id: Option<&str>,
         limit: usize,
     ) -> StoreResult<Vec<SearchResult>> {
+        // Hold a permit for the lifetime of this search so that concurrent
+        // requests don't simultaneously mmap-open more fragment files than the
+        // OS fd limit allows.
+        let _permit = self
+            .search_semaphore
+            .acquire()
+            .await
+            .map_err(|_| StoreError::QueryFailed("search semaphore closed".to_string()))?;
+
         let table = self.open_table().await?;
 
         let embeddings = self.embedding_service.embed(&[query.to_string()]).await?;

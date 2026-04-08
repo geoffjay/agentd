@@ -47,6 +47,32 @@ use index::watcher::FileWatcher;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tracing::{info, warn};
 
+/// Raise the open-file-descriptor soft limit to the process hard limit (capped
+/// at 65 536).  Lance memory-maps index partitions and data fragment files for
+/// every vector search; the macOS default of 256 fds is far too low and causes
+/// `LanceError(IO): Too many open files (os error 24)` under normal load.
+#[cfg(unix)]
+fn raise_fd_limit() {
+    unsafe {
+        let mut rl = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut rl) == 0 {
+            let target = rl.rlim_max.min(65_536);
+            if rl.rlim_cur < target {
+                rl.rlim_cur = target;
+                if libc::setrlimit(libc::RLIMIT_NOFILE, &rl) == 0 {
+                    // tracing not yet initialised here; eprintln is fine.
+                    eprintln!("agentd-index: raised RLIMIT_NOFILE to {target}");
+                } else {
+                    eprintln!(
+                        "agentd-index: could not raise RLIMIT_NOFILE to {target}: {}",
+                        std::io::Error::last_os_error()
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn init_metrics() -> PrometheusHandle {
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
     let handle = builder.install_recorder().expect("failed to install metrics recorder");
@@ -61,6 +87,9 @@ async fn metrics_handler(State(handle): State<PrometheusHandle>) -> impl IntoRes
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    #[cfg(unix)]
+    raise_fd_limit();
+
     agentd_common::server::init_tracing();
 
     info!("Starting agentd-index service...");
