@@ -43,7 +43,7 @@ const mockRepo = {
 	id: "repo-1",
 	name: "agentd",
 	path: "/projects/agentd",
-	status: "Ready" as const,
+	status: "ready" as const,
 	created_at: "2024-01-15T10:00:00Z",
 	updated_at: "2024-01-15T10:00:00Z",
 	last_indexed: "2024-01-15T11:00:00Z",
@@ -96,7 +96,7 @@ describe("IndexClient", () => {
 			mockFetch(200, { results: [mockResult], total: 1, query_time_ms: 42 });
 			const result = await client.search({
 				query: "main function",
-				search_mode: "Hybrid",
+				search_mode: "hybrid",
 			});
 			expect(result.results).toHaveLength(1);
 			expect(result.total).toBe(1);
@@ -108,7 +108,7 @@ describe("IndexClient", () => {
 			expect(init.method).toBe("POST");
 			const body = JSON.parse(init.body as string);
 			expect(body.query).toBe("main function");
-			expect(body.search_mode).toBe("Hybrid");
+			expect(body.search_mode).toBe("hybrid");
 		});
 	});
 
@@ -180,9 +180,9 @@ describe("IndexClient", () => {
 
 	describe("getRepositoryStatus", () => {
 		it("calls GET /repositories/:id/status", async () => {
-			mockFetch(200, { id: "repo-1", status: "Ready" });
+			mockFetch(200, { id: "repo-1", status: "ready" });
 			const result = await client.getRepositoryStatus("repo-1");
-			expect(result.status).toBe("Ready");
+			expect(result.status).toBe("ready");
 
 			const url = vi.mocked(fetch).mock.calls[0][0] as string;
 			expect(url).toContain("/repositories/repo-1/status");
@@ -191,10 +191,10 @@ describe("IndexClient", () => {
 
 	describe("reindexRepository", () => {
 		it("calls POST /repositories/:id/reindex", async () => {
-			const indexing = { ...mockRepo, status: "Indexing" as const };
+			const indexing = { ...mockRepo, status: "indexing" as const };
 			mockFetch(200, indexing);
 			const result = await client.reindexRepository("repo-1");
-			expect(result.status).toBe("Indexing");
+			expect(result.status).toBe("indexing");
 
 			const url = vi.mocked(fetch).mock.calls[0][0] as string;
 			expect(url).toContain("/repositories/repo-1/reindex");

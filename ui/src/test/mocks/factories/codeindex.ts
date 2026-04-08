@@ -39,7 +39,7 @@ export function makeRepoRecord(overrides?: Partial<RepoRecord>): RepoRecord {
 		id: `repo-${id}`,
 		name: `repo-${id}`,
 		path: `/projects/repo-${id}`,
-		status: "Ready" as RepoStatus,
+		status: "ready" as RepoStatus,
 		created_at: "2024-01-15T10:00:00.000Z",
 		updated_at: "2024-01-15T10:00:00.000Z",
 		last_indexed: "2024-01-15T11:00:00.000Z",
@@ -66,7 +66,7 @@ export function makeRepoStatusResponse(
 ): RepoStatusResponse {
 	return {
 		id: "repo-1",
-		status: "Ready",
+		status: "ready" as RepoStatus,
 		last_indexed: "2024-01-15T11:00:00.000Z",
 		...overrides,
 	};

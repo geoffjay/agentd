@@ -30,10 +30,10 @@ describe("RepositoryList", () => {
 
 	it("renders status badge for each repo", () => {
 		const repos = [
-			makeRepoRecord({ status: "Ready" }),
-			makeRepoRecord({ status: "Indexing" }),
-			makeRepoRecord({ status: "Error" }),
-			makeRepoRecord({ status: "Pending" }),
+			makeRepoRecord({ status: "ready" }),
+			makeRepoRecord({ status: "indexing" }),
+			makeRepoRecord({ status: "error" }),
+			makeRepoRecord({ status: "pending" }),
 		];
 		render(<RepositoryList {...defaultProps} repositories={repos} />);
 		expect(screen.getByText("Ready")).toBeTruthy();

@@ -20,17 +20,18 @@ import type { RepoRecord, RepoStatus } from "@/types/codeindex";
 // ---------------------------------------------------------------------------
 
 const STATUS_STYLES: Record<RepoStatus, string> = {
-	Pending:
+	pending:
 		"bg-th-status-warning-bg text-th-status-warning-text",
-	Indexing:
+	indexing:
 		"bg-th-status-info-bg text-th-status-info-text",
-	Ready:
+	ready:
 		"bg-th-status-success-bg text-th-status-success-text",
-	Error:
+	error:
 		"bg-th-status-error-bg text-th-status-error-text",
 };
 
 function StatusBadge({ status }: { status: RepoStatus }) {
+	const label = status.charAt(0).toUpperCase() + status.slice(1);
 	return (
 		<span
 			className={[
@@ -39,7 +40,7 @@ function StatusBadge({ status }: { status: RepoStatus }) {
 					"bg-th-surface-sunken text-th-text-muted",
 			].join(" ")}
 		>
-			{status}
+			{label}
 		</span>
 	);
 }
