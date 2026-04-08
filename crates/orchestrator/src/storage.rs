@@ -253,44 +253,44 @@ impl AgentStorage {
             .await?;
 
         if let Some(row) = existing {
-            // Accumulate into the existing row.
+            // Replace with the latest cumulative snapshot.
+            //
+            // The Claude Code SDK `result` message reports **cumulative
+            // session totals** for all usage fields.  We must SET the
+            // values rather than ADD them, otherwise costs and token
+            // counts grow quadratically with every result message.
             session_entity::Entity::update_many()
                 .col_expr(
                     session_entity::Column::InputTokens,
-                    Expr::col(session_entity::Column::InputTokens)
-                        .add(snapshot.input_tokens as i64),
+                    Expr::value(snapshot.input_tokens as i64),
                 )
                 .col_expr(
                     session_entity::Column::OutputTokens,
-                    Expr::col(session_entity::Column::OutputTokens)
-                        .add(snapshot.output_tokens as i64),
+                    Expr::value(snapshot.output_tokens as i64),
                 )
                 .col_expr(
                     session_entity::Column::CacheReadInputTokens,
-                    Expr::col(session_entity::Column::CacheReadInputTokens)
-                        .add(snapshot.cache_read_input_tokens as i64),
+                    Expr::value(snapshot.cache_read_input_tokens as i64),
                 )
                 .col_expr(
                     session_entity::Column::CacheCreationInputTokens,
-                    Expr::col(session_entity::Column::CacheCreationInputTokens)
-                        .add(snapshot.cache_creation_input_tokens as i64),
+                    Expr::value(snapshot.cache_creation_input_tokens as i64),
                 )
                 .col_expr(
                     session_entity::Column::TotalCostUsd,
-                    Expr::col(session_entity::Column::TotalCostUsd).add(snapshot.total_cost_usd),
+                    Expr::value(snapshot.total_cost_usd),
                 )
                 .col_expr(
                     session_entity::Column::NumTurns,
-                    Expr::col(session_entity::Column::NumTurns).add(snapshot.num_turns as i64),
+                    Expr::value(snapshot.num_turns as i64),
                 )
                 .col_expr(
                     session_entity::Column::DurationMs,
-                    Expr::col(session_entity::Column::DurationMs).add(snapshot.duration_ms as i64),
+                    Expr::value(snapshot.duration_ms as i64),
                 )
                 .col_expr(
                     session_entity::Column::DurationApiMs,
-                    Expr::col(session_entity::Column::DurationApiMs)
-                        .add(snapshot.duration_api_ms as i64),
+                    Expr::value(snapshot.duration_api_ms as i64),
                 )
                 .col_expr(
                     session_entity::Column::ResultCount,
@@ -881,11 +881,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_record_session_accumulates() {
+    async fn test_record_session_replaces_cumulative_values() {
         let (storage, _tmp) = create_test_storage().await;
         let agent = test_agent("usage-agent-accum");
         storage.add(&agent).await.unwrap();
 
+        // Each snapshot represents cumulative session totals from the SDK,
+        // so the second snapshot supersedes the first.
         storage.record_session_usage(&agent.id, &test_snapshot(100, 50, 0.01)).await.unwrap();
         storage.record_session_usage(&agent.id, &test_snapshot(200, 80, 0.02)).await.unwrap();
 
@@ -893,9 +895,12 @@ mod tests {
         // Still one session (upsert, not insert).
         assert_eq!(stats.session_count, 1);
         let current = stats.current_session.unwrap();
-        assert_eq!(current.input_tokens, 300);
-        assert_eq!(current.output_tokens, 130);
-        assert!((current.total_cost_usd - 0.03).abs() < 1e-9);
+        // Values should match the latest snapshot, not a sum.
+        assert_eq!(current.input_tokens, 200);
+        assert_eq!(current.output_tokens, 80);
+        assert!((current.total_cost_usd - 0.02).abs() < 1e-9);
+        // result_count still increments (it tracks how many result messages
+        // were received, not a cumulative SDK value).
         assert_eq!(current.result_count, 2);
     }
 

@@ -150,8 +150,9 @@ async fn main() -> anyhow::Result<()> {
                     };
 
                     // 1. Persist usage to DB and emit cost metric.
-                    // Use gauge::increment for f64 cost values (counters only accept u64).
-                    metrics::gauge!("usage_session_cost_usd_total").increment(usage.total_cost_usd);
+                    // The snapshot contains cumulative session totals, so SET
+                    // the gauge rather than incrementing it.
+                    metrics::gauge!("usage_session_cost_usd_total").set(usage.total_cost_usd);
 
                     if let Err(e) = storage.record_session_usage(&info.agent_id, &usage).await {
                         error!(
