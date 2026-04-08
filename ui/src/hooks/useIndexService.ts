@@ -251,7 +251,7 @@ export function useIndexService(): UseIndexServiceResult {
 	// -------------------------------------------------------------------------
 
 	const fetchEmbeddingSample = useCallback(
-		async (repoId: string, limit = 500): Promise<void> => {
+		async (repoId: string, limit = 2000): Promise<void> => {
 			setEmbeddingLoading(true);
 			setEmbeddingError(undefined);
 			try {

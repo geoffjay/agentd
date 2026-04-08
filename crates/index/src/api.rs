@@ -62,7 +62,7 @@ pub struct AppState {
 /// Query parameters for `GET /repositories/{id}/embeddings/sample`.
 #[derive(Debug, Deserialize)]
 struct EmbeddingsSampleParams {
-    /// Maximum number of chunks to return (default 500, capped at 1000).
+    /// Maximum number of chunks to return (default 2000, capped at 5000).
     limit: Option<usize>,
 }
 
@@ -346,7 +346,15 @@ async fn embeddings_sample_handler(
             .into_response();
     }
 
-    let limit = params.limit.unwrap_or(500).min(1000);
+    let limit = params.limit.unwrap_or(2000).min(5000);
+
+    let total = match state.store.count_chunks(&id).await {
+        Ok(n) => n,
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
+                .into_response()
+        }
+    };
 
     match state.store.sample_chunks(&id, limit).await {
         Ok(chunks) => {
@@ -369,7 +377,7 @@ async fn embeddings_sample_handler(
                 StatusCode::OK,
                 Json(json!({
                     "points": points,
-                    "total_chunks": sampled,
+                    "total_chunks": total,
                     "sampled": sampled,
                 })),
             )
@@ -445,6 +453,9 @@ mod tests {
             _: usize,
         ) -> StoreResult<Vec<StoredChunk>> {
             Ok(vec![])
+        }
+        async fn count_chunks(&self, _: &str) -> StoreResult<usize> {
+            Ok(0)
         }
         async fn sample_chunks(&self, _: &str, _: usize) -> StoreResult<Vec<StoredChunk>> {
             Ok(vec![])

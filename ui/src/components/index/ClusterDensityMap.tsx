@@ -8,8 +8,8 @@
  * Layout:
  * - Header with repo name, total / sampled stats, and cluster health badge
  * - Colour-by toggle: language | chunk_type
- * - Scatter plot (Nivo ResponsiveScatterPlot) with reduced-opacity overlapping
- *   points to reveal density through overlap
+ * - Scatter plot (Nivo ResponsiveScatterPlotCanvas) rendered to an HTML5 canvas
+ *   for smooth performance up to ~5 000 points
  * - Legend for the active colour dimension
  * - Hint text
  *
@@ -17,7 +17,7 @@
  * when repoId changes and cleans up on unmount.
  */
 
-import { ResponsiveScatterPlot } from "@nivo/scatterplot";
+import { ResponsiveScatterPlotCanvas } from "@nivo/scatterplot";
 import type {
 	ScatterPlotDatum,
 	ScatterPlotTooltipProps,
@@ -404,7 +404,7 @@ export function ClusterDensityMap({
 								style={{ height: 320 }}
 								aria-label={`Embedding distribution scatter plot for ${repoName}`}
 							>
-								<ResponsiveScatterPlot<ChartDatum>
+								<ResponsiveScatterPlotCanvas<ChartDatum>
 									data={series}
 									theme={nivoTheme}
 									colors={({ serieId }: { serieId: string | number }) =>
@@ -431,10 +431,8 @@ export function ClusterDensityMap({
 										tickValues: 5,
 									}}
 									enableGridX={true}
-									useMesh={false}
 									tooltip={DensityTooltip}
 									role="img"
-									ariaLabel={`Embedding distribution for ${repoName}`}
 								/>
 							</div>
 
