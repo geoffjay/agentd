@@ -22,6 +22,7 @@ const TS_FIXTURE: &str = include_str!("fixtures/sample.ts");
 const SWIFT_FIXTURE: &str = include_str!("fixtures/sample.swift");
 const ZIG_FIXTURE: &str = include_str!("fixtures/sample.zig");
 const GO_FIXTURE: &str = include_str!("fixtures/sample.go");
+const RUBY_FIXTURE: &str = include_str!("fixtures/sample.rb");
 
 fn chunker() -> SyntacticChunker {
     SyntacticChunker::new()
@@ -78,7 +79,14 @@ fn go_fixture_parses_without_panic() {
     assert!(!result.unwrap().is_empty(), "expected at least one chunk");
 }
 
-// ── chunk_path — file-extension language detection ────────────────────────────
+#[test]
+fn ruby_fixture_parses_without_panic() {
+    let result = chunker().chunk("sample.rb", RUBY_FIXTURE, Language::Ruby);
+    assert!(result.is_ok(), "Ruby fixture parse failed: {:?}", result.err());
+    assert!(!result.unwrap().is_empty(), "expected at least one chunk");
+}
+
+// ── chunk_path -- file-extension language detection ────────────────────────────
 
 #[test]
 fn rust_detected_by_rs_extension() {
@@ -134,6 +142,14 @@ fn go_detected_by_go_extension() {
     let chunks = chunker().chunk_path(path, GO_FIXTURE).unwrap();
     assert!(!chunks.is_empty());
     assert!(chunks.iter().all(|c| c.language == Language::Go));
+}
+
+#[test]
+fn ruby_detected_by_rb_extension() {
+    let path = Path::new("tests/fixtures/sample.rb");
+    let chunks = chunker().chunk_path(path, RUBY_FIXTURE).unwrap();
+    assert!(!chunks.is_empty());
+    assert!(chunks.iter().all(|c| c.language == Language::Ruby));
 }
 
 #[test]
@@ -453,7 +469,63 @@ fn go_fixture_extracts_functions() {
     );
 }
 
-// ── Hierarchy level — all syntactic chunks must be Symbol ─────────────────────
+#[test]
+fn ruby_fixture_extracts_classes() {
+    let chunks = chunker().chunk("sample.rb", RUBY_FIXTURE, Language::Ruby).unwrap();
+    let classes: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Class).collect();
+    assert!(!classes.is_empty(), "expected at least one class");
+    assert!(
+        classes.iter().any(|c| c.symbol_name.as_deref() == Some("Animal")),
+        "expected Animal class"
+    );
+    assert!(classes.iter().any(|c| c.symbol_name.as_deref() == Some("Dog")), "expected Dog class");
+}
+
+#[test]
+fn ruby_fixture_extracts_modules() {
+    let chunks = chunker().chunk("sample.rb", RUBY_FIXTURE, Language::Ruby).unwrap();
+    let mods: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Module).collect();
+    assert!(!mods.is_empty(), "expected at least one module");
+    assert!(
+        mods.iter().any(|c| c.symbol_name.as_deref() == Some("Geometry")),
+        "expected Geometry module"
+    );
+    assert!(
+        mods.iter().any(|c| c.symbol_name.as_deref() == Some("Serializable")),
+        "expected Serializable module"
+    );
+}
+
+#[test]
+fn ruby_fixture_extracts_methods() {
+    let chunks = chunker().chunk("sample.rb", RUBY_FIXTURE, Language::Ruby).unwrap();
+    let methods: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Method).collect();
+    assert!(!methods.is_empty(), "expected at least one method");
+    assert!(
+        methods.iter().any(|c| c.symbol_name.as_deref() == Some("speak")),
+        "expected speak method"
+    );
+    assert!(
+        methods.iter().any(|c| c.symbol_name.as_deref() == Some("fetch")),
+        "expected fetch method"
+    );
+}
+
+#[test]
+fn ruby_fixture_extracts_functions() {
+    let chunks = chunker().chunk("sample.rb", RUBY_FIXTURE, Language::Ruby).unwrap();
+    let fns: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Function).collect();
+    assert!(
+        fns.iter().any(|c| c.symbol_name.as_deref() == Some("greet")),
+        "expected greet function"
+    );
+    assert!(
+        fns.iter().any(|c| c.symbol_name.as_deref() == Some("find_file")),
+        "expected find_file function"
+    );
+}
+
+// ── Hierarchy level -- all syntactic chunks must be Symbol ─────────────────────
 
 #[test]
 fn rust_chunks_are_symbol_level() {
@@ -500,6 +572,14 @@ fn go_chunks_are_symbol_level() {
     }
 }
 
+#[test]
+fn ruby_chunks_are_symbol_level() {
+    let chunks = chunker().chunk("sample.rb", RUBY_FIXTURE, Language::Ruby).unwrap();
+    for chunk in &chunks {
+        assert_eq!(chunk.hierarchy_level, HierarchyLevel::Symbol);
+    }
+}
+
 // ── Line number validity ──────────────────────────────────────────────────────
 
 #[test]
@@ -540,7 +620,23 @@ fn zig_line_numbers_are_valid() {
     }
 }
 
-// ── Schema alignment — ChunkType serializes to valid snake_case strings ───────
+#[test]
+fn ruby_line_numbers_are_valid() {
+    let chunks = chunker().chunk("sample.rb", RUBY_FIXTURE, Language::Ruby).unwrap();
+    let total_lines = RUBY_FIXTURE.lines().count();
+    for chunk in &chunks {
+        assert!(chunk.start_line >= 1, "start_line must be 1-based");
+        assert!(chunk.end_line >= chunk.start_line, "end_line must be >= start_line");
+        assert!(
+            chunk.end_line <= total_lines,
+            "end_line {} exceeds file length {}",
+            chunk.end_line,
+            total_lines
+        );
+    }
+}
+
+// ── Schema alignment -- ChunkType serializes to valid snake_case strings ───────
 
 #[test]
 fn chunk_types_serialize_to_snake_case() {
@@ -585,6 +681,7 @@ fn language_serializes_to_lowercase() {
         (Language::Swift, "\"swift\""),
         (Language::Zig, "\"zig\""),
         (Language::Go, "\"go\""),
+        (Language::Ruby, "\"ruby\""),
     ];
     for (lang, expected_json) in cases {
         let serialized = serde_json::to_string(lang).unwrap();
@@ -658,6 +755,20 @@ fn malformed_go_does_not_panic() {
     let sources = ["func (", "type {", "package"];
     for source in sources {
         let _ = chunker().chunk("bad.go", source, Language::Go);
+    }
+}
+
+#[test]
+fn empty_ruby_file_returns_no_chunks() {
+    let chunks = chunker().chunk("empty.rb", "", Language::Ruby).unwrap();
+    assert!(chunks.is_empty());
+}
+
+#[test]
+fn malformed_ruby_does_not_panic() {
+    let sources = ["def (", "class <", "end end end", "module"];
+    for source in sources {
+        let _ = chunker().chunk("bad.rb", source, Language::Ruby);
     }
 }
 
@@ -752,6 +863,19 @@ fn python_rechunking_after_modification_reflects_change() {
     let c = chunker();
     let chunks_v1 = c.chunk("greet.py", original, Language::Python).unwrap();
     let chunks_v2 = c.chunk("greet.py", modified, Language::Python).unwrap();
+
+    assert_eq!(chunks_v1.iter().filter(|c| c.chunk_type == ChunkType::Function).count(), 1);
+    assert_eq!(chunks_v2.iter().filter(|c| c.chunk_type == ChunkType::Function).count(), 2);
+}
+
+#[test]
+fn ruby_rechunking_after_modification_reflects_change() {
+    let original = "def hello\n  'hello'\nend\n";
+    let modified = "def hello\n  'hello'\nend\n\ndef world\n  'world'\nend\n";
+
+    let c = chunker();
+    let chunks_v1 = c.chunk("greet.rb", original, Language::Ruby).unwrap();
+    let chunks_v2 = c.chunk("greet.rb", modified, Language::Ruby).unwrap();
 
     assert_eq!(chunks_v1.iter().filter(|c| c.chunk_type == ChunkType::Function).count(), 1);
     assert_eq!(chunks_v2.iter().filter(|c| c.chunk_type == ChunkType::Function).count(), 2);

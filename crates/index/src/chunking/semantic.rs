@@ -238,6 +238,10 @@ fn is_prefix_line(line: &str, language: Language) -> bool {
             // Go doc comments use `//` immediately before a declaration.
             line.starts_with("// ")
         }
+        Language::Ruby => {
+            // Ruby doc comments (YARD) use `#` lines before a method/class.
+            line.starts_with('#')
+        }
     }
 }
 

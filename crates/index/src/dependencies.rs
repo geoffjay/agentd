@@ -122,6 +122,7 @@ pub fn extract_symbols_from_import(import_text: &str, language: Language) -> Vec
         Language::Swift => extract_swift_symbols(text),
         Language::Zig => extract_zig_symbols(text),
         Language::Go => extract_go_symbols(text),
+        Language::Ruby => extract_ruby_symbols(text),
     }
 }
 
@@ -369,6 +370,48 @@ fn extract_go_symbols(text: &str) -> Vec<String> {
     }
 
     symbols
+}
+
+/// Extract imported symbol names from a Ruby `require` or `require_relative` statement.
+///
+/// Examples:
+/// - `require "json"` -> `["json"]`
+/// - `require "bundler/setup"` -> `["bundler"]`
+/// - `require_relative "lib/parser"` -> `["parser"]`
+fn extract_ruby_symbols(text: &str) -> Vec<String> {
+    let trimmed = text.trim();
+
+    // Strip `require_relative` or `require` prefix.
+    let path_str = if let Some(rest) = trimmed.strip_prefix("require_relative") {
+        rest.trim()
+    } else if let Some(rest) = trimmed.strip_prefix("require") {
+        rest.trim()
+    } else {
+        return vec![];
+    };
+
+    // Extract the string argument (single or double quoted).
+    let unquoted = path_str.trim_matches(|c| c == '"' || c == '\'' || c == '(' || c == ')').trim();
+
+    if unquoted.is_empty() {
+        return vec![];
+    }
+
+    // For `require "bundler/setup"`, return the top-level module name.
+    // For `require_relative "lib/parser"`, return the last path segment.
+    let name = if trimmed.starts_with("require_relative") {
+        // Use the last segment for relative requires.
+        unquoted.rsplit('/').next().unwrap_or(unquoted)
+    } else {
+        // Use the first segment (top-level gem/module) for absolute requires.
+        unquoted.split('/').next().unwrap_or(unquoted)
+    };
+
+    if name.is_empty() {
+        vec![]
+    } else {
+        vec![name.to_string()]
+    }
 }
 
 /// Boost search result scores for files related to the top results via imports.

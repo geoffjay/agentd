@@ -86,6 +86,7 @@ fn ts_language_for(language: Language) -> tree_sitter::Language {
         Language::Swift => tree_sitter_swift::LANGUAGE.into(),
         Language::Zig => tree_sitter_zig::LANGUAGE.into(),
         Language::Go => tree_sitter_go::LANGUAGE.into(),
+        Language::Ruby => tree_sitter_ruby::LANGUAGE.into(),
     }
 }
 
@@ -167,6 +168,7 @@ fn classify(
         Language::Swift => classify_swift(kind, node, source, parent_kind),
         Language::Zig => classify_zig(kind, node, source, parent_kind),
         Language::Go => classify_go(kind, node, source),
+        Language::Ruby => classify_ruby(kind, node, source, parent_kind),
     }
 }
 
@@ -390,6 +392,43 @@ fn classify_go(kind: &str, node: &Node<'_>, source: &[u8]) -> Option<(ChunkType,
             };
             Some((chunk_type, name))
         }
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ruby
+// ---------------------------------------------------------------------------
+
+/// Classify a Ruby AST node.
+///
+/// Ruby source constructs mapped to chunk types:
+/// - `method` → [`ChunkType::Function`] at top level, [`ChunkType::Method`] inside class/module
+/// - `singleton_method` (`def self.foo`) → [`ChunkType::Method`]
+/// - `class` → [`ChunkType::Class`]
+/// - `module` → [`ChunkType::Module`]
+fn classify_ruby(
+    kind: &str,
+    node: &Node<'_>,
+    source: &[u8],
+    parent_kind: Option<&str>,
+) -> Option<(ChunkType, Option<String>)> {
+    match kind {
+        "method" => {
+            let name = field_text(node, "name", source);
+            let chunk_type = if parent_kind.is_some_and(|k| k == "class" || k == "module") {
+                ChunkType::Method
+            } else {
+                ChunkType::Function
+            };
+            Some((chunk_type, name))
+        }
+        "singleton_method" => {
+            let name = field_text(node, "name", source);
+            Some((ChunkType::Method, name))
+        }
+        "class" => Some((ChunkType::Class, field_text(node, "name", source))),
+        "module" => Some((ChunkType::Module, field_text(node, "name", source))),
         _ => None,
     }
 }
@@ -666,6 +705,12 @@ fn extract_visibility(
                 Some(Visibility::Private)
             }
         }
+        Language::Ruby => {
+            // Ruby visibility is determined by `public`/`private`/`protected`
+            // calls preceding the method, which is hard to extract from a single
+            // node.  Default to public (Ruby's default at the top level).
+            Some(Visibility::Public)
+        }
     }
 }
 
@@ -860,6 +905,46 @@ fn extract_parameters(node: &Node<'_>, source: &[u8], language: Language) -> Vec
                     }
                 }
             }
+            Language::Ruby => {
+                // Ruby method parameters: identifier, optional_parameter,
+                // splat_parameter, keyword_parameter, etc.
+                match child.kind() {
+                    "identifier" => {
+                        let name = child.utf8_text(source).unwrap_or("").to_string();
+                        if !name.is_empty() {
+                            params.push(Parameter { name, type_annotation: None });
+                        }
+                    }
+                    "optional_parameter" => {
+                        let name = field_text(&child, "name", source).unwrap_or_default();
+                        if !name.is_empty() {
+                            params.push(Parameter { name, type_annotation: None });
+                        }
+                    }
+                    "splat_parameter"
+                    | "hash_splat_parameter"
+                    | "block_parameter"
+                    | "keyword_parameter" => {
+                        let name = field_text(&child, "name", source)
+                            .or_else(|| {
+                                let mut inner = child.walk();
+                                let found = child.children(&mut inner).find_map(|gc| {
+                                    if gc.kind() == "identifier" {
+                                        gc.utf8_text(source).ok().map(|s| s.to_string())
+                                    } else {
+                                        None
+                                    }
+                                });
+                                found
+                            })
+                            .unwrap_or_default();
+                        if !name.is_empty() {
+                            params.push(Parameter { name, type_annotation: None });
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -957,6 +1042,10 @@ fn extract_return_type(node: &Node<'_>, source: &[u8], language: Language) -> Op
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
         }
+        Language::Ruby => {
+            // Standard Ruby has no type annotations for return types.
+            None
+        }
     }
 }
 
@@ -983,6 +1072,14 @@ fn extract_file_imports(root: Node<'_>, source: &[u8], language: Language) -> Ve
                     && zig_is_import_decl(&child, source)
             }
             Language::Go => child.kind() == "import_declaration",
+            // Ruby `require` and `require_relative` are top-level `call` nodes.
+            Language::Ruby => {
+                child.kind() == "call"
+                    && child
+                        .child_by_field_name("method")
+                        .and_then(|m| m.utf8_text(source).ok())
+                        .is_some_and(|m| m == "require" || m == "require_relative")
+            }
         };
         if is_import {
             if let Ok(text) = child.utf8_text(source) {
