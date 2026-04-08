@@ -10,7 +10,7 @@
 //! exercises the major symbol kinds for its language.
 
 use index::chunking::types::{ChunkType, HierarchyLevel, Language};
-use index::chunking::{Chunker, SyntacticChunker};
+use index::chunking::SyntacticChunker;
 use std::path::Path;
 
 // ── Fixture source ────────────────────────────────────────────────────────────
@@ -640,8 +640,6 @@ fn ruby_line_numbers_are_valid() {
 
 #[test]
 fn chunk_types_serialize_to_snake_case() {
-    use serde_json::Value;
-
     // All ChunkType variants and their expected LanceDB schema values.
     let cases: &[(ChunkType, &str)] = &[
         (ChunkType::Function, "\"function\""),
