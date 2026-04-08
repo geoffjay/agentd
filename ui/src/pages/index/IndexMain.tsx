@@ -35,6 +35,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AddRepositoryDialog } from "@/components/index/AddRepositoryDialog";
 import { ClusterDensityMap } from "@/components/index/ClusterDensityMap";
+import { EmbeddingHeatMap } from "@/components/index/EmbeddingHeatMap";
 import { RepositoryList } from "@/components/index/RepositoryList";
 import { SearchBar } from "@/components/index/SearchBar";
 import { SearchResultsTable } from "@/components/index/SearchResultsTable";
@@ -140,7 +141,17 @@ export function IndexMain() {
 		embeddingError,
 		fetchEmbeddingSample,
 		clearEmbeddingSample,
+		hexbinCells,
+		hexbinTotal,
+		hexbinBinsParam,
+		hexbinLoading,
+		hexbinError,
+		fetchEmbeddingHexbin,
+		clearEmbeddingHexbin,
 	} = useIndexService();
+
+	// Threshold above which the heatmap is used instead of the scatter plot.
+	const HEATMAP_THRESHOLD = 5000;
 
 	const [searchParams, setSearchParams] = useSearchParams();
 
@@ -461,23 +472,43 @@ export function IndexMain() {
 								</select>
 							</div>
 
-							{/* Density map */}
-							{healthRepoId && (
-								<ClusterDensityMap
-									repoId={healthRepoId}
-									repoName={
-										repositories.find((r) => r.id === healthRepoId)?.name ??
-										healthRepoId
-									}
-									embeddingPoints={embeddingPoints}
-									embeddingTotal={embeddingTotal}
-									embeddingSampled={embeddingSampled}
-									embeddingLoading={embeddingLoading}
-									embeddingError={embeddingError}
-									onFetch={fetchEmbeddingSample}
-									onClear={clearEmbeddingSample}
-								/>
-							)}
+							{/* Density map — scatter plot for small repos, heatmap for large.
+							    We show the scatter while loading (it reveals the total_chunks).
+							    Once the total is known, switch to the heatmap for large repos. */}
+							{healthRepoId && (() => {
+								const repoName =
+									repositories.find((r) => r.id === healthRepoId)?.name ??
+									healthRepoId;
+								// Use heatmap once we have confirmed total > threshold.
+								const useHeatmap =
+									!embeddingLoading && embeddingTotal > HEATMAP_THRESHOLD;
+
+								return useHeatmap ? (
+									<EmbeddingHeatMap
+										repoId={healthRepoId}
+										repoName={repoName}
+										hexbinCells={hexbinCells}
+										hexbinTotal={hexbinTotal}
+										hexbinBinsParam={hexbinBinsParam}
+										hexbinLoading={hexbinLoading}
+										hexbinError={hexbinError}
+										onFetch={fetchEmbeddingHexbin}
+										onClear={clearEmbeddingHexbin}
+									/>
+								) : (
+									<ClusterDensityMap
+										repoId={healthRepoId}
+										repoName={repoName}
+										embeddingPoints={embeddingPoints}
+										embeddingTotal={embeddingTotal}
+										embeddingSampled={embeddingSampled}
+										embeddingLoading={embeddingLoading}
+										embeddingError={embeddingError}
+										onFetch={fetchEmbeddingSample}
+										onClear={clearEmbeddingSample}
+									/>
+								);
+							})()}
 
 							{!healthRepoId && (
 								<div className="flex flex-col items-center justify-center py-16 text-center">

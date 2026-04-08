@@ -11,6 +11,7 @@ import type {
 	CodeAgenticSearchResponse,
 	CodeSearchRequest,
 	CodeSearchResponse,
+	EmbeddingHexBinResponse,
 	EmbeddingSampleResponse,
 	ListReposResponse,
 	RepoRecord,
@@ -90,6 +91,16 @@ export class IndexClient extends ApiClient {
 	): Promise<EmbeddingSampleResponse> {
 		return this.get<EmbeddingSampleResponse>(
 			`/repositories/${id}/embeddings/sample?limit=${limit}`,
+		);
+	}
+
+	/** GET /repositories/:id/embeddings/hexbin — aggregated hex-bin density map. */
+	getEmbeddingHexbin(
+		id: string,
+		bins = 40,
+	): Promise<EmbeddingHexBinResponse> {
+		return this.get<EmbeddingHexBinResponse>(
+			`/repositories/${id}/embeddings/hexbin?bins=${bins}`,
 		);
 	}
 }

@@ -732,6 +732,36 @@ impl CodeStore for LanceStore {
             .map_err(|e| StoreError::QueryFailed(format!("sample_chunks failed: {}", e)))?;
         self.collect_chunks(stream).await
     }
+
+    async fn get_chunk_ids(&self, repo_id: &str) -> StoreResult<Vec<String>> {
+        let table = self.open_table().await?;
+        let safe_repo = escape_sql(repo_id);
+
+        let stream = table
+            .query()
+            .only_if(format!("repo_id = '{}'", safe_repo))
+            .select(lancedb::query::Select::Columns(vec!["id".to_string()]))
+            .execute()
+            .await
+            .map_err(|e| StoreError::QueryFailed(format!("get_chunk_ids failed: {}", e)))?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| StoreError::QueryFailed(format!("Failed to collect ids: {}", e)))?;
+
+        let mut ids = Vec::new();
+        for batch in &batches {
+            if let Some(col) =
+                batch.column_by_name("id").and_then(|a| a.as_any().downcast_ref::<StringArray>())
+            {
+                for row in 0..batch.num_rows() {
+                    ids.push(col.value(row).to_string());
+                }
+            }
+        }
+        Ok(ids)
+    }
 }
 
 // ---------------------------------------------------------------------------

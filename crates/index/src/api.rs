@@ -84,6 +84,68 @@ struct EmbeddingPoint {
     symbol_name: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// Embeddings hexbin types
+// ---------------------------------------------------------------------------
+
+/// Query parameters for `GET /repositories/{id}/embeddings/hexbin`.
+#[derive(Debug, Deserialize)]
+struct EmbeddingsHexbinParams {
+    /// Number of hex columns spanning the x-axis (default 40, range 5–200).
+    bins: Option<usize>,
+}
+
+/// A single non-empty hex-bin cell in the density map.
+#[derive(Debug, Serialize)]
+struct HexBinCell {
+    /// Axial column coordinate.
+    q: i32,
+    /// Axial row coordinate.
+    r: i32,
+    /// Number of chunks projected into this cell.
+    count: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Hex-bin projection helper
+// ---------------------------------------------------------------------------
+
+/// Project a (x, y) point in [−1, 1]² into pointy-top axial hex coordinates.
+///
+/// Uses cube-coordinate rounding to find the unique hex cell containing the
+/// point.  `bins` controls the number of columns spanning the full x range:
+/// a larger value produces finer-grained bins.
+fn to_hex_axial(x: f32, y: f32, bins: usize) -> (i32, i32) {
+    const SQRT3: f32 = 1.732_050_8_f32;
+
+    // Hex size: the space spans [−1, 1] so total range is 2.0.
+    // For `bins` pointy-top columns the horizontal cell spacing is sqrt(3)*s,
+    // so s = 2.0 / (sqrt(3) * bins).
+    let s = 2.0_f32 / (SQRT3 * bins as f32);
+
+    // Fractional axial coordinates (pointy-top).
+    let q = (SQRT3 / 3.0 * x - 1.0 / 3.0 * y) / s;
+    let r = (2.0 / 3.0 * y) / s;
+    let s_coord = -q - r;
+
+    // Cube-coordinate rounding.
+    let rq = q.round();
+    let rr = r.round();
+    let rs = s_coord.round();
+
+    let q_diff = (rq - q).abs();
+    let r_diff = (rr - r).abs();
+    let s_diff = (rs - s_coord).abs();
+
+    if q_diff > r_diff && q_diff > s_diff {
+        ((-rr - rs) as i32, rr as i32)
+    } else if r_diff > s_diff {
+        (rq as i32, (-rq - rs) as i32)
+    } else {
+        (rq as i32, rr as i32)
+    }
+}
+
 /// Deterministic hash-based 2D projection for a chunk ID.
 ///
 /// Maps a string ID to (x, y) coordinates in the range [−1, 1] using two
@@ -136,6 +198,7 @@ pub fn create_router_with_state(state: AppState) -> Router {
         .route("/repositories/{id}/status", get(get_repo_status_handler))
         .route("/repositories/{id}/reindex", post(reindex_repo_handler))
         .route("/repositories/{id}/embeddings/sample", get(embeddings_sample_handler))
+        .route("/repositories/{id}/embeddings/hexbin", get(embeddings_hexbin_handler))
         .with_state(state)
 }
 
@@ -389,6 +452,70 @@ async fn embeddings_sample_handler(
 }
 
 // ---------------------------------------------------------------------------
+// Embeddings hexbin handler
+// ---------------------------------------------------------------------------
+
+/// `GET /repositories/{id}/embeddings/hexbin?bins=40`
+///
+/// Projects every indexed chunk for the repository into a 2D space using the
+/// same deterministic hash as the scatter-plot endpoint, then aggregates the
+/// points into a pointy-top hex-bin grid.
+///
+/// Returns only non-empty bins as `{ q, r, count }` triples — this makes the
+/// response O(bins²) at most regardless of how many chunks the repository
+/// contains, keeping payload sizes small even for 100 k-chunk repos.
+///
+/// # Responses
+///
+/// - `200 OK` — `{ bins, total_chunks, bins_param }`
+/// - `404 Not Found` — repository not registered
+/// - `500 Internal Server Error` — store query failed
+async fn embeddings_hexbin_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(params): Query<EmbeddingsHexbinParams>,
+) -> impl IntoResponse {
+    if state.repo_store.get(&id).await.is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({ "error": "repository not found" })))
+            .into_response();
+    }
+
+    let bins = params.bins.unwrap_or(40).clamp(5, 200);
+
+    let ids = match state.store.get_chunk_ids(&id).await {
+        Ok(v) => v,
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))
+                .into_response()
+        }
+    };
+
+    let total_chunks = ids.len();
+
+    // Project each ID and accumulate counts per hex cell.
+    let mut cell_counts: std::collections::HashMap<(i32, i32), u32> =
+        std::collections::HashMap::new();
+    for chunk_id in &ids {
+        let (x, y) = pseudo_project(chunk_id);
+        let cell = to_hex_axial(x, y, bins);
+        *cell_counts.entry(cell).or_insert(0) += 1;
+    }
+
+    let bins_vec: Vec<HexBinCell> =
+        cell_counts.into_iter().map(|((q, r), count)| HexBinCell { q, r, count }).collect();
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "bins": bins_vec,
+            "total_chunks": total_chunks,
+            "bins_param": bins,
+        })),
+    )
+        .into_response()
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -458,6 +585,9 @@ mod tests {
             Ok(0)
         }
         async fn sample_chunks(&self, _: &str, _: usize) -> StoreResult<Vec<StoredChunk>> {
+            Ok(vec![])
+        }
+        async fn get_chunk_ids(&self, _: &str) -> StoreResult<Vec<String>> {
             Ok(vec![])
         }
     }
@@ -712,5 +842,106 @@ mod tests {
             .unwrap();
         let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── to_hex_axial ──────────────────────────────────────────────────────
+
+    #[test]
+    fn hex_axial_origin_maps_to_zero_zero() {
+        let (q, r) = to_hex_axial(0.0, 0.0, 40);
+        assert_eq!((q, r), (0, 0));
+    }
+
+    #[test]
+    fn hex_axial_is_deterministic() {
+        let a = to_hex_axial(0.5, -0.3, 40);
+        let b = to_hex_axial(0.5, -0.3, 40);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn hex_axial_nearby_points_same_bin() {
+        // Two points very close together should land in the same bin.
+        let a = to_hex_axial(0.1, 0.1, 40);
+        let b = to_hex_axial(0.101, 0.101, 40);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn hex_axial_distinct_regions_differ() {
+        let top_left = to_hex_axial(-0.9, 0.9, 40);
+        let bottom_right = to_hex_axial(0.9, -0.9, 40);
+        assert_ne!(top_left, bottom_right);
+    }
+
+    #[test]
+    fn hex_axial_coarser_bins_widen_cells() {
+        // With fewer bins each cell is larger, so more points land together.
+        let a_fine = to_hex_axial(0.3, 0.0, 100);
+        let b_fine = to_hex_axial(0.5, 0.0, 100);
+        let a_coarse = to_hex_axial(0.3, 0.0, 5);
+        let b_coarse = to_hex_axial(0.5, 0.0, 5);
+        // With bins=5 both points might collide; with bins=100 they should not.
+        assert_ne!(a_fine, b_fine, "fine bins should separate 0.3 and 0.5");
+        // Coarse bins might or might not collapse them — just ensure no panic.
+        let _ = (a_coarse, b_coarse);
+    }
+
+    // ── Hexbin endpoint ───────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn hexbin_missing_repo_returns_404() {
+        let app = make_app(vec![]);
+        let request = Request::builder()
+            .method("GET")
+            .uri("/repositories/nonexistent/embeddings/hexbin")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn hexbin_empty_repo_returns_200_empty_bins() {
+        let (app, id, _dir) = make_app_with_repo().await;
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/repositories/{id}/embeddings/hexbin"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["total_chunks"], 0);
+        assert!(json["bins"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn hexbin_default_bins_param_is_40() {
+        let (app, id, _dir) = make_app_with_repo().await;
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/repositories/{id}/embeddings/hexbin"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["bins_param"], 40);
+    }
+
+    #[tokio::test]
+    async fn hexbin_custom_bins_param_is_reflected() {
+        let (app, id, _dir) = make_app_with_repo().await;
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/repositories/{id}/embeddings/hexbin?bins=20"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["bins_param"], 20);
     }
 }

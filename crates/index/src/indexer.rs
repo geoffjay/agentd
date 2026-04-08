@@ -555,6 +555,9 @@ mod tests {
         ) -> StoreResult<Vec<crate::store::traits::StoredChunk>> {
             Ok(vec![])
         }
+        async fn get_chunk_ids(&self, _repo_id: &str) -> StoreResult<Vec<String>> {
+            Ok(vec![])
+        }
     }
 
     // ── hex_digest ────────────────────────────────────────────────────────

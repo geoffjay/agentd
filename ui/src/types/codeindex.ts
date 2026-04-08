@@ -184,3 +184,27 @@ export interface EmbeddingSampleResponse {
 	/** Number of points actually returned. */
 	sampled: number;
 }
+
+// ---------------------------------------------------------------------------
+// Embedding hex-bin types
+// ---------------------------------------------------------------------------
+
+/** A single non-empty hex-bin cell in the density heatmap. */
+export interface EmbeddingHexBinCell {
+	/** Axial column coordinate. */
+	q: number;
+	/** Axial row coordinate. */
+	r: number;
+	/** Number of chunks projected into this cell. */
+	count: number;
+}
+
+/** Response body from GET /repositories/:id/embeddings/hexbin */
+export interface EmbeddingHexBinResponse {
+	/** Non-empty hex-bin cells with their chunk counts. */
+	bins: EmbeddingHexBinCell[];
+	/** Total chunks projected (all chunks in the repository). */
+	total_chunks: number;
+	/** The bins parameter used for this response. */
+	bins_param: number;
+}

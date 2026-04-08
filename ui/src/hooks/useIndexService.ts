@@ -14,6 +14,7 @@ import type {
 	AddRepoRequest,
 	CodeSearchRequest,
 	CodeSearchResultItem,
+	EmbeddingHexBinCell,
 	EmbeddingSamplePoint,
 	RepoRecord,
 } from "@/types/codeindex";
@@ -61,6 +62,15 @@ export interface UseIndexServiceResult {
 	embeddingError?: string;
 	fetchEmbeddingSample: (repoId: string, limit?: number) => Promise<void>;
 	clearEmbeddingSample: () => void;
+
+	// Embedding hex-bin
+	hexbinCells: EmbeddingHexBinCell[];
+	hexbinTotal: number;
+	hexbinBinsParam: number;
+	hexbinLoading: boolean;
+	hexbinError?: string;
+	fetchEmbeddingHexbin: (repoId: string, bins?: number) => Promise<void>;
+	clearEmbeddingHexbin: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +98,12 @@ export function useIndexService(): UseIndexServiceResult {
 	const [embeddingSampled, setEmbeddingSampled] = useState(0);
 	const [embeddingLoading, setEmbeddingLoading] = useState(false);
 	const [embeddingError, setEmbeddingError] = useState<string | undefined>();
+
+	const [hexbinCells, setHexbinCells] = useState<EmbeddingHexBinCell[]>([]);
+	const [hexbinTotal, setHexbinTotal] = useState(0);
+	const [hexbinBinsParam, setHexbinBinsParam] = useState(40);
+	const [hexbinLoading, setHexbinLoading] = useState(false);
+	const [hexbinError, setHexbinError] = useState<string | undefined>();
 
 	const mountedRef = useRef(true);
 
@@ -286,6 +302,45 @@ export function useIndexService(): UseIndexServiceResult {
 		setEmbeddingError(undefined);
 	}, []);
 
+	// -------------------------------------------------------------------------
+	// Embedding hex-bin
+	// -------------------------------------------------------------------------
+
+	const fetchEmbeddingHexbin = useCallback(
+		async (repoId: string, bins = 40): Promise<void> => {
+			setHexbinLoading(true);
+			setHexbinError(undefined);
+			try {
+				const res = await indexClient.getEmbeddingHexbin(repoId, bins);
+				if (!mountedRef.current) return;
+				if (!res || !Array.isArray(res.bins)) {
+					setHexbinError("Unexpected response from server — try again");
+					return;
+				}
+				setHexbinCells(res.bins);
+				setHexbinTotal(res.total_chunks ?? 0);
+				setHexbinBinsParam(res.bins_param ?? bins);
+			} catch (err) {
+				if (!mountedRef.current) return;
+				setHexbinError(
+					err instanceof Error ? err.message : "Failed to fetch hex-bin data",
+				);
+				setHexbinCells([]);
+				setHexbinTotal(0);
+			} finally {
+				if (mountedRef.current) setHexbinLoading(false);
+			}
+		},
+		[],
+	);
+
+	const clearEmbeddingHexbin = useCallback(() => {
+		setHexbinCells([]);
+		setHexbinTotal(0);
+		setHexbinBinsParam(40);
+		setHexbinError(undefined);
+	}, []);
+
 	return {
 		health,
 		recheckHealth,
@@ -311,5 +366,12 @@ export function useIndexService(): UseIndexServiceResult {
 		embeddingError,
 		fetchEmbeddingSample,
 		clearEmbeddingSample,
+		hexbinCells,
+		hexbinTotal,
+		hexbinBinsParam,
+		hexbinLoading,
+		hexbinError,
+		fetchEmbeddingHexbin,
+		clearEmbeddingHexbin,
 	};
 }

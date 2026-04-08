@@ -132,6 +132,14 @@ pub trait CodeStore: Send + Sync {
     /// Used for embedding visualisation — returns a representative sample of
     /// all indexed chunks regardless of whether they have been summarised.
     async fn sample_chunks(&self, repo_id: &str, limit: usize) -> StoreResult<Vec<StoredChunk>>;
+
+    /// Return all chunk IDs for a repository.
+    ///
+    /// Fetches only the `id` column, making it much cheaper than loading full
+    /// chunks.  Used by the hex-bin density endpoint to project every chunk
+    /// into the 2D space and aggregate into bins without materialising the
+    /// full record data.
+    async fn get_chunk_ids(&self, repo_id: &str) -> StoreResult<Vec<String>>;
 }
 
 // ---------------------------------------------------------------------------
