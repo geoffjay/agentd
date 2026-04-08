@@ -119,6 +119,7 @@ pub fn extract_symbols_from_import(import_text: &str, language: Language) -> Vec
         Language::Rust => extract_rust_symbols(text),
         Language::Python => extract_python_symbols(text),
         Language::JavaScript | Language::TypeScript => extract_js_symbols(text),
+        Language::Swift => extract_swift_symbols(text),
     }
 }
 
@@ -240,6 +241,41 @@ fn extract_js_symbols(text: &str) -> Vec<String> {
 // ---------------------------------------------------------------------------
 // Dependency-aware search boost
 // ---------------------------------------------------------------------------
+
+/// Extract imported symbol names from a Swift `import` declaration.
+///
+/// Swift import forms:
+/// - `import Foundation`           → `["Foundation"]`
+/// - `import UIKit.UIView`         → `["UIKit"]` (top-level module)
+/// - `import class Foundation.NSDate` → `["NSDate"]` (specific declaration)
+fn extract_swift_symbols(text: &str) -> Vec<String> {
+    // Strip optional `import` keyword prefix.
+    let after = match text.strip_prefix("import") {
+        Some(rest) => rest.trim(),
+        None => return vec![],
+    };
+    if after.is_empty() {
+        return vec![];
+    }
+
+    // Handle `import <kind> Module.Symbol` (e.g. `import class Foundation.NSDate`).
+    // Swift import kinds: class, struct, enum, protocol, typealias, func, var, let
+    let swift_kinds = ["class", "struct", "enum", "protocol", "typealias", "func", "var", "let"];
+    let module_path = if let Some(kind) = swift_kinds.iter().find(|&&k| after.starts_with(k)) {
+        after[kind.len()..].trim()
+    } else {
+        after
+    };
+
+    // Return the last dotted component as the imported symbol name.
+    // `Foundation.NSDate` → `["NSDate"]`, `Foundation` → `["Foundation"]`.
+    let symbol = module_path.split('.').next_back().unwrap_or(module_path).trim().to_string();
+    if symbol.is_empty() {
+        vec![]
+    } else {
+        vec![symbol]
+    }
+}
 
 /// Boost search result scores for files related to the top results via imports.
 ///
@@ -391,6 +427,32 @@ mod tests {
         let syms =
             extract_symbols_from_import("import * as utils from './utils'", Language::JavaScript);
         assert!(syms.is_empty());
+    }
+
+    // -- extract_swift_symbols ---------------------------------------------
+
+    #[test]
+    fn swift_simple_import() {
+        let syms = extract_symbols_from_import("import Foundation", Language::Swift);
+        assert_eq!(syms, vec!["Foundation"]);
+    }
+
+    #[test]
+    fn swift_import_with_submodule() {
+        let syms = extract_symbols_from_import("import UIKit.UIView", Language::Swift);
+        assert_eq!(syms, vec!["UIView"]);
+    }
+
+    #[test]
+    fn swift_import_specific_declaration() {
+        let syms = extract_symbols_from_import("import class Foundation.NSDate", Language::Swift);
+        assert_eq!(syms, vec!["NSDate"]);
+    }
+
+    #[test]
+    fn swift_import_struct_kind() {
+        let syms = extract_symbols_from_import("import struct Swift.Array", Language::Swift);
+        assert_eq!(syms, vec!["Array"]);
     }
 
     // -- DependencyGraph ---------------------------------------------------

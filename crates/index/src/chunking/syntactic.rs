@@ -83,6 +83,7 @@ fn ts_language_for(language: Language) -> tree_sitter::Language {
         Language::Python => tree_sitter_python::LANGUAGE.into(),
         Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
         Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+        Language::Swift => tree_sitter_swift::LANGUAGE.into(),
     }
 }
 
@@ -161,6 +162,7 @@ fn classify(
         Language::Python => classify_python(kind, node, source, parent_kind),
         Language::JavaScript => classify_js(kind, node, source),
         Language::TypeScript => classify_js(kind, node, source), // TS grammar reuses JS node kinds
+        Language::Swift => classify_swift(kind, node, source, parent_kind),
     }
 }
 
@@ -261,6 +263,105 @@ fn has_function_value(node: &Node<'_>) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Swift
+// ---------------------------------------------------------------------------
+
+/// Classify a Swift AST node.
+///
+/// In tree-sitter-swift the grammar uses `class_declaration` for **all** named
+/// type declarations (class, struct, enum, extension).  The actual kind is
+/// determined by the first non-named keyword child (`class`, `struct`, `enum`,
+/// `extension`).
+///
+/// Constructs mapped to chunk types:
+/// - `function_declaration` / `protocol_function_declaration` → [`ChunkType::Function`] or [`ChunkType::Method`]
+/// - `init_declaration` → [`ChunkType::Method`]
+/// - `class_declaration` with keyword `class` → [`ChunkType::Class`]
+/// - `class_declaration` with keyword `struct` → [`ChunkType::Struct`]
+/// - `class_declaration` with keyword `enum` → [`ChunkType::Enum`]
+/// - `class_declaration` with keyword `extension` → [`ChunkType::Extension`]
+/// - `protocol_declaration` → [`ChunkType::Protocol`]
+fn classify_swift(
+    kind: &str,
+    node: &Node<'_>,
+    source: &[u8],
+    parent_kind: Option<&str>,
+) -> Option<(ChunkType, Option<String>)> {
+    /// Container node kinds whose children are treated as methods.
+    const METHOD_PARENTS: &[&str] = &["class_declaration", "protocol_declaration"];
+
+    match kind {
+        "function_declaration" | "protocol_function_declaration" => {
+            let name = field_text(node, "name", source)
+                .or_else(|| swift_first_simple_identifier(node, source));
+            let chunk_type = if parent_kind.is_some_and(|k| METHOD_PARENTS.contains(&k)) {
+                ChunkType::Method
+            } else {
+                ChunkType::Function
+            };
+            Some((chunk_type, name))
+        }
+        "init_declaration" => {
+            // Initializers are always methods inside a type body.
+            Some((ChunkType::Method, Some("init".to_string())))
+        }
+        "class_declaration" => {
+            // This grammar node covers class / struct / enum / extension.
+            // Inspect the first keyword child to determine the real kind.
+            let keyword = swift_type_keyword(node, source);
+            let name = field_text(node, "name", source)
+                .or_else(|| swift_first_simple_identifier(node, source));
+            let chunk_type = match keyword.as_deref() {
+                Some("struct") => ChunkType::Struct,
+                Some("enum") => ChunkType::Enum,
+                Some("extension") => ChunkType::Extension,
+                _ => ChunkType::Class, // "class" or unrecognised
+            };
+            Some((chunk_type, name))
+        }
+        "protocol_declaration" => {
+            let name = field_text(node, "name", source)
+                .or_else(|| swift_first_simple_identifier(node, source));
+            Some((ChunkType::Protocol, name))
+        }
+        _ => None,
+    }
+}
+
+/// Identify the Swift type keyword (`class`, `struct`, `enum`, `extension`)
+/// from a `class_declaration` node by scanning its direct unnamed children.
+fn swift_type_keyword(node: &Node<'_>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if !child.is_named() {
+            if let Ok(text) = child.utf8_text(source) {
+                let s = text.trim();
+                if matches!(s, "class" | "struct" | "enum" | "extension") {
+                    return Some(s.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Return the text of the first `simple_identifier` direct child of `node`.
+fn swift_first_simple_identifier(node: &Node<'_>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "simple_identifier" {
+            if let Ok(text) = child.utf8_text(source) {
+                let s = text.trim().to_string();
+                if !s.is_empty() {
+                    return Some(s);
+                }
+            }
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -348,6 +449,54 @@ fn extract_visibility(
             // Top-level TS declarations are implicitly public.
             Some(Visibility::Public)
         }
+        Language::Swift => {
+            // Swift access modifiers appear as `modifiers` or directly as
+            // `visibility_modifier` / `access_level_modifier` children.
+            // Access levels: open > public > internal (default) > fileprivate > private
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                let child_kind = child.kind();
+                // Direct access-level modifier node.
+                if child_kind == "visibility_modifier" || child_kind == "access_level_modifier" {
+                    return Some(swift_visibility_from_text(child.utf8_text(source).unwrap_or("")));
+                }
+                // Grouped modifiers container — scan its children.
+                if child_kind == "modifiers" {
+                    let mut mod_cursor = child.walk();
+                    for modifier in child.children(&mut mod_cursor) {
+                        let mk = modifier.kind();
+                        if mk == "visibility_modifier" || mk == "access_level_modifier" {
+                            return Some(swift_visibility_from_text(
+                                modifier.utf8_text(source).unwrap_or(""),
+                            ));
+                        }
+                        // Some grammars embed the keyword directly.
+                        let text = modifier.utf8_text(source).unwrap_or("").trim();
+                        if matches!(
+                            text,
+                            "open" | "public" | "internal" | "fileprivate" | "private"
+                        ) {
+                            return Some(swift_visibility_from_text(text));
+                        }
+                    }
+                }
+            }
+            // Swift default visibility is `internal` — closest mapping is Module.
+            Some(Visibility::Module)
+        }
+    }
+}
+
+/// Map a Swift access-level keyword to a [`Visibility`] variant.
+fn swift_visibility_from_text(text: &str) -> Visibility {
+    // Strip any parenthesised setter annotation, e.g. `private(set)`.
+    let keyword = text.split('(').next().unwrap_or("").trim();
+    match keyword {
+        "open" | "public" => Visibility::Public,
+        "fileprivate" => Visibility::Protected,
+        "private" => Visibility::Private,
+        // `internal` and anything unrecognised → module-scoped.
+        _ => Visibility::Module,
     }
 }
 
@@ -452,6 +601,48 @@ fn extract_parameters(node: &Node<'_>, source: &[u8], language: Language) -> Vec
                 }
                 _ => {}
             },
+            Language::Swift => {
+                // Each `parameter` child has an optional external label and a
+                // mandatory internal name.  We prefer the internal name.
+                if child.kind() == "parameter" {
+                    // Try named fields in order of preference.
+                    let name = field_text(&child, "internal_name", source)
+                        .or_else(|| field_text(&child, "name", source))
+                        .or_else(|| {
+                            // Fallback: pick the last simple_identifier before
+                            // the colon (the internal name in `label name: Type`).
+                            let mut last = None;
+                            let mut cursor2 = child.walk();
+                            for gc in child.children(&mut cursor2) {
+                                if gc.kind() == "simple_identifier" {
+                                    last = gc.utf8_text(source).ok().map(|s| s.to_string());
+                                } else if gc.utf8_text(source).ok() == Some(":") {
+                                    break;
+                                }
+                            }
+                            last
+                        })
+                        .unwrap_or_default();
+
+                    if name.is_empty() || name == "_" {
+                        continue;
+                    }
+
+                    let mut cursor2 = child.walk();
+                    let type_annotation = field_text(&child, "type", source).or_else(|| {
+                        // Some grammar versions put the type in a
+                        // `type_annotation` child node.
+                        let ta_text = child
+                            .children(&mut cursor2)
+                            .find(|gc| gc.kind() == "type_annotation")
+                            .and_then(|ta| ta.utf8_text(source).ok())
+                            .map(|s| s.trim_start_matches(':').trim().to_string());
+                        ta_text
+                    });
+
+                    params.push(Parameter { name, type_annotation });
+                }
+            }
         }
     }
 
@@ -477,6 +668,37 @@ fn extract_return_type(node: &Node<'_>, source: &[u8], language: Language) -> Op
                 .map(|s| s.trim_start_matches(':').trim().to_string())
                 .filter(|s| !s.is_empty())
         }
+        Language::Swift => {
+            // Swift return type follows `->`.  The grammar may expose it as
+            // a `return_type` field or as a child `throws_modifier`/`type` node.
+            // Try the named field first.
+            if let Some(rt) = field_text(node, "return_type", source) {
+                return Some(rt);
+            }
+            // Fallback: find the node that follows `->` among direct children.
+            let mut cursor = node.walk();
+            let children: Vec<_> = node.children(&mut cursor).collect();
+            let mut found_arrow = false;
+            for child in &children {
+                if found_arrow {
+                    // Skip `throws`/`async` keywords that appear between -> and type.
+                    let k = child.kind();
+                    if k == "throws_modifier" || k == "async" || k == "rethrows" {
+                        continue;
+                    }
+                    if let Ok(text) = child.utf8_text(source) {
+                        let s = text.trim().to_string();
+                        if !s.is_empty() {
+                            return Some(s);
+                        }
+                    }
+                }
+                if child.utf8_text(source).ok() == Some("->") {
+                    found_arrow = true;
+                }
+            }
+            None
+        }
     }
 }
 
@@ -494,6 +716,7 @@ fn extract_file_imports(root: Node<'_>, source: &[u8], language: Language) -> Ve
                 matches!(child.kind(), "import_statement" | "import_from_statement")
             }
             Language::JavaScript | Language::TypeScript => child.kind() == "import_statement",
+            Language::Swift => child.kind() == "import_declaration",
         };
         if is_import {
             if let Ok(text) = child.utf8_text(source) {
@@ -776,5 +999,193 @@ const add = (a: number, b: number): number => a + b;
     fn chunk_path_rejects_unknown_extension() {
         let path = Path::new("data.csv");
         assert!(chunker().chunk_path(path, "a,b,c").is_err());
+    }
+
+    // ── Swift ─────────────────────────────────────────────────────────────
+
+    /// Representative Swift source covering the major symbol kinds.
+    const SWIFT_SOURCE: &str = r#"
+import Foundation
+import UIKit
+
+protocol Greetable {
+    var name: String { get }
+    func greet() -> String
+}
+
+class Animal: Greetable {
+    var name: String
+
+    init(name: String) {
+        self.name = name
+    }
+
+    func greet() -> String {
+        return "Hello, I'm \(name)"
+    }
+
+    func speak() -> String {
+        return "..."
+    }
+}
+
+struct Point {
+    var x: Double
+    var y: Double
+
+    func distance(to other: Point) -> Double {
+        let dx = x - other.x
+        let dy = y - other.y
+        return (dx * dx + dy * dy).squareRoot()
+    }
+}
+
+enum Direction {
+    case north
+    case south
+    case east
+    case west
+
+    func opposite() -> Direction {
+        switch self {
+        case .north: return .south
+        case .south: return .north
+        case .east:  return .west
+        case .west:  return .east
+        }
+    }
+}
+
+extension Animal {
+    func description() -> String {
+        return "Animal: \(name)"
+    }
+}
+
+public func makeAnimal(name: String) -> Animal {
+    return Animal(name: name)
+}
+
+func fetchData(from url: String) async throws -> Data {
+    fatalError("not implemented")
+}
+"#;
+
+    #[test]
+    fn swift_extracts_protocol() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        let protocols: Vec<_> =
+            chunks.iter().filter(|c| c.chunk_type == ChunkType::Protocol).collect();
+        assert_eq!(protocols.len(), 1, "expected one protocol");
+        assert_eq!(protocols[0].symbol_name.as_deref(), Some("Greetable"));
+    }
+
+    #[test]
+    fn swift_extracts_class() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        let classes: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Class).collect();
+        assert_eq!(classes.len(), 1, "expected one class");
+        assert_eq!(classes[0].symbol_name.as_deref(), Some("Animal"));
+    }
+
+    #[test]
+    fn swift_extracts_struct() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        let structs: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Struct).collect();
+        assert_eq!(structs.len(), 1, "expected one struct");
+        assert_eq!(structs[0].symbol_name.as_deref(), Some("Point"));
+    }
+
+    #[test]
+    fn swift_extracts_enum() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        let enums: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Enum).collect();
+        assert_eq!(enums.len(), 1, "expected one enum");
+        assert_eq!(enums[0].symbol_name.as_deref(), Some("Direction"));
+    }
+
+    #[test]
+    fn swift_extracts_extension() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        let exts: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Extension).collect();
+        assert_eq!(exts.len(), 1, "expected one extension");
+        assert_eq!(exts[0].symbol_name.as_deref(), Some("Animal"));
+    }
+
+    #[test]
+    fn swift_extracts_standalone_functions() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        let fns: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Function).collect();
+        let names: Vec<_> = fns.iter().flat_map(|c| &c.symbol_name).collect();
+        assert!(
+            names.iter().any(|n| n.as_str() == "makeAnimal"),
+            "expected makeAnimal in functions"
+        );
+        assert!(names.iter().any(|n| n.as_str() == "fetchData"), "expected fetchData in functions");
+    }
+
+    #[test]
+    fn swift_extracts_methods() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        let methods: Vec<_> = chunks.iter().filter(|c| c.chunk_type == ChunkType::Method).collect();
+        assert!(!methods.is_empty(), "expected at least one method");
+        let names: Vec<_> = methods.iter().flat_map(|c| &c.symbol_name).collect();
+        assert!(names.iter().any(|n| n.as_str() == "greet"), "expected greet method");
+        assert!(names.iter().any(|n| n.as_str() == "speak"), "expected speak method");
+    }
+
+    #[test]
+    fn swift_init_is_method() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        let init_chunks: Vec<_> = chunks
+            .iter()
+            .filter(|c| {
+                c.chunk_type == ChunkType::Method && c.symbol_name.as_deref() == Some("init")
+            })
+            .collect();
+        assert!(!init_chunks.is_empty(), "expected init to be classified as a method");
+    }
+
+    #[test]
+    fn swift_method_has_parent_symbol() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        // `speak` is only defined on `Animal`, not in the protocol, so unambiguous.
+        let speak = chunks
+            .iter()
+            .find(|c| {
+                c.chunk_type == ChunkType::Method && c.symbol_name.as_deref() == Some("speak")
+            })
+            .expect("speak method should exist");
+        assert_eq!(speak.parent_symbol.as_deref(), Some("Animal"));
+    }
+
+    #[test]
+    fn swift_chunk_path_detects_language() {
+        let path = Path::new("App.swift");
+        let chunks = chunker().chunk_path(path, "func hello() -> String { \"hello\" }\n").unwrap();
+        assert!(!chunks.is_empty());
+        assert_eq!(chunks[0].language, Language::Swift);
+    }
+
+    #[test]
+    fn swift_chunk_line_numbers_are_nonzero() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        for chunk in &chunks {
+            assert!(chunk.start_line >= 1, "start_line should be 1-based");
+            assert!(chunk.end_line >= chunk.start_line);
+        }
+    }
+
+    #[test]
+    fn swift_imports_attached_to_chunks() {
+        let chunks = chunker().chunk("App.swift", SWIFT_SOURCE, Language::Swift).unwrap();
+        // Every chunk should have the file-level imports attached.
+        for chunk in &chunks {
+            assert!(
+                !chunk.metadata.imports.is_empty(),
+                "chunk '{}' should have imports attached",
+                chunk.symbol_name.as_deref().unwrap_or("<anon>")
+            );
+        }
     }
 }
