@@ -11,6 +11,7 @@ import type {
 	CodeAgenticSearchResponse,
 	CodeSearchRequest,
 	CodeSearchResponse,
+	EmbeddingSampleResponse,
 	ListReposResponse,
 	RepoRecord,
 	RepoStatusResponse,
@@ -80,6 +81,16 @@ export class IndexClient extends ApiClient {
 	/** POST /repositories/:id/reindex — trigger re-indexing. */
 	reindexRepository(id: string): Promise<RepoRecord> {
 		return this.post<RepoRecord>(`/repositories/${id}/reindex`);
+	}
+
+	/** GET /repositories/:id/embeddings/sample — 2D-projected chunk sample for visualisation. */
+	getEmbeddingSample(
+		id: string,
+		limit = 500,
+	): Promise<EmbeddingSampleResponse> {
+		return this.get<EmbeddingSampleResponse>(
+			`/repositories/${id}/embeddings/sample?limit=${limit}`,
+		);
 	}
 }
 
