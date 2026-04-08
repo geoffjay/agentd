@@ -42,6 +42,22 @@ impl Related<super::session::Entity> for Entity {
     }
 }
 
+/// Many-to-many: User → Organization via Membership junction table.
+///
+/// - `via()`: traverse the `User` side of the membership relation in reverse
+///   (user → membership)
+/// - `to()`: then follow membership's `Organization` relation
+///   (membership → organization)
+impl Related<super::organization::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::membership::Relation::Organization.def()
+    }
+
+    fn via() -> Option<RelationDef> {
+        Some(super::membership::Relation::User.def().rev())
+    }
+}
+
 impl ActiveModelBehavior for ActiveModel {}
 
 #[cfg(test)]
