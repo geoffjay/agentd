@@ -105,7 +105,6 @@ function drawHex(
 function renderHeatMap(
 	canvas: HTMLCanvasElement,
 	cells: EmbeddingHexBinCell[],
-	binsParam: number,
 ): void {
 	const ctx = canvas.getContext("2d");
 	if (!ctx) return;
@@ -221,7 +220,7 @@ export function EmbeddingHeatMap({
 	useEffect(() => {
 		const canvas = canvasRef.current;
 		if (!canvas || hexbinCells.length === 0) return;
-		renderHeatMap(canvas, hexbinCells, hexbinBinsParam);
+		renderHeatMap(canvas, hexbinCells);
 	}, [hexbinCells, hexbinBinsParam]);
 
 	const refetch = useCallback(() => {
