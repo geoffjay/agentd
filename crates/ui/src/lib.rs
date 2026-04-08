@@ -22,6 +22,7 @@
 //! - `AGENTD_ASK_SERVICE_URL` — Ask service URL (default: `http://localhost:7001`)
 //! - `AGENTD_NOTIFY_SERVICE_URL` — Notify service URL (default: `http://localhost:7004`)
 //! - `AGENTD_ORCHESTRATOR_SERVICE_URL` — Orchestrator service URL (default: `http://localhost:7006`)
+//! - `AGENTD_INDEX_SERVICE_URL` — Index service URL (default: `http://localhost:17012`)
 //! - `RUST_LOG` — Logging level (default: info)
 
 pub mod config;
@@ -53,6 +54,7 @@ pub async fn run(config: config::UiConfig) -> Result<()> {
         ask_url: config.ask_service_url,
         notify_url: config.notify_service_url,
         orchestrator_url: config.orchestrator_service_url,
+        index_url: config.index_service_url,
     };
 
     // SPA fallback: serve index.html for any path that doesn't match a file
@@ -65,6 +67,7 @@ pub async fn run(config: config::UiConfig) -> Result<()> {
         .route("/api/ask/{*path}", any(proxy::proxy_ask))
         .route("/api/notify/{*path}", any(proxy::proxy_notify))
         .route("/api/orchestrator/{*path}", any(proxy::proxy_orchestrator))
+        .route("/api/index/{*path}", any(proxy::proxy_index))
         .with_state(proxy_state)
         // Static files with SPA fallback (must be last)
         .fallback_service(serve_dir)
