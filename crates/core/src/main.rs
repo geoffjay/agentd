@@ -46,6 +46,11 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting agentd-core service...");
 
+    let db_path = agentd_common::storage::get_db_path("agentd-core", "core.db")?;
+    let db = agentd_common::storage::create_connection(&db_path).await?;
+    let _storage = agentd_core::storage::Storage::new(db).await?;
+    info!("Database migrations applied");
+
     let metrics_handle = init_metrics();
 
     let metrics_router =
