@@ -8,6 +8,7 @@
 //! - `GET  /auth/me`         — return current user + active organization
 
 pub mod auth;
+pub mod users;
 
 use axum::{routing::get, Json, Router};
 use serde_json::{json, Value};
@@ -25,6 +26,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_handler))
         .nest("/auth", auth::router())
+        .nest("/users", users::router())
         .with_state(state)
 }
 
