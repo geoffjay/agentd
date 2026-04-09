@@ -81,6 +81,48 @@ describe("ParticipantPanel", () => {
 		});
 	});
 
+	it("shows pulsing activity dot when agent is busy", async () => {
+		const agent = makeParticipantList(1, {
+			room_id: ROOM_ID,
+			kind: "agent",
+			activity_state: "busy",
+		});
+
+		server.use(
+			http.get(`http://localhost:17010/rooms/${ROOM_ID}/participants`, () =>
+				HttpResponse.json({ items: agent, total: 1, limit: 100, offset: 0 }),
+			),
+		);
+
+		render(<ParticipantPanel roomId={ROOM_ID} />);
+
+		await waitFor(() => {
+			const dot = screen.getByLabelText("Busy");
+			expect(dot).toHaveClass("animate-pulse");
+		});
+	});
+
+	it("does not pulse the activity dot when agent is idle", async () => {
+		const agent = makeParticipantList(1, {
+			room_id: ROOM_ID,
+			kind: "agent",
+			activity_state: "idle",
+		});
+
+		server.use(
+			http.get(`http://localhost:17010/rooms/${ROOM_ID}/participants`, () =>
+				HttpResponse.json({ items: agent, total: 1, limit: 100, offset: 0 }),
+			),
+		);
+
+		render(<ParticipantPanel roomId={ROOM_ID} />);
+
+		await waitFor(() => {
+			const dot = screen.getByLabelText("Idle");
+			expect(dot).not.toHaveClass("animate-pulse");
+		});
+	});
+
 	it("hides participants who left", async () => {
 		const participants = makeParticipantList(2, {
 			room_id: ROOM_ID,

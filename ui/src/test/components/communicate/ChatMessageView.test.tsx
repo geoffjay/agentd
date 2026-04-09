@@ -5,7 +5,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatMessageView } from "@/components/communicate/ChatMessageView";
-import { makeChatMessage, makeChatMessageList } from "@/test/mocks/factories";
+import {
+	makeChatMessage,
+	makeChatMessageList,
+	makeParticipant,
+} from "@/test/mocks/factories";
 
 // ---------------------------------------------------------------------------
 // Scroll simulation helpers
@@ -499,5 +503,113 @@ describe("ChatMessageView", () => {
 			(call) => call[0]?.behavior === "instant",
 		).length;
 		expect(callsAfterOlder).toBe(1);
+	});
+
+	// -------------------------------------------------------------------------
+	// ThinkingIndicator
+	// -------------------------------------------------------------------------
+
+	it("shows no thinking indicator when busyAgents is empty", () => {
+		const messages = makeChatMessageList(3);
+		render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				busyAgents={[]}
+			/>,
+		);
+
+		expect(screen.queryByText(/is thinking/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/are thinking/i)).not.toBeInTheDocument();
+	});
+
+	it("shows thinking indicator for a single busy agent", () => {
+		const messages = makeChatMessageList(3);
+		const agent = makeParticipant({ kind: "agent", display_name: "Planner" });
+		render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				busyAgents={[agent]}
+			/>,
+		);
+
+		expect(screen.getByText("Planner is thinking…")).toBeInTheDocument();
+	});
+
+	it("shows combined label for two busy agents", () => {
+		const messages = makeChatMessageList(3);
+		const a1 = makeParticipant({ kind: "agent", display_name: "Alpha" });
+		const a2 = makeParticipant({ kind: "agent", display_name: "Beta" });
+		render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				busyAgents={[a1, a2]}
+			/>,
+		);
+
+		expect(screen.getByText("Alpha and Beta are thinking…")).toBeInTheDocument();
+	});
+
+	it("shows generic label when three or more agents are busy", () => {
+		const messages = makeChatMessageList(3);
+		const agents = [
+			makeParticipant({ kind: "agent", display_name: "A" }),
+			makeParticipant({ kind: "agent", display_name: "B" }),
+			makeParticipant({ kind: "agent", display_name: "C" }),
+		];
+		render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				busyAgents={agents}
+			/>,
+		);
+
+		expect(screen.getByText("3 agents are thinking…")).toBeInTheDocument();
+	});
+
+	it("thinking indicator disappears when busyAgents becomes empty", () => {
+		const messages = makeChatMessageList(3);
+		const agent = makeParticipant({ kind: "agent", display_name: "Planner" });
+
+		const { rerender } = render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				busyAgents={[agent]}
+			/>,
+		);
+
+		expect(screen.getByText("Planner is thinking…")).toBeInTheDocument();
+
+		rerender(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				busyAgents={[]}
+			/>,
+		);
+
+		expect(screen.queryByText(/is thinking/i)).not.toBeInTheDocument();
 	});
 });

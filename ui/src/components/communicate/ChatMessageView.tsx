@@ -10,11 +10,12 @@
  * - Visual distinction between agent and human messages
  * - Thread reply indicator for messages with reply_to
  * - Loading states for initial load and older-page load
+ * - Thinking indicator: animated dots with agent name(s) when agent(s) are busy
  */
 
 import { ArrowDown, Bot, CornerUpLeft, Loader2, User } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatMessage, ParticipantKind } from "@/types/communicate";
+import type { ChatMessage, Participant, ParticipantKind } from "@/types/communicate";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -111,6 +112,39 @@ function MessageBubble({ message, replyToMessage }: MessageBubbleProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Thinking indicator
+// ---------------------------------------------------------------------------
+
+function ThinkingIndicator({ agents }: { agents: Participant[] }) {
+	if (agents.length === 0) return null;
+
+	let label: string;
+	if (agents.length === 1) {
+		label = `${agents[0].display_name} is thinking…`;
+	} else if (agents.length === 2) {
+		label = `${agents[0].display_name} and ${agents[1].display_name} are thinking…`;
+	} else {
+		label = `${agents.length} agents are thinking…`;
+	}
+
+	return (
+		<div
+			className="flex items-center gap-2 px-1 text-sm text-th-text-muted"
+			aria-live="polite"
+			aria-label={label}
+		>
+			{/* Three bouncing dots */}
+			<span className="flex items-center gap-0.5" aria-hidden="true">
+				<span className="h-1.5 w-1.5 rounded-full bg-th-text-muted animate-bounce [animation-delay:-0.3s]" />
+				<span className="h-1.5 w-1.5 rounded-full bg-th-text-muted animate-bounce [animation-delay:-0.15s]" />
+				<span className="h-1.5 w-1.5 rounded-full bg-th-text-muted animate-bounce" />
+			</span>
+			<span>{label}</span>
+		</div>
+	);
+}
+
+// ---------------------------------------------------------------------------
 // ChatMessageView
 // ---------------------------------------------------------------------------
 
@@ -122,6 +156,8 @@ interface ChatMessageViewProps {
 	onLoadOlder: () => void;
 	/** Room identifier — used to reset scroll position when switching rooms. */
 	roomId?: string;
+	/** Agent participants currently processing (activity_state === "busy"). */
+	busyAgents?: Participant[];
 }
 
 export function ChatMessageView({
@@ -131,6 +167,7 @@ export function ChatMessageView({
 	hasMore,
 	onLoadOlder,
 	roomId,
+	busyAgents = [],
 }: ChatMessageViewProps) {
 	const bottomRef = useRef<HTMLDivElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -304,6 +341,9 @@ export function ChatMessageView({
 						}
 					/>
 				))}
+
+				{/* Thinking indicator — shown when one or more agents are busy */}
+				<ThinkingIndicator agents={busyAgents} />
 
 				<div ref={bottomRef} />
 			</div>
