@@ -265,8 +265,13 @@ impl TmuxManager {
 
     /// Waits for the shell in a tmux session to finish initializing.
     ///
-    /// Polls `#{pane_current_command}` until it reports a known shell name,
-    /// indicating that direnv, asdf, and other shell init scripts have finished.
+    /// Phase 1: polls `#{pane_current_command}` until a known shell binary is
+    /// the foreground process.
+    ///
+    /// Phase 2: sends a unique marker command (`echo __AGENTD_READY_<ts>`) and
+    /// waits for its output to appear in the pane. This confirms that direnv,
+    /// asdf, and other shell init scripts have finished and the shell is
+    /// accepting input.
     ///
     /// Returns `Ok(true)` if the shell became ready, `Ok(false)` on timeout.
     pub fn wait_for_shell_ready(
@@ -279,6 +284,7 @@ impl TmuxManager {
 
         let start = Instant::now();
 
+        // Phase 1: wait for the shell binary to become the foreground process.
         loop {
             let output = Command::new(get_tmux_command())
                 .args(["display-message", "-p", "-t", session_name, "#{pane_current_command}"])
@@ -288,13 +294,13 @@ impl TmuxManager {
                 let current_cmd = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
                 if KNOWN_SHELLS.iter().any(|s| current_cmd.ends_with(s)) {
-                    info!(
+                    debug!(
                         session = %session_name,
                         command = %current_cmd,
                         elapsed_ms = start.elapsed().as_millis(),
-                        "Shell is ready"
+                        "Shell binary detected, waiting for init scripts to finish"
                     );
-                    return Ok(true);
+                    break;
                 }
 
                 debug!(
@@ -308,7 +314,54 @@ impl TmuxManager {
                 warn!(
                     session = %session_name,
                     elapsed_ms = start.elapsed().as_millis(),
-                    "Timed out waiting for shell readiness, proceeding anyway"
+                    "Timed out waiting for shell binary, proceeding anyway"
+                );
+                return Ok(false);
+            }
+
+            std::thread::sleep(POLL_INTERVAL);
+        }
+
+        // Phase 2: send a marker command and wait for its output in the pane.
+        // This ensures direnv, asdf, and other shell init scripts have
+        // finished before we send the real command.
+        let marker = format!(
+            "__AGENTD_READY_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        );
+
+        self.send_command(session_name, &format!("echo {marker}"))?;
+
+        // The marker appears in the pane twice: once as the typed command
+        // (`echo __AGENTD_READY_...`) and once as the shell output
+        // (`__AGENTD_READY_...`).  We need the second occurrence to confirm
+        // the shell actually executed the command and is idle.
+        loop {
+            let output = Command::new(get_tmux_command())
+                .args(["capture-pane", "-t", session_name, "-p"])
+                .output()?;
+
+            if output.status.success() {
+                let pane_text = String::from_utf8_lossy(&output.stdout);
+                let count = pane_text.matches(&marker).count();
+                if count >= 2 {
+                    info!(
+                        session = %session_name,
+                        elapsed_ms = start.elapsed().as_millis(),
+                        "Shell is fully ready (marker output confirmed)"
+                    );
+                    return Ok(true);
+                }
+            }
+
+            if start.elapsed() >= timeout {
+                warn!(
+                    session = %session_name,
+                    elapsed_ms = start.elapsed().as_millis(),
+                    "Timed out waiting for shell readiness marker, proceeding anyway"
                 );
                 return Ok(false);
             }
