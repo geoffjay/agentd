@@ -494,6 +494,19 @@ impl Project {
     }
 }
 
+/// Detailed project response including associated resource counts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectResponse {
+    pub id: Uuid,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub agent_count: usize,
+    pub workflow_count: usize,
+}
+
 /// Request body for POST /projects.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateProjectRequest {

@@ -1028,13 +1028,6 @@ struct ProjectListQuery {
     offset: Option<usize>,
 }
 
-#[derive(Serialize)]
-struct ProjectDetails {
-    #[serde(flatten)]
-    project: Project,
-    agent_count: usize,
-    workflow_count: usize,
-}
 
 async fn list_projects(
     State(state): State<ApiState>,
@@ -1081,7 +1074,15 @@ async fn get_project(
     let workflow_count =
         state.scheduler.storage().list_workflows(Some(id)).await.map_err(ApiError::Internal)?.len();
 
-    Ok(Json(ProjectDetails { project, agent_count, workflow_count }))
+    Ok(Json(ProjectResponse {
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        created_at: project.created_at,
+        updated_at: project.updated_at,
+        agent_count,
+        workflow_count,
+    }))
 }
 
 async fn update_project(

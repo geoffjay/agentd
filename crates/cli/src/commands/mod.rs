@@ -37,6 +37,7 @@ pub mod memory;
 pub mod notify;
 pub mod orchestrator;
 pub mod org;
+pub mod project;
 pub mod prompt;
 pub mod wrap;
 
@@ -48,5 +49,6 @@ pub use memory::MemoryCommand;
 pub use notify::NotifyCommand;
 pub use orchestrator::OrchestratorCommand;
 pub use org::OrgCommand;
+pub use project::ProjectCommand;
 pub use prompt::PromptCommand;
 pub use wrap::WrapCommand;

@@ -35,9 +35,9 @@ use crate::scheduler::types::{
 };
 use crate::types::{
     AddDirRequest, AddDirResponse, AgentResponse, AgentUsageStats, ApprovalActionRequest,
-    ClearContextRequest, ClearContextResponse, CreateAgentRequest, HealthResponse,
-    PaginatedResponse, PendingApproval, SendMessageRequest, SendMessageResponse, SetModelRequest,
-    ToolPolicy,
+    ClearContextRequest, ClearContextResponse, CreateAgentRequest, CreateProjectRequest,
+    HealthResponse, PaginatedResponse, PendingApproval, Project, ProjectResponse,
+    SendMessageRequest, SendMessageResponse, SetModelRequest, ToolPolicy, UpdateProjectRequest,
 };
 
 /// Typed HTTP client for the orchestrator service.
@@ -336,6 +336,113 @@ impl OrchestratorClient {
     /// Purge all tasks from a named queue.
     pub async fn queue_purge(&self, queue_name: &str) -> Result<serde_json::Value> {
         self.delete_with_response(&format!("/queues/{}", queue_name)).await
+    }
+
+    // -- Project management --
+
+    /// List all projects.
+    pub async fn list_projects(&self) -> Result<PaginatedResponse<Project>> {
+        self.get("/projects").await
+    }
+
+    /// Create a new project.
+    pub async fn create_project(&self, req: &CreateProjectRequest) -> Result<Project> {
+        self.post("/projects", req).await
+    }
+
+    /// Get a project by UUID, including agent and workflow counts.
+    pub async fn get_project(&self, id: &Uuid) -> Result<ProjectResponse> {
+        self.get(&format!("/projects/{id}")).await
+    }
+
+    /// Find a project by name (client-side search).
+    pub async fn get_project_by_name(&self, name: &str) -> Result<Option<Project>> {
+        let resp: PaginatedResponse<Project> = self.get("/projects?limit=500").await?;
+        Ok(resp.items.into_iter().find(|p| p.name == name))
+    }
+
+    /// Update a project's name and/or description.
+    pub async fn update_project(&self, id: &Uuid, req: &UpdateProjectRequest) -> Result<Project> {
+        self.put(&format!("/projects/{id}"), req).await
+    }
+
+    /// Delete a project (fails if agents or workflows are still associated).
+    pub async fn delete_project(&self, id: &Uuid) -> Result<()> {
+        self.delete(&format!("/projects/{id}")).await
+    }
+
+    /// List agents associated with a project.
+    pub async fn list_project_agents(
+        &self,
+        id: &Uuid,
+    ) -> Result<PaginatedResponse<AgentResponse>> {
+        self.get(&format!("/projects/{id}/agents")).await
+    }
+
+    /// Associate an agent with a project.
+    pub async fn associate_project_agent(&self, project_id: &Uuid, agent_id: &Uuid) -> Result<()> {
+        let url = format!("{}/projects/{project_id}/agents/{agent_id}", self.base_url);
+        let response = self
+            .client
+            .post(&url)
+            .send()
+            .await
+            .context(format!("Failed to POST {url}"))?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            Err(anyhow::anyhow!("Request failed with status {status}: {text}"))
+        }
+    }
+
+    /// Remove an agent from a project.
+    pub async fn dissociate_project_agent(
+        &self,
+        project_id: &Uuid,
+        agent_id: &Uuid,
+    ) -> Result<()> {
+        self.delete(&format!("/projects/{project_id}/agents/{agent_id}")).await
+    }
+
+    /// List workflows associated with a project.
+    pub async fn list_project_workflows(
+        &self,
+        id: &Uuid,
+    ) -> Result<PaginatedResponse<WorkflowResponse>> {
+        self.get(&format!("/projects/{id}/workflows")).await
+    }
+
+    /// Associate a workflow with a project.
+    pub async fn associate_project_workflow(
+        &self,
+        project_id: &Uuid,
+        workflow_id: &Uuid,
+    ) -> Result<()> {
+        let url = format!("{}/projects/{project_id}/workflows/{workflow_id}", self.base_url);
+        let response = self
+            .client
+            .post(&url)
+            .send()
+            .await
+            .context(format!("Failed to POST {url}"))?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            Err(anyhow::anyhow!("Request failed with status {status}: {text}"))
+        }
+    }
+
+    /// Remove a workflow from a project.
+    pub async fn dissociate_project_workflow(
+        &self,
+        project_id: &Uuid,
+        workflow_id: &Uuid,
+    ) -> Result<()> {
+        self.delete(&format!("/projects/{project_id}/workflows/{workflow_id}")).await
     }
 
     // -- Private HTTP helpers --
