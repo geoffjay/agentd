@@ -84,4 +84,54 @@ describe("ServiceHealthCard", () => {
 		fireEvent.keyDown(card, { key: "Enter" });
 		expect(mockNavigate).toHaveBeenCalled();
 	});
+
+	it("navigates to /code-index when index card is clicked", () => {
+		const indexService: ServiceHealth = {
+			name: "Index",
+			key: "index",
+			port: 17012,
+			status: "healthy",
+			lastChecked: new Date(),
+		};
+		renderCard(indexService);
+		fireEvent.click(screen.getByRole("button"));
+		expect(mockNavigate).toHaveBeenCalledWith("/code-index");
+	});
+
+	it("navigates to /communicate when communicate card is clicked", () => {
+		const communicateService: ServiceHealth = {
+			name: "Communicate",
+			key: "communicate",
+			port: 17010,
+			status: "healthy",
+			lastChecked: new Date(),
+		};
+		renderCard(communicateService);
+		fireEvent.click(screen.getByRole("button"));
+		expect(mockNavigate).toHaveBeenCalledWith("/communicate");
+	});
+
+	it("renders correct port for index service", () => {
+		const indexService: ServiceHealth = {
+			name: "Index",
+			key: "index",
+			port: 17012,
+			status: "healthy",
+			lastChecked: new Date(),
+		};
+		renderCard(indexService);
+		expect(screen.getByText(/Port 17012/)).toBeInTheDocument();
+	});
+
+	it("renders correct port for communicate service", () => {
+		const communicateService: ServiceHealth = {
+			name: "Communicate",
+			key: "communicate",
+			port: 17010,
+			status: "healthy",
+			lastChecked: new Date(),
+		};
+		renderCard(communicateService);
+		expect(screen.getByText(/Port 17010/)).toBeInTheDocument();
+	});
 });
