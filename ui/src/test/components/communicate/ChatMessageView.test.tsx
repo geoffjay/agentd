@@ -2,9 +2,35 @@
  * Tests for ChatMessageView component.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ChatMessageView } from "@/components/communicate/ChatMessageView";
 import { makeChatMessage, makeChatMessageList } from "@/test/mocks/factories";
+
+// ---------------------------------------------------------------------------
+// Scroll simulation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Mock scroll geometry on a container so handleScroll can compute distances.
+ * distanceFromBottom = scrollHeight - scrollTop - clientHeight
+ */
+function mockScrollGeometry(
+	el: HTMLElement,
+	{
+		scrollHeight,
+		scrollTop,
+		clientHeight,
+	}: { scrollHeight: number; scrollTop: number; clientHeight: number },
+) {
+	Object.defineProperty(el, "scrollHeight", { value: scrollHeight, configurable: true });
+	Object.defineProperty(el, "scrollTop", {
+		value: scrollTop,
+		writable: true,
+		configurable: true,
+	});
+	Object.defineProperty(el, "clientHeight", { value: clientHeight, configurable: true });
+}
 
 const noop = () => {};
 
@@ -211,6 +237,229 @@ describe("ChatMessageView", () => {
 			(call) => call[0]?.behavior === "instant",
 		).length;
 		expect(callsAfterRoom2).toBe(2);
+	});
+
+	// -------------------------------------------------------------------------
+	// Scroll-lock / jump-to-latest button
+	// -------------------------------------------------------------------------
+
+	it("does not show jump-to-latest button when at bottom", () => {
+		const messages = makeChatMessageList(5);
+		render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		expect(
+			screen.queryByRole("button", { name: /jump to latest/i }),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows jump-to-latest button when scrolled away from bottom", () => {
+		const messages = makeChatMessageList(5);
+		render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		const container = screen.getByLabelText("Chat messages");
+
+		// Simulate scrolling well above the bottom (distanceFromBottom = 700 > 120)
+		mockScrollGeometry(container, {
+			scrollHeight: 1000,
+			scrollTop: 0,
+			clientHeight: 300,
+		});
+		fireEvent.scroll(container);
+
+		expect(
+			screen.getByRole("button", { name: /jump to latest/i }),
+		).toBeInTheDocument();
+	});
+
+	it("hides jump-to-latest button when scrolled back to bottom", () => {
+		const messages = makeChatMessageList(5);
+		render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		const container = screen.getByLabelText("Chat messages");
+
+		// Scroll up — lock engages
+		mockScrollGeometry(container, {
+			scrollHeight: 1000,
+			scrollTop: 0,
+			clientHeight: 300,
+		});
+		fireEvent.scroll(container);
+		expect(
+			screen.getByRole("button", { name: /jump to latest/i }),
+		).toBeInTheDocument();
+
+		// Scroll back to bottom — lock releases (distanceFromBottom = 10 < 120)
+		mockScrollGeometry(container, {
+			scrollHeight: 1000,
+			scrollTop: 690,
+			clientHeight: 300,
+		});
+		fireEvent.scroll(container);
+		expect(
+			screen.queryByRole("button", { name: /jump to latest/i }),
+		).not.toBeInTheDocument();
+	});
+
+	it("clicking jump-to-latest scrolls to bottom and hides the button", async () => {
+		const user = userEvent.setup();
+		const messages = makeChatMessageList(5);
+		render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		const container = screen.getByLabelText("Chat messages");
+
+		// Scroll up to show the button
+		mockScrollGeometry(container, {
+			scrollHeight: 1000,
+			scrollTop: 0,
+			clientHeight: 300,
+		});
+		fireEvent.scroll(container);
+
+		const btn = screen.getByRole("button", { name: /jump to latest/i });
+		await user.click(btn);
+
+		// Button should be gone after clicking
+		expect(
+			screen.queryByRole("button", { name: /jump to latest/i }),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows new message count on jump-to-latest button when messages arrive while locked", async () => {
+		const messages = makeChatMessageList(3);
+		const { rerender } = render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		// Scroll up to engage lock
+		const container = screen.getByLabelText("Chat messages");
+		mockScrollGeometry(container, {
+			scrollHeight: 1000,
+			scrollTop: 0,
+			clientHeight: 300,
+		});
+		fireEvent.scroll(container);
+
+		expect(
+			screen.getByRole("button", { name: /jump to latest/i }),
+		).toBeInTheDocument();
+
+		// Two new messages arrive
+		const newMsg1 = makeChatMessage({});
+		const newMsg2 = makeChatMessage({});
+		rerender(
+			<ChatMessageView
+				messages={[...messages, newMsg1, newMsg2]}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		expect(
+			screen.getByRole("button", { name: /2 new messages/i }),
+		).toBeInTheDocument();
+	});
+
+	it("resets scroll lock and new message count when switching rooms", async () => {
+		const user = userEvent.setup();
+		const messages = makeChatMessageList(3);
+		const { rerender } = render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		// Scroll up and accumulate new messages in room-1
+		const container = screen.getByLabelText("Chat messages");
+		mockScrollGeometry(container, {
+			scrollHeight: 1000,
+			scrollTop: 0,
+			clientHeight: 300,
+		});
+		fireEvent.scroll(container);
+		rerender(
+			<ChatMessageView
+				messages={[...messages, makeChatMessage({})]}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+		expect(screen.getByRole("button", { name: /new message/i })).toBeInTheDocument();
+
+		// Switch to room-2 — all scroll state should reset
+		rerender(
+			<ChatMessageView
+				messages={makeChatMessageList(2)}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-2"
+			/>,
+		);
+
+		expect(
+			screen.queryByRole("button", { name: /jump to latest/i }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /new message/i }),
+		).not.toBeInTheDocument();
+
+		// Suppress unused variable warning
+		void user;
 	});
 
 	it("does not scroll to bottom when loading older messages", () => {
