@@ -107,6 +107,7 @@ impl AgentStorage {
             ),
             launch_command: Set(agent.launch_command.clone()),
             pid: Set(agent.pid.map(|p| p as i64)),
+            project_id: Set(agent.project_id.map(|id| id.to_string())),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -198,13 +199,20 @@ impl AgentStorage {
         Ok(())
     }
 
-    /// Lists all agents, optionally filtered by status (newest first).
-    pub async fn list(&self, status_filter: Option<AgentStatus>) -> Result<Vec<Agent>> {
+    /// Lists all agents, optionally filtered by status and/or project (newest first).
+    pub async fn list(
+        &self,
+        status_filter: Option<AgentStatus>,
+        project_id: Option<Uuid>,
+    ) -> Result<Vec<Agent>> {
         let mut query =
             agent_entity::Entity::find().order_by(agent_entity::Column::CreatedAt, Order::Desc);
 
         if let Some(status) = status_filter {
             query = query.filter(agent_entity::Column::Status.eq(status.to_string()));
+        }
+        if let Some(pid) = project_id {
+            query = query.filter(agent_entity::Column::ProjectId.eq(pid.to_string()));
         }
 
         let models: Vec<agent_entity::Model> = query.all(&self.db).await?;
@@ -525,11 +533,14 @@ impl AgentStorage {
 /// Shares the same [`DatabaseConnection`] as [`AgentStorage`] — construct via
 /// [`ProjectStorage::from_db`] using the connection returned by
 /// [`AgentStorage::db()`].
+// API routes are added in #829; suppress dead_code until then.
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ProjectStorage {
     db: DatabaseConnection,
 }
 
+#[allow(dead_code)]
 impl ProjectStorage {
     /// Wrap an existing database connection (shared with `AgentStorage`).
     pub fn from_db(db: DatabaseConnection) -> Self {
@@ -664,6 +675,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
         backend_type: model.backend_type,
         launch_command: model.launch_command,
         pid: model.pid.and_then(|p| u32::try_from(p).ok()),
+        project_id: model.project_id.map(|s| Uuid::parse_str(&s)).transpose()?,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
@@ -694,6 +706,7 @@ fn model_to_session_usage(model: &session_entity::Model) -> Result<SessionUsage>
 }
 
 /// Convert a raw [`project_entity::Model`] into the domain [`Project`] type.
+#[allow(dead_code)]
 fn model_to_project(model: project_entity::Model) -> Result<Project> {
     Ok(Project {
         id: Uuid::parse_str(&model.id)?,
@@ -797,11 +810,11 @@ mod tests {
         storage.add(&a1).await.unwrap();
         storage.add(&a2).await.unwrap();
 
-        let running = storage.list(Some(AgentStatus::Running)).await.unwrap();
+        let running = storage.list(Some(AgentStatus::Running), None).await.unwrap();
         assert_eq!(running.len(), 1);
         assert_eq!(running[0].name, "running-agent");
 
-        let all = storage.list(None).await.unwrap();
+        let all = storage.list(None, None).await.unwrap();
         assert_eq!(all.len(), 2);
     }
 

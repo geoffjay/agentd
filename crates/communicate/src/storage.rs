@@ -79,6 +79,7 @@ impl CommunicateStorage {
             created_by: Set(req.created_by.clone()),
             created_at: Set(now.to_rfc3339()),
             updated_at: Set(now.to_rfc3339()),
+            project_id: Set(req.project_id.clone()),
         };
 
         model.insert(&self.db).await.map_err(|e| ApiError::Internal(e.into()))?;
@@ -114,18 +115,23 @@ impl CommunicateStorage {
         row.map(|m| model_to_room(m).map_err(ApiError::Internal)).transpose()
     }
 
-    /// Returns a paginated list of all rooms and the total count.
+    /// Returns a paginated list of all rooms and the total count,
+    /// optionally filtered by project_id.
     pub async fn list_rooms(
         &self,
         limit: usize,
         offset: usize,
+        project_id: Option<&str>,
     ) -> Result<(Vec<Room>, usize), ApiError> {
-        let total = entity::room::Entity::find()
-            .count(&self.db)
-            .await
-            .map_err(|e| ApiError::Internal(e.into()))? as usize;
+        let mut base = entity::room::Entity::find();
+        if let Some(pid) = project_id {
+            base = base.filter(entity::room::Column::ProjectId.eq(pid));
+        }
 
-        let rows = entity::room::Entity::find()
+        let total =
+            base.clone().count(&self.db).await.map_err(|e| ApiError::Internal(e.into()))? as usize;
+
+        let rows = base
             .order_by_asc(entity::room::Column::Name)
             .limit(limit as u64)
             .offset(offset as u64)
@@ -756,6 +762,7 @@ pub fn model_to_room(m: entity::room::Model) -> Result<Room> {
         created_by: m.created_by,
         created_at: m.created_at.parse::<chrono::DateTime<chrono::Utc>>()?,
         updated_at: m.updated_at.parse::<chrono::DateTime<chrono::Utc>>()?,
+        project_id: m.project_id,
     })
 }
 
@@ -810,6 +817,7 @@ mod tests {
             description: Some("Test description".to_string()),
             room_type: RoomType::Group,
             created_by: "agent-test".to_string(),
+            project_id: None,
         }
     }
 
@@ -861,6 +869,7 @@ mod tests {
             description: None,
             room_type: RoomType::Group,
             created_by: "agent-test".to_string(),
+            project_id: None,
         };
         let result = storage.create_room(&req).await;
         assert!(matches!(result, Err(ApiError::InvalidInput(_))));
@@ -875,11 +884,11 @@ mod tests {
             storage.create_room(&req).await.unwrap();
         }
 
-        let (first_page, total) = storage.list_rooms(3, 0).await.unwrap();
+        let (first_page, total) = storage.list_rooms(3, 0, None).await.unwrap();
         assert_eq!(total, 5);
         assert_eq!(first_page.len(), 3);
 
-        let (second_page, total2) = storage.list_rooms(3, 3).await.unwrap();
+        let (second_page, total2) = storage.list_rooms(3, 3, None).await.unwrap();
         assert_eq!(total2, 5);
         assert_eq!(second_page.len(), 2);
     }

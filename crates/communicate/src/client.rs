@@ -532,6 +532,7 @@ mod tests {
             description: None,
             room_type: RoomType::Group,
             created_by: "agent-1".to_string(),
+            project_id: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();

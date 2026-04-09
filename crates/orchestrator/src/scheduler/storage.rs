@@ -56,6 +56,7 @@ impl SchedulerStorage {
             tool_policy: Set(tool_policy_json),
             created_at: Set(workflow.created_at.to_rfc3339()),
             updated_at: Set(workflow.updated_at.to_rfc3339()),
+            project_id: Set(workflow.project_id.map(|id| id.to_string())),
         };
 
         workflow_entity::Entity::insert(model).exec(&self.db).await?;
@@ -71,12 +72,14 @@ impl SchedulerStorage {
         }
     }
 
-    /// Lists all workflows ordered by creation time (newest first).
-    pub async fn list_workflows(&self) -> Result<Vec<WorkflowConfig>> {
-        let models: Vec<workflow_entity::Model> = workflow_entity::Entity::find()
-            .order_by(workflow_entity::Column::CreatedAt, Order::Desc)
-            .all(&self.db)
-            .await?;
+    /// Lists all workflows, optionally filtered by project (newest first).
+    pub async fn list_workflows(&self, project_id: Option<Uuid>) -> Result<Vec<WorkflowConfig>> {
+        let mut query = workflow_entity::Entity::find()
+            .order_by(workflow_entity::Column::CreatedAt, Order::Desc);
+        if let Some(pid) = project_id {
+            query = query.filter(workflow_entity::Column::ProjectId.eq(pid.to_string()));
+        }
+        let models: Vec<workflow_entity::Model> = query.all(&self.db).await?;
         models.into_iter().map(model_to_workflow).collect()
     }
 
@@ -198,15 +201,21 @@ impl SchedulerStorage {
         models.into_iter().map(model_to_dispatch).collect()
     }
 
-    /// Lists workflows with pagination; returns `(items, total_count)`.
+    /// Lists workflows with pagination, optionally filtered by project; returns `(items, total_count)`.
     pub async fn list_workflows_paginated(
         &self,
         limit: usize,
         offset: usize,
+        project_id: Option<Uuid>,
     ) -> Result<(Vec<WorkflowConfig>, usize)> {
-        let total = workflow_entity::Entity::find().count(&self.db).await? as usize;
+        let mut base = workflow_entity::Entity::find();
+        if let Some(pid) = project_id {
+            base = base.filter(workflow_entity::Column::ProjectId.eq(pid.to_string()));
+        }
 
-        let models: Vec<workflow_entity::Model> = workflow_entity::Entity::find()
+        let total = base.clone().count(&self.db).await? as usize;
+
+        let models: Vec<workflow_entity::Model> = base
             .order_by(workflow_entity::Column::CreatedAt, Order::Desc)
             .limit(limit as u64)
             .offset(offset as u64)
@@ -492,6 +501,7 @@ fn model_to_workflow(model: workflow_entity::Model) -> Result<WorkflowConfig> {
         tool_policy: serde_json::from_str::<ToolPolicy>(&model.tool_policy).unwrap_or_default(),
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
+        project_id: model.project_id.map(|s| Uuid::parse_str(&s)).transpose()?,
     })
 }
 
@@ -549,6 +559,7 @@ mod tests {
             tool_policy: Default::default(),
             created_at: now,
             updated_at: now,
+            project_id: None,
         }
     }
 
@@ -567,7 +578,7 @@ mod tests {
         assert_eq!(retrieved.poll_interval_secs, 60);
 
         // List
-        let all = storage.list_workflows().await.unwrap();
+        let all = storage.list_workflows(None).await.unwrap();
         assert_eq!(all.len(), 1);
 
         // Update

@@ -61,6 +61,9 @@ pub struct Model {
     /// OS process ID of the agent's subprocess. Used during startup
     /// reconciliation to check if the process survived a service restart.
     pub pid: Option<i64>,
+    /// Optional project UUID (stored as TEXT) grouping this agent with related
+    /// workflows and rooms.  NULL when the agent is not assigned to a project.
+    pub project_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

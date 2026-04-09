@@ -785,6 +785,7 @@ async fn join_agent_room(
                         description: None,
                         room_type: RoomType::Group,
                         created_by: agent.name.clone(),
+                        project_id: None,
                     })
                     .await
                     .map_err(|e| communicate_error(e.into()))?,

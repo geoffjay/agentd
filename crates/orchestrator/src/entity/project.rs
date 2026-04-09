@@ -1,5 +1,8 @@
 //! SeaORM entity for the `projects` table.
 
+// API routes wired in #829; suppress dead_code lint until then.
+#![allow(dead_code)]
+
 use sea_orm::entity::prelude::*;
 
 /// SeaORM model for the `projects` table.

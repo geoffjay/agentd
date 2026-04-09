@@ -43,6 +43,9 @@ pub struct WorkflowConfig {
     pub tool_policy: ToolPolicy,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Optional project this workflow belongs to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<Uuid>,
 }
 
 fn default_poll_interval() -> u64 {

@@ -243,7 +243,7 @@ impl AgentManager {
     /// (containers/tmux sessions with the correct prefix but no matching
     /// DB record).
     pub async fn reconcile(&self) -> anyhow::Result<()> {
-        let agents = self.storage.list(Some(AgentStatus::Running)).await?;
+        let agents = self.storage.list(Some(AgentStatus::Running), None).await?;
         let mut known_sessions: std::collections::HashSet<String> =
             std::collections::HashSet::new();
 
@@ -449,7 +449,7 @@ impl AgentManager {
     /// List agents with optional status filter.
     #[allow(dead_code)]
     pub async fn list_agents(&self, status: Option<AgentStatus>) -> anyhow::Result<Vec<Agent>> {
-        self.storage.list(status).await
+        self.storage.list(status, None).await
     }
 
     /// List agents with pagination.
@@ -578,7 +578,7 @@ impl AgentManager {
         info!(leave_running, "Shutting down all managed agents");
 
         // Update all running agents to Stopped in the database.
-        let agents = match self.storage.list(Some(AgentStatus::Running)).await {
+        let agents = match self.storage.list(Some(AgentStatus::Running), None).await {
             Ok(a) => a,
             Err(e) => {
                 error!(%e, "Failed to list running agents during shutdown");

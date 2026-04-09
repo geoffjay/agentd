@@ -25,6 +25,9 @@ pub struct Model {
     pub tool_policy: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Optional project UUID (stored as TEXT).  NULL when the workflow is not
+    /// assigned to a project.
+    pub project_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
