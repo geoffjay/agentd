@@ -10,3 +10,4 @@ pub mod membership_storage;
 pub mod migration;
 pub mod organization_storage;
 pub mod storage;
+pub mod user_storage;

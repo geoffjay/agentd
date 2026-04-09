@@ -22,6 +22,7 @@ use sea_orm_migration::MigratorTrait;
 use crate::membership_storage::MembershipStorage;
 use crate::migration::Migrator;
 use crate::organization_storage::OrganizationStorage;
+use crate::user_storage::UserStorage;
 
 /// Persistent storage backend for the core service, backed by SQLite via SeaORM.
 ///
@@ -55,5 +56,10 @@ impl Storage {
     /// Returns a [`MembershipStorage`] instance sharing this connection.
     pub fn memberships(&self) -> MembershipStorage {
         MembershipStorage::new(self.db.clone())
+    }
+
+    /// Returns a [`UserStorage`] instance sharing this connection.
+    pub fn users(&self) -> UserStorage {
+        UserStorage::new(self.db.clone())
     }
 }

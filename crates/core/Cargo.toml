@@ -29,6 +29,8 @@ metrics-exporter-prometheus = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
 async-trait = "0.1"
+argon2 = "0.5"
+rand = "0.8"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
