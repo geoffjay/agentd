@@ -8,6 +8,13 @@ import { makeChatMessage, makeChatMessageList } from "@/test/mocks/factories";
 
 const noop = () => {};
 
+// scrollIntoView is not implemented in jsdom — provide a mock.
+const scrollIntoViewMock = vi.fn();
+beforeEach(() => {
+	scrollIntoViewMock.mockClear();
+	window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+});
+
 describe("ChatMessageView", () => {
 	it("renders messages", () => {
 		const messages = makeChatMessageList(3);
@@ -119,5 +126,129 @@ describe("ChatMessageView", () => {
 		// The parent content appears in the reply indicator
 		expect(screen.getAllByText("Original message")).toHaveLength(2);
 		expect(screen.getByText("Reply message")).toBeInTheDocument();
+	});
+
+	it("scrolls to bottom instantly on initial load", () => {
+		const messages = makeChatMessageList(5);
+		render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "instant" });
+	});
+
+	it("does not scroll to bottom while loading", () => {
+		render(
+			<ChatMessageView
+				messages={[]}
+				loading={true}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		// Loading spinner is shown, scrollIntoView should not have been called
+		// with the initial-scroll behavior because messages haven't arrived yet.
+		const instantCalls = scrollIntoViewMock.mock.calls.filter(
+			(call) => call[0]?.behavior === "instant",
+		);
+		expect(instantCalls).toHaveLength(0);
+	});
+
+	it("scrolls to bottom again when switching rooms", () => {
+		const messagesRoom1 = makeChatMessageList(3);
+		const messagesRoom2 = makeChatMessageList(3);
+
+		const { rerender } = render(
+			<ChatMessageView
+				messages={messagesRoom1}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		const callsAfterRoom1 = scrollIntoViewMock.mock.calls.filter(
+			(call) => call[0]?.behavior === "instant",
+		).length;
+		expect(callsAfterRoom1).toBe(1);
+
+		// Simulate room switch: loading starts with empty messages, then resolves.
+		rerender(
+			<ChatMessageView
+				messages={[]}
+				loading={true}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-2"
+			/>,
+		);
+
+		rerender(
+			<ChatMessageView
+				messages={messagesRoom2}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-2"
+			/>,
+		);
+
+		const callsAfterRoom2 = scrollIntoViewMock.mock.calls.filter(
+			(call) => call[0]?.behavior === "instant",
+		).length;
+		expect(callsAfterRoom2).toBe(2);
+	});
+
+	it("does not scroll to bottom when loading older messages", () => {
+		const messages = makeChatMessageList(5);
+		const olderMessages = [...makeChatMessageList(5), ...messages];
+
+		const { rerender } = render(
+			<ChatMessageView
+				messages={messages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={true}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		const callsAfterInitial = scrollIntoViewMock.mock.calls.filter(
+			(call) => call[0]?.behavior === "instant",
+		).length;
+		expect(callsAfterInitial).toBe(1);
+
+		// Simulate loading older messages (prepend to list, loadingOlder transitions)
+		rerender(
+			<ChatMessageView
+				messages={olderMessages}
+				loading={false}
+				loadingOlder={false}
+				hasMore={false}
+				onLoadOlder={noop}
+				roomId="room-1"
+			/>,
+		);
+
+		// Still only 1 instant-scroll call — older-message prepend must not jump to bottom
+		const callsAfterOlder = scrollIntoViewMock.mock.calls.filter(
+			(call) => call[0]?.behavior === "instant",
+		).length;
+		expect(callsAfterOlder).toBe(1);
 	});
 });
