@@ -118,6 +118,27 @@ impl SchedulerStorage {
         Ok(())
     }
 
+    /// Sets or clears the `project_id` for a single workflow.
+    pub async fn set_workflow_project(&self, id: &Uuid, project_id: Option<Uuid>) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let result = workflow_entity::Entity::update_many()
+            .col_expr(
+                workflow_entity::Column::ProjectId,
+                Expr::value(project_id.map(|p| p.to_string())),
+            )
+            .col_expr(workflow_entity::Column::UpdatedAt, Expr::value(now))
+            .filter(workflow_entity::Column::Id.eq(id.to_string()))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
+            anyhow::bail!("Workflow not found");
+        }
+        Ok(())
+    }
+
     /// Permanently deletes a workflow by UUID.
     pub async fn delete_workflow(&self, id: &Uuid) -> Result<()> {
         let result = workflow_entity::Entity::delete_many()

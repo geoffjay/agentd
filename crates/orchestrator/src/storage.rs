@@ -185,6 +185,27 @@ impl AgentStorage {
         Ok(())
     }
 
+    /// Sets or clears the `project_id` for a single agent.
+    pub async fn set_agent_project(&self, id: &Uuid, project_id: Option<Uuid>) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let result = agent_entity::Entity::update_many()
+            .col_expr(
+                agent_entity::Column::ProjectId,
+                Expr::value(project_id.map(|p| p.to_string())),
+            )
+            .col_expr(agent_entity::Column::UpdatedAt, Expr::value(now))
+            .filter(agent_entity::Column::Id.eq(id.to_string()))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
+            anyhow::bail!("Agent not found");
+        }
+        Ok(())
+    }
+
     /// Permanently deletes an agent by UUID.
     pub async fn delete(&self, id: &Uuid) -> Result<()> {
         let result = agent_entity::Entity::delete_many()
@@ -497,16 +518,31 @@ impl AgentStorage {
     }
 
     /// Lists agents with pagination; returns `(items, total_count)`.
+    #[allow(dead_code)]
     pub async fn list_paginated(
         &self,
         status_filter: Option<AgentStatus>,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<Agent>, usize)> {
-        let condition = match &status_filter {
-            Some(s) => Condition::all().add(agent_entity::Column::Status.eq(s.to_string())),
-            None => Condition::all(),
-        };
+        self.list_paginated_filtered(status_filter, None, limit, offset).await
+    }
+
+    /// Lists agents with pagination and optional project_id filter; returns `(items, total_count)`.
+    pub async fn list_paginated_filtered(
+        &self,
+        status_filter: Option<AgentStatus>,
+        project_id: Option<Uuid>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Agent>, usize)> {
+        let mut condition = Condition::all();
+        if let Some(s) = &status_filter {
+            condition = condition.add(agent_entity::Column::Status.eq(s.to_string()));
+        }
+        if let Some(pid) = project_id {
+            condition = condition.add(agent_entity::Column::ProjectId.eq(pid.to_string()));
+        }
 
         let total =
             agent_entity::Entity::find().filter(condition.clone()).count(&self.db).await? as usize;
@@ -533,14 +569,11 @@ impl AgentStorage {
 /// Shares the same [`DatabaseConnection`] as [`AgentStorage`] — construct via
 /// [`ProjectStorage::from_db`] using the connection returned by
 /// [`AgentStorage::db()`].
-// API routes are added in #829; suppress dead_code until then.
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ProjectStorage {
     db: DatabaseConnection,
 }
 
-#[allow(dead_code)]
 impl ProjectStorage {
     /// Wrap an existing database connection (shared with `AgentStorage`).
     pub fn from_db(db: DatabaseConnection) -> Self {
@@ -567,6 +600,7 @@ impl ProjectStorage {
     }
 
     /// Retrieve a project by its unique name.  Returns `None` if not found.
+    #[allow(dead_code)]
     pub async fn get_by_name(&self, name: &str) -> Result<Option<Project>> {
         let model = project_entity::Entity::find()
             .filter(project_entity::Column::Name.eq(name))
@@ -706,7 +740,6 @@ fn model_to_session_usage(model: &session_entity::Model) -> Result<SessionUsage>
 }
 
 /// Convert a raw [`project_entity::Model`] into the domain [`Project`] type.
-#[allow(dead_code)]
 fn model_to_project(model: project_entity::Model) -> Result<Project> {
     Ok(Project {
         id: Uuid::parse_str(&model.id)?,

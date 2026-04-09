@@ -24,6 +24,7 @@ use uuid::Uuid;
 struct PaginationParams {
     limit: Option<usize>,
     offset: Option<usize>,
+    project_id: Option<Uuid>,
 }
 
 #[derive(Clone)]
@@ -259,8 +260,11 @@ async fn list_workflows(
     let limit = clamp_limit(params.limit);
     let offset = params.offset.unwrap_or(0);
 
-    let (workflows, total) =
-        state.scheduler.storage().list_workflows_paginated(limit, offset, None).await?;
+    let (workflows, total) = state
+        .scheduler
+        .storage()
+        .list_workflows_paginated(limit, offset, params.project_id)
+        .await?;
     let items: Vec<WorkflowResponse> = workflows.into_iter().map(WorkflowResponse::from).collect();
     Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
