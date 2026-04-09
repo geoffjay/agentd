@@ -35,6 +35,15 @@ export interface UseCommunicateSocketOptions {
 	onParticipantJoined?: (participant: Participant) => void;
 	/** Called when a participant leaves the selected room. */
 	onParticipantLeft?: (roomId: string, identifier: string) => void;
+	/**
+	 * Called when an agent's activity state changes (idle ↔ busy).
+	 * Fires on `participant_updated` WebSocket events.
+	 */
+	onParticipantUpdated?: (
+		roomId: string,
+		identifier: string,
+		activityState: "idle" | "busy",
+	) => void;
 	/** Whether to suppress the connection entirely. */
 	paused?: boolean;
 }
@@ -59,6 +68,7 @@ export function useCommunicateSocket({
 	onMessage,
 	onParticipantJoined,
 	onParticipantLeft,
+	onParticipantUpdated,
 	paused = false,
 }: UseCommunicateSocketOptions) {
 	// TODO: accept displayName from caller when user profiles are available
@@ -82,6 +92,8 @@ export function useCommunicateSocket({
 	onParticipantJoinedRef.current = onParticipantJoined;
 	const onParticipantLeftRef = useRef(onParticipantLeft);
 	onParticipantLeftRef.current = onParticipantLeft;
+	const onParticipantUpdatedRef = useRef(onParticipantUpdated);
+	onParticipantUpdatedRef.current = onParticipantUpdated;
 	const participantIdRef = useRef(participantId);
 	participantIdRef.current = participantId;
 
@@ -149,6 +161,12 @@ export function useCommunicateSocket({
 			});
 		} else if (event.type === "participant_left") {
 			onParticipantLeftRef.current?.(event.room_id, event.identifier);
+		} else if (event.type === "participant_updated") {
+			onParticipantUpdatedRef.current?.(
+				event.room_id,
+				event.identifier,
+				event.activity_state,
+			);
 		}
 	}, []);
 

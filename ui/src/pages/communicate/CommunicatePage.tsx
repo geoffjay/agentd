@@ -22,7 +22,7 @@ import {
 	Wifi,
 	WifiOff,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ChatMessageView,
 	CreateRoomDialog,
@@ -197,6 +197,29 @@ export function CommunicatePage() {
 		[],
 	);
 
+	// Handle agent activity-state change via WebSocket (participant_updated event)
+	const handleParticipantUpdated = useCallback(
+		(roomId: string, identifier: string, activityState: "idle" | "busy") => {
+			setRealtimeParticipants((prev) =>
+				prev.map((p) =>
+					p.identifier === identifier && p.room_id === roomId
+						? { ...p, activity_state: activityState }
+						: p,
+				),
+			);
+		},
+		[],
+	);
+
+	// Agents currently processing — passed to ChatMessageView for the thinking indicator
+	const busyAgents = useMemo(
+		() =>
+			realtimeParticipants.filter(
+				(p) => p.kind === "agent" && p.activity_state === "busy",
+			),
+		[realtimeParticipants],
+	);
+
 	// WebSocket connection
 	const { connectionState } = useCommunicateSocket({
 		selectedRoomId: selectedRoom?.id,
@@ -204,6 +227,7 @@ export function CommunicatePage() {
 		onMessage: handleMessage,
 		onParticipantJoined: handleParticipantJoined,
 		onParticipantLeft: handleParticipantLeft,
+		onParticipantUpdated: handleParticipantUpdated,
 		paused: !identity,
 	});
 
@@ -399,6 +423,7 @@ export function CommunicatePage() {
 								hasMore={hasMore}
 								onLoadOlder={loadOlder}
 								roomId={selectedRoom?.id}
+								busyAgents={busyAgents}
 							/>
 
 							{/* Message input */}
