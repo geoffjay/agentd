@@ -29,6 +29,7 @@ export interface UseAgentSummaryResult {
 	aggregateUsage: AggregateUsageSummary | null;
 	loading: boolean;
 	error?: string;
+	refetch: () => void;
 }
 
 const EMPTY_COUNTS: AgentStatusCounts = {
@@ -123,5 +124,5 @@ export function useAgentSummary(): UseAgentSummaryResult {
 		void fetch();
 	}, [fetch]);
 
-	return { counts, recentAgents, total, aggregateUsage, loading, error };
+	return { counts, recentAgents, total, aggregateUsage, loading, error, refetch: fetch };
 }
