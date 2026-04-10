@@ -25,6 +25,7 @@ const baseProps: UseAgentSummaryResult = {
 	aggregateUsage: null,
 	loading: false,
 	error: undefined,
+	refetch: vi.fn(),
 };
 
 describe("AgentSummary aggregate usage", () => {
