@@ -12,6 +12,9 @@ const SERVICE_ROUTES: Record<string, string> = {
 	orchestrator: "/agents",
 	notify: "/notifications",
 	ask: "/questions",
+	memory: "/memories",
+	index: "/code-index",
+	communicate: "/communicate",
 };
 
 interface ServiceHealthCardProps {
