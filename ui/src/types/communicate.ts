@@ -99,10 +99,23 @@ export interface WsParticipantLeftEvent {
 	identifier: string;
 }
 
+/**
+ * Emitted by the backend when an agent's activity state changes.
+ * Client-side only until the backend is wired up; the hook already
+ * handles it so the UI will light up as soon as the server emits it.
+ */
+export interface WsParticipantUpdatedEvent {
+	type: "participant_updated";
+	room_id: string;
+	identifier: string;
+	activity_state: "idle" | "busy";
+}
+
 export type WsRoomEvent =
 	| WsMessageEvent
 	| WsParticipantJoinedEvent
-	| WsParticipantLeftEvent;
+	| WsParticipantLeftEvent
+	| WsParticipantUpdatedEvent;
 
 // ---------------------------------------------------------------------------
 // WebSocket client messages

@@ -4,15 +4,18 @@
  * Features:
  * - Loads and renders message history
  * - Auto-scrolls to the latest message on new arrivals
+ * - Scroll-lock: pauses auto-scroll when user scrolls up; "Jump to latest" button resumes
+ * - New-message counter on the "Jump to latest" button while scroll-locked
  * - Infinite scroll upward (load older messages)
  * - Visual distinction between agent and human messages
  * - Thread reply indicator for messages with reply_to
  * - Loading states for initial load and older-page load
+ * - Thinking indicator: animated dots with agent name(s) when agent(s) are busy
  */
 
-import { Bot, CornerUpLeft, Loader2, User } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { ChatMessage, ParticipantKind } from "@/types/communicate";
+import { ArrowDown, Bot, CornerUpLeft, Loader2, User } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChatMessage, Participant, ParticipantKind } from "@/types/communicate";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -109,6 +112,39 @@ function MessageBubble({ message, replyToMessage }: MessageBubbleProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Thinking indicator
+// ---------------------------------------------------------------------------
+
+function ThinkingIndicator({ agents }: { agents: Participant[] }) {
+	if (agents.length === 0) return null;
+
+	let label: string;
+	if (agents.length === 1) {
+		label = `${agents[0].display_name} is thinking…`;
+	} else if (agents.length === 2) {
+		label = `${agents[0].display_name} and ${agents[1].display_name} are thinking…`;
+	} else {
+		label = `${agents.length} agents are thinking…`;
+	}
+
+	return (
+		<div
+			className="flex items-center gap-2 px-1 text-sm text-th-text-muted"
+			aria-live="polite"
+			aria-label={label}
+		>
+			{/* Three bouncing dots */}
+			<span className="flex items-center gap-0.5" aria-hidden="true">
+				<span className="h-1.5 w-1.5 rounded-full bg-th-text-muted animate-bounce [animation-delay:-0.3s]" />
+				<span className="h-1.5 w-1.5 rounded-full bg-th-text-muted animate-bounce [animation-delay:-0.15s]" />
+				<span className="h-1.5 w-1.5 rounded-full bg-th-text-muted animate-bounce" />
+			</span>
+			<span>{label}</span>
+		</div>
+	);
+}
+
+// ---------------------------------------------------------------------------
 // ChatMessageView
 // ---------------------------------------------------------------------------
 
@@ -120,6 +156,8 @@ interface ChatMessageViewProps {
 	onLoadOlder: () => void;
 	/** Room identifier — used to reset scroll position when switching rooms. */
 	roomId?: string;
+	/** Agent participants currently processing (activity_state === "busy"). */
+	busyAgents?: Participant[];
 }
 
 export function ChatMessageView({
@@ -129,16 +167,31 @@ export function ChatMessageView({
 	hasMore,
 	onLoadOlder,
 	roomId,
+	busyAgents = [],
 }: ChatMessageViewProps) {
 	const bottomRef = useRef<HTMLDivElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const prevScrollHeightRef = useRef<number>(0);
 	const initialScrollDone = useRef(false);
 
-	// Reset the initial-scroll flag whenever the active room changes so that
-	// switching rooms always brings the user to the bottom of the new room.
+	// Scroll-lock: true when the user has scrolled away from the bottom.
+	const [scrollLocked, setScrollLocked] = useState(false);
+
+	// Count of new messages that arrived while scroll-locked.
+	const [newMessageCount, setNewMessageCount] = useState(0);
+	// Ref used to diff messages.length across renders without stale closures.
+	const prevMessageCountRef = useRef(0);
+	// Detects the loadingOlder true→false transition so prepended historical
+	// messages don't get counted as "new".
+	const prevLoadingOlderRef = useRef(false);
+
+	// Reset all scroll state when the active room changes.
 	useEffect(() => {
 		initialScrollDone.current = false;
+		setScrollLocked(false);
+		setNewMessageCount(0);
+		prevMessageCountRef.current = 0;
+		prevLoadingOlderRef.current = false;
 	}, [roomId]);
 
 	// Scroll to the bottom on initial load or room switch.  The flag prevents
@@ -151,21 +204,45 @@ export function ChatMessageView({
 		}
 	}, [messages, loading]);
 
-	// Auto-scroll to bottom when new messages arrive
+	// Auto-scroll to bottom when new messages arrive (only when not scroll-locked).
 	useEffect(() => {
+		if (scrollLocked) return;
 		const container = containerRef.current;
 		if (!container) return;
 
-		// If the user is near the bottom, keep them there
 		const distanceFromBottom =
 			container.scrollHeight - container.scrollTop - container.clientHeight;
 
 		if (distanceFromBottom < 120) {
 			bottomRef.current?.scrollIntoView({ behavior: "smooth" });
 		}
-	}, [messages]);
+	}, [messages, scrollLocked]);
 
-	// Maintain scroll position when older messages are prepended
+	// Count new messages that arrive while scroll-locked, without counting
+	// historical messages prepended by infinite scroll.
+	useEffect(() => {
+		const wasLoadingOlder = prevLoadingOlderRef.current;
+		prevLoadingOlderRef.current = loadingOlder;
+
+		if (loadingOlder) return; // still fetching older page
+
+		const currentCount = messages.length;
+
+		if (wasLoadingOlder) {
+			// Older messages just finished loading — absorb the prepended count
+			// without incrementing the new-message indicator.
+			prevMessageCountRef.current = currentCount;
+			return;
+		}
+
+		const delta = currentCount - prevMessageCountRef.current;
+		if (scrollLocked && delta > 0 && !loading) {
+			setNewMessageCount((c) => c + delta);
+		}
+		prevMessageCountRef.current = currentCount;
+	}, [messages.length, loading, loadingOlder, scrollLocked]);
+
+	// Maintain scroll position when older messages are prepended.
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container || !loadingOlder) return;
@@ -182,16 +259,33 @@ export function ChatMessageView({
 		prevScrollHeightRef.current = 0;
 	}, [messages, loadingOlder]);
 
-	// Infinite scroll: fire when user scrolls near the top
+	// Jump to the bottom and release the scroll lock.
+	const resumeScroll = useCallback(() => {
+		setScrollLocked(false);
+		setNewMessageCount(0);
+		const container = containerRef.current;
+		if (container) {
+			container.scrollTop = container.scrollHeight;
+		}
+	}, []);
+
+	// Infinite scroll upward + scroll-lock detection.
 	const handleScroll = useCallback(() => {
 		const container = containerRef.current;
-		if (!container || loadingOlder || !hasMore) return;
-		if (container.scrollTop < 80) {
+		if (!container) return;
+
+		// Detect whether the user has scrolled away from the bottom.
+		const atBottom =
+			container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+		setScrollLocked(!atBottom);
+
+		// Trigger infinite scroll when near the top.
+		if (!loadingOlder && hasMore && container.scrollTop < 80) {
 			onLoadOlder();
 		}
 	}, [loadingOlder, hasMore, onLoadOlder]);
 
-	// Build lookup map for reply references — memoised to avoid re-allocating on every render
+	// Build lookup map for reply references — memoised to avoid re-allocating on every render.
 	const messageMap = useMemo(
 		() => new Map(messages.map((m) => [m.id, m])),
 		[messages],
@@ -216,37 +310,64 @@ export function ChatMessageView({
 	}
 
 	return (
-		<div
-			ref={containerRef}
-			onScroll={handleScroll}
-			className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
-			aria-label="Chat messages"
-			aria-live="polite"
-			aria-relevant="additions"
-		>
-			{/* Load older indicator */}
-			{loadingOlder && (
-				<div className="flex justify-center py-2">
-					<Loader2 size={16} className="animate-spin text-th-text-muted" />
+		<div className="relative flex-1 overflow-hidden">
+			{/* Scrollable message list */}
+			<div
+				ref={containerRef}
+				onScroll={handleScroll}
+				className="h-full overflow-y-auto px-4 py-4 space-y-4"
+				aria-label="Chat messages"
+				aria-live="polite"
+				aria-relevant="additions"
+			>
+				{/* Load older indicator */}
+				{loadingOlder && (
+					<div className="flex justify-center py-2">
+						<Loader2 size={16} className="animate-spin text-th-text-muted" />
+					</div>
+				)}
+				{!hasMore && messages.length > 0 && (
+					<p className="text-center text-xs text-th-text-muted py-1">
+						Beginning of conversation
+					</p>
+				)}
+
+				{messages.map((msg) => (
+					<MessageBubble
+						key={msg.id}
+						message={msg}
+						replyToMessage={
+							msg.reply_to ? messageMap.get(msg.reply_to) : undefined
+						}
+					/>
+				))}
+
+				{/* Thinking indicator — shown when one or more agents are busy */}
+				<ThinkingIndicator agents={busyAgents} />
+
+				<div ref={bottomRef} />
+			</div>
+
+			{/* Jump-to-latest button — appears when scroll-locked */}
+			{scrollLocked && (
+				<div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+					<button
+						type="button"
+						onClick={resumeScroll}
+						aria-label={
+							newMessageCount > 0
+								? `${newMessageCount} new message${newMessageCount === 1 ? "" : "s"} — jump to latest`
+								: "Jump to latest messages"
+						}
+						className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text shadow-lg transition-colors hover:bg-th-accent/90"
+					>
+						<ArrowDown size={14} aria-hidden="true" />
+						{newMessageCount > 0
+							? `${newMessageCount} new message${newMessageCount === 1 ? "" : "s"}`
+							: "Jump to latest"}
+					</button>
 				</div>
 			)}
-			{!hasMore && messages.length > 0 && (
-				<p className="text-center text-xs text-th-text-muted py-1">
-					Beginning of conversation
-				</p>
-			)}
-
-			{messages.map((msg) => (
-				<MessageBubble
-					key={msg.id}
-					message={msg}
-					replyToMessage={
-						msg.reply_to ? messageMap.get(msg.reply_to) : undefined
-					}
-				/>
-			))}
-
-			<div ref={bottomRef} />
 		</div>
 	);
 }

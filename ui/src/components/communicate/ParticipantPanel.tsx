@@ -47,7 +47,9 @@ function ActivityDot({ state }: { state?: "idle" | "busy" }) {
 		<span
 			className={[
 				"h-2 w-2 rounded-full",
-				state === "busy" ? "bg-th-status-warning-dot" : "bg-th-status-success-dot",
+				state === "busy"
+					? "bg-th-status-warning-dot animate-pulse"
+					: "bg-th-status-success-dot",
 			].join(" ")}
 			aria-label={state === "busy" ? "Busy" : "Idle"}
 		/>
