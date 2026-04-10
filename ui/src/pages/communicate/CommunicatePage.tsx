@@ -398,6 +398,7 @@ export function CommunicatePage() {
 								loadingOlder={loadingOlder}
 								hasMore={hasMore}
 								onLoadOlder={loadOlder}
+								roomId={selectedRoom?.id}
 							/>
 
 							{/* Message input */}

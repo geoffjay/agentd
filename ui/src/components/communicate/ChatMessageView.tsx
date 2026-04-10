@@ -118,6 +118,8 @@ interface ChatMessageViewProps {
 	loadingOlder: boolean;
 	hasMore: boolean;
 	onLoadOlder: () => void;
+	/** Room identifier — used to reset scroll position when switching rooms. */
+	roomId?: string;
 }
 
 export function ChatMessageView({
@@ -126,10 +128,28 @@ export function ChatMessageView({
 	loadingOlder,
 	hasMore,
 	onLoadOlder,
+	roomId,
 }: ChatMessageViewProps) {
 	const bottomRef = useRef<HTMLDivElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const prevScrollHeightRef = useRef<number>(0);
+	const initialScrollDone = useRef(false);
+
+	// Reset the initial-scroll flag whenever the active room changes so that
+	// switching rooms always brings the user to the bottom of the new room.
+	useEffect(() => {
+		initialScrollDone.current = false;
+	}, [roomId]);
+
+	// Scroll to the bottom on initial load or room switch.  The flag prevents
+	// this from re-triggering when the user loads older messages (infinite
+	// scroll upward), because by then initialScrollDone is already true.
+	useEffect(() => {
+		if (messages.length > 0 && !loading && !initialScrollDone.current) {
+			bottomRef.current?.scrollIntoView({ behavior: "instant" });
+			initialScrollDone.current = true;
+		}
+	}, [messages, loading]);
 
 	// Auto-scroll to bottom when new messages arrive
 	useEffect(() => {
