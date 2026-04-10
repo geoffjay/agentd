@@ -4,7 +4,7 @@
  */
 
 import { BarChart2, RefreshCw, Webhook } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ActivityEvent } from "@/components/dashboard/ActivityTimeline";
 import { ActivityTimeline } from "@/components/dashboard/ActivityTimeline";
 import { AgentSummary } from "@/components/dashboard/AgentSummary";
@@ -16,6 +16,8 @@ import {
 import { useAgentSummary } from "@/hooks/useAgentSummary";
 import { useNotificationSummary } from "@/hooks/useNotificationSummary";
 import { useServiceHealth } from "@/hooks/useServiceHealth";
+import { CreateAgentDialog } from "@/pages/agents/CreateAgentDialog";
+import { orchestratorClient } from "@/services/orchestrator";
 
 // ---------------------------------------------------------------------------
 // Stub "Coming Soon" card
@@ -55,6 +57,7 @@ export function DashboardPage() {
 	} = useServiceHealth();
 	const agentSummary = useAgentSummary();
 	const notifSummary = useNotificationSummary();
+	const [createOpen, setCreateOpen] = useState(false);
 
 	// Build a synthetic activity feed from available data
 	const activityEvents: ActivityEvent[] = useMemo(() => {
@@ -124,7 +127,10 @@ export function DashboardPage() {
 
 			{/* Main grid: agents + notifications */}
 			<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-				<AgentSummary {...agentSummary} />
+				<AgentSummary
+					{...agentSummary}
+					onCreateAgent={() => setCreateOpen(true)}
+				/>
 				<NotificationSummary {...notifSummary} />
 			</div>
 
@@ -146,6 +152,16 @@ export function DashboardPage() {
 					icon={<Webhook size={24} className="text-th-text-muted" />}
 				/>
 			</div>
+
+			{/* Create agent dialog */}
+			<CreateAgentDialog
+				open={createOpen}
+				onClose={() => setCreateOpen(false)}
+				onCreate={async (request) => {
+					await orchestratorClient.createAgent(request);
+					agentSummary.refetch();
+				}}
+			/>
 		</div>
 	);
 }
