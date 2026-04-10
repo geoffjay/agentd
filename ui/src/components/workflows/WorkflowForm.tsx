@@ -97,10 +97,10 @@ export function WorkflowForm({
 			setName(workflow.name);
 			setAgentId(workflow.agent_id);
 			const src = workflow.source_config;
-			if (src.type === "github_issues") {
+			if (src?.type === "github_issues") {
 				setOwner(src.owner);
 				setRepo(src.repo);
-				setLabelsRaw(src.labels.join(", "));
+				setLabelsRaw((src.labels ?? []).join(", "));
 				setIssueState(src.state as "open" | "closed" | "all");
 			}
 			setPromptTemplate(workflow.prompt_template);
