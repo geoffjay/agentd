@@ -359,7 +359,10 @@ fn summarize_tool_input(tool_name: &str, input: &Value) -> String {
         if s.len() <= max {
             s.to_string()
         } else {
-            format!("{}…", &s[..max])
+            // Find a valid UTF-8 char boundary at or before `max` to avoid
+            // panicking on multi-byte characters (e.g. em-dashes, arrows).
+            let end = s.floor_char_boundary(max);
+            format!("{}…", &s[..end])
         }
     };
 
