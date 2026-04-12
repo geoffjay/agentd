@@ -80,12 +80,30 @@ enum SessionState {
 pub struct SubprocessBackend {
     prefix: String,
     sessions: Arc<RwLock<HashMap<String, SessionState>>>,
+    /// PATH value to inject into spawned subprocesses.
+    ///
+    /// Read from `AGENTD_SUBPROCESS_PATH` at construction time. When set,
+    /// this overrides the inherited PATH so that tools invoked by agents
+    /// (e.g. `agent`, `git`, `cargo`) are found the same way they would be
+    /// in the user's interactive shell.
+    subprocess_path: Option<String>,
 }
 
 impl SubprocessBackend {
     /// Create a new `SubprocessBackend` with the given session name prefix.
+    ///
+    /// Reads `AGENTD_SUBPROCESS_PATH` from the environment. When set, its
+    /// value is injected as the `PATH` for every spawned subprocess.
     pub fn new(prefix: impl Into<String>) -> Self {
-        Self { prefix: prefix.into(), sessions: Arc::new(RwLock::new(HashMap::new())) }
+        let subprocess_path = std::env::var("AGENTD_SUBPROCESS_PATH").ok();
+        if let Some(ref path) = subprocess_path {
+            info!(path = %path, "AGENTD_SUBPROCESS_PATH set, will inject into spawned processes");
+        }
+        Self {
+            prefix: prefix.into(),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            subprocess_path,
+        }
     }
 }
 
@@ -312,6 +330,13 @@ impl ExecutionBackend for SubprocessBackend {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
+
+        // Inject AGENTD_SUBPROCESS_PATH as PATH so that tools invoked by the
+        // agent (git, cargo, agent, etc.) are found the same way they would
+        // be in the user's interactive shell.
+        if let Some(ref path) = self.subprocess_path {
+            cmd.env("PATH", path);
+        }
 
         // Place the child in its own process group so we can signal the
         // entire tree (claude may spawn subprocesses).

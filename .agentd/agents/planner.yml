@@ -11,6 +11,26 @@ shell: /bin/zsh
 worktree: false
 model: claude-opus-4-6
 
+# Tool policy: codebase read access + tools for applying triage results
+tool_policy:
+  mode: allow_list
+  tools:
+    - Read
+    - Grep
+    - Glob
+    - WebFetch
+    - "Bash(gh issue create *)"
+    - "Bash(gh issue edit *)"
+    - "Bash(gh issue view *)"
+    - "Bash(gh issue list *)"
+    - "Bash(gh issue comment *)"
+    - "Bash(gh label list *)"
+    - "Bash(agent memory *)"
+  sandbox_bypass:
+    - "Bash(git-spice branch submit *)"
+    - "Bash(git-spice repo sync*)"
+    - "Bash(gh pr create *)"
+
 rooms:
   - engineering
   - name: announcements
