@@ -679,7 +679,18 @@ impl AgentManager {
         self.backend.resize_session(&session_name, cols, rows).await
     }
 
-    /// Restart a running agent: kill the current session and re-launch Claude.
+    /// Restart an agent by ID: kill any existing session and re-launch Claude.
+    ///
+    /// Accepts agents in any status (Running, Failed, Stopped). Preserves the
+    /// agent's ID, name, and config. The initial prompt is NOT re-sent since
+    /// the agent is being restarted, not created fresh.
+    pub async fn restart_agent_by_id(&self, id: &Uuid) -> anyhow::Result<Agent> {
+        let agent =
+            self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+        self.restart_agent(&agent).await
+    }
+
+    /// Internal restart: kill the current session and re-launch Claude.
     ///
     /// Preserves the agent's ID, name, and config. The prompt is NOT re-sent
     /// since the agent is being restarted mid-lifecycle.

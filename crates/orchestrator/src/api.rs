@@ -65,6 +65,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents", get(list_agents).post(create_agent))
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
         .route("/agents/{id}/message", post(send_message))
+        .route("/agents/{id}/restart", post(restart_agent))
         .route("/agents/{id}/model", axum::routing::put(set_agent_model))
         .route("/agents/{id}/policy", get(get_agent_policy).put(update_agent_policy))
         .route("/agents/{id}/dirs", post(add_agent_dir).delete(remove_agent_dir))
@@ -220,6 +221,22 @@ async fn terminate_agent(
     let agent = state.manager.terminate_agent(&id).await?;
 
     metrics::counter!("agents_terminated_total").increment(1);
+
+    Ok(Json(AgentResponse::from(agent)))
+}
+
+/// Restart an agent: kill any existing session and re-launch with the same config.
+///
+/// Accepts agents in any status (Running, Failed, Stopped). Preserves the
+/// agent ID, name, and config. Returns the updated agent.
+async fn restart_agent(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let agent = state.manager.restart_agent_by_id(&id).await?;
+
+    info!(agent_id = %id, "Agent restarted via API");
+    metrics::counter!("agents_restarted_total").increment(1);
 
     Ok(Json(AgentResponse::from(agent)))
 }
