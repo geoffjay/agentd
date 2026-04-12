@@ -21,6 +21,8 @@ pub enum BackendType {
     Docker,
     /// In-process PTY sessions
     Pty,
+    /// Direct subprocess (no shell, no terminal)
+    Subprocess,
 }
 
 impl fmt::Display for BackendType {
@@ -29,6 +31,7 @@ impl fmt::Display for BackendType {
             BackendType::Tmux => write!(f, "tmux"),
             BackendType::Docker => write!(f, "docker"),
             BackendType::Pty => write!(f, "pty"),
+            BackendType::Subprocess => write!(f, "subprocess"),
         }
     }
 }
@@ -41,6 +44,7 @@ impl BackendType {
         match std::env::var("AGENTD_BACKEND").as_deref() {
             Ok("docker") => BackendType::Docker,
             Ok("pty") => BackendType::Pty,
+            Ok("subprocess") => BackendType::Subprocess,
             _ => BackendType::Tmux,
         }
     }
@@ -62,8 +66,9 @@ impl BackendType {
             Ok("tmux") | Err(_) => Ok(BackendType::Tmux),
             Ok("docker") => Ok(BackendType::Docker),
             Ok("pty") => Ok(BackendType::Pty),
+            Ok("subprocess") => Ok(BackendType::Subprocess),
             Ok(other) => anyhow::bail!(
-                "Unknown AGENTD_BACKEND value '{}'. Valid options: tmux, docker, pty",
+                "Unknown AGENTD_BACKEND value '{}'. Valid options: tmux, docker, pty, subprocess",
                 other
             ),
         }
@@ -75,6 +80,7 @@ impl BackendType {
             BackendType::Tmux => vec!["attach-tmux".to_string()],
             BackendType::Docker => vec!["health-check".to_string(), "logs".to_string()],
             BackendType::Pty => vec!["terminal".to_string(), "interactive".to_string()],
+            BackendType::Subprocess => vec!["sdk".to_string()],
         }
     }
 }
@@ -376,6 +382,14 @@ mod tests {
         std::env::set_var("AGENTD_BACKEND", "pty");
         let bt = BackendType::from_env_strict().unwrap();
         assert_eq!(bt, BackendType::Pty);
+        std::env::remove_var("AGENTD_BACKEND");
+    }
+
+    #[test]
+    fn from_env_strict_subprocess() {
+        std::env::set_var("AGENTD_BACKEND", "subprocess");
+        let bt = BackendType::from_env_strict().unwrap();
+        assert_eq!(bt, BackendType::Subprocess);
         std::env::remove_var("AGENTD_BACKEND");
     }
 

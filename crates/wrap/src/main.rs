@@ -3,11 +3,12 @@
 //! Provides a REST API for launching and managing agent sessions. The active
 //! execution backend is selected via the `AGENTD_BACKEND` environment variable:
 //!
-//! | Value    | Backend                 |
-//! |----------|-------------------------|
-//! | `tmux`   | tmux sessions (default) |
-//! | `docker` | Docker containers       |
-//! | `pty`    | In-process PTY          |
+//! | Value        | Backend                      |
+//! |--------------|------------------------------|
+//! | `tmux`       | tmux sessions (default)      |
+//! | `docker`     | Docker containers            |
+//! | `pty`        | In-process PTY               |
+//! | `subprocess` | Direct subprocess (SDK-only) |
 //!
 //! # Running the Service
 //!
@@ -23,7 +24,7 @@
 //!
 //! - `RUST_LOG`        — Logging level (default: `info`)
 //! - `AGENTD_PORT`     — Listen port (default: `17005`)
-//! - `AGENTD_BACKEND`  — Execution backend: `tmux` | `docker` | `pty` (default: `tmux`)
+//! - `AGENTD_BACKEND`  — Execution backend: `tmux` | `docker` | `pty` | `subprocess` (default: `tmux`)
 
 // Import from the library target — avoids re-declaring modules in the binary and
 // triggering dead-code warnings on items that are only used by the library.
@@ -32,6 +33,7 @@ use wrap::{
     backend::{ExecutionBackend, TmuxBackend},
     docker::{DockerBackend, DEFAULT_IMAGE},
     pty::PtyBackend,
+    subprocess::SubprocessBackend,
     types::BackendType,
 };
 
@@ -83,6 +85,10 @@ async fn main() -> anyhow::Result<()> {
         BackendType::Tmux => {
             info!("Initialising tmux backend");
             Arc::new(TmuxBackend::new("agentd"))
+        }
+        BackendType::Subprocess => {
+            info!("Initialising subprocess backend");
+            Arc::new(SubprocessBackend::new("agentd"))
         }
     };
 
