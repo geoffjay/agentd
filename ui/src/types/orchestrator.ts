@@ -68,6 +68,8 @@ export interface Agent {
 	backend_type?: string;
 	/** The exact `claude` command used to launch this agent session. */
 	launch_command?: string;
+	/** OS process ID of the agent's subprocess. */
+	pid?: number;
 	created_at: string;
 	updated_at: string;
 }

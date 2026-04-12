@@ -226,22 +226,38 @@ fn is_valid_env_name(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// Log level for a drain task.
+#[derive(Clone, Copy)]
+enum DrainLevel {
+    Debug,
+    Warn,
+}
+
 /// Spawn a task that drains a piped stream to tracing logs.
 fn spawn_drain_task(
     stream: impl tokio::io::AsyncRead + Unpin + Send + 'static,
     session_name: String,
     stream_name: &'static str,
+    level: DrainLevel,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let reader = BufReader::new(stream);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            debug!(
-                session = %session_name,
-                stream = stream_name,
-                "{}",
-                line,
-            );
+            match level {
+                DrainLevel::Debug => debug!(
+                    session = %session_name,
+                    stream = stream_name,
+                    "{}",
+                    line,
+                ),
+                DrainLevel::Warn => warn!(
+                    session = %session_name,
+                    stream = stream_name,
+                    "{}",
+                    line,
+                ),
+            }
         }
     })
 }
@@ -360,8 +376,10 @@ impl ExecutionBackend for SubprocessBackend {
         // Drain stdout/stderr to tracing to prevent pipe deadlock.
         let stdout = child.stdout.take().expect("stdout was piped");
         let stderr = child.stderr.take().expect("stderr was piped");
-        let stdout_task = spawn_drain_task(stdout, session_name.to_string(), "stdout");
-        let stderr_task = spawn_drain_task(stderr, session_name.to_string(), "stderr");
+        let stdout_task =
+            spawn_drain_task(stdout, session_name.to_string(), "stdout", DrainLevel::Debug);
+        let stderr_task =
+            spawn_drain_task(stderr, session_name.to_string(), "stderr", DrainLevel::Warn);
 
         info!(
             session = %session_name,
@@ -561,6 +579,14 @@ impl ExecutionBackend for SubprocessBackend {
 
     fn prefix(&self) -> &str {
         &self.prefix
+    }
+
+    async fn session_pid(&self, session_name: &str) -> Result<Option<u32>> {
+        let sessions = self.sessions.read().await;
+        match sessions.get(session_name) {
+            Some(SessionState::Running { pid, .. }) => Ok(Some(*pid)),
+            _ => Ok(None),
+        }
     }
 
     async fn session_health(&self, session_name: &str) -> Result<SessionHealth> {

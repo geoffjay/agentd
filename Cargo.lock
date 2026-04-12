@@ -4862,6 +4862,7 @@ dependencies = [
  "futures",
  "hex",
  "hmac",
+ "libc",
  "metrics",
  "metrics-exporter-prometheus",
  "regex",

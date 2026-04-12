@@ -497,6 +497,11 @@ pub struct Agent {
     /// flags, `--sdk-url`, model selection, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub launch_command: Option<String>,
+    /// OS process ID of the agent's subprocess. Used during startup
+    /// reconciliation to check if a surviving process from a previous
+    /// orchestrator run is still alive, avoiding duplicate spawns.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -512,6 +517,7 @@ impl Agent {
             session_id: None,
             backend_type: Some("tmux".to_string()),
             launch_command: None,
+            pid: None,
             created_at: now,
             updated_at: now,
         }
@@ -606,6 +612,8 @@ pub struct AgentResponse {
     /// backend when the agent was spawned or restarted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub launch_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -625,6 +633,7 @@ impl From<Agent> for AgentResponse {
             session_id: agent.session_id,
             backend_type: agent.backend_type,
             launch_command: agent.launch_command,
+            pid: agent.pid,
             created_at: agent.created_at,
             updated_at: agent.updated_at,
         }

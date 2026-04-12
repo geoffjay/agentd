@@ -238,6 +238,14 @@ pub trait ExecutionBackend: Send + Sync {
         false
     }
 
+    /// Returns the OS process ID for a session, if available.
+    ///
+    /// Only backends that spawn processes directly (e.g., [`SubprocessBackend`])
+    /// return a PID. Tmux and Docker backends return `None`.
+    async fn session_pid(&self, _session_name: &str) -> anyhow::Result<Option<u32>> {
+        Ok(None)
+    }
+
     /// Stops all sessions managed by this backend.
     ///
     /// Used during graceful shutdown to clean up all running sessions.

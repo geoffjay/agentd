@@ -123,9 +123,10 @@ impl AgentManager {
             return Err(anyhow::anyhow!("Failed to launch claude in session: {}", e));
         }
 
-        // Mark as running.
+        // Mark as running and persist the PID for reconciliation.
         agent.status = AgentStatus::Running;
         agent.session_id = Some(session_name.clone());
+        agent.pid = self.backend.session_pid(&session_name).await.unwrap_or(None);
         agent.updated_at = Utc::now();
         self.storage.update(&agent).await?;
 
@@ -135,6 +136,7 @@ impl AgentManager {
         info!(
             agent_id = %agent.id,
             session = %session_name,
+            pid = ?agent.pid,
             "Agent spawned"
         );
 
@@ -332,14 +334,33 @@ impl AgentManager {
                 None => {
                     // No exit info means the backend has no record of this
                     // session. For in-memory backends (subprocess, PTY) this
-                    // happens after a service restart -- the process is gone
-                    // but it wasn't a crash. Restart the agent rather than
-                    // marking it failed.
-                    info!(
-                        agent_id = %agent.id,
-                        session = %session_name,
-                        "Agent session lost (service restart?), restarting"
-                    );
+                    // happens after a service restart. The process may still
+                    // be alive if it was in its own process group (setpgid).
+                    // Check the stored PID before spawning a duplicate.
+                    if let Some(pid) = agent.pid {
+                        if is_process_alive(pid) {
+                            info!(
+                                agent_id = %agent.id,
+                                session = %session_name,
+                                pid,
+                                "Agent process still alive after service restart, skipping restart"
+                            );
+                            return Ok(());
+                        }
+                        info!(
+                            agent_id = %agent.id,
+                            session = %session_name,
+                            pid,
+                            "Agent process is dead, restarting"
+                        );
+                    } else {
+                        info!(
+                            agent_id = %agent.id,
+                            session = %session_name,
+                            "Agent session lost (no PID recorded), restarting"
+                        );
+                    }
+
                     if let Err(e) = self.restart_agent(&agent).await {
                         error!(agent_id = %agent.id, %e, "Failed to restart agent during reconcile");
                         let mut agent = agent;
@@ -351,9 +372,23 @@ impl AgentManager {
             };
         } else if !self.registry.is_connected(&agent.id).await {
             // Case 2: session alive but WebSocket connection is stale.
-            // Fetch health for observability/logging only -- the restart is
-            // unconditional because the stale WebSocket must be replaced
-            // regardless of container health status.
+            //
+            // This commonly happens after sleep/wake: the WebSocket drops but
+            // the agent process is still alive and will reconnect. Check the
+            // PID before killing a healthy process.
+            if let Some(pid) = agent.pid {
+                if is_process_alive(pid) {
+                    info!(
+                        agent_id = %agent.id,
+                        session = %session_name,
+                        pid,
+                        "Agent process alive but WebSocket disconnected (sleep/wake?), \
+                         waiting for reconnect"
+                    );
+                    return Ok(());
+                }
+            }
+
             let health = self
                 .backend
                 .session_health(&session_name)
@@ -364,7 +399,7 @@ impl AgentManager {
                 agent_id = %agent.id,
                 session = %session_name,
                 health = %health,
-                "Agent has live session but is not connected to registry, restarting"
+                "Agent session alive but process dead and not connected, restarting"
             );
 
             if let Err(e) = self.restart_agent(&agent).await {
@@ -705,6 +740,7 @@ impl AgentManager {
         // Update state.
         agent.status = AgentStatus::Running;
         agent.session_id = Some(session_name.clone());
+        agent.pid = self.backend.session_pid(&session_name).await.unwrap_or(None);
         agent.updated_at = Utc::now();
         self.storage.update(&agent).await?;
 
@@ -714,8 +750,9 @@ impl AgentManager {
         info!(
             agent_id = %agent.id,
             session = %session_name,
+            pid = ?agent.pid,
             model = ?agent.config.model,
-            "Agent restarted with new model"
+            "Agent restarted"
         );
 
         Ok(agent)
@@ -727,6 +764,23 @@ impl AgentManager {
 /// Only allows names matching `[A-Za-z_][A-Za-z0-9_]*`.  Names that fail
 /// this check are silently dropped from the command to prevent shell
 /// injection via malformed key names.
+/// Check if a process with the given PID is still alive.
+///
+/// Uses `kill(pid, 0)` which checks for process existence without sending a
+/// signal. Returns `false` if the process does not exist or is not owned by
+/// the current user.
+#[cfg(unix)]
+fn is_process_alive(pid: u32) -> bool {
+    // SAFETY: kill with signal 0 checks process existence without side effects.
+    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+}
+
+#[cfg(not(unix))]
+fn is_process_alive(_pid: u32) -> bool {
+    // Cannot check on non-Unix; assume dead to trigger restart.
+    false
+}
+
 fn is_valid_env_var_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {

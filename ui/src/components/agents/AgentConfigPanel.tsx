@@ -493,6 +493,12 @@ export function AgentConfigPanel({
 						</ConfigRow>
 					)}
 
+					{agent.pid != null && (
+						<ConfigRow label="PID">
+							<span className="font-mono text-xs">{agent.pid}</span>
+						</ConfigRow>
+					)}
+
 					<ConfigRow label="Tool Policy">
 						{policyLabel(config.tool_policy)}
 					</ConfigRow>

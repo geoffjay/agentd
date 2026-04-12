@@ -58,6 +58,9 @@ pub struct Model {
     /// sent to the execution backend when the agent was spawned or restarted.
     /// Nullable so that agents created before this column existed have no value.
     pub launch_command: Option<String>,
+    /// OS process ID of the agent's subprocess. Used during startup
+    /// reconciliation to check if the process survived a service restart.
+    pub pid: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
