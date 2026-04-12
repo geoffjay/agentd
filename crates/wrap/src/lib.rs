@@ -35,6 +35,7 @@ pub mod client;
 pub mod docker;
 pub mod pty;
 pub mod pty_stream;
+pub mod subprocess;
 pub mod tmux;
 pub mod types;
 
@@ -43,6 +44,7 @@ pub use client::WrapClient;
 pub use docker::{DockerBackend, NetworkPolicy};
 pub use pty::PtyBackend;
 pub use pty_stream::PtyOutputStream;
+pub use subprocess::SubprocessBackend;
 pub use types::{
     BackendInfo, BackendType, HealthResponse, KillSessionResponse, LaunchRequest, LaunchResponse,
     SessionInfo, SessionListResponse, TmuxLayout,

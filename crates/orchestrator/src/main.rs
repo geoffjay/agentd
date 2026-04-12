@@ -33,6 +33,7 @@ use websocket::ConnectionRegistry;
 use wrap::backend::{ExecutionBackend, TmuxBackend};
 use wrap::docker::DockerBackend;
 use wrap::pty::PtyBackend;
+use wrap::subprocess::SubprocessBackend;
 use wrap::types::BackendType;
 
 fn init_metrics() -> PrometheusHandle {
@@ -99,6 +100,10 @@ async fn main() -> anyhow::Result<()> {
         BackendType::Pty => {
             info!("Using PTY execution backend");
             Arc::new(PtyBackend::new("agentd-orch"))
+        }
+        BackendType::Subprocess => {
+            info!("Using subprocess execution backend");
+            Arc::new(SubprocessBackend::new("agentd-orch"))
         }
     };
 
