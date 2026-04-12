@@ -32,6 +32,11 @@ tool_policy:
     - "Edit(docs/**)"
     - "Write(CLAUDE.md)"
     - "Edit(CLAUDE.md)"
+  sandbox_bypass:
+    - "Bash(agent *)"
+    - "Bash(git-spice branch submit *)"
+    - "Bash(git-spice repo sync*)"
+    - "Bash(gh pr create *)"
 
 rooms:
   - engineering

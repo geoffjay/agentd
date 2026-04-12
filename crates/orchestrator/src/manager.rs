@@ -298,17 +298,21 @@ impl AgentManager {
 
         if !session_alive {
             // Case 1: session is gone -- check exit info for diagnostics.
-            let mut agent = agent;
             let exit_info = self.backend.session_exit_info(&session_name).await.ok().flatten();
 
-            let new_status = match &exit_info {
+            match &exit_info {
                 Some(info) if info.exit_code == 0 => {
                     info!(
                         agent_id = %agent.id,
                         session = %session_name,
                         "Agent session exited cleanly (exit code 0), marking stopped"
                     );
-                    AgentStatus::Stopped
+                    let mut agent = agent;
+                    agent.status = AgentStatus::Stopped;
+                    agent.updated_at = Utc::now();
+                    if let Err(e) = self.storage.update(&agent).await {
+                        error!(agent_id = %agent.id, %e, "Failed to update agent status");
+                    }
                 }
                 Some(info) => {
                     warn!(
@@ -318,23 +322,33 @@ impl AgentManager {
                         error = ?info.error,
                         "Agent session exited with error, marking failed"
                     );
-                    AgentStatus::Failed
+                    let mut agent = agent;
+                    agent.status = AgentStatus::Failed;
+                    agent.updated_at = Utc::now();
+                    if let Err(e) = self.storage.update(&agent).await {
+                        error!(agent_id = %agent.id, %e, "Failed to update agent status");
+                    }
                 }
                 None => {
-                    warn!(
+                    // No exit info means the backend has no record of this
+                    // session. For in-memory backends (subprocess, PTY) this
+                    // happens after a service restart -- the process is gone
+                    // but it wasn't a crash. Restart the agent rather than
+                    // marking it failed.
+                    info!(
                         agent_id = %agent.id,
                         session = %session_name,
-                        "Agent marked running but session is gone, marking failed"
+                        "Agent session lost (service restart?), restarting"
                     );
-                    AgentStatus::Failed
+                    if let Err(e) = self.restart_agent(&agent).await {
+                        error!(agent_id = %agent.id, %e, "Failed to restart agent during reconcile");
+                        let mut agent = agent;
+                        agent.status = AgentStatus::Failed;
+                        agent.updated_at = Utc::now();
+                        let _ = self.storage.update(&agent).await;
+                    }
                 }
             };
-
-            agent.status = new_status;
-            agent.updated_at = Utc::now();
-            if let Err(e) = self.storage.update(&agent).await {
-                error!(agent_id = %agent.id, %e, "Failed to update agent status");
-            }
         } else if !self.registry.is_connected(&agent.id).await {
             // Case 2: session alive but WebSocket connection is stale.
             // Fetch health for observability/logging only -- the restart is

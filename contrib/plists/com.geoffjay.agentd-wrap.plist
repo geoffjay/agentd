@@ -31,6 +31,8 @@
         <string>info</string>
         <key>AGENTD_PORT</key>
         <string>7005</string>
+        <key>AGENTD_SUBPROCESS_PATH</key>
+        <string>/Users/geoff/Projects/agentd/.venv/bin:/Users/geoff/.asdf/shims:/opt/clio/bin/devxp:/usr/local/bin:/Users/geoff/.local/bin:/Users/geoff/.yarn/bin:/Users/geoff/.cargo/bin:/Users/geoff/go/bin:/Users/geoff/.pyenv/shims:/Users/geoff/.nodenv/shims:/Users/geoff/.rbenv/shims:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/clio/bin:/Users/geoff/.fzf/bin</string>
     </dict>
 
     <key>WorkingDirectory</key>
