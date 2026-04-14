@@ -71,6 +71,10 @@ export class OrchestratorClient extends ApiClient {
 		return this.delete<Agent>(`/agents/${id}`);
 	}
 
+	restartAgent(id: string): Promise<Agent> {
+		return this.post<Agent>(`/agents/${id}/restart`, {});
+	}
+
 	// -------------------------------------------------------------------------
 	// Agent actions
 	// -------------------------------------------------------------------------

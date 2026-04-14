@@ -452,19 +452,25 @@ function AddDirDialog({ open, onConfirm, onClose }: AddDirDialogProps) {
 
 interface ActionsDropdownProps {
 	isRunning: boolean;
+	isFailed: boolean;
 	clearing: boolean;
+	restarting: boolean;
 	onChangeModel: () => void;
 	onAddDir: () => void;
 	onClearContext: () => void;
+	onRestart: () => void;
 	onTerminate: () => void;
 }
 
 function ActionsDropdown({
 	isRunning,
+	isFailed,
 	clearing,
+	restarting,
 	onChangeModel,
 	onAddDir,
 	onClearContext,
+	onRestart,
 	onTerminate,
 }: ActionsDropdownProps) {
 	const [open, setOpen] = useState(false);
@@ -598,6 +604,28 @@ function ActionsDropdown({
 						Clear Context
 					</button>
 
+					{/* Restart (shown for failed/stopped agents) */}
+					{isFailed && (
+						<button
+							role="menuitem"
+							type="button"
+							onClick={() => pick(onRestart)}
+							disabled={restarting}
+							className={normalItem}
+						>
+							{restarting ? (
+								<Loader2
+									size={14}
+									className="animate-spin text-th-text-faint"
+									aria-hidden="true"
+								/>
+							) : (
+								<RefreshCw size={14} className="text-th-text-faint" aria-hidden="true" />
+							)}
+							Restart Agent
+						</button>
+					)}
+
 					{/* Divider */}
 					<div
 						role="separator"
@@ -656,6 +684,7 @@ export function AgentDetail() {
 
 	const [confirmTerminate, setConfirmTerminate] = useState(false);
 	const [terminating, setTerminating] = useState(false);
+	const [restarting, setRestarting] = useState(false);
 	const [confirmClearContext, setConfirmClearContext] = useState(false);
 	const [showModelDialog, setShowModelDialog] = useState(false);
 	const [showAddDirDialog, setShowAddDirDialog] = useState(false);
@@ -699,6 +728,19 @@ export function AgentDetail() {
 		} finally {
 			setTerminating(false);
 			setConfirmTerminate(false);
+		}
+	}
+
+	async function handleRestart() {
+		setRestarting(true);
+		try {
+			await orchestratorClient.restartAgent(agentId);
+			toast.success("Agent restarted");
+			refetch();
+		} catch (e) {
+			toast.error(`Failed to restart agent: ${e}`);
+		} finally {
+			setRestarting(false);
 		}
 	}
 
@@ -856,10 +898,13 @@ export function AgentDetail() {
 						{/* Actions dropdown */}
 						<ActionsDropdown
 							isRunning={isRunning}
+							isFailed={agent.status === "failed" || agent.status === "stopped"}
 							clearing={clearing}
+							restarting={restarting}
 							onChangeModel={() => setShowModelDialog(true)}
 							onAddDir={() => setShowAddDirDialog(true)}
 							onClearContext={() => setConfirmClearContext(true)}
+							onRestart={handleRestart}
 							onTerminate={() => setConfirmTerminate(true)}
 						/>
 					</div>

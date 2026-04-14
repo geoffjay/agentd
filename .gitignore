@@ -91,3 +91,9 @@ ui/dist/
 ui/.vite/
 ui/.env.local
 ui/coverage/
+.sidecar-agent
+.sidecar-task
+.sidecar-pr
+.sidecar-start.sh
+.sidecar-base
+.td-root
