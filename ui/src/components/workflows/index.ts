@@ -1,3 +1,5 @@
+export type { WorkflowCanvasProps } from "./canvas";
+export { WorkflowCanvas } from "./canvas";
 export type { DispatchHistoryProps } from "./DispatchHistory";
 export { DispatchHistory } from "./DispatchHistory";
 export type { PromptTemplateEditorProps } from "./PromptTemplateEditor";
