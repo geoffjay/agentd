@@ -96,7 +96,7 @@ export function WorkflowForm({
 		if (workflow) {
 			setName(workflow.name);
 			setAgentId(workflow.agent_id);
-			const src = workflow.source_config;
+			const src = workflow.trigger_config;
 			if (src?.type === "github_issues") {
 				setOwner(src.owner);
 				setRepo(src.repo);
@@ -168,7 +168,7 @@ export function WorkflowForm({
 			const request: CreateWorkflowRequest = {
 				name: name.trim(),
 				agent_id: agentId,
-				source_config: {
+				trigger_config: {
 					type: "github_issues",
 					owner: owner.trim(),
 					repo: repo.trim(),

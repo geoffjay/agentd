@@ -166,10 +166,15 @@ export type DispatchStatus =
 	| "failed"
 	| "skipped";
 
+// ---------------------------------------------------------------------------
+// TriggerConfig — covers all 14 backend trigger variants
+// ---------------------------------------------------------------------------
+
 /**
- * Tagged union for different task source backends.
+ * Tagged union for all workflow trigger types.
+ * Mirrors the Rust `TriggerConfig` enum in crates/orchestrator/src/scheduler/types.rs.
  */
-export type TaskSourceConfig =
+export type TriggerConfig =
 	| {
 			type: "github_issues";
 			owner: string;
@@ -183,7 +188,136 @@ export type TaskSourceConfig =
 			repo: string;
 			labels: string[];
 			state: "open" | "closed" | "merged" | "all";
+	  }
+	| { type: "cron"; expression: string }
+	| { type: "delay"; run_at: string }
+	| {
+			type: "webhook";
+			secret?: string;
+			source: "github" | "linear" | "any";
+	  }
+	| { type: "manual" }
+	| {
+			type: "linear_issues";
+			team_key?: string;
+			project?: string;
+			status?: string[];
+			labels: string[];
+			assignee?: string;
+	  }
+	| {
+			type: "agent_lifecycle";
+			event: "session_start" | "session_end" | "context_clear";
+	  }
+	| { type: "agent_idle"; idle_seconds: number }
+	| {
+			type: "dispatch_result";
+			source_workflow_id?: string;
+			status?: DispatchStatus;
+	  }
+	| {
+			type: "composite";
+			mode: "or" | "and";
+			triggers: TriggerConfig[];
+			correlation_window_secs?: number;
+	  }
+	| {
+			type: "queue";
+			queue_name: string;
+			poll_interval_secs?: number;
+			visibility_timeout_secs?: number;
+	  }
+	| {
+			type: "ask_response";
+			agent_id?: string;
+			category?: string;
+			response_pattern?: string;
 	  };
+
+/** Convenience union of all trigger type string literals */
+export type TriggerType = TriggerConfig["type"];
+
+/** Logical grouping of trigger types */
+export type TriggerCategory = "external" | "schedule" | "event" | "internal";
+
+// ---------------------------------------------------------------------------
+// TriggerConfig helpers
+// ---------------------------------------------------------------------------
+
+/** Human-readable label for a trigger type */
+export function getTriggerLabel(type: TriggerType): string {
+	const labels: Record<TriggerType, string> = {
+		github_issues: "GitHub Issues",
+		github_pull_requests: "GitHub Pull Requests",
+		cron: "Cron Schedule",
+		delay: "Delayed Run",
+		webhook: "Webhook",
+		manual: "Manual",
+		linear_issues: "Linear Issues",
+		agent_lifecycle: "Agent Lifecycle",
+		agent_idle: "Agent Idle",
+		dispatch_result: "Dispatch Result",
+		composite: "Composite",
+		queue: "Queue",
+		ask_response: "Ask Response",
+	};
+	return labels[type] ?? type;
+}
+
+/** Logical category a trigger type belongs to */
+export function getTriggerCategory(type: TriggerType): TriggerCategory {
+	const categories: Record<TriggerType, TriggerCategory> = {
+		github_issues: "external",
+		github_pull_requests: "external",
+		linear_issues: "external",
+		webhook: "external",
+		cron: "schedule",
+		delay: "schedule",
+		agent_lifecycle: "event",
+		agent_idle: "event",
+		dispatch_result: "event",
+		ask_response: "event",
+		manual: "internal",
+		queue: "internal",
+		composite: "internal",
+	};
+	return categories[type] ?? "internal";
+}
+
+/** Default (empty/safe) TriggerConfig for a given type */
+export function getDefaultTriggerConfig(type: TriggerType): TriggerConfig {
+	switch (type) {
+		case "github_issues":
+			return { type, owner: "", repo: "", labels: [], state: "open" };
+		case "github_pull_requests":
+			return { type, owner: "", repo: "", labels: [], state: "open" };
+		case "cron":
+			return { type, expression: "0 * * * *" };
+		case "delay":
+			return { type, run_at: new Date().toISOString() };
+		case "webhook":
+			return { type, source: "any" };
+		case "manual":
+			return { type };
+		case "linear_issues":
+			return { type, labels: [] };
+		case "agent_lifecycle":
+			return { type, event: "session_start" };
+		case "agent_idle":
+			return { type, idle_seconds: 300 };
+		case "dispatch_result":
+			return { type };
+		case "composite":
+			return { type, mode: "or", triggers: [] };
+		case "queue":
+			return { type, queue_name: "" };
+		case "ask_response":
+			return { type };
+	}
+}
+
+/** @deprecated Use TriggerConfig instead */
+export type TaskSourceConfig = TriggerConfig;
 
 /**
  * A workflow as returned by the API.
@@ -193,7 +327,7 @@ export interface Workflow {
 	id: string;
 	name: string;
 	agent_id: string;
-	source_config: TaskSourceConfig;
+	trigger_config: TriggerConfig;
 	prompt_template: string;
 	poll_interval_secs: number;
 	enabled: boolean;
@@ -235,7 +369,7 @@ export interface Task {
 export interface CreateWorkflowRequest {
 	name: string;
 	agent_id: string;
-	source_config: TaskSourceConfig;
+	trigger_config: TriggerConfig;
 	prompt_template: string;
 	poll_interval_secs: number;
 	enabled: boolean;
