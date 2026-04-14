@@ -1,5 +1,12 @@
 export type { WorkflowCanvasProps } from "./WorkflowCanvas";
 export { WorkflowCanvas } from "./WorkflowCanvas";
+export type { NodePaletteProps, PaletteDragData } from "./NodePalette";
+export {
+	NodePalette,
+	PALETTE_DRAG_KEY,
+	encodeDragData,
+	decodeDragData,
+} from "./NodePalette";
 export type { AgentNodeData } from "./nodes/AgentNode";
 export { AgentNode } from "./nodes/AgentNode";
 export type { TriggerNodeData } from "./nodes/TriggerNode";
