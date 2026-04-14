@@ -5,8 +5,9 @@
  * and enable/disable actions. Includes search and pagination.
  */
 
-import { Plus, RefreshCw, Search } from "lucide-react";
+import { GitFork, Plus, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { WorkflowForm } from "@/components/workflows/WorkflowForm";
 import { WorkflowTable } from "@/components/workflows/WorkflowTable";
 import { useAgents } from "@/hooks/useAgents";
@@ -14,6 +15,7 @@ import { useWorkflows } from "@/hooks/useWorkflows";
 import type { CreateWorkflowRequest, Workflow } from "@/types/orchestrator";
 
 export function WorkflowList() {
+	const navigate = useNavigate();
 	const [search, setSearch] = useState("");
 	const [page, setPage] = useState(1);
 	const [formOpen, setFormOpen] = useState(false);
@@ -86,6 +88,15 @@ export function WorkflowList() {
 						aria-label="Refresh workflows"
 					>
 						<RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
+					</button>
+					<button
+						type="button"
+						onClick={() => navigate("/workflows/builder")}
+						data-testid="new-in-builder-btn"
+						className="inline-flex items-center gap-2 rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
+					>
+						<GitFork size={16} />
+						New in builder
 					</button>
 					<button
 						type="button"

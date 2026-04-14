@@ -7,7 +7,7 @@
  * - Dispatch history table
  */
 
-import { ArrowLeft, Edit2, RefreshCw, Trash2, Zap } from "lucide-react";
+import { ArrowLeft, Edit2, GitFork, RefreshCw, Trash2, Zap } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { HighlightedCode } from "@/components/common";
@@ -205,6 +205,14 @@ export function WorkflowDetail() {
 					>
 						<RefreshCw size={18} />
 					</button>
+					<Link
+						to={`/workflows/${workflow.id}/edit`}
+						data-testid="edit-in-builder-btn"
+						className="inline-flex items-center gap-2 rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
+					>
+						<GitFork size={15} />
+						Edit in builder
+					</Link>
 					<button
 						type="button"
 						onClick={() => setFormOpen(true)}
