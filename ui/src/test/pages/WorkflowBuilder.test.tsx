@@ -38,6 +38,8 @@ vi.mock("@xyflow/react", async (importOriginal) => {
 		MiniMap: () => null,
 		Controls: () => null,
 		Background: () => null,
+		// FitViewOnLoad calls useReactFlow; stub it so tests don't need a real provider
+		useReactFlow: () => ({ fitView: vi.fn() }),
 	};
 });
 

@@ -3,23 +3,35 @@
  *
  * Layout:
  * - Header: name, enabled status, agent, created/updated timestamps, actions
- * - Configuration card: source config, prompt template, poll interval
- * - Dispatch history table
+ * - View toggle: "Details" (default) or "Graph" (read-only canvas)
+ * - Details view: configuration card + dispatch history
+ * - Graph view: read-only WorkflowCanvas with auto-layout
  */
 
-import { ArrowLeft, Edit2, GitFork, RefreshCw, Trash2, Zap } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, Edit2, GitFork, LayoutList, RefreshCw, Trash2, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import type { Node, Edge } from "@xyflow/react";
 import { HighlightedCode } from "@/components/common";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { CardSkeleton } from "@/components/common/LoadingSkeleton";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { DispatchHistory } from "@/components/workflows/DispatchHistory";
 import { WorkflowForm } from "@/components/workflows/WorkflowForm";
+import { WorkflowCanvas } from "@/components/workflows/canvas/WorkflowCanvas";
+import { workflowNodeTypes, workflowEdgeTypes } from "@/components/workflows/canvas/nodeTypes";
+import { workflowsToGraph } from "@/components/workflows/canvas/serialization";
+import { autoLayout } from "@/components/workflows/canvas/layout";
 import { useAgents } from "@/hooks/useAgents";
 import { useWorkflowDetail } from "@/hooks/useWorkflows";
 import type { CreateWorkflowRequest, TriggerConfig } from "@/types/orchestrator";
 import { getTriggerLabel } from "@/types/orchestrator";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const VIEW_PREF_KEY = "wf-detail-view";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -117,6 +129,33 @@ export function WorkflowDetail() {
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const [deleting, setDeleting] = useState(false);
 
+	// View toggle: "details" (default) | "graph"
+	const [view, setView] = useState<"details" | "graph">(() => {
+		try {
+			return (localStorage.getItem(VIEW_PREF_KEY) as "details" | "graph") ?? "details";
+		} catch {
+			return "details";
+		}
+	});
+
+	// Canvas state for graph view (static — read-only canvas)
+	const [graphNodes, setGraphNodes] = useState<Node[]>([]);
+	const [graphEdges, setGraphEdges] = useState<Edge[]>([]);
+
+	// Populate canvas whenever the graph view becomes active or the workflow changes
+	useEffect(() => {
+		if (view !== "graph" || !workflow) return;
+		const { nodes, edges } = workflowsToGraph([workflow], allAgents, undefined);
+		setGraphNodes(autoLayout(nodes, edges));
+		setGraphEdges(edges);
+	}, [view, workflow, allAgents]);
+
+	function toggleView() {
+		const next: "details" | "graph" = view === "details" ? "graph" : "details";
+		try { localStorage.setItem(VIEW_PREF_KEY, next); } catch { /* ignore */ }
+		setView(next);
+	}
+
 	async function handleSave(request: CreateWorkflowRequest) {
 		await updateWorkflow({
 			name: request.name,
@@ -205,6 +244,21 @@ export function WorkflowDetail() {
 					>
 						<RefreshCw size={18} />
 					</button>
+
+					{/* View toggle */}
+					<button
+						type="button"
+						onClick={toggleView}
+						data-testid="view-toggle-btn"
+						className="inline-flex items-center gap-2 rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
+					>
+						{view === "details" ? (
+							<><GitFork size={15} /><span>Graph view</span></>
+						) : (
+							<><LayoutList size={15} /><span>Details view</span></>
+						)}
+					</button>
+
 					<Link
 						to={`/workflows/${workflow.id}/edit`}
 						data-testid="edit-in-builder-btn"
@@ -232,54 +286,80 @@ export function WorkflowDetail() {
 				</div>
 			</div>
 
-			{/* Configuration card */}
-			<div className="rounded-lg border border-th-border bg-th-surface p-6">
-				<h2 className="text-base font-semibold text-th-text mb-4">
-					Configuration
-				</h2>
-				<dl>
-					<ConfigRow
-						label="Source"
-						value={sourceDetail(workflow.trigger_config)}
+			{/* ── Graph view ─────────────────────────────────────────────────── */}
+			{view === "graph" && (
+				<div
+					className="rounded-lg border border-th-border overflow-hidden"
+					style={{ height: "480px" }}
+					data-testid="graph-view-canvas"
+				>
+					<WorkflowCanvas
+						nodes={graphNodes}
+						edges={graphEdges}
+						onNodesChange={() => {}}
+						onEdgesChange={() => {}}
+						onConnect={() => {}}
+						nodeTypes={workflowNodeTypes}
+						edgeTypes={workflowEdgeTypes}
+						readOnly
+						className="h-full"
 					/>
-					<ConfigRow
-						label="Poll interval"
-						value={
-							workflow.poll_interval_secs < 60
-								? `${workflow.poll_interval_secs}s`
-								: `${Math.round(workflow.poll_interval_secs / 60)}m`
-						}
-					/>
-					<ConfigRow label="Enabled" value={workflow.enabled ? "Yes" : "No"} />
-					<ConfigRow
-						label="Created"
-						value={formatDateTime(workflow.created_at)}
-					/>
-					<ConfigRow
-						label="Updated"
-						value={formatDateTime(workflow.updated_at)}
-					/>
-					<ConfigRow
-						label="Prompt template"
-						value={
-							<HighlightedCode
-								code={workflow.prompt_template}
-								language="markdown"
-								maxHeight="8rem"
-								className="border border-th-border"
-							/>
-						}
-					/>
-				</dl>
-			</div>
+				</div>
+			)}
 
-			{/* Dispatch history */}
-			<div className="rounded-lg border border-th-border bg-th-surface p-6">
-				<h2 className="text-base font-semibold text-th-text mb-4">
-					Dispatch history
-				</h2>
-				<DispatchHistory workflowId={workflow.id} />
-			</div>
+			{/* ── Details view ───────────────────────────────────────────────── */}
+			{view === "details" && (
+				<>
+					{/* Configuration card */}
+					<div className="rounded-lg border border-th-border bg-th-surface p-6">
+						<h2 className="text-base font-semibold text-th-text mb-4">
+							Configuration
+						</h2>
+						<dl>
+							<ConfigRow
+								label="Source"
+								value={sourceDetail(workflow.trigger_config)}
+							/>
+							<ConfigRow
+								label="Poll interval"
+								value={
+									workflow.poll_interval_secs < 60
+										? `${workflow.poll_interval_secs}s`
+										: `${Math.round(workflow.poll_interval_secs / 60)}m`
+								}
+							/>
+							<ConfigRow label="Enabled" value={workflow.enabled ? "Yes" : "No"} />
+							<ConfigRow
+								label="Created"
+								value={formatDateTime(workflow.created_at)}
+							/>
+							<ConfigRow
+								label="Updated"
+								value={formatDateTime(workflow.updated_at)}
+							/>
+							<ConfigRow
+								label="Prompt template"
+								value={
+									<HighlightedCode
+										code={workflow.prompt_template}
+										language="markdown"
+										maxHeight="8rem"
+										className="border border-th-border"
+									/>
+								}
+							/>
+						</dl>
+					</div>
+
+					{/* Dispatch history */}
+					<div className="rounded-lg border border-th-border bg-th-surface p-6">
+						<h2 className="text-base font-semibold text-th-text mb-4">
+							Dispatch history
+						</h2>
+						<DispatchHistory workflowId={workflow.id} />
+					</div>
+				</>
+			)}
 
 			{/* Edit dialog */}
 			<WorkflowForm
