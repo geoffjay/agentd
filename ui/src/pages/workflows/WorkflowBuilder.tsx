@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useLayout } from "@/layouts/context";
 import {
 	useEdgesState,
 	useNodesState,
@@ -80,6 +81,13 @@ export function WorkflowBuilder() {
 	const navigate = useNavigate();
 	const { id: editWorkflowId } = useParams<{ id?: string }>();
 	const isEditing = Boolean(editWorkflowId);
+	const { setFullBleed } = useLayout();
+
+	// Fill the viewport — escape ContentArea's padding wrapper
+	useEffect(() => {
+		setFullBleed(true);
+		return () => setFullBleed(false);
+	}, [setFullBleed]);
 
 	// React Flow state
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -336,7 +344,7 @@ export function WorkflowBuilder() {
 
 	return (
 		<div
-			className="flex flex-col h-full"
+			className="flex flex-col h-full my-4"
 			data-testid="workflow-builder"
 		>
 			{/* ── Header ───────────────────────────────────────────────── */}

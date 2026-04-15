@@ -44,6 +44,24 @@ vi.mock("@xyflow/react", async (importOriginal) => {
 });
 
 // ---------------------------------------------------------------------------
+// Mock LayoutContext — WorkflowBuilder calls setFullBleed on mount
+// ---------------------------------------------------------------------------
+
+const mockSetFullBleed = vi.fn();
+vi.mock("@/layouts/context", () => ({
+	useLayout: () => ({
+		sidebarOpen: true,
+		toggleSidebar: vi.fn(),
+		setSidebarOpen: vi.fn(),
+		searchOpen: false,
+		openSearch: vi.fn(),
+		closeSearch: vi.fn(),
+		fullBleed: false,
+		setFullBleed: mockSetFullBleed,
+	}),
+}));
+
+// ---------------------------------------------------------------------------
 // Mock hooks and services
 // ---------------------------------------------------------------------------
 

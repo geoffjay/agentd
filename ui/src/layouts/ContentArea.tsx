@@ -13,7 +13,19 @@ interface ContentAreaProps {
 }
 
 export function ContentArea({ children }: ContentAreaProps) {
-	const { sidebarOpen: _sidebarOpen } = useLayout();
+	const { fullBleed } = useLayout();
+
+	if (fullBleed) {
+		return (
+			<main
+				id="main-content"
+				className="mt-12 overflow-hidden"
+				style={{ height: "calc(100vh - 4rem)" }}
+			>
+				{children}
+			</main>
+		);
+	}
 
 	return (
 		<main

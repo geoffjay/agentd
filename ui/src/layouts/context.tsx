@@ -17,6 +17,13 @@ export interface LayoutContextValue {
 	openSearch: () => void;
 	/** Close the global search palette */
 	closeSearch: () => void;
+	/**
+	 * When true, ContentArea removes its padding/max-width wrapper and fills
+	 * the full available height. Set by pages that need edge-to-edge layout
+	 * (e.g. WorkflowBuilder). Always reset to false on unmount.
+	 */
+	fullBleed: boolean;
+	setFullBleed: (v: boolean) => void;
 }
 
 export const LayoutContext = createContext<LayoutContextValue | null>(null);

@@ -36,6 +36,7 @@ export function AppShell() {
 		readPersistedSidebarState,
 	);
 	const [searchOpen, setSearchOpen] = useState(false);
+	const [fullBleed, setFullBleed] = useState(false);
 
 	const setSidebarOpen = useCallback((open: boolean) => {
 		setSidebarOpenState(open);
@@ -79,6 +80,8 @@ export function AppShell() {
 					searchOpen,
 					openSearch,
 					closeSearch,
+					fullBleed,
+					setFullBleed,
 				}}
 			>
 				<div className="min-h-screen pt-2 pr-2 pb-2 bg-th-nav transition-colors duration-150">
