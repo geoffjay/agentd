@@ -125,9 +125,13 @@ nav:
       - Conductor Behavior: public/pipeline/conductor.md
       - Troubleshooting: public/pipeline/troubleshooting.md
       - Human Approval Gates: planning/autonomous-pipeline-gates.md
+  - Execution Backends:
+      - Docker: docker-backend.md
   - Development:
       - Error Handling & Logging: public/error-handling.md
       - Storage Patterns: storage.md
+      - Architecture Decisions:
+          - 0001 — agentd-mcp stdio Transport: planning/decisions/0001-agentd-mcp-stdio-transport.md
 
 extra_css:
   - stylesheets/extra.css
