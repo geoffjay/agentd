@@ -5,10 +5,12 @@
 
 use crate::{
     entity::agent as agent_entity,
+    entity::project as project_entity,
     entity::usage_session as session_entity,
     migration::Migrator,
     types::{
-        Agent, AgentConfig, AgentStatus, AgentUsageStats, SessionUsage, ToolPolicy, UsageSnapshot,
+        Agent, AgentConfig, AgentStatus, AgentUsageStats, Project, SessionUsage, ToolPolicy,
+        UpdateProjectRequest, UsageSnapshot,
     },
 };
 use anyhow::Result;
@@ -105,6 +107,7 @@ impl AgentStorage {
             ),
             launch_command: Set(agent.launch_command.clone()),
             pid: Set(agent.pid.map(|p| p as i64)),
+            project_id: Set(agent.project_id.map(|id| id.to_string())),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -182,6 +185,27 @@ impl AgentStorage {
         Ok(())
     }
 
+    /// Sets or clears the `project_id` for a single agent.
+    pub async fn set_agent_project(&self, id: &Uuid, project_id: Option<Uuid>) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let result = agent_entity::Entity::update_many()
+            .col_expr(
+                agent_entity::Column::ProjectId,
+                Expr::value(project_id.map(|p| p.to_string())),
+            )
+            .col_expr(agent_entity::Column::UpdatedAt, Expr::value(now))
+            .filter(agent_entity::Column::Id.eq(id.to_string()))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
+            anyhow::bail!("Agent not found");
+        }
+        Ok(())
+    }
+
     /// Permanently deletes an agent by UUID.
     pub async fn delete(&self, id: &Uuid) -> Result<()> {
         let result = agent_entity::Entity::delete_many()
@@ -196,13 +220,20 @@ impl AgentStorage {
         Ok(())
     }
 
-    /// Lists all agents, optionally filtered by status (newest first).
-    pub async fn list(&self, status_filter: Option<AgentStatus>) -> Result<Vec<Agent>> {
+    /// Lists all agents, optionally filtered by status and/or project (newest first).
+    pub async fn list(
+        &self,
+        status_filter: Option<AgentStatus>,
+        project_id: Option<Uuid>,
+    ) -> Result<Vec<Agent>> {
         let mut query =
             agent_entity::Entity::find().order_by(agent_entity::Column::CreatedAt, Order::Desc);
 
         if let Some(status) = status_filter {
             query = query.filter(agent_entity::Column::Status.eq(status.to_string()));
+        }
+        if let Some(pid) = project_id {
+            query = query.filter(agent_entity::Column::ProjectId.eq(pid.to_string()));
         }
 
         let models: Vec<agent_entity::Model> = query.all(&self.db).await?;
@@ -487,16 +518,31 @@ impl AgentStorage {
     }
 
     /// Lists agents with pagination; returns `(items, total_count)`.
+    #[allow(dead_code)]
     pub async fn list_paginated(
         &self,
         status_filter: Option<AgentStatus>,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<Agent>, usize)> {
-        let condition = match &status_filter {
-            Some(s) => Condition::all().add(agent_entity::Column::Status.eq(s.to_string())),
-            None => Condition::all(),
-        };
+        self.list_paginated_filtered(status_filter, None, limit, offset).await
+    }
+
+    /// Lists agents with pagination and optional project_id filter; returns `(items, total_count)`.
+    pub async fn list_paginated_filtered(
+        &self,
+        status_filter: Option<AgentStatus>,
+        project_id: Option<Uuid>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Agent>, usize)> {
+        let mut condition = Condition::all();
+        if let Some(s) = &status_filter {
+            condition = condition.add(agent_entity::Column::Status.eq(s.to_string()));
+        }
+        if let Some(pid) = project_id {
+            condition = condition.add(agent_entity::Column::ProjectId.eq(pid.to_string()));
+        }
 
         let total =
             agent_entity::Entity::find().filter(condition.clone()).count(&self.db).await? as usize;
@@ -511,6 +557,109 @@ impl AgentStorage {
 
         let agents = models.into_iter().map(model_to_agent).collect::<Result<Vec<_>>>()?;
         Ok((agents, total))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ProjectStorage
+// ---------------------------------------------------------------------------
+
+/// Persistent storage backend for project records using SeaORM + SQLite.
+///
+/// Shares the same [`DatabaseConnection`] as [`AgentStorage`] — construct via
+/// [`ProjectStorage::from_db`] using the connection returned by
+/// [`AgentStorage::db()`].
+#[derive(Clone)]
+pub struct ProjectStorage {
+    db: DatabaseConnection,
+}
+
+impl ProjectStorage {
+    /// Wrap an existing database connection (shared with `AgentStorage`).
+    pub fn from_db(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+
+    /// Insert a new project and return it.
+    pub async fn create(&self, project: &Project) -> Result<Project> {
+        let model = project_entity::ActiveModel {
+            id: Set(project.id.to_string()),
+            name: Set(project.name.clone()),
+            description: Set(project.description.clone()),
+            created_at: Set(project.created_at.to_rfc3339()),
+            updated_at: Set(project.updated_at.to_rfc3339()),
+        };
+        project_entity::Entity::insert(model).exec(&self.db).await?;
+        Ok(project.clone())
+    }
+
+    /// Retrieve a project by UUID.  Returns `None` if not found.
+    pub async fn get(&self, id: &Uuid) -> Result<Option<Project>> {
+        let model = project_entity::Entity::find_by_id(id.to_string()).one(&self.db).await?;
+        model.map(model_to_project).transpose()
+    }
+
+    /// Retrieve a project by its unique name.  Returns `None` if not found.
+    #[allow(dead_code)]
+    pub async fn get_by_name(&self, name: &str) -> Result<Option<Project>> {
+        let model = project_entity::Entity::find()
+            .filter(project_entity::Column::Name.eq(name))
+            .one(&self.db)
+            .await?;
+        model.map(model_to_project).transpose()
+    }
+
+    /// List all projects ordered by creation time (newest first).
+    pub async fn list(&self) -> Result<Vec<Project>> {
+        let models = project_entity::Entity::find()
+            .order_by(project_entity::Column::CreatedAt, Order::Desc)
+            .all(&self.db)
+            .await?;
+        models.into_iter().map(model_to_project).collect()
+    }
+
+    /// Apply an update request to the project identified by `id`.
+    ///
+    /// Only fields present in `req` are changed; `updated_at` is always
+    /// refreshed.  Returns the updated project or errors if not found.
+    pub async fn update(&self, id: &Uuid, req: &UpdateProjectRequest) -> Result<Project> {
+        use sea_orm::sea_query::Expr;
+
+        let now = Utc::now().to_rfc3339();
+
+        let mut update = project_entity::Entity::update_many()
+            .col_expr(project_entity::Column::UpdatedAt, Expr::value(&now))
+            .filter(project_entity::Column::Id.eq(id.to_string()));
+
+        if let Some(ref name) = req.name {
+            update = update.col_expr(project_entity::Column::Name, Expr::value(name.clone()));
+        }
+        if let Some(ref desc) = req.description {
+            update =
+                update.col_expr(project_entity::Column::Description, Expr::value(desc.clone()));
+        }
+
+        let result = update.exec(&self.db).await?;
+        if result.rows_affected == 0 {
+            anyhow::bail!("Project not found");
+        }
+
+        self.get(id).await?.ok_or_else(|| anyhow::anyhow!("Project not found after update"))
+    }
+
+    /// Delete a project by UUID.  Errors if not found.
+    ///
+    /// Callers should verify no agents or workflows reference this project
+    /// before calling (enforced via FK in migration #828).
+    pub async fn delete(&self, id: &Uuid) -> Result<()> {
+        let result = project_entity::Entity::delete_many()
+            .filter(project_entity::Column::Id.eq(id.to_string()))
+            .exec(&self.db)
+            .await?;
+        if result.rows_affected == 0 {
+            anyhow::bail!("Project not found");
+        }
+        Ok(())
     }
 }
 
@@ -560,6 +709,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
         backend_type: model.backend_type,
         launch_command: model.launch_command,
         pid: model.pid.and_then(|p| u32::try_from(p).ok()),
+        project_id: model.project_id.map(|s| Uuid::parse_str(&s)).transpose()?,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
@@ -586,6 +736,17 @@ fn model_to_session_usage(model: &session_entity::Model) -> Result<SessionUsage>
         result_count: model.result_count.max(0) as u32,
         started_at,
         ended_at,
+    })
+}
+
+/// Convert a raw [`project_entity::Model`] into the domain [`Project`] type.
+fn model_to_project(model: project_entity::Model) -> Result<Project> {
+    Ok(Project {
+        id: Uuid::parse_str(&model.id)?,
+        name: model.name,
+        description: model.description,
+        created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
+        updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
 }
 
@@ -682,11 +843,11 @@ mod tests {
         storage.add(&a1).await.unwrap();
         storage.add(&a2).await.unwrap();
 
-        let running = storage.list(Some(AgentStatus::Running)).await.unwrap();
+        let running = storage.list(Some(AgentStatus::Running), None).await.unwrap();
         assert_eq!(running.len(), 1);
         assert_eq!(running[0].name, "running-agent");
 
-        let all = storage.list(None).await.unwrap();
+        let all = storage.list(None, None).await.unwrap();
         assert_eq!(all.len(), 2);
     }
 
@@ -1123,5 +1284,160 @@ mod tests {
         let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
         assert_eq!(retrieved.config.docker_image, None);
         assert_eq!(retrieved.config.resource_limits, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // ProjectStorage tests
+    // -----------------------------------------------------------------------
+
+    fn project_storage(agent_storage: &AgentStorage) -> ProjectStorage {
+        ProjectStorage::from_db(agent_storage.db().clone())
+    }
+
+    #[tokio::test]
+    async fn test_project_create_and_get() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        let project = Project::new("alpha".to_string(), Some("first project".to_string()));
+        let id = project.id;
+
+        ps.create(&project).await.unwrap();
+
+        let retrieved = ps.get(&id).await.unwrap().unwrap();
+        assert_eq!(retrieved.id, id);
+        assert_eq!(retrieved.name, "alpha");
+        assert_eq!(retrieved.description, Some("first project".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_project_get_returns_none_for_unknown_id() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        let result = ps.get(&Uuid::new_v4()).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_project_get_by_name() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        let project = Project::new("beta".to_string(), None);
+        ps.create(&project).await.unwrap();
+
+        let found = ps.get_by_name("beta").await.unwrap().unwrap();
+        assert_eq!(found.id, project.id);
+        assert_eq!(found.description, None);
+    }
+
+    #[tokio::test]
+    async fn test_project_get_by_name_missing() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        assert!(ps.get_by_name("nonexistent").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_project_list() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        ps.create(&Project::new("p1".to_string(), None)).await.unwrap();
+        ps.create(&Project::new("p2".to_string(), None)).await.unwrap();
+        ps.create(&Project::new("p3".to_string(), None)).await.unwrap();
+
+        let projects = ps.list().await.unwrap();
+        assert_eq!(projects.len(), 3);
+        // Newest first
+        let names: Vec<&str> = projects.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"p1"));
+        assert!(names.contains(&"p2"));
+        assert!(names.contains(&"p3"));
+    }
+
+    #[tokio::test]
+    async fn test_project_list_empty() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+        assert!(ps.list().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_project_update_name() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        let project = Project::new("old-name".to_string(), None);
+        ps.create(&project).await.unwrap();
+
+        let req = UpdateProjectRequest { name: Some("new-name".to_string()), description: None };
+        let updated = ps.update(&project.id, &req).await.unwrap();
+
+        assert_eq!(updated.name, "new-name");
+        assert_eq!(updated.description, None);
+        assert!(updated.updated_at >= project.updated_at);
+    }
+
+    #[tokio::test]
+    async fn test_project_update_description() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        let project = Project::new("proj".to_string(), None);
+        ps.create(&project).await.unwrap();
+
+        let req =
+            UpdateProjectRequest { name: None, description: Some("added description".to_string()) };
+        let updated = ps.update(&project.id, &req).await.unwrap();
+
+        assert_eq!(updated.name, "proj");
+        assert_eq!(updated.description, Some("added description".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_project_update_not_found() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        let req = UpdateProjectRequest { name: Some("x".to_string()), description: None };
+        let result = ps.update(&Uuid::new_v4(), &req).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_project_delete() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        let project = Project::new("to-delete".to_string(), None);
+        ps.create(&project).await.unwrap();
+        assert!(ps.get(&project.id).await.unwrap().is_some());
+
+        ps.delete(&project.id).await.unwrap();
+        assert!(ps.get(&project.id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_project_delete_not_found() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        let result = ps.delete(&Uuid::new_v4()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_project_name_unique() {
+        let (storage, _tmp) = create_test_storage().await;
+        let ps = project_storage(&storage);
+
+        ps.create(&Project::new("unique".to_string(), None)).await.unwrap();
+        let result = ps.create(&Project::new("unique".to_string(), None)).await;
+        assert!(result.is_err());
     }
 }

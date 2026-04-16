@@ -748,6 +748,7 @@ async fn apply_room(
                 description: tmpl.description.clone(),
                 room_type,
                 created_by: creator,
+                project_id: None,
             };
             // Use create_room_or_conflict to gracefully handle a race (or the
             // get_room_by_name 500-room page cap) where the room already exists

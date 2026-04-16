@@ -53,6 +53,7 @@ fn queue_workflow(agent_id: Uuid, queue_name: &str) -> WorkflowConfig {
         tool_policy: Default::default(),
         created_at: now,
         updated_at: now,
+        project_id: None,
     }
 }
 

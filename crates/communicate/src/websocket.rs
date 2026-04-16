@@ -476,6 +476,7 @@ mod tests {
                 description: None,
                 room_type: RoomType::Group,
                 created_by: "creator".to_string(),
+                project_id: None,
             })
             .await
             .unwrap();
@@ -655,6 +656,7 @@ mod tests {
                 description: None,
                 room_type: RoomType::Group,
                 created_by: "creator".to_string(),
+                project_id: None,
             })
             .await
             .unwrap();
@@ -755,6 +757,7 @@ mod tests {
                 description: None,
                 room_type: RoomType::Group,
                 created_by: "creator".to_string(),
+                project_id: None,
             })
             .await
             .unwrap();

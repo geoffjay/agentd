@@ -23,6 +23,8 @@ mod m20260323_000009_add_launch_command_to_agents;
 mod m20260324_000010_add_system_prompt_fields_to_agents;
 mod m20260328_000011_add_task_queue;
 mod m20260411_000012_add_pid_to_agents;
+mod m20260329_000012_create_projects_table;
+mod m20260409_000013_add_project_id_to_agents_workflows;
 
 /// The migration runner — applies all known migrations in order.
 pub struct Migrator;
@@ -43,6 +45,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260324_000010_add_system_prompt_fields_to_agents::Migration),
             Box::new(m20260328_000011_add_task_queue::Migration),
             Box::new(m20260411_000012_add_pid_to_agents::Migration),
+            Box::new(m20260329_000012_create_projects_table::Migration),
+            Box::new(m20260409_000013_add_project_id_to_agents_workflows::Migration),
         ]
     }
 }

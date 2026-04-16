@@ -32,6 +32,9 @@ pub struct Model {
 
     /// RFC3339 last-update timestamp.
     pub updated_at: String,
+    /// Optional project identifier (UUID string).  No FK — rooms and projects
+    /// live in separate databases.  NULL when not assigned to a project.
+    pub project_id: Option<String>,
 }
 
 /// Relations from rooms to participants and messages.

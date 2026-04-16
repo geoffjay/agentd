@@ -1,5 +1,5 @@
 use crate::scheduler::events::SystemEvent;
-use crate::storage::AgentStorage;
+use crate::storage::{AgentStorage, ProjectStorage};
 use crate::types::{Agent, AgentConfig, AgentStatus, AgentUsageStats, ClearContextResponse};
 use crate::websocket::ConnectionRegistry;
 use chrono::Utc;
@@ -35,6 +35,16 @@ impl AgentManager {
 
     pub fn registry(&self) -> &ConnectionRegistry {
         &self.registry
+    }
+
+    /// Returns a [`ProjectStorage`] backed by the same database connection.
+    pub fn project_storage(&self) -> ProjectStorage {
+        ProjectStorage::from_db(self.storage.db().clone())
+    }
+
+    /// Returns the underlying [`AgentStorage`] for direct access.
+    pub fn agent_storage(&self) -> &AgentStorage {
+        &self.storage
     }
 
     /// Spawn a new agent: create DB record, backend session, and launch claude.
@@ -243,7 +253,7 @@ impl AgentManager {
     /// (containers/tmux sessions with the correct prefix but no matching
     /// DB record).
     pub async fn reconcile(&self) -> anyhow::Result<()> {
-        let agents = self.storage.list(Some(AgentStatus::Running)).await?;
+        let agents = self.storage.list(Some(AgentStatus::Running), None).await?;
         let mut known_sessions: std::collections::HashSet<String> =
             std::collections::HashSet::new();
 
@@ -449,17 +459,18 @@ impl AgentManager {
     /// List agents with optional status filter.
     #[allow(dead_code)]
     pub async fn list_agents(&self, status: Option<AgentStatus>) -> anyhow::Result<Vec<Agent>> {
-        self.storage.list(status).await
+        self.storage.list(status, None).await
     }
 
-    /// List agents with pagination.
+    /// List agents with pagination, optionally filtered by project.
     pub async fn list_agents_paginated(
         &self,
         status: Option<AgentStatus>,
+        project_id: Option<Uuid>,
         limit: usize,
         offset: usize,
     ) -> anyhow::Result<(Vec<Agent>, usize)> {
-        self.storage.list_paginated(status, limit, offset).await
+        self.storage.list_paginated_filtered(status, project_id, limit, offset).await
     }
 
     /// Update an agent record in storage.
@@ -578,7 +589,7 @@ impl AgentManager {
         info!(leave_running, "Shutting down all managed agents");
 
         // Update all running agents to Stopped in the database.
-        let agents = match self.storage.list(Some(AgentStatus::Running)).await {
+        let agents = match self.storage.list(Some(AgentStatus::Running), None).await {
             Ok(a) => a,
             Err(e) => {
                 error!(%e, "Failed to list running agents during shutdown");

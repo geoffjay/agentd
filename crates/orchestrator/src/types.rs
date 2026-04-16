@@ -473,6 +473,61 @@ fn default_shell() -> String {
     "zsh".to_string()
 }
 
+// ---------------------------------------------------------------------------
+// Project types
+// ---------------------------------------------------------------------------
+
+/// A project groups agents, workflows, and rooms under a named boundary.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Project {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl Project {
+    pub fn new(name: String, description: Option<String>) -> Self {
+        let now = Utc::now();
+        Self { id: Uuid::new_v4(), name, description, created_at: now, updated_at: now }
+    }
+}
+
+/// Detailed project response including associated resource counts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectResponse {
+    pub id: Uuid,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub agent_count: usize,
+    pub workflow_count: usize,
+}
+
+/// Request body for POST /projects.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateProjectRequest {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Request body for PUT /projects/:id.
+///
+/// Fields that are `None` are left unchanged in the database.
+/// Pass `description: Some(None)` is not supported via this struct —
+/// to clear a description set it to `Some("")` or omit the field.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateProjectRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// A managed AI agent instance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
@@ -492,6 +547,9 @@ pub struct Agent {
     /// compatibility.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backend_type: Option<String>,
+    /// Optional project this agent belongs to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<Uuid>,
     /// The exact `claude` command that was generated and sent to the execution
     /// backend when the agent was spawned or restarted.  Useful for debugging
     /// flags, `--sdk-url`, model selection, etc.
@@ -518,6 +576,7 @@ impl Agent {
             backend_type: Some("tmux".to_string()),
             launch_command: None,
             pid: None,
+            project_id: None,
             created_at: now,
             updated_at: now,
         }
