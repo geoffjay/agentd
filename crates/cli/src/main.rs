@@ -83,8 +83,8 @@ use clap_complete::Shell;
 use colored::*;
 use commands::index::IndexClient;
 use commands::{
-    AskCommand, CommunicateCommand, IndexCommand, MemoryCommand, NotifyCommand,
-    OrchestratorCommand, PromptCommand, WrapCommand,
+    AskCommand, AuthCommand, CommunicateCommand, IndexCommand, MemoryCommand, NotifyCommand,
+    OrchestratorCommand, OrgCommand, PromptCommand, WrapCommand,
 };
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
@@ -304,6 +304,41 @@ enum Commands {
         #[command(subcommand)]
         command: IndexCommand,
     },
+
+    /// Authenticate with the agentd core service.
+    ///
+    /// Register, log in, log out, and check auth status. The session token
+    /// is stored at `~/.config/agentd/session` with 0600 permissions.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent auth register
+    /// agent auth login
+    /// agent auth logout
+    /// agent auth status
+    /// ```
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommand,
+    },
+
+    /// Manage organizations in the agentd core service.
+    ///
+    /// List, create, and switch between organizations. Requires an active
+    /// session (run `agent auth login` first).
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent org list
+    /// agent org create "Acme Corp"
+    /// agent org switch acme-corp
+    /// ```
+    Org {
+        #[command(subcommand)]
+        command: OrgCommand,
+    },
 }
 
 /// Main entry point for the agent CLI.
@@ -429,6 +464,12 @@ async fn main() -> Result<()> {
             let client = IndexClient::new(url);
             command.execute(&client, cli.json).await?;
         }
+        Commands::Auth { command } => {
+            command.execute(cli.json).await?;
+        }
+        Commands::Org { command } => {
+            command.execute(cli.json).await?;
+        }
     }
 
     Ok(())
@@ -475,6 +516,11 @@ const SERVICES: &[ServiceDef] = &[
         name: "memory",
         env_var: "AGENTD_MEMORY_SERVICE_URL",
         default_url: "http://localhost:7008",
+    },
+    ServiceDef {
+        name: "core",
+        env_var: "AGENTD_CORE_SERVICE_URL",
+        default_url: "http://localhost:17007",
     },
     ServiceDef {
         name: "communicate",

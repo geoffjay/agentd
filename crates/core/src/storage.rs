@@ -19,7 +19,11 @@ use anyhow::Result;
 use sea_orm::DatabaseConnection;
 use sea_orm_migration::MigratorTrait;
 
+use crate::membership_storage::MembershipStorage;
 use crate::migration::Migrator;
+use crate::organization_storage::OrganizationStorage;
+use crate::session_storage::SessionStorage;
+use crate::user_storage::UserStorage;
 
 /// Persistent storage backend for the core service, backed by SQLite via SeaORM.
 ///
@@ -43,5 +47,25 @@ impl Storage {
     /// storage implementations within this crate.
     pub fn db(&self) -> &DatabaseConnection {
         &self.db
+    }
+
+    /// Returns an [`OrganizationStorage`] instance sharing this connection.
+    pub fn organizations(&self) -> OrganizationStorage {
+        OrganizationStorage::new(self.db.clone())
+    }
+
+    /// Returns a [`MembershipStorage`] instance sharing this connection.
+    pub fn memberships(&self) -> MembershipStorage {
+        MembershipStorage::new(self.db.clone())
+    }
+
+    /// Returns a [`UserStorage`] instance sharing this connection.
+    pub fn users(&self) -> UserStorage {
+        UserStorage::new(self.db.clone())
+    }
+
+    /// Returns a [`SessionStorage`] instance sharing this connection.
+    pub fn sessions(&self) -> SessionStorage {
+        SessionStorage::new(self.db.clone())
     }
 }
