@@ -121,6 +121,65 @@ impl UserStorage {
         Ok(result.rows_affected > 0)
     }
 
+    /// Update the user's email address.
+    ///
+    /// Returns an error if the user does not exist.
+    pub async fn update_email(&self, id: &str, email: &str) -> Result<user::Model> {
+        let user = user::Entity::find_by_id(id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| anyhow!("user not found: {}", id))?;
+
+        let mut active: user::ActiveModel = user.into();
+        active.email = Set(email.to_string());
+        active.updated_at = Set(chrono::Utc::now().to_rfc3339());
+        Ok(active.update(&self.db).await?)
+    }
+
+    /// Update the user's password hash (argon2id hashed from plaintext).
+    ///
+    /// Returns an error if the user does not exist.
+    pub async fn update_password(&self, id: &str, new_password: &str) -> Result<user::Model> {
+        let user = user::Entity::find_by_id(id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| anyhow!("user not found: {}", id))?;
+
+        let mut active: user::ActiveModel = user.into();
+        active.password_hash = Set(Self::hash_password(new_password)?);
+        active.updated_at = Set(chrono::Utc::now().to_rfc3339());
+        Ok(active.update(&self.db).await?)
+    }
+
+    /// Clear `active_organization_id` for all users whose active org is `org_id`.
+    ///
+    /// Used when an organization is deleted to ensure no user references a
+    /// non-existent organization.
+    ///
+    /// Returns the number of rows updated.
+    pub async fn clear_active_organization_for_org(&self, org_id: &str) -> Result<u64> {
+        // Fetch all users with this active org, then clear each one.
+        // SeaORM's update_many + col_expr requires sea_orm::prelude::Expr which is
+        // not re-exported at the crate root in the version we use, so we do a
+        // fetch-then-update approach which is straightforward and correct.
+        let users = user::Entity::find()
+            .filter(Column::ActiveOrganizationId.eq(org_id))
+            .all(&self.db)
+            .await?;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let count = users.len() as u64;
+
+        for u in users {
+            let mut active: user::ActiveModel = u.into();
+            active.active_organization_id = Set(None);
+            active.updated_at = Set(now.clone());
+            active.update(&self.db).await?;
+        }
+
+        Ok(count)
+    }
+
     /// Set the user's active organization.
     ///
     /// Pass `None` to clear the active organization.
