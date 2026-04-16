@@ -81,7 +81,7 @@ pub fn clear_token() -> Result<()> {
 
 fn core_base_url() -> String {
     std::env::var("AGENTD_CORE_SERVICE_URL")
-        .unwrap_or_else(|_| "http://localhost:17007".to_string())
+        .unwrap_or_else(|_| "http://localhost:17000".to_string())
 }
 
 async fn post_json<B: Serialize, T: for<'de> Deserialize<'de>>(

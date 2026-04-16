@@ -61,7 +61,7 @@ results as MCP tool responses. No port allocation, no database, no migrations.
 
 ### Option B: HTTP server exposing MCP-compatible endpoints
 
-agentd-mcp runs as a standard HTTP service on a port (e.g., 17007/7007) and
+agentd-mcp runs as a standard HTTP service on a port (e.g., 17000/7000) and
 implements MCP tool dispatch over HTTP. An adapter layer translates between
 MCP protocol and HTTP.
 

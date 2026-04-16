@@ -6,12 +6,9 @@
 //!
 //! | Variable            | Default | Description            |
 //! |---------------------|---------|------------------------|
-//! | `AGENTD_PORT`       | `17007` | HTTP listen port       |
+//! | `AGENTD_PORT`       | `17000` | HTTP listen port (dev default; production uses 7000) |
 //! | `RUST_LOG`          | `info`  | Log level / filter     |
 //! | `AGENTD_LOG_FORMAT` | (text)  | Set to `json` for JSON |
-//!
-//! Note: port 17007 was chosen because 17010 (specified in issue #212) is
-//! already used by the communicate service.
 
 use axum::{extract::State, response::IntoResponse, routing::get};
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -62,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
-    let port = std::env::var("AGENTD_PORT").unwrap_or_else(|_| "17007".to_string());
+    let port = std::env::var("AGENTD_PORT").unwrap_or_else(|_| "17000".to_string());
     let addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Core API listening on http://{}", addr);

@@ -547,7 +547,7 @@ const SERVICES: &[ServiceDef] = &[
     ServiceDef {
         name: "core",
         env_var: "AGENTD_CORE_SERVICE_URL",
-        default_url: "http://localhost:17007",
+        default_url: "http://localhost:17000",
     },
     ServiceDef {
         name: "communicate",
