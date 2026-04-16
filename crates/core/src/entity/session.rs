@@ -62,10 +62,12 @@ mod tests {
         let now = chrono::Utc::now().to_rfc3339();
         user::ActiveModel {
             id: Set(user_id.to_string()),
+            username: Set(None),
             email: Set(format!("{}@example.com", &user_id[..8])),
             password_hash: Set("hash".to_string()),
             display_name: Set(None),
             role: Set("user".to_string()),
+            active_organization_id: Set(None),
             created_at: Set(now.clone()),
             updated_at: Set(now),
         }
