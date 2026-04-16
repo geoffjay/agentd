@@ -1,5 +1,5 @@
 use crate::scheduler::events::SystemEvent;
-use crate::storage::AgentStorage;
+use crate::storage::{AgentStorage, ProjectStorage};
 use crate::types::{Agent, AgentConfig, AgentStatus, AgentUsageStats, ClearContextResponse};
 use crate::websocket::ConnectionRegistry;
 use chrono::Utc;
@@ -35,6 +35,16 @@ impl AgentManager {
 
     pub fn registry(&self) -> &ConnectionRegistry {
         &self.registry
+    }
+
+    /// Returns a [`ProjectStorage`] backed by the same database connection.
+    pub fn project_storage(&self) -> ProjectStorage {
+        ProjectStorage::from_db(self.storage.db().clone())
+    }
+
+    /// Returns the underlying [`AgentStorage`] for direct access.
+    pub fn agent_storage(&self) -> &AgentStorage {
+        &self.storage
     }
 
     /// Spawn a new agent: create DB record, backend session, and launch claude.
@@ -452,14 +462,15 @@ impl AgentManager {
         self.storage.list(status, None).await
     }
 
-    /// List agents with pagination.
+    /// List agents with pagination, optionally filtered by project.
     pub async fn list_agents_paginated(
         &self,
         status: Option<AgentStatus>,
+        project_id: Option<Uuid>,
         limit: usize,
         offset: usize,
     ) -> anyhow::Result<(Vec<Agent>, usize)> {
-        self.storage.list_paginated(status, limit, offset).await
+        self.storage.list_paginated_filtered(status, project_id, limit, offset).await
     }
 
     /// Update an agent record in storage.

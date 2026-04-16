@@ -1,6 +1,7 @@
 use crate::manager::AgentManager;
 use crate::scheduler::api::{queue_routes, webhook_routes, workflow_routes, WorkflowState};
 use crate::scheduler::events::SystemEvent;
+use crate::scheduler::types::WorkflowResponse;
 use crate::scheduler::Scheduler;
 use crate::types::*;
 use crate::websocket::{
@@ -84,6 +85,19 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/approvals/{id}/deny", post(deny_tool))
         .route("/debug/agents", get(debug_agents))
         .route("/events/ask", post(ask_event_handler))
+        // Project management
+        .route("/projects", get(list_projects).post(create_project))
+        .route("/projects/{id}", get(get_project).put(update_project).delete(delete_project))
+        .route("/projects/{id}/agents", get(list_project_agents))
+        .route(
+            "/projects/{id}/agents/{agent_id}",
+            post(associate_project_agent).delete(dissociate_project_agent),
+        )
+        .route("/projects/{id}/workflows", get(list_project_workflows))
+        .route(
+            "/projects/{id}/workflows/{workflow_id}",
+            post(associate_project_workflow).delete(dissociate_project_workflow),
+        )
         .with_state(state);
 
     api_routes
@@ -100,6 +114,7 @@ pub struct ListQuery {
     pub status: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    pub project_id: Option<Uuid>,
 }
 
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
@@ -139,7 +154,8 @@ async fn list_agents(
     let limit = clamp_limit(query.limit);
     let offset = query.offset.unwrap_or(0);
 
-    let (agents, total) = state.manager.list_agents_paginated(status_filter, limit, offset).await?;
+    let (agents, total) =
+        state.manager.list_agents_paginated(status_filter, query.project_id, limit, offset).await?;
     let mut items: Vec<AgentResponse> = Vec::with_capacity(agents.len());
     for agent in agents {
         let id = agent.id;
@@ -1000,6 +1016,272 @@ async fn ask_event_handler(
     });
 
     StatusCode::NO_CONTENT
+}
+
+// ---------------------------------------------------------------------------
+// Project management handlers
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct ProjectListQuery {
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
+
+
+async fn list_projects(
+    State(state): State<ApiState>,
+    Query(query): Query<ProjectListQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ps = state.manager.project_storage();
+    let all = ps.list().await.map_err(ApiError::Internal)?;
+    let total = all.len();
+    let limit = clamp_limit(query.limit);
+    let offset = query.offset.unwrap_or(0);
+    let items: Vec<Project> = all.into_iter().skip(offset).take(limit).collect();
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
+}
+
+async fn create_project(
+    State(state): State<ApiState>,
+    Json(req): Json<CreateProjectRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    if req.name.trim().is_empty() {
+        return Err(ApiError::InvalidInput("project name must not be empty".to_string()));
+    }
+    let project = Project::new(req.name, req.description);
+    let ps = state.manager.project_storage();
+    let created = ps.create(&project).await.map_err(|e| {
+        if e.to_string().contains("UNIQUE") {
+            ApiError::Conflict(format!("a project named '{}' already exists", project.name))
+        } else {
+            ApiError::Internal(e)
+        }
+    })?;
+    Ok((StatusCode::CREATED, Json(created)))
+}
+
+async fn get_project(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ps = state.manager.project_storage();
+    let project = ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+
+    let agent_count =
+        state.manager.agent_storage().list(None, Some(id)).await.map_err(ApiError::Internal)?.len();
+
+    let workflow_count =
+        state.scheduler.storage().list_workflows(Some(id)).await.map_err(ApiError::Internal)?.len();
+
+    Ok(Json(ProjectResponse {
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        created_at: project.created_at,
+        updated_at: project.updated_at,
+        agent_count,
+        workflow_count,
+    }))
+}
+
+async fn update_project(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateProjectRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ps = state.manager.project_storage();
+    let updated = ps.update(&id, &req).await.map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("not found") {
+            ApiError::NotFound
+        } else if msg.contains("UNIQUE") {
+            ApiError::Conflict("a project with that name already exists".to_string())
+        } else {
+            ApiError::Internal(e)
+        }
+    })?;
+    Ok(Json(updated))
+}
+
+async fn delete_project(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ps = state.manager.project_storage();
+
+    // Verify project exists.
+    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+
+    // Reject if any agents are still associated.
+    let associated_agents =
+        state.manager.agent_storage().list(None, Some(id)).await.map_err(ApiError::Internal)?;
+    if !associated_agents.is_empty() {
+        return Err(ApiError::InvalidInput(format!(
+            "cannot delete project: {} agent(s) still associated",
+            associated_agents.len()
+        )));
+    }
+
+    // Reject if any workflows are still associated.
+    let associated_workflows =
+        state.scheduler.storage().list_workflows(Some(id)).await.map_err(ApiError::Internal)?;
+    if !associated_workflows.is_empty() {
+        return Err(ApiError::InvalidInput(format!(
+            "cannot delete project: {} workflow(s) still associated",
+            associated_workflows.len()
+        )));
+    }
+
+    ps.delete(&id).await.map_err(|e| {
+        if e.to_string().contains("not found") {
+            ApiError::NotFound
+        } else {
+            ApiError::Internal(e)
+        }
+    })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_project_agents(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<ProjectListQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ps = state.manager.project_storage();
+    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+
+    let limit = clamp_limit(query.limit);
+    let offset = query.offset.unwrap_or(0);
+
+    let (agents, total) = state
+        .manager
+        .agent_storage()
+        .list_paginated_filtered(None, Some(id), limit, offset)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    let mut items: Vec<AgentResponse> = Vec::with_capacity(agents.len());
+    for agent in agents {
+        let aid = agent.id;
+        let mut response = AgentResponse::from(agent);
+        response.activity = state.registry.get_activity_state(&aid).await;
+        items.push(response);
+    }
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
+}
+
+async fn associate_project_agent(
+    State(state): State<ApiState>,
+    Path((id, agent_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Verify project and agent exist.
+    let ps = state.manager.project_storage();
+    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+    state
+        .manager
+        .get_agent(&agent_id)
+        .await
+        .map_err(ApiError::Internal)?
+        .ok_or(ApiError::NotFound)?;
+
+    state
+        .manager
+        .agent_storage()
+        .set_agent_project(&agent_id, Some(id))
+        .await
+        .map_err(ApiError::Internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn dissociate_project_agent(
+    State(state): State<ApiState>,
+    Path((id, agent_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ps = state.manager.project_storage();
+    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+    state
+        .manager
+        .get_agent(&agent_id)
+        .await
+        .map_err(ApiError::Internal)?
+        .ok_or(ApiError::NotFound)?;
+
+    state
+        .manager
+        .agent_storage()
+        .set_agent_project(&agent_id, None)
+        .await
+        .map_err(ApiError::Internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_project_workflows(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<ProjectListQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ps = state.manager.project_storage();
+    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+
+    let limit = clamp_limit(query.limit);
+    let offset = query.offset.unwrap_or(0);
+
+    let (workflows, total) = state
+        .scheduler
+        .storage()
+        .list_workflows_paginated(limit, offset, Some(id))
+        .await
+        .map_err(ApiError::Internal)?;
+
+    let items: Vec<WorkflowResponse> = workflows.into_iter().map(WorkflowResponse::from).collect();
+    Ok(Json(PaginatedResponse { items, total, limit, offset }))
+}
+
+async fn associate_project_workflow(
+    State(state): State<ApiState>,
+    Path((id, workflow_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ps = state.manager.project_storage();
+    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+    state
+        .scheduler
+        .storage()
+        .get_workflow(&workflow_id)
+        .await
+        .map_err(ApiError::Internal)?
+        .ok_or(ApiError::NotFound)?;
+
+    state
+        .scheduler
+        .storage()
+        .set_workflow_project(&workflow_id, Some(id))
+        .await
+        .map_err(ApiError::Internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn dissociate_project_workflow(
+    State(state): State<ApiState>,
+    Path((id, workflow_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let ps = state.manager.project_storage();
+    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+    state
+        .scheduler
+        .storage()
+        .get_workflow(&workflow_id)
+        .await
+        .map_err(ApiError::Internal)?
+        .ok_or(ApiError::NotFound)?;
+
+    state
+        .scheduler
+        .storage()
+        .set_workflow_project(&workflow_id, None)
+        .await
+        .map_err(ApiError::Internal)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

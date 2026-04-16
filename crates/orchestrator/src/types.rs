@@ -478,8 +478,6 @@ fn default_shell() -> String {
 // ---------------------------------------------------------------------------
 
 /// A project groups agents, workflows, and rooms under a named boundary.
-// API routes are added in #829; suppress dead_code until then.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Project {
     pub id: Uuid,
@@ -489,7 +487,6 @@ pub struct Project {
     pub updated_at: DateTime<Utc>,
 }
 
-#[allow(dead_code)]
 impl Project {
     pub fn new(name: String, description: Option<String>) -> Self {
         let now = Utc::now();
@@ -497,8 +494,20 @@ impl Project {
     }
 }
 
+/// Detailed project response including associated resource counts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectResponse {
+    pub id: Uuid,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub agent_count: usize,
+    pub workflow_count: usize,
+}
+
 /// Request body for POST /projects.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateProjectRequest {
     pub name: String,
@@ -511,7 +520,6 @@ pub struct CreateProjectRequest {
 /// Fields that are `None` are left unchanged in the database.
 /// Pass `description: Some(None)` is not supported via this struct —
 /// to clear a description set it to `Some("")` or omit the field.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateProjectRequest {
     #[serde(skip_serializing_if = "Option::is_none")]

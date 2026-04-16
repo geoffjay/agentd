@@ -84,7 +84,7 @@ use colored::*;
 use commands::index::IndexClient;
 use commands::{
     AskCommand, AuthCommand, CommunicateCommand, IndexCommand, MemoryCommand, NotifyCommand,
-    OrchestratorCommand, OrgCommand, PromptCommand, WrapCommand,
+    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, WrapCommand,
 };
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
@@ -339,6 +339,27 @@ enum Commands {
         #[command(subcommand)]
         command: OrgCommand,
     },
+
+    /// Manage projects in the orchestrator.
+    ///
+    /// Projects group agents and workflows together for organisational purposes.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent project list
+    /// agent project create my-project --description "Work items"
+    /// agent project show my-project
+    /// agent project add-agent my-project <agent-id>
+    /// agent project remove-agent my-project <agent-id>
+    /// agent project add-workflow my-project <workflow-id>
+    /// agent project remove-workflow my-project <workflow-id>
+    /// agent project delete my-project
+    /// ```
+    Project {
+        #[command(subcommand)]
+        command: ProjectCommand,
+    },
 }
 
 /// Main entry point for the agent CLI.
@@ -469,6 +490,12 @@ async fn main() -> Result<()> {
         }
         Commands::Org { command } => {
             command.execute(cli.json).await?;
+        }
+        Commands::Project { command } => {
+            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+            let client = OrchestratorClient::new(url);
+            command.execute(&client, cli.json).await?;
         }
     }
 
