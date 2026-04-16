@@ -163,6 +163,10 @@ pub struct Room {
     pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Optional project identifier.  No FK — rooms and projects live in
+    /// separate databases.  `None` when not assigned to a project.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
 }
 
 /// An agent or human who is a member of a room.
@@ -211,6 +215,9 @@ pub struct CreateRoomRequest {
     #[serde(default = "default_room_type")]
     pub room_type: RoomType,
     pub created_by: String,
+    /// Optional project identifier to associate this room with a project.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
 }
 
 fn default_room_type() -> RoomType {
@@ -432,6 +439,7 @@ mod tests {
             created_by: "agent-abc".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            project_id: None,
         };
         let json = serde_json::to_string(&room).unwrap();
         let back: Room = serde_json::from_str(&json).unwrap();

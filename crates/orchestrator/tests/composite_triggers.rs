@@ -39,6 +39,7 @@ fn make_workflow(trigger_config: TriggerConfig) -> WorkflowConfig {
         tool_policy: Default::default(),
         created_at: now,
         updated_at: now,
+        project_id: None,
     }
 }
 

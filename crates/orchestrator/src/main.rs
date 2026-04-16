@@ -512,6 +512,7 @@ async fn join_or_create_room(
                     description: None,
                     room_type: RoomType::Group,
                     created_by: agent_name.to_string(),
+                    project_id: None,
                 })
                 .await?
         }

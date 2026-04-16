@@ -421,6 +421,7 @@ async fn create_room(
             description: description.map(str::to_string),
             room_type,
             created_by: created_by.to_string(),
+            project_id: None,
         })
         .await
         .context("Failed to create room")?;

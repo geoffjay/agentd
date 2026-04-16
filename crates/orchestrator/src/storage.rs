@@ -107,6 +107,7 @@ impl AgentStorage {
             ),
             launch_command: Set(agent.launch_command.clone()),
             pid: Set(agent.pid.map(|p| p as i64)),
+            project_id: Set(agent.project_id.map(|id| id.to_string())),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -184,6 +185,27 @@ impl AgentStorage {
         Ok(())
     }
 
+    /// Sets or clears the `project_id` for a single agent.
+    pub async fn set_agent_project(&self, id: &Uuid, project_id: Option<Uuid>) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let result = agent_entity::Entity::update_many()
+            .col_expr(
+                agent_entity::Column::ProjectId,
+                Expr::value(project_id.map(|p| p.to_string())),
+            )
+            .col_expr(agent_entity::Column::UpdatedAt, Expr::value(now))
+            .filter(agent_entity::Column::Id.eq(id.to_string()))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
+            anyhow::bail!("Agent not found");
+        }
+        Ok(())
+    }
+
     /// Permanently deletes an agent by UUID.
     pub async fn delete(&self, id: &Uuid) -> Result<()> {
         let result = agent_entity::Entity::delete_many()
@@ -198,13 +220,20 @@ impl AgentStorage {
         Ok(())
     }
 
-    /// Lists all agents, optionally filtered by status (newest first).
-    pub async fn list(&self, status_filter: Option<AgentStatus>) -> Result<Vec<Agent>> {
+    /// Lists all agents, optionally filtered by status and/or project (newest first).
+    pub async fn list(
+        &self,
+        status_filter: Option<AgentStatus>,
+        project_id: Option<Uuid>,
+    ) -> Result<Vec<Agent>> {
         let mut query =
             agent_entity::Entity::find().order_by(agent_entity::Column::CreatedAt, Order::Desc);
 
         if let Some(status) = status_filter {
             query = query.filter(agent_entity::Column::Status.eq(status.to_string()));
+        }
+        if let Some(pid) = project_id {
+            query = query.filter(agent_entity::Column::ProjectId.eq(pid.to_string()));
         }
 
         let models: Vec<agent_entity::Model> = query.all(&self.db).await?;
@@ -489,16 +518,31 @@ impl AgentStorage {
     }
 
     /// Lists agents with pagination; returns `(items, total_count)`.
+    #[allow(dead_code)]
     pub async fn list_paginated(
         &self,
         status_filter: Option<AgentStatus>,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<Agent>, usize)> {
-        let condition = match &status_filter {
-            Some(s) => Condition::all().add(agent_entity::Column::Status.eq(s.to_string())),
-            None => Condition::all(),
-        };
+        self.list_paginated_filtered(status_filter, None, limit, offset).await
+    }
+
+    /// Lists agents with pagination and optional project_id filter; returns `(items, total_count)`.
+    pub async fn list_paginated_filtered(
+        &self,
+        status_filter: Option<AgentStatus>,
+        project_id: Option<Uuid>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Agent>, usize)> {
+        let mut condition = Condition::all();
+        if let Some(s) = &status_filter {
+            condition = condition.add(agent_entity::Column::Status.eq(s.to_string()));
+        }
+        if let Some(pid) = project_id {
+            condition = condition.add(agent_entity::Column::ProjectId.eq(pid.to_string()));
+        }
 
         let total =
             agent_entity::Entity::find().filter(condition.clone()).count(&self.db).await? as usize;
@@ -556,6 +600,7 @@ impl ProjectStorage {
     }
 
     /// Retrieve a project by its unique name.  Returns `None` if not found.
+    #[allow(dead_code)]
     pub async fn get_by_name(&self, name: &str) -> Result<Option<Project>> {
         let model = project_entity::Entity::find()
             .filter(project_entity::Column::Name.eq(name))
@@ -664,6 +709,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
         backend_type: model.backend_type,
         launch_command: model.launch_command,
         pid: model.pid.and_then(|p| u32::try_from(p).ok()),
+        project_id: model.project_id.map(|s| Uuid::parse_str(&s)).transpose()?,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
@@ -797,11 +843,11 @@ mod tests {
         storage.add(&a1).await.unwrap();
         storage.add(&a2).await.unwrap();
 
-        let running = storage.list(Some(AgentStatus::Running)).await.unwrap();
+        let running = storage.list(Some(AgentStatus::Running), None).await.unwrap();
         assert_eq!(running.len(), 1);
         assert_eq!(running[0].name, "running-agent");
 
-        let all = storage.list(None).await.unwrap();
+        let all = storage.list(None, None).await.unwrap();
         assert_eq!(all.len(), 2);
     }
 

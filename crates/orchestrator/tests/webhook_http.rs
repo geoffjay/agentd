@@ -112,6 +112,7 @@ fn make_webhook_workflow(agent_id: Uuid, secret: Option<String>) -> WorkflowConf
         tool_policy: Default::default(),
         created_at: now,
         updated_at: now,
+        project_id: None,
     }
 }
 
@@ -135,6 +136,7 @@ fn make_linear_webhook_workflow(agent_id: Uuid, secret: Option<String>) -> Workf
         tool_policy: Default::default(),
         created_at: now,
         updated_at: now,
+        project_id: None,
     }
 }
 
@@ -386,6 +388,7 @@ async fn test_post_webhook_manual_trigger_workflow_returns_400() {
         tool_policy: Default::default(),
         created_at: now,
         updated_at: now,
+        project_id: None,
     };
     scheduler.storage().add_workflow(&workflow).await.unwrap();
 
@@ -588,6 +591,7 @@ async fn test_post_linear_header_on_github_workflow_returns_400() {
         tool_policy: Default::default(),
         created_at: now,
         updated_at: now,
+        project_id: None,
     };
     scheduler.start_workflow(github_workflow.clone()).await.unwrap();
 

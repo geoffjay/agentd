@@ -98,6 +98,7 @@ struct ListRoomsParams {
     limit: Option<usize>,
     offset: Option<usize>,
     room_type: Option<String>,
+    project_id: Option<String>,
 }
 
 /// Query parameters for paginated list endpoints.
@@ -159,7 +160,7 @@ async fn list_rooms(
         let rt = type_str.parse::<RoomType>().map_err(|e| ApiError::InvalidInput(e.to_string()))?;
         state.storage.list_rooms_by_type(&rt, limit, offset).await?
     } else {
-        state.storage.list_rooms(limit, offset).await?
+        state.storage.list_rooms(limit, offset, params.project_id.as_deref()).await?
     };
 
     let items = rooms.into_iter().map(RoomResponse::from).collect();

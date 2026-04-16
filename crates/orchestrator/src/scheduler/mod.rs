@@ -210,7 +210,7 @@ impl Scheduler {
             warn!(count = failed, "Marked in-flight dispatches as failed on startup");
         }
 
-        let workflows = self.storage.list_workflows().await?;
+        let workflows = self.storage.list_workflows(None).await?;
         for workflow in workflows {
             if !workflow.enabled {
                 continue;
