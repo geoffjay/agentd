@@ -27,6 +27,7 @@ bytes = "1"
 serde_yaml = "0.9"
 urlencoding = "2.1"
 dialoguer = "0.11"
+dirs = "5"
 
 # Internal dependencies
 notify = { path = "../notify" }
