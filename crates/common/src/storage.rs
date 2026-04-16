@@ -103,6 +103,19 @@ pub async fn apply_migrations<M: sea_orm_migration::MigratorTrait>(db_path: &Pat
     Ok(())
 }
 
+/// Roll back SeaORM migrations for migrator `M` at `db_path`.
+///
+/// * `steps = None` — rolls back **all** applied migrations.
+/// * `steps = Some(n)` — rolls back the `n` most-recently-applied migrations.
+pub async fn rollback_migrations<M: sea_orm_migration::MigratorTrait>(
+    db_path: &Path,
+    steps: Option<u32>,
+) -> Result<()> {
+    let db = create_connection(db_path).await?;
+    M::down(&db, steps).await?;
+    Ok(())
+}
+
 /// Return the status of all known migrations for migrator `M` at `db_path`.
 ///
 /// Each entry is `(migration_name, is_applied)`.
