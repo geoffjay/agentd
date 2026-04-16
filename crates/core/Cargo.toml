@@ -26,7 +26,15 @@ agentd-common = { path = "../common" }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+async-trait = "0.1"
+argon2 = "0.5"
+rand = "0.8"
+reqwest = { workspace = true, features = ["json", "stream"] }
+
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 hyper = "1.0"
+tempfile = "3.14"
