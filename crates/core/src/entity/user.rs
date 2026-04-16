@@ -12,12 +12,17 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
+    /// Unique human-readable login identifier (added in migration 2).
+    #[sea_orm(unique)]
+    pub username: Option<String>,
     #[sea_orm(unique)]
     pub email: String,
     pub password_hash: String,
     pub display_name: Option<String>,
     /// Role string — `"admin"` or `"user"`.
     pub role: String,
+    /// The organization the user is currently operating as (nullable).
+    pub active_organization_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -39,6 +44,22 @@ impl Related<super::membership::Entity> for Entity {
 impl Related<super::session::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Sessions.def()
+    }
+}
+
+/// Many-to-many: User → Organization via Membership junction table.
+///
+/// - `via()`: traverse the `User` side of the membership relation in reverse
+///   (user → membership)
+/// - `to()`: then follow membership's `Organization` relation
+///   (membership → organization)
+impl Related<super::organization::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::membership::Relation::Organization.def()
+    }
+
+    fn via() -> Option<RelationDef> {
+        Some(super::membership::Relation::User.def().rev())
     }
 }
 
@@ -66,10 +87,12 @@ mod tests {
         let now = chrono::Utc::now().to_rfc3339();
         let user = ActiveModel {
             id: Set(id.clone()),
+            username: Set(None),
             email: Set("alice@example.com".to_string()),
             password_hash: Set("hashed_password".to_string()),
             display_name: Set(Some("Alice".to_string())),
             role: Set("user".to_string()),
+            active_organization_id: Set(None),
             created_at: Set(now.clone()),
             updated_at: Set(now),
         };
