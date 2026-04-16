@@ -30,19 +30,23 @@
 
 pub mod apply;
 pub mod ask;
+pub mod auth;
 pub mod communicate;
 pub mod index;
 pub mod memory;
 pub mod notify;
 pub mod orchestrator;
+pub mod org;
 pub mod prompt;
 pub mod wrap;
 
 pub use ask::AskCommand;
+pub use auth::AuthCommand;
 pub use communicate::CommunicateCommand;
 pub use index::IndexCommand;
 pub use memory::MemoryCommand;
 pub use notify::NotifyCommand;
 pub use orchestrator::OrchestratorCommand;
+pub use org::OrgCommand;
 pub use prompt::PromptCommand;
 pub use wrap::WrapCommand;
