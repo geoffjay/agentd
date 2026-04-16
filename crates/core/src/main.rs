@@ -4,16 +4,14 @@
 //!
 //! # Environment Variables
 //!
-//! | Variable          | Default   | Description             |
-//! |-------------------|-----------|-------------------------|
-//! | `AGENTD_PORT`     | `17007`   | HTTP listen port        |
-//! | `RUST_LOG`        | `info`    | Log level / filter      |
-//! | `AGENTD_LOG_FORMAT` | (text)  | Set to `json` for JSON  |
+//! | Variable            | Default | Description            |
+//! |---------------------|---------|------------------------|
+//! | `AGENTD_PORT`       | `17007` | HTTP listen port       |
+//! | `RUST_LOG`          | `info`  | Log level / filter     |
+//! | `AGENTD_LOG_FORMAT` | (text)  | Set to `json` for JSON |
 //!
 //! Note: port 17007 was chosen because 17010 (specified in issue #212) is
 //! already used by the communicate service.
-
-mod api;
 
 use axum::{extract::State, response::IntoResponse, routing::get};
 use metrics_exporter_prometheus::PrometheusHandle;
@@ -48,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
 
     let db_path = agentd_common::storage::get_db_path("agentd-core", "core.db")?;
     let db = agentd_common::storage::create_connection(&db_path).await?;
-    let _storage = agentd_core::storage::Storage::new(db).await?;
+    let storage = agentd_core::storage::Storage::new(db).await?;
     info!("Database migrations applied");
 
     let metrics_handle = init_metrics();
@@ -56,7 +54,9 @@ async fn main() -> anyhow::Result<()> {
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
-    let app = api::create_router()
+    let state = agentd_core::api::AppState { storage };
+
+    let app = agentd_core::api::create_router(state)
         .merge(metrics_router)
         .layer(agentd_common::server::metrics_layer())
         .layer(agentd_common::server::trace_layer())
