@@ -10,6 +10,7 @@ pub mod membership_storage;
 pub mod middleware;
 pub mod migration;
 pub mod organization_storage;
+pub mod proxy;
 pub mod session_storage;
 pub mod storage;
 pub mod user_storage;
