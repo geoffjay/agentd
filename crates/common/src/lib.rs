@@ -20,6 +20,9 @@
 //! - **server** — Server initialization helpers: `init_tracing()` for
 //!   structured logging setup, and common middleware configuration
 //!
+//! - **tenant** — Axum extractors for the `X-Tenant-ID` header injected by
+//!   the core gateway: `TenantId` (strict/permissive) and `OptionalTenantId`
+//!
 //! # Usage
 //!
 //! Add to your crate's `Cargo.toml`:
@@ -51,4 +54,5 @@ pub mod config;
 pub mod error;
 pub mod server;
 pub mod storage;
+pub mod tenant;
 pub mod types;
