@@ -74,6 +74,10 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents/{id}/usage", get(get_agent_usage))
         .route("/agents/{id}/clear-context", post(clear_agent_context))
         .route("/agents/{id}/approvals", get(list_agent_approvals))
+        // Conversation history (static sub-path must precede wildcard)
+        .route("/agents/{id}/conversation", get(get_agent_conversation))
+        .route("/agents/{id}/conversation/summary", get(get_agent_conversation_summary))
+        .route("/agents/{id}/conversation/{event_id}", get(get_agent_conversation_event))
         .route("/agents/{id}/rooms", get(list_agent_rooms).post(join_agent_room))
         .route("/agents/{id}/rooms/{room_id}", axum::routing::delete(leave_agent_room))
         .route(
@@ -1321,6 +1325,133 @@ async fn dissociate_project_workflow(
         .await
         .map_err(ApiError::Internal)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ─── Conversation history endpoints ──────────────────────────────────────────
+
+/// `GET /agents/{id}/conversation` — paginated conversation event history.
+///
+/// Supports optional query parameters:
+/// - `limit` (default 100, max 500)
+/// - `before` / `after` — RFC 3339 timestamp bounds
+/// - `event_type` — comma-separated filter (e.g. `"output,tool_use"`)
+/// - `session` — restrict to a specific session number
+async fn get_agent_conversation(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<ConversationHistoryQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let limit = query.limit.unwrap_or(100).min(500);
+
+    let since = query
+        .after
+        .as_deref()
+        .map(|s| {
+            s.parse::<chrono::DateTime<chrono::Utc>>()
+                .map_err(|e| ApiError::InvalidInput(format!("invalid 'after' timestamp: {e}")))
+        })
+        .transpose()?;
+
+    let until = query
+        .before
+        .as_deref()
+        .map(|s| {
+            s.parse::<chrono::DateTime<chrono::Utc>>()
+                .map_err(|e| ApiError::InvalidInput(format!("invalid 'before' timestamp: {e}")))
+        })
+        .transpose()?;
+
+    let event_types = query
+        .event_type
+        .as_deref()
+        .map(|s| {
+            s.split(',')
+                .map(|t| {
+                    t.trim()
+                        .parse::<ConversationEventType>()
+                        .map_err(|e| ApiError::InvalidInput(format!("invalid event_type: {e}")))
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?;
+
+    let opts = ConversationQuery {
+        event_types,
+        since,
+        until,
+        // Session filter is pushed to the DB so that `has_more` and `total`
+        // are accurate for the filtered result set.
+        session_number: query.session,
+        // Fetch one extra to determine `has_more` without a separate COUNT query.
+        limit: Some(limit + 1),
+        offset: None,
+    };
+
+    let mut events = state
+        .manager
+        .agent_storage()
+        .list_conversation_events(id, &opts)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    let has_more = events.len() as u64 > limit;
+    if has_more {
+        events.truncate(limit as usize);
+    }
+
+    let total = state
+        .manager
+        .agent_storage()
+        .count_conversation_events(id)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    let items: Vec<ConversationEventResponse> =
+        events.into_iter().map(ConversationEventResponse::from).collect();
+
+    Ok(Json(ConversationHistoryResponse { events: items, total, has_more }))
+}
+
+/// `GET /agents/{id}/conversation/summary` — aggregate statistics.
+///
+/// Returns total event count, per-type counts, session count, and first/last
+/// event timestamps.
+async fn get_agent_conversation_summary(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let summary = state
+        .manager
+        .agent_storage()
+        .get_conversation_summary(id)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    Ok(Json(summary))
+}
+
+/// `GET /agents/{id}/conversation/{event_id}` — single event by ID.
+///
+/// Returns 404 if the event does not exist or does not belong to the agent.
+async fn get_agent_conversation_event(
+    State(state): State<ApiState>,
+    Path((id, event_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    let event = state
+        .manager
+        .agent_storage()
+        .get_conversation_event_by_id(id, event_id)
+        .await
+        .map_err(ApiError::Internal)?
+        .ok_or(ApiError::NotFound)?;
+
+    Ok(Json(ConversationEventResponse::from(event)))
 }
 
 #[cfg(test)]
