@@ -1,13 +1,12 @@
 /**
- * SystemAgentList — compact display of built-in system agents.
+ * SystemAgentList — display of built-in system agents.
  *
  * Renders above the main agent list on the AgentsPage. Shows name, status,
- * model, and activity state. No create/delete actions are available — system
- * agents are managed automatically by the orchestrator.
+ * model, and rooms. No create/delete actions are available — system agents
+ * are managed automatically by the orchestrator.
  *
  * Features:
  * - Auto-refresh every 10 seconds (shared with the main agent list cadence)
- * - Collapsible panel (expanded by default)
  * - Visual distinction via a "System" badge on each row
  * - Clicking a row navigates to the agent detail page (same as user agents)
  */
@@ -15,13 +14,11 @@
 import {
 	AlertCircle,
 	Bot,
-	ChevronDown,
-	ChevronRight,
 	RefreshCw,
 } from "lucide-react";
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AgentStatusBadge } from "@/components/agents/AgentStatusBadge";
+import { ListItemSkeleton } from "@/components/common/LoadingSkeleton";
 import { useSystemAgents } from "@/hooks/useSystemAgents";
 import type { Agent } from "@/types/orchestrator";
 
@@ -31,85 +28,94 @@ import type { Agent } from "@/types/orchestrator";
 
 export function SystemAgentList() {
 	const { agents, loading, refreshing, error, refetch } = useSystemAgents();
-	const [collapsed, setCollapsed] = useState(false);
 	const navigate = useNavigate();
 
 	return (
-		<div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30">
+		<div className="space-y-5 mb-8">
 			{/* Header */}
-			<div className="flex items-center justify-between px-4 py-3">
-				<button
-					type="button"
-					className="flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-300"
-					onClick={() => setCollapsed((c) => !c)}
-				>
-					{collapsed ? (
-						<ChevronRight className="h-4 w-4" />
-					) : (
-						<ChevronDown className="h-4 w-4" />
-					)}
-					<Bot className="h-4 w-4" />
-					System Agents
-					{!loading && (
-						<span className="ml-1 rounded-full bg-blue-200 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-800 dark:text-blue-200">
-							{agents.length}
-						</span>
-					)}
-				</button>
+			<div className="flex items-center justify-between">
+				<div>
+					<h1 className="text-2xl font-semibold text-th-text">
+						System Agents
+					</h1>
+					<p className="mt-1 text-sm text-th-text-muted">
+						Built-in agents managed by the orchestrator.
+					</p>
+				</div>
 
 				<div className="flex items-center gap-2">
 					{refreshing && (
-						<RefreshCw className="h-3 w-3 animate-spin text-blue-600 dark:text-blue-400" />
+						<RefreshCw
+							size={14}
+							aria-label="Refreshing..."
+							className="animate-spin text-th-text-muted"
+						/>
 					)}
 					<button
 						type="button"
-						title="Refresh system agents"
+						aria-label="Refresh system agents"
 						onClick={refetch}
-						className="rounded p-1 text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900"
+						disabled={loading}
+						className="rounded-md border border-th-border-strong bg-th-surface p-2 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text-secondary focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1 disabled:opacity-50"
 					>
-						<RefreshCw className="h-3.5 w-3.5" />
+						<RefreshCw size={15} />
 					</button>
 				</div>
 			</div>
 
-			{/* Body */}
-			{!collapsed && (
-				<div className="border-t border-blue-200 dark:border-blue-800">
-					{/* Error state */}
-					{error && (
-						<div className="flex items-center gap-2 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-							<AlertCircle className="h-4 w-4 flex-shrink-0" />
-							{error}
-						</div>
-					)}
+			{/* Error banner */}
+			{error && (
+				<div
+					role="alert"
+					className="rounded-md bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text"
+				>
+					<div className="flex items-center gap-2">
+						<AlertCircle className="h-4 w-4 flex-shrink-0" />
+						{error}
+					</div>
+				</div>
+			)}
 
-					{/* Loading state */}
-					{loading && !error && (
-						<div className="px-4 py-4 text-sm text-blue-600 dark:text-blue-400">
-							Loading system agents…
-						</div>
-					)}
-
-					{/* Empty state */}
-					{!loading && !error && agents.length === 0 && (
-						<div className="px-4 py-4 text-sm text-blue-600/70 dark:text-blue-400/70">
-							No system agents found. The orchestrator may still be starting up.
-						</div>
-					)}
-
-					{/* Agent rows */}
-					{!loading && !error && agents.length > 0 && (
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b border-blue-200 bg-blue-100/50 text-left text-xs font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-									<th className="px-4 py-2">Name</th>
-									<th className="px-4 py-2">Status</th>
-									<th className="px-4 py-2">Model</th>
-									<th className="px-4 py-2">Rooms</th>
+			{/* Table */}
+			<div className="overflow-hidden rounded-lg border border-th-border">
+				<div className="overflow-x-auto">
+					<table className="min-w-full divide-y divide-th-border">
+						<thead className="bg-th-surface-sunken">
+							<tr>
+								<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
+									Name
+								</th>
+								<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
+									Status
+								</th>
+								<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
+									Model
+								</th>
+								<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
+									Rooms
+								</th>
+							</tr>
+						</thead>
+						<tbody className="divide-y divide-th-border bg-th-surface">
+							{loading ? (
+								<tr>
+									<td colSpan={4} className="p-4">
+										<ListItemSkeleton rows={2} />
+									</td>
 								</tr>
-							</thead>
-							<tbody>
-								{agents.map((agent) => (
+							) : agents.length === 0 && !error ? (
+								<tr>
+									<td colSpan={4} className="py-12 text-center">
+										<p className="text-sm text-th-text-muted">
+											No system agents found.
+										</p>
+										<p className="mt-1 text-xs text-th-text-faint">
+											The orchestrator may still be starting up.
+										</p>
+									</td>
+								</tr>
+							) : (
+								agents.map((agent) => (
 									<SystemAgentRow
 										key={agent.id}
 										agent={agent}
@@ -117,12 +123,12 @@ export function SystemAgentList() {
 											navigate(`/agents/${agent.id}`)
 										}
 									/>
-								))}
-							</tbody>
-						</table>
-					)}
+								))
+							)}
+						</tbody>
+					</table>
 				</div>
-			)}
+			</div>
 		</div>
 	);
 }
@@ -141,17 +147,17 @@ function SystemAgentRow({ agent, onClick }: SystemAgentRowProps) {
 
 	return (
 		<tr
-			className="cursor-pointer border-b border-blue-100 last:border-0 hover:bg-blue-100/60 dark:border-blue-900 dark:hover:bg-blue-900/40"
+			className="cursor-pointer border-b border-th-border hover:bg-th-surface-hover"
 			onClick={onClick}
 		>
 			{/* Name + system badge */}
 			<td className="px-4 py-3">
 				<div className="flex items-center gap-2">
-					<Bot className="h-3.5 w-3.5 flex-shrink-0 text-blue-500 dark:text-blue-400" />
-					<span className="font-medium text-gray-900 dark:text-gray-100">
+					<Bot className="h-3.5 w-3.5 flex-shrink-0 text-th-text-muted" />
+					<span className="text-sm font-medium text-th-text">
 						{agent.name}
 					</span>
-					<span className="rounded-full bg-blue-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-800 dark:bg-blue-800 dark:text-blue-200">
+					<span className="rounded-full bg-th-accent/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-th-accent">
 						system
 					</span>
 				</div>
@@ -163,25 +169,27 @@ function SystemAgentRow({ agent, onClick }: SystemAgentRowProps) {
 			</td>
 
 			{/* Model */}
-			<td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-				{agent.config.model ?? "default"}
+			<td className="px-4 py-3 text-sm text-th-text-muted">
+				{agent.config.model ?? (
+					<span className="italic opacity-50">default</span>
+				)}
 			</td>
 
 			{/* Rooms */}
-			<td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+			<td className="px-4 py-3 text-sm text-th-text-muted">
 				{rooms.length > 0 ? (
 					<div className="flex flex-wrap gap-1">
 						{rooms.map((r: string) => (
 							<span
 								key={r}
-								className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+								className="rounded bg-th-surface-sunken px-1.5 py-0.5 text-[10px] text-th-text-muted"
 							>
 								{r}
 							</span>
 						))}
 					</div>
 				) : (
-					<span className="text-xs text-gray-400">—</span>
+					<span className="text-th-text-faint">-</span>
 				)}
 			</td>
 		</tr>
