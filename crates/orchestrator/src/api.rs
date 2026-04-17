@@ -169,8 +169,10 @@ async fn list_agents(
         Some(false) // exclude system agents
     };
 
-    let (agents, total) =
-        state.manager.list_agents_paginated(status_filter, built_in_filter, query.project_id, limit, offset).await?;
+    let (agents, total) = state
+        .manager
+        .list_agents_paginated(status_filter, built_in_filter, query.project_id, limit, offset)
+        .await?;
     let mut items: Vec<AgentResponse> = Vec::with_capacity(agents.len());
     for agent in agents {
         let id = agent.id;
@@ -1065,7 +1067,6 @@ struct ProjectListQuery {
     limit: Option<usize>,
     offset: Option<usize>,
 }
-
 
 async fn list_projects(
     State(state): State<ApiState>,
