@@ -111,8 +111,11 @@ async fn main() -> anyhow::Result<()> {
     // Shared event bus for internal lifecycle events.
     let event_bus = EventBus::shared(256);
 
-    // WebSocket connection registry.
-    let registry = ConnectionRegistry::new().with_event_bus(event_bus.clone());
+    // WebSocket connection registry — attach storage so conversation events are
+    // persisted as they flow through the WebSocket handler.
+    let registry = ConnectionRegistry::new()
+        .with_event_bus(event_bus.clone())
+        .with_storage((*storage).clone());
 
     // Agent manager (Arc'd immediately so it can be shared with callbacks and API state).
     let manager =

@@ -17,8 +17,8 @@ use crate::{
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, Order,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
 };
 use sea_orm_migration::prelude::MigratorTrait;
 use std::collections::HashMap;
@@ -667,6 +667,26 @@ impl AgentStorage {
             .count(&self.db)
             .await?;
         Ok(count)
+    }
+
+    /// Returns the highest `session_number` stored in `conversation_events` for
+    /// `agent_id`, or `0` if no events exist yet.
+    ///
+    /// Used by [`crate::websocket::ConnectionRegistry::register`] to restore the
+    /// correct session counter on agent reconnect - reading directly from the
+    /// events table avoids any dependency on usage-session semantics.
+    pub async fn get_max_conversation_session_number(&self, agent_id: Uuid) -> Result<i64> {
+        let row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                self.db.get_database_backend(),
+                r#"SELECT COALESCE(MAX(session_number), 0) AS max_session
+               FROM conversation_events
+               WHERE agent_id = ?"#,
+                [sea_orm::Value::String(Some(Box::new(agent_id.to_string())))],
+            ))
+            .await?;
+        Ok(row.and_then(|r| r.try_get::<i64>("", "max_session").ok()).unwrap_or(0))
     }
 
     /// Deletes all conversation events for `agent_id`.
