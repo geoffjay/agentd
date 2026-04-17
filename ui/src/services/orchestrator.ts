@@ -59,6 +59,16 @@ export class OrchestratorClient extends ApiClient {
 		);
 	}
 
+	/**
+	 * `GET /system-agents` — list built-in system agents.
+	 *
+	 * Returns only agents with `built_in = true`. These are spawned automatically
+	 * by the orchestrator at startup and are always present while the service runs.
+	 */
+	listSystemAgents(): Promise<Agent[]> {
+		return this.get<Agent[]>("/system-agents");
+	}
+
 	createAgent(request: CreateAgentRequest): Promise<Agent> {
 		return this.post<Agent>("/agents", request);
 	}
