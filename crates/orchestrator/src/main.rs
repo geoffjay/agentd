@@ -117,9 +117,24 @@ async fn main() -> anyhow::Result<()> {
         .with_event_bus(event_bus.clone())
         .with_storage((*storage).clone());
 
+    // Conversation event retention policy (read once at startup).
+    let retention_config = Arc::new(types::RetentionConfig::from_env());
+    info!(
+        retention_days = retention_config.retention_days,
+        max_events_per_agent = retention_config.max_events_per_agent,
+        cleanup_on_terminate = retention_config.cleanup_on_terminate,
+        cleanup_interval_secs = retention_config.cleanup_interval_secs,
+        "Conversation retention config loaded",
+    );
+
     // Agent manager (Arc'd immediately so it can be shared with callbacks and API state).
-    let manager =
-        Arc::new(AgentManager::new(storage.clone(), backend, registry.clone(), ws_base_url));
+    let manager = Arc::new(AgentManager::with_retention(
+        storage.clone(),
+        backend,
+        registry.clone(),
+        ws_base_url,
+        retention_config.clone(),
+    ));
 
     // Scheduler for autonomous workflows (shares the same SeaORM connection).
     // Schema is already applied by AgentStorage::with_path() via Migrator::up().
@@ -407,6 +422,71 @@ async fn main() -> anyhow::Result<()> {
                 interval.tick().await;
                 if let Err(e) = manager_reconcile.reconcile().await {
                     error!(%e, "Periodic reconciliation failed");
+                }
+            }
+        });
+    }
+
+    // Periodic conversation event cleanup: prune old events and enforce the
+    // per-agent cap on a configurable interval (default 6 h).
+    {
+        let storage_cleanup = storage.clone();
+        let retention = retention_config.clone();
+        let cleanup_interval = retention.cleanup_interval_secs;
+        info!(
+            cleanup_interval_secs = cleanup_interval,
+            "Starting periodic conversation cleanup loop"
+        );
+        tokio::spawn(async move {
+            let mut interval =
+                tokio::time::interval(tokio::time::Duration::from_secs(cleanup_interval));
+            interval.tick().await; // skip immediate tick on startup
+            loop {
+                interval.tick().await;
+
+                // Age-based pruning: remove events older than retention_days.
+                match storage_cleanup.prune_old_conversation_events(retention.retention_days).await
+                {
+                    Ok(n) if n > 0 => {
+                        info!(pruned = n, "Pruned old conversation events");
+                        metrics::counter!("agentd_conversation_events_pruned_total").increment(n);
+                    }
+                    Ok(_) => {}
+                    Err(e) => error!(%e, "Conversation event age-prune failed"),
+                }
+
+                // Per-agent cap: enforce max_events_per_agent for every known agent.
+                match storage_cleanup.list(None, None).await {
+                    Ok(agents) => {
+                        for agent in &agents {
+                            match storage_cleanup
+                                .prune_excess_conversation_events(
+                                    agent.id,
+                                    retention.max_events_per_agent,
+                                )
+                                .await
+                            {
+                                Ok(n) if n > 0 => {
+                                    info!(
+                                        agent_id = %agent.id,
+                                        pruned = n,
+                                        "Pruned excess conversation events for agent",
+                                    );
+                                    metrics::counter!("agentd_conversation_events_pruned_total")
+                                        .increment(n);
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    error!(
+                                        agent_id = %agent.id,
+                                        %e,
+                                        "Conversation event cap-prune failed for agent",
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => error!(%e, "Failed to list agents for per-agent cap pruning"),
                 }
             }
         });

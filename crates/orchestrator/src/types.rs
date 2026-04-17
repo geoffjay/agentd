@@ -2132,6 +2132,72 @@ impl From<ConversationEvent> for ConversationEventResponse {
     }
 }
 
+// ─── Retention / cleanup configuration ──────────────────────────────────────
+
+/// Configuration for conversation event retention and periodic pruning.
+///
+/// All values are read from environment variables at service startup via
+/// [`RetentionConfig::from_env`].  The defaults are conservative — 30-day
+/// history, 50 k events per agent, no on-terminate delete, 6-hour cleanup cycle.
+#[derive(Debug, Clone)]
+pub struct RetentionConfig {
+    /// Delete events older than this many days
+    /// (env: `AGENTD_CONVERSATION_RETENTION_DAYS`, default: 30).
+    /// Must be ≥ 1; `0` would delete all events and is rejected (falls back to default).
+    pub retention_days: u64,
+    /// Hard cap per agent; oldest events are evicted first.
+    /// Enforced both by the periodic cleanup task (for all known agents) and
+    /// on agent termination when `cleanup_on_terminate = true`.
+    /// (env: `AGENTD_CONVERSATION_MAX_EVENTS_PER_AGENT`, default: 50000).
+    /// Must be ≥ 1; `0` would delete all events and is rejected (falls back to default).
+    pub max_events_per_agent: u64,
+    /// If `true`, all events for an agent are deleted when it is terminated
+    /// (env: `AGENTD_CONVERSATION_CLEANUP_ON_TERMINATE`, default: false).
+    pub cleanup_on_terminate: bool,
+    /// How often the periodic cleanup task runs, in seconds
+    /// (env: `AGENTD_CONVERSATION_CLEANUP_INTERVAL_SECS`, default: 21600 = 6 h).
+    /// Must be ≥ 1; `0` panics `tokio::time::interval` and is rejected (falls back to default).
+    pub cleanup_interval_secs: u64,
+}
+
+impl RetentionConfig {
+    /// Safe, hardcoded fallback values used when env vars are absent or invalid.
+    pub const DEFAULT_RETENTION_DAYS: u64 = 30;
+    pub const DEFAULT_MAX_EVENTS_PER_AGENT: u64 = 50_000;
+    pub const DEFAULT_CLEANUP_INTERVAL_SECS: u64 = 21_600; // 6 h
+
+    /// Build a `RetentionConfig` from environment variables, falling back to
+    /// safe defaults when a variable is absent, unparseable, or out of range.
+    ///
+    /// Zero values for `retention_days`, `max_events_per_agent`, and
+    /// `cleanup_interval_secs` are rejected and replaced with defaults:
+    /// `0` retention days would wipe all events, `0` max events would delete
+    /// everything for every agent, and `0` interval panics `tokio::time::interval`.
+    pub fn from_env() -> Self {
+        Self {
+            retention_days: std::env::var("AGENTD_CONVERSATION_RETENTION_DAYS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .filter(|&v: &u64| v > 0)
+                .unwrap_or(Self::DEFAULT_RETENTION_DAYS),
+            max_events_per_agent: std::env::var("AGENTD_CONVERSATION_MAX_EVENTS_PER_AGENT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .filter(|&v: &u64| v > 0)
+                .unwrap_or(Self::DEFAULT_MAX_EVENTS_PER_AGENT),
+            cleanup_on_terminate: std::env::var("AGENTD_CONVERSATION_CLEANUP_ON_TERMINATE")
+                .ok()
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            cleanup_interval_secs: std::env::var("AGENTD_CONVERSATION_CLEANUP_INTERVAL_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .filter(|&v: &u64| v > 0)
+                .unwrap_or(Self::DEFAULT_CLEANUP_INTERVAL_SECS),
+        }
+    }
+}
+
 /// Query parameters for `GET /agents/{id}/conversation`.
 #[derive(Debug, Default, Deserialize)]
 pub struct ConversationHistoryQuery {
@@ -2165,4 +2231,17 @@ pub struct ConversationSummary {
     pub session_count: u64,
     pub first_event_at: Option<DateTime<Utc>>,
     pub last_event_at: Option<DateTime<Utc>>,
+}
+
+impl Default for RetentionConfig {
+    /// Returns hardcoded safe defaults.  Does **not** read environment variables.
+    /// Use [`RetentionConfig::from_env`] explicitly when env-var overrides are needed.
+    fn default() -> Self {
+        Self {
+            retention_days: Self::DEFAULT_RETENTION_DAYS,
+            max_events_per_agent: Self::DEFAULT_MAX_EVENTS_PER_AGENT,
+            cleanup_on_terminate: false,
+            cleanup_interval_secs: Self::DEFAULT_CLEANUP_INTERVAL_SECS,
+        }
+    }
 }
