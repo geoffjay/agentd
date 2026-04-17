@@ -2084,3 +2084,72 @@ pub struct ConversationQuery {
     /// Skip this many events (for offset pagination).
     pub offset: Option<u64>,
 }
+
+// ─── Conversation history API types ──────────────────────────────────────────
+
+/// A conversation event shaped for the REST API.
+///
+/// The `event_type` field uses the `"agent:<variant>"` prefix to match the
+/// format of live WebSocket stream events (e.g. `"agent:output"`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationEventResponse {
+    pub id: Uuid,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub agent_id: Uuid,
+    /// Free-text content (output text, prompt, thinking, etc.).
+    pub line: Option<String>,
+    /// Structured JSON payload (tool input/output, usage stats, etc.).
+    pub metadata: Option<serde_json::Value>,
+    pub timestamp: DateTime<Utc>,
+    pub session_number: i64,
+}
+
+impl From<ConversationEvent> for ConversationEventResponse {
+    fn from(ev: ConversationEvent) -> Self {
+        Self {
+            id: ev.id,
+            event_type: format!("agent:{}", ev.event_type),
+            agent_id: ev.agent_id,
+            line: ev.content,
+            metadata: ev.metadata,
+            timestamp: ev.created_at,
+            session_number: ev.session_number,
+        }
+    }
+}
+
+/// Query parameters for `GET /agents/{id}/conversation`.
+#[derive(Debug, Default, Deserialize)]
+pub struct ConversationHistoryQuery {
+    /// Maximum number of events to return (default: 100).
+    pub limit: Option<u64>,
+    /// Return events created before this RFC 3339 timestamp (exclusive).
+    pub before: Option<String>,
+    /// Return events created after this RFC 3339 timestamp (exclusive).
+    pub after: Option<String>,
+    /// Comma-separated list of event types to include (e.g. `"output,tool_use"`).
+    pub event_type: Option<String>,
+    /// Restrict results to a specific session number.
+    pub session: Option<i64>,
+}
+
+/// Paginated response body for `GET /agents/{id}/conversation`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConversationHistoryResponse {
+    pub events: Vec<ConversationEventResponse>,
+    pub total: u64,
+    pub has_more: bool,
+}
+
+/// Aggregate summary for `GET /agents/{id}/conversation/summary`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConversationSummary {
+    pub agent_id: Uuid,
+    pub total_events: u64,
+    /// Event counts keyed by the `"agent:<variant>"` event-type string.
+    pub event_counts: HashMap<String, u64>,
+    pub session_count: u64,
+    pub first_event_at: Option<DateTime<Utc>>,
+    pub last_event_at: Option<DateTime<Utc>>,
+}

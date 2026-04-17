@@ -11,7 +11,8 @@ use crate::{
     migration::Migrator,
     types::{
         Agent, AgentConfig, AgentStatus, AgentUsageStats, ConversationEvent, ConversationQuery,
-        Project, SessionUsage, ToolPolicy, UpdateProjectRequest, UsageSnapshot,
+        ConversationSummary, Project, SessionUsage, ToolPolicy, UpdateProjectRequest,
+        UsageSnapshot,
     },
 };
 use anyhow::Result;
@@ -663,6 +664,64 @@ impl AgentStorage {
             .exec(&self.db)
             .await?;
         Ok(result.rows_affected)
+    }
+
+    /// Retrieves a single conversation event by its UUID, scoped to `agent_id`.
+    ///
+    /// Returns `None` if no event with that ID belongs to the given agent.
+    pub async fn get_conversation_event_by_id(
+        &self,
+        agent_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<Option<ConversationEvent>> {
+        let model = conv_entity::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(conv_entity::Column::AgentId.eq(agent_id.to_string()))
+                    .add(conv_entity::Column::Id.eq(event_id.to_string())),
+            )
+            .one(&self.db)
+            .await?;
+        model.map(model_to_conversation_event).transpose()
+    }
+
+    /// Returns an aggregate summary of all conversation events for `agent_id`.
+    ///
+    /// Computes total event count, per-type counts (keyed as `"agent:<type>"`),
+    /// distinct session count, and the timestamps of the first and last event.
+    pub async fn get_conversation_summary(&self, agent_id: Uuid) -> Result<ConversationSummary> {
+        let events = self.list_conversation_events(agent_id, &ConversationQuery::default()).await?;
+
+        let total_events = events.len() as u64;
+        let mut event_counts: HashMap<String, u64> = HashMap::new();
+        let mut session_numbers: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        let mut first_event_at: Option<DateTime<Utc>> = None;
+        let mut last_event_at: Option<DateTime<Utc>> = None;
+
+        for ev in &events {
+            let key = format!("agent:{}", ev.event_type);
+            *event_counts.entry(key).or_insert(0) += 1;
+            session_numbers.insert(ev.session_number);
+            match first_event_at {
+                None => first_event_at = Some(ev.created_at),
+                Some(t) if ev.created_at < t => first_event_at = Some(ev.created_at),
+                _ => {}
+            }
+            match last_event_at {
+                None => last_event_at = Some(ev.created_at),
+                Some(t) if ev.created_at > t => last_event_at = Some(ev.created_at),
+                _ => {}
+            }
+        }
+
+        Ok(ConversationSummary {
+            agent_id,
+            total_events,
+            event_counts,
+            session_count: session_numbers.len() as u64,
+            first_event_at,
+            last_event_at,
+        })
     }
 }
 
@@ -1740,5 +1799,90 @@ mod tests {
         for (event, expected_type) in events.iter().zip(types.iter()) {
             assert_eq!(event.event_type, *expected_type);
         }
+    }
+
+    #[tokio::test]
+    async fn test_conv_get_by_id_returns_correct_event() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let event = make_event(agent_id, ConversationEventType::Output);
+        let event_id = event.id;
+        storage.insert_conversation_event(&event).await.unwrap();
+
+        let found = storage
+            .get_conversation_event_by_id(agent_id, event_id)
+            .await
+            .unwrap()
+            .expect("event should be found");
+        assert_eq!(found.id, event_id);
+        assert_eq!(found.event_type, ConversationEventType::Output);
+    }
+
+    #[tokio::test]
+    async fn test_conv_get_by_id_wrong_agent_returns_none() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_a = Uuid::new_v4();
+        let agent_b = Uuid::new_v4();
+
+        let event = make_event(agent_a, ConversationEventType::Output);
+        let event_id = event.id;
+        storage.insert_conversation_event(&event).await.unwrap();
+
+        // agent_b cannot see agent_a's event.
+        let result = storage.get_conversation_event_by_id(agent_b, event_id).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_conv_summary_empty() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let summary = storage.get_conversation_summary(agent_id).await.unwrap();
+        assert_eq!(summary.total_events, 0);
+        assert!(summary.event_counts.is_empty());
+        assert_eq!(summary.session_count, 0);
+        assert!(summary.first_event_at.is_none());
+        assert!(summary.last_event_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_conv_summary_counts_and_sessions() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        // Insert 3 Output events across 2 sessions, plus 1 ToolUse in session 1.
+        for session in [0i64, 0, 1] {
+            storage
+                .insert_conversation_event(&ConversationEvent::new(
+                    agent_id,
+                    ConversationEventType::Output,
+                    session,
+                    None,
+                    None,
+                ))
+                .await
+                .unwrap();
+        }
+        storage
+            .insert_conversation_event(&ConversationEvent::new(
+                agent_id,
+                ConversationEventType::ToolUse,
+                1,
+                None,
+                None,
+            ))
+            .await
+            .unwrap();
+
+        let summary = storage.get_conversation_summary(agent_id).await.unwrap();
+        assert_eq!(summary.total_events, 4);
+        assert_eq!(summary.session_count, 2);
+        assert_eq!(summary.event_counts.get("agent:output").copied().unwrap_or(0), 3);
+        assert_eq!(summary.event_counts.get("agent:tool_use").copied().unwrap_or(0), 1);
+        assert!(summary.first_event_at.is_some());
+        assert!(summary.last_event_at.is_some());
+        assert!(summary.first_event_at <= summary.last_event_at);
     }
 }
