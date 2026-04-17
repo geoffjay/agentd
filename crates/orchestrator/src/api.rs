@@ -75,7 +75,10 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/agents/{id}/clear-context", post(clear_agent_context))
         .route("/agents/{id}/approvals", get(list_agent_approvals))
         // Conversation history (static sub-path must precede wildcard)
-        .route("/agents/{id}/conversation", get(get_agent_conversation))
+        .route(
+            "/agents/{id}/conversation",
+            get(get_agent_conversation).delete(delete_agent_conversation),
+        )
         .route("/agents/{id}/conversation/summary", get(get_agent_conversation_summary))
         .route("/agents/{id}/conversation/{event_id}", get(get_agent_conversation_event))
         .route("/agents/{id}/rooms", get(list_agent_rooms).post(join_agent_room))
@@ -1452,6 +1455,25 @@ async fn get_agent_conversation_event(
         .ok_or(ApiError::NotFound)?;
 
     Ok(Json(ConversationEventResponse::from(event)))
+}
+
+/// `DELETE /agents/{id}/conversation` — delete all conversation history for an agent.
+///
+/// Returns 204 No Content on success, 404 if the agent does not exist.
+async fn delete_agent_conversation(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    state
+        .manager
+        .agent_storage()
+        .delete_conversation_events_for_agent(id)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]
