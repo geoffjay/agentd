@@ -6,6 +6,7 @@ mod message_bridge;
 mod migration;
 mod scheduler;
 mod storage;
+mod system_agents;
 mod types;
 mod websocket;
 
@@ -379,6 +380,12 @@ async fn main() -> anyhow::Result<()> {
     // endpoint instead of failing because the port isn't bound yet.
     if let Err(e) = manager.reconcile().await {
         error!(%e, "Agent reconciliation failed");
+    }
+
+    // Bootstrap built-in system agents after reconciliation so that surviving
+    // user agents are handled first, and the system agent session URL is valid.
+    if let Err(e) = manager.bootstrap_system_agents().await {
+        error!(%e, "System agent bootstrap failed");
     }
 
     // Periodic reconciliation: detect agents whose processes died after startup.

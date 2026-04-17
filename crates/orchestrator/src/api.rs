@@ -231,7 +231,7 @@ async fn create_agent(
         rooms: req.rooms,
     };
 
-    let agent = state.manager.spawn_agent(req.name, config).await?;
+    let agent = state.manager.spawn_agent(req.name, config, false).await?;
 
     metrics::counter!("agents_created_total").increment(1);
 
