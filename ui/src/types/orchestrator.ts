@@ -52,6 +52,8 @@ export interface AgentConfig {
 	env?: Record<string, string>;
 	auto_clear_threshold?: number;
 	additional_dirs?: string[];
+	/** Communicate rooms the agent is auto-joined to on connection. */
+	rooms?: string[];
 }
 
 // ---------------------------------------------------------------------------
