@@ -453,13 +453,27 @@ impl AgentManager {
     }
 
     /// List agents with pagination.
+    ///
+    /// `built_in_filter`:
+    /// - `Some(false)` — exclude system agents (use for `GET /agents`)
+    /// - `Some(true)` — only system agents (use for `GET /system-agents`)
+    /// - `None` — all agents regardless of flag (use for debug/admin views)
     pub async fn list_agents_paginated(
         &self,
         status: Option<AgentStatus>,
+        built_in_filter: Option<bool>,
         limit: usize,
         offset: usize,
     ) -> anyhow::Result<(Vec<Agent>, usize)> {
-        self.storage.list_paginated(status, limit, offset).await
+        self.storage.list_paginated(status, built_in_filter, limit, offset).await
+    }
+
+    /// List all built-in system agents (newest first).
+    ///
+    /// Returns agents created programmatically by the orchestrator at startup.
+    /// Used by `GET /system-agents`.
+    pub async fn list_system_agents(&self) -> anyhow::Result<Vec<Agent>> {
+        self.storage.list_system_agents().await
     }
 
     /// Update an agent record in storage.

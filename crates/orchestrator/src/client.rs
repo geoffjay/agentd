@@ -107,6 +107,15 @@ impl OrchestratorClient {
         self.get(&path).await
     }
 
+    /// List built-in system agents.
+    ///
+    /// Fetches from `GET /system-agents` which returns only agents with
+    /// `built_in = true`. These are the programmatically-managed agents
+    /// always present during orchestrator operation.
+    pub async fn list_system_agents(&self) -> Result<Vec<AgentResponse>> {
+        self.get("/system-agents").await
+    }
+
     /// Create a new agent.
     pub async fn create_agent(&self, request: &CreateAgentRequest) -> Result<AgentResponse> {
         self.post("/agents", request).await
