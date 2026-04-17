@@ -502,6 +502,14 @@ pub struct Agent {
     /// orchestrator run is still alive, avoiding duplicate spawns.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pid: Option<u32>,
+    /// Whether this is a built-in system agent.
+    ///
+    /// System agents are created programmatically by the orchestrator at startup
+    /// and are always present while the service is running. User-created agents
+    /// always have this set to `false`. The field is intentionally absent from
+    /// [`CreateAgentRequest`] — only the orchestrator itself may set it.
+    #[serde(default)]
+    pub built_in: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -518,6 +526,7 @@ impl Agent {
             backend_type: Some("tmux".to_string()),
             launch_command: None,
             pid: None,
+            built_in: false,
             created_at: now,
             updated_at: now,
         }
@@ -614,6 +623,13 @@ pub struct AgentResponse {
     pub launch_command: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pid: Option<u32>,
+    /// Whether this is a built-in system agent.
+    ///
+    /// System agents are created programmatically at orchestrator startup.
+    /// Clients should use this field to distinguish system agents from
+    /// user-created agents and suppress destructive actions (e.g., delete).
+    #[serde(default)]
+    pub built_in: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -634,6 +650,7 @@ impl From<Agent> for AgentResponse {
             backend_type: agent.backend_type,
             launch_command: agent.launch_command,
             pid: agent.pid,
+            built_in: agent.built_in,
             created_at: agent.created_at,
             updated_at: agent.updated_at,
         }

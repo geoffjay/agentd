@@ -61,6 +61,10 @@ pub struct Model {
     /// OS process ID of the agent's subprocess. Used during startup
     /// reconciliation to check if the process survived a service restart.
     pub pid: Option<i64>,
+    /// Whether this agent is a built-in system agent. Stored as INTEGER (0/1).
+    /// System agents are created programmatically and managed by the orchestrator;
+    /// user-created agents always have this set to 0.
+    pub built_in: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

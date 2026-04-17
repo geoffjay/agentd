@@ -70,6 +70,14 @@ export interface Agent {
 	launch_command?: string;
 	/** OS process ID of the agent's subprocess. */
 	pid?: number;
+	/**
+	 * Whether this is a built-in system agent.
+	 *
+	 * System agents are created programmatically at orchestrator startup and
+	 * are always present. UI should hide destructive actions (delete, bulk-delete)
+	 * for agents where this is `true`.
+	 */
+	built_in?: boolean;
 	created_at: string;
 	updated_at: string;
 }

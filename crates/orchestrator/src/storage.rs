@@ -105,6 +105,7 @@ impl AgentStorage {
             ),
             launch_command: Set(agent.launch_command.clone()),
             pid: Set(agent.pid.map(|p| p as i64)),
+            built_in: Set(if agent.built_in { 1 } else { 0 }),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -560,6 +561,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
         backend_type: model.backend_type,
         launch_command: model.launch_command,
         pid: model.pid.and_then(|p| u32::try_from(p).ok()),
+        built_in: model.built_in != 0,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
