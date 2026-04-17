@@ -1963,3 +1963,136 @@ mod tests {
         assert!(policy.sandbox_bypass().is_empty());
     }
 }
+
+// ─── Conversation events ──────────────────────────────────────────────────────
+
+/// The type of a conversation event recorded for an agent session.
+///
+/// Each variant maps to a distinct phase of the Claude Code conversation
+/// lifecycle.  Values are stored as snake_case strings in the database.
+// Consumed by #1160 (WebSocket persistence), #1161 (REST API), #1163 (retention
+// policy) — stacked on this PR; suppress until those land.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationEventType {
+    /// A chunk of text output from the assistant.
+    Output,
+    /// The assistant invoked a tool (e.g. Bash, Read, Write).
+    ToolUse,
+    /// An extended-thinking block produced by the model.
+    Thinking,
+    /// The final result returned at the end of a turn.
+    Result,
+    /// A prompt was sent to the agent.
+    PromptSent,
+    /// The agent's activity state changed (idle ↔ busy).
+    ActivityChanged,
+    /// A token/cost usage snapshot was recorded.
+    UsageUpdate,
+    /// The conversation context was cleared (session_number incremented).
+    ContextCleared,
+}
+
+impl std::fmt::Display for ConversationEventType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConversationEventType::Output => write!(f, "output"),
+            ConversationEventType::ToolUse => write!(f, "tool_use"),
+            ConversationEventType::Thinking => write!(f, "thinking"),
+            ConversationEventType::Result => write!(f, "result"),
+            ConversationEventType::PromptSent => write!(f, "prompt_sent"),
+            ConversationEventType::ActivityChanged => write!(f, "activity_changed"),
+            ConversationEventType::UsageUpdate => write!(f, "usage_update"),
+            ConversationEventType::ContextCleared => write!(f, "context_cleared"),
+        }
+    }
+}
+
+impl std::str::FromStr for ConversationEventType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "output" => Ok(ConversationEventType::Output),
+            "tool_use" => Ok(ConversationEventType::ToolUse),
+            "thinking" => Ok(ConversationEventType::Thinking),
+            "result" => Ok(ConversationEventType::Result),
+            "prompt_sent" => Ok(ConversationEventType::PromptSent),
+            "activity_changed" => Ok(ConversationEventType::ActivityChanged),
+            "usage_update" => Ok(ConversationEventType::UsageUpdate),
+            "context_cleared" => Ok(ConversationEventType::ContextCleared),
+            _ => Err(anyhow::anyhow!("Unknown conversation event type: {}", s)),
+        }
+    }
+}
+
+/// A single persisted conversation event for an agent session.
+///
+/// Events are written by the WebSocket handler as messages flow through and
+/// are replayed on demand via the REST API.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationEvent {
+    /// Unique event identifier (UUID v4).
+    pub id: Uuid,
+    /// The agent that produced this event.
+    pub agent_id: Uuid,
+    /// Discriminator for the event's structure and meaning.
+    pub event_type: ConversationEventType,
+    /// Monotonically increasing counter, reset each time the context is cleared.
+    pub session_number: i64,
+    /// Free-text payload (output text, prompt text, thinking text, etc.).
+    pub content: Option<String>,
+    /// Structured JSON payload (tool input/output, usage stats, etc.).
+    pub metadata: Option<serde_json::Value>,
+    /// When the event was recorded (UTC).
+    pub created_at: DateTime<Utc>,
+}
+
+impl ConversationEvent {
+    /// Create a new event with a generated UUID and the current timestamp.
+    #[allow(dead_code)]
+    pub fn new(
+        agent_id: Uuid,
+        event_type: ConversationEventType,
+        session_number: i64,
+        content: Option<String>,
+        metadata: Option<serde_json::Value>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            agent_id,
+            event_type,
+            session_number,
+            content,
+            metadata,
+            created_at: Utc::now(),
+        }
+    }
+}
+
+/// Options for querying conversation events.
+///
+/// All fields are optional — omitting a field removes that filter.
+/// Results are always ordered by `created_at ASC`.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConversationQuery {
+    /// Restrict to events of these types (empty = all types).
+    pub event_types: Option<Vec<ConversationEventType>>,
+    /// Only return events created on or after this timestamp.
+    pub since: Option<DateTime<Utc>>,
+    /// Only return events created before this timestamp.
+    pub until: Option<DateTime<Utc>>,
+    /// Restrict to events from a specific session number.
+    ///
+    /// When set, the DB filter is pushed down so that `limit` and pagination
+    /// are computed against the session-filtered result set rather than the
+    /// full history.
+    pub session_number: Option<i64>,
+    /// Maximum number of events to return.
+    pub limit: Option<u64>,
+    /// Skip this many events (for offset pagination).
+    pub offset: Option<u64>,
+}
