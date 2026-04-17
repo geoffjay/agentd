@@ -54,16 +54,60 @@ struct PtySession {
 /// No external binary dependencies (unlike [`TmuxBackend`][crate::backend::TmuxBackend]).
 ///
 /// Sessions are stored in-memory; they do not survive process restarts.
+///
+/// Buffer sizing is configurable at construction time via
+/// [`new_with_config`](PtyBackend::new_with_config); the defaults
+/// ([`DEFAULT_CHANNEL_CAPACITY`], [`DEFAULT_HISTORY_BYTES`]) are used by
+/// [`new`](PtyBackend::new) and may be overridden through
+/// `AGENTD_WRAP_CHANNEL_CAPACITY` / `AGENTD_WRAP_HISTORY_BYTES` env vars at
+/// service startup.
 #[derive(Clone)]
 pub struct PtyBackend {
     prefix: String,
     sessions: Arc<RwLock<HashMap<String, PtySession>>>,
+    /// Broadcast channel capacity threaded into every new [`PtyOutputStream`].
+    channel_capacity: usize,
+    /// Ring-buffer byte budget threaded into every new [`PtyOutputStream`].
+    max_history_bytes: usize,
 }
 
 impl PtyBackend {
     /// Create a new `PtyBackend` with the given session name prefix.
+    ///
+    /// Uses [`DEFAULT_CHANNEL_CAPACITY`] and [`DEFAULT_HISTORY_BYTES`] for
+    /// the output ring buffer.  Call [`new_with_config`](Self::new_with_config)
+    /// to supply custom values (e.g. read from env vars at startup).
     pub fn new(prefix: impl Into<String>) -> Self {
-        Self { prefix: prefix.into(), sessions: Arc::new(RwLock::new(HashMap::new())) }
+        Self::new_with_config(prefix, DEFAULT_CHANNEL_CAPACITY, DEFAULT_HISTORY_BYTES)
+    }
+
+    /// Create a new `PtyBackend` with explicit buffer configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - Session name prefix.
+    /// * `channel_capacity` - Broadcast channel capacity
+    ///   (see [`DEFAULT_CHANNEL_CAPACITY`]).  Read from
+    ///   `AGENTD_WRAP_CHANNEL_CAPACITY` at service startup.
+    /// * `max_history_bytes` - Byte budget for the replay ring buffer
+    ///   (see [`DEFAULT_HISTORY_BYTES`]).  Read from
+    ///   `AGENTD_WRAP_HISTORY_BYTES` at service startup.
+    pub fn new_with_config(
+        prefix: impl Into<String>,
+        channel_capacity: usize,
+        max_history_bytes: usize,
+    ) -> Self {
+        assert!(
+            channel_capacity >= 1,
+            "channel_capacity must be ≥ 1 — tokio::sync::broadcast::channel panics on 0 \
+             (got channel_capacity={channel_capacity})"
+        );
+        Self {
+            prefix: prefix.into(),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            channel_capacity,
+            max_history_bytes,
+        }
     }
 }
 
@@ -106,7 +150,7 @@ impl ExecutionBackend for PtyBackend {
         .await
         .context("spawn_blocking panicked")??;
 
-        let stream = PtyOutputStream::new(DEFAULT_CHANNEL_CAPACITY, DEFAULT_HISTORY_BYTES, writer);
+        let stream = PtyOutputStream::new(self.channel_capacity, self.max_history_bytes, writer);
         // Spawn the background reader task (moves a clone of the stream)
         stream.clone().spawn_reader(reader);
 
@@ -286,6 +330,30 @@ mod tests {
     fn pty_backend_new_sets_prefix() {
         let backend = PtyBackend::new("test-prefix");
         assert_eq!(backend.prefix(), "test-prefix");
+    }
+
+    #[test]
+    fn pty_backend_new_uses_default_buffer_config() {
+        let backend = PtyBackend::new("test");
+        assert_eq!(backend.channel_capacity, DEFAULT_CHANNEL_CAPACITY);
+        assert_eq!(backend.max_history_bytes, DEFAULT_HISTORY_BYTES);
+    }
+
+    #[test]
+    fn pty_backend_new_with_config_applies_custom_values() {
+        let backend = PtyBackend::new_with_config("custom", 512, 1024 * 1024);
+        assert_eq!(backend.prefix(), "custom");
+        assert_eq!(backend.channel_capacity, 512);
+        assert_eq!(backend.max_history_bytes, 1024 * 1024);
+    }
+
+    /// `broadcast::channel(0)` panics; verify that `new_with_config` enforces
+    /// the capacity ≥ 1 requirement with a clear message rather than silently
+    /// deferring the panic to the first `create_session` call.
+    #[test]
+    #[should_panic(expected = "channel_capacity must be ≥ 1")]
+    fn pty_backend_new_with_config_zero_capacity_panics() {
+        PtyBackend::new_with_config("t", 0, 1024);
     }
 
     #[test]

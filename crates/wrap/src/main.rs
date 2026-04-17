@@ -22,9 +22,11 @@
 //!
 //! # Environment Variables
 //!
-//! - `RUST_LOG`        — Logging level (default: `info`)
-//! - `AGENTD_PORT`     — Listen port (default: `17005`)
-//! - `AGENTD_BACKEND`  — Execution backend: `tmux` | `docker` | `pty` | `subprocess` (default: `tmux`)
+//! - `RUST_LOG`                     — Logging level (default: `info`)
+//! - `AGENTD_PORT`                  — Listen port (default: `17005`)
+//! - `AGENTD_BACKEND`               — Execution backend: `tmux` | `docker` | `pty` | `subprocess` (default: `tmux`)
+//! - `AGENTD_WRAP_HISTORY_BYTES`    — PTY output ring-buffer size in bytes (default: `524288` / 512 KiB); agentd-wrap PTY backend only
+//! - `AGENTD_WRAP_CHANNEL_CAPACITY` — PTY broadcast channel capacity in chunks (default: `256`); must be ≥ 1; agentd-wrap PTY backend only
 
 // Import from the library target — avoids re-declaring modules in the binary and
 // triggering dead-code warnings on items that are only used by the library.
@@ -33,6 +35,7 @@ use wrap::{
     backend::{ExecutionBackend, TmuxBackend},
     docker::{DockerBackend, DEFAULT_IMAGE},
     pty::PtyBackend,
+    pty_stream::{DEFAULT_CHANNEL_CAPACITY, DEFAULT_HISTORY_BYTES},
     subprocess::SubprocessBackend,
     types::BackendType,
 };
@@ -40,7 +43,7 @@ use wrap::{
 use axum::{extract::State, response::IntoResponse, routing::get};
 use metrics_exporter_prometheus::PrometheusHandle;
 use std::{env, sync::Arc};
-use tracing::info;
+use tracing::{info, warn};
 
 fn init_metrics() -> PrometheusHandle {
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
@@ -67,7 +70,51 @@ async fn main() -> anyhow::Result<()> {
     let exec_backend: Arc<dyn ExecutionBackend> = match &backend_type {
         BackendType::Pty => {
             info!("Initialising PTY backend");
-            Arc::new(PtyBackend::new("agentd"))
+            let history_bytes = env::var("AGENTD_WRAP_HISTORY_BYTES")
+                .ok()
+                .and_then(|raw| {
+                    raw.parse::<usize>()
+                        .map_err(|_| {
+                            warn!(
+                                "AGENTD_WRAP_HISTORY_BYTES={:?} is not a valid usize; \
+                             using default {} bytes",
+                                raw, DEFAULT_HISTORY_BYTES
+                            );
+                        })
+                        .ok()
+                })
+                .unwrap_or(DEFAULT_HISTORY_BYTES);
+            let channel_capacity = {
+                let parsed = env::var("AGENTD_WRAP_CHANNEL_CAPACITY")
+                    .ok()
+                    .and_then(|raw| {
+                        raw.parse::<usize>()
+                            .map_err(|_| {
+                                warn!(
+                                    "AGENTD_WRAP_CHANNEL_CAPACITY={:?} is not a valid usize; \
+                                 using default {}",
+                                    raw, DEFAULT_CHANNEL_CAPACITY
+                                );
+                            })
+                            .ok()
+                    })
+                    .unwrap_or(DEFAULT_CHANNEL_CAPACITY);
+                // broadcast::channel(0) panics — clamp to at least 1.
+                if parsed == 0 {
+                    warn!(
+                        "AGENTD_WRAP_CHANNEL_CAPACITY=0 is invalid \
+                         (tokio broadcast::channel requires capacity ≥ 1); clamped to 1"
+                    );
+                    1
+                } else {
+                    parsed
+                }
+            };
+            info!(
+                "PTY ring-buffer: history_bytes={}, channel_capacity={}",
+                history_bytes, channel_capacity
+            );
+            Arc::new(PtyBackend::new_with_config("agentd", channel_capacity, history_bytes))
         }
         BackendType::Docker => {
             info!("Initialising Docker backend");
