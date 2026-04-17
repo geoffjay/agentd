@@ -64,6 +64,10 @@ pub struct Model {
     /// Optional project UUID (stored as TEXT) grouping this agent with related
     /// workflows and rooms.  NULL when the agent is not assigned to a project.
     pub project_id: Option<String>,
+    /// Whether this agent is a built-in system agent. Stored as INTEGER (0/1).
+    /// System agents are created programmatically and managed by the orchestrator;
+    /// user-created agents always have this set to 0.
+    pub built_in: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

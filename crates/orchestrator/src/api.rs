@@ -64,6 +64,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/health", get(health_check))
         .route("/info", get(backend_info))
         .route("/agents", get(list_agents).post(create_agent))
+        .route("/system-agents", get(list_system_agents))
         .route("/agents/{id}", get(get_agent).delete(terminate_agent))
         .route("/agents/{id}/message", post(send_message))
         .route("/agents/{id}/restart", post(restart_agent))
@@ -115,6 +116,12 @@ pub struct ListQuery {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub project_id: Option<Uuid>,
+    /// When `true`, include built-in system agents in the response.
+    ///
+    /// By default `GET /agents` excludes system agents -- they are listed
+    /// separately via `GET /system-agents`.  Pass `?include_builtin=true`
+    /// to include them (e.g., for admin or debug tooling).
+    pub include_builtin: Option<bool>,
 }
 
 async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
@@ -154,8 +161,16 @@ async fn list_agents(
     let limit = clamp_limit(query.limit);
     let offset = query.offset.unwrap_or(0);
 
+    // By default exclude built-in system agents from the user-facing list.
+    // Pass ?include_builtin=true to see all agents regardless of the flag.
+    let built_in_filter = if query.include_builtin.unwrap_or(false) {
+        None // no filter -- return everything
+    } else {
+        Some(false) // exclude system agents
+    };
+
     let (agents, total) =
-        state.manager.list_agents_paginated(status_filter, query.project_id, limit, offset).await?;
+        state.manager.list_agents_paginated(status_filter, built_in_filter, query.project_id, limit, offset).await?;
     let mut items: Vec<AgentResponse> = Vec::with_capacity(agents.len());
     for agent in agents {
         let id = agent.id;
@@ -165,6 +180,23 @@ async fn list_agents(
     }
 
     Ok(Json(PaginatedResponse { items, total, limit, offset }))
+}
+
+/// `GET /system-agents` — list all built-in system agents.
+///
+/// Returns only agents with `built_in = true`. These agents are created
+/// programmatically by the orchestrator at startup and are always present
+/// while the service is running.
+async fn list_system_agents(State(state): State<ApiState>) -> Result<impl IntoResponse, ApiError> {
+    let agents = state.manager.list_system_agents().await?;
+    let mut items: Vec<AgentResponse> = Vec::with_capacity(agents.len());
+    for agent in agents {
+        let id = agent.id;
+        let mut response = AgentResponse::from(agent);
+        response.activity = state.registry.get_activity_state(&id).await;
+        items.push(response);
+    }
+    Ok(Json(items))
 }
 
 async fn create_agent(
@@ -212,7 +244,7 @@ async fn create_agent(
         rooms: req.rooms,
     };
 
-    let agent = state.manager.spawn_agent(req.name, config).await?;
+    let agent = state.manager.spawn_agent(req.name, config, false).await?;
 
     metrics::counter!("agents_created_total").increment(1);
 
@@ -234,6 +266,12 @@ async fn terminate_agent(
     State(state): State<ApiState>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Guard: built-in system agents cannot be deleted via the API.
+    let existing = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+    if existing.built_in {
+        return Err(ApiError::Forbidden("built-in system agents cannot be deleted".to_string()));
+    }
+
     let agent = state.manager.terminate_agent(&id).await?;
 
     metrics::counter!("agents_terminated_total").increment(1);
@@ -1157,7 +1195,7 @@ async fn list_project_agents(
     let (agents, total) = state
         .manager
         .agent_storage()
-        .list_paginated_filtered(None, Some(id), limit, offset)
+        .list_paginated(None, None, Some(id), limit, offset)
         .await
         .map_err(ApiError::Internal)?;
 

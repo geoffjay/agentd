@@ -1420,7 +1420,7 @@ tool_policy:
         assert_eq!(tmpl.prompt.unwrap(), "Fix all the bugs");
         assert_eq!(
             tmpl.tool_policy,
-            ToolPolicy::AllowList { tools: vec!["Read".into(), "Grep".into(), "Edit".into()] }
+            ToolPolicy::AllowList { tools: vec!["Read".into(), "Grep".into(), "Edit".into()], sandbox_bypass: vec![] }
         );
     }
 
@@ -1435,7 +1435,7 @@ name: minimal
         assert_eq!(tmpl.shell, "zsh");
         assert!(!tmpl.interactive);
         assert!(!tmpl.worktree);
-        assert_eq!(tmpl.tool_policy, ToolPolicy::AllowAll);
+        assert_eq!(tmpl.tool_policy, ToolPolicy::AllowAll { sandbox_bypass: vec![] });
         assert_eq!(tmpl.model, None);
     }
 
@@ -1496,7 +1496,7 @@ tool_policy:
 prompt_template: "Review: {{title}}"
 "#;
         let tmpl: WorkflowTemplate = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(tmpl.tool_policy, Some(ToolPolicy::DenyAll));
+        assert_eq!(tmpl.tool_policy, Some(ToolPolicy::DenyAll { sandbox_bypass: vec![] }));
     }
 
     #[test]
@@ -1865,6 +1865,6 @@ tool_policy:
         assert!(tmpl.worktree);
         assert_eq!(tmpl.env.get("API_KEY"), Some(&"abc123".to_string()));
         assert_eq!(tmpl.env.get("BASE_URL"), Some(&"https://api.example.com".to_string()));
-        assert_eq!(tmpl.tool_policy, ToolPolicy::AllowAll);
+        assert_eq!(tmpl.tool_policy, ToolPolicy::AllowAll { sandbox_bypass: vec![] });
     }
 }

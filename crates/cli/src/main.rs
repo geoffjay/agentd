@@ -84,7 +84,8 @@ use colored::*;
 use commands::index::IndexClient;
 use commands::{
     AskCommand, AuthCommand, CommunicateCommand, IndexCommand, MemoryCommand, NotifyCommand,
-    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, WrapCommand,
+    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, SystemAgentsCommand,
+    WrapCommand,
 };
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
@@ -360,6 +361,26 @@ enum Commands {
         #[command(subcommand)]
         command: ProjectCommand,
     },
+
+    /// Interact with built-in system agents.
+    ///
+    /// System agents are spawned automatically by the orchestrator at startup
+    /// and are always present while the service is running.  They are distinct
+    /// from user-created agents and cannot be deleted via the API.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent system-agents list
+    /// agent system-agents get agentd-system
+    /// agent system-agents message agentd-system "What services are running?"
+    /// agent system-agents status
+    /// ```
+    #[command(name = "system-agents")]
+    SystemAgents {
+        #[command(subcommand)]
+        command: Box<SystemAgentsCommand>,
+    },
 }
 
 /// Main entry point for the agent CLI.
@@ -492,6 +513,12 @@ async fn main() -> Result<()> {
             command.execute(cli.json).await?;
         }
         Commands::Project { command } => {
+            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+            let client = OrchestratorClient::new(url);
+            command.execute(&client, cli.json).await?;
+        }
+        Commands::SystemAgents { command } => {
             let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:7006".to_string());
             let client = OrchestratorClient::new(url);
