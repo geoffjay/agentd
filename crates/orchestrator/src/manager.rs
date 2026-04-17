@@ -44,8 +44,18 @@ impl AgentManager {
     /// started in long-running SDK mode and the initial prompt is sent via the
     /// WebSocket once the agent connects. This keeps the agent alive for
     /// follow-up messages.
-    pub async fn spawn_agent(&self, name: String, config: AgentConfig) -> anyhow::Result<Agent> {
+    /// Spawn a new agent.
+    ///
+    /// `built_in` — when `true`, marks the agent as a programmatically-managed
+    /// system agent that cannot be deleted via the user-facing API.
+    pub async fn spawn_agent(
+        &self,
+        name: String,
+        config: AgentConfig,
+        built_in: bool,
+    ) -> anyhow::Result<Agent> {
         let mut agent = Agent::new(name, config);
+        agent.built_in = built_in;
         let session_name = format!("{}-{}", self.backend.prefix(), agent.id);
 
         // Persist agent record.
@@ -204,6 +214,16 @@ impl AgentManager {
         let mut agent =
             self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
 
+        // System agents are managed by the orchestrator and must not be
+        // deleted via the user-facing API.
+        if agent.built_in {
+            anyhow::bail!(
+                "Cannot terminate built-in system agent '{}'. \
+                 System agents are managed by the orchestrator.",
+                agent.name
+            );
+        }
+
         if let Some(ref session) = agent.session_id {
             if let Err(e) = self.backend.kill_session(session).await {
                 warn!(agent_id = %id, %e, "Failed to kill session");
@@ -220,6 +240,67 @@ impl AgentManager {
         info!(agent_id = %id, "Agent terminated and record deleted");
 
         Ok(agent)
+    }
+
+    /// Bootstrap built-in system agents at orchestrator startup.
+    ///
+    /// Called once after [`reconcile`] so that reconciliation has already
+    /// handled any surviving user agents before we insert/restart system agents.
+    ///
+    /// Behaviour:
+    /// 1. Query storage for existing built-in agents.
+    /// 2. If the system agent exists and is `Running` → skip (reconcile handled it).
+    /// 3. If it exists but is `Stopped` or `Failed` → restart it.
+    /// 4. If it doesn't exist → create it via `spawn_agent()` with `built_in: true`.
+    pub async fn bootstrap_system_agents(&self) -> anyhow::Result<()> {
+        use crate::system_agents::build_system_agent_config;
+        use crate::system_agents::SYSTEM_AGENT_NAME;
+
+        let existing = self.storage.list_system_agents().await?;
+        let system_agent = existing.into_iter().find(|a| a.name == SYSTEM_AGENT_NAME);
+
+        match system_agent {
+            Some(agent) if agent.status == AgentStatus::Running => {
+                // Reconciliation already handled it — nothing to do.
+                info!(
+                    agent_id = %agent.id,
+                    "System agent '{}' is already running, skipping bootstrap",
+                    SYSTEM_AGENT_NAME
+                );
+            }
+            Some(agent) => {
+                // Exists but stopped/failed — restart it.
+                info!(
+                    agent_id = %agent.id,
+                    status = %agent.status,
+                    "Restarting system agent '{}'",
+                    SYSTEM_AGENT_NAME
+                );
+                if let Err(e) = self.restart_agent(&agent).await {
+                    error!(
+                        agent_id = %agent.id,
+                        %e,
+                        "Failed to restart system agent '{}'",
+                        SYSTEM_AGENT_NAME
+                    );
+                }
+            }
+            None => {
+                // First run — create the system agent.
+                info!("Bootstrapping system agent '{}'", SYSTEM_AGENT_NAME);
+                let config = build_system_agent_config();
+                match self.spawn_agent(SYSTEM_AGENT_NAME.to_string(), config, true).await {
+                    Ok(agent) => {
+                        info!(agent_id = %agent.id, "System agent '{}' spawned", SYSTEM_AGENT_NAME)
+                    }
+                    Err(e) => {
+                        error!(%e, "Failed to spawn system agent '{}'", SYSTEM_AGENT_NAME)
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Reconcile DB state with actual backend sessions and WebSocket connections on startup.
@@ -453,13 +534,27 @@ impl AgentManager {
     }
 
     /// List agents with pagination.
+    ///
+    /// `built_in_filter`:
+    /// - `Some(false)` — exclude system agents (use for `GET /agents`)
+    /// - `Some(true)` — only system agents (use for `GET /system-agents`)
+    /// - `None` — all agents regardless of flag (use for debug/admin views)
     pub async fn list_agents_paginated(
         &self,
         status: Option<AgentStatus>,
+        built_in_filter: Option<bool>,
         limit: usize,
         offset: usize,
     ) -> anyhow::Result<(Vec<Agent>, usize)> {
-        self.storage.list_paginated(status, limit, offset).await
+        self.storage.list_paginated(status, built_in_filter, limit, offset).await
+    }
+
+    /// List all built-in system agents (newest first).
+    ///
+    /// Returns agents created programmatically by the orchestrator at startup.
+    /// Used by `GET /system-agents`.
+    pub async fn list_system_agents(&self) -> anyhow::Result<Vec<Agent>> {
+        self.storage.list_system_agents().await
     }
 
     /// Update an agent record in storage.

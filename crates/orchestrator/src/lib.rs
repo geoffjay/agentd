@@ -30,6 +30,7 @@ pub mod message_bridge;
 pub(crate) mod migration;
 pub mod scheduler;
 pub mod storage;
+pub mod system_agents;
 pub mod types;
 pub mod websocket;
 

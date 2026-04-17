@@ -105,6 +105,7 @@ impl AgentStorage {
             ),
             launch_command: Set(agent.launch_command.clone()),
             pid: Set(agent.pid.map(|p| p as i64)),
+            built_in: Set(if agent.built_in { 1 } else { 0 }),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -197,6 +198,11 @@ impl AgentStorage {
     }
 
     /// Lists all agents, optionally filtered by status (newest first).
+    ///
+    /// This method returns **all** agents regardless of the `built_in` flag.
+    /// It is used internally by reconciliation and debug endpoints that need
+    /// the complete picture. Use [`list_paginated`] with a `built_in_filter`
+    /// for user-facing listing where system agents should be excluded.
     pub async fn list(&self, status_filter: Option<AgentStatus>) -> Result<Vec<Agent>> {
         let mut query =
             agent_entity::Entity::find().order_by(agent_entity::Column::CreatedAt, Order::Desc);
@@ -206,6 +212,19 @@ impl AgentStorage {
         }
 
         let models: Vec<agent_entity::Model> = query.all(&self.db).await?;
+        models.into_iter().map(model_to_agent).collect()
+    }
+
+    /// Lists only system agents (`built_in = true`), newest first.
+    ///
+    /// Used by the `GET /system-agents` endpoint and the system-agent bootstrap
+    /// to check whether the built-in agent already exists.
+    pub async fn list_system_agents(&self) -> Result<Vec<Agent>> {
+        let models: Vec<agent_entity::Model> = agent_entity::Entity::find()
+            .filter(agent_entity::Column::BuiltIn.eq(1i32))
+            .order_by(agent_entity::Column::CreatedAt, Order::Desc)
+            .all(&self.db)
+            .await?;
         models.into_iter().map(model_to_agent).collect()
     }
 
@@ -487,16 +506,29 @@ impl AgentStorage {
     }
 
     /// Lists agents with pagination; returns `(items, total_count)`.
+    /// Lists agents with pagination, optional status filter, and optional `built_in` filter.
+    ///
+    /// * `status_filter` — when `Some`, restricts to agents with that status.
+    /// * `built_in_filter` — when `Some(false)`, excludes system agents (default for
+    ///   `GET /agents`); when `Some(true)`, returns only system agents; when `None`,
+    ///   returns all agents regardless of the flag.
     pub async fn list_paginated(
         &self,
         status_filter: Option<AgentStatus>,
+        built_in_filter: Option<bool>,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<Agent>, usize)> {
-        let condition = match &status_filter {
-            Some(s) => Condition::all().add(agent_entity::Column::Status.eq(s.to_string())),
-            None => Condition::all(),
-        };
+        let mut condition = Condition::all();
+
+        if let Some(s) = &status_filter {
+            condition = condition.add(agent_entity::Column::Status.eq(s.to_string()));
+        }
+
+        if let Some(built_in) = built_in_filter {
+            condition =
+                condition.add(agent_entity::Column::BuiltIn.eq(if built_in { 1i32 } else { 0i32 }));
+        }
 
         let total =
             agent_entity::Entity::find().filter(condition.clone()).count(&self.db).await? as usize;
@@ -560,6 +592,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
         backend_type: model.backend_type,
         launch_command: model.launch_command,
         pid: model.pid.and_then(|p| u32::try_from(p).ok()),
+        built_in: model.built_in != 0,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
     })
