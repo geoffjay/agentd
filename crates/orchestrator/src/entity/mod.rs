@@ -1,6 +1,7 @@
 //! SeaORM entities for the orchestrator crate.
 
 pub mod agent;
+pub mod conversation_event;
 pub mod dispatch;
 pub mod project;
 pub mod task_queue;

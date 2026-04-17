@@ -401,22 +401,15 @@ impl OrchestratorClient {
     }
 
     /// List agents associated with a project.
-    pub async fn list_project_agents(
-        &self,
-        id: &Uuid,
-    ) -> Result<PaginatedResponse<AgentResponse>> {
+    pub async fn list_project_agents(&self, id: &Uuid) -> Result<PaginatedResponse<AgentResponse>> {
         self.get(&format!("/projects/{id}/agents")).await
     }
 
     /// Associate an agent with a project.
     pub async fn associate_project_agent(&self, project_id: &Uuid, agent_id: &Uuid) -> Result<()> {
         let url = format!("{}/projects/{project_id}/agents/{agent_id}", self.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .send()
-            .await
-            .context(format!("Failed to POST {url}"))?;
+        let response =
+            self.client.post(&url).send().await.context(format!("Failed to POST {url}"))?;
         if response.status().is_success() {
             Ok(())
         } else {
@@ -427,11 +420,7 @@ impl OrchestratorClient {
     }
 
     /// Remove an agent from a project.
-    pub async fn dissociate_project_agent(
-        &self,
-        project_id: &Uuid,
-        agent_id: &Uuid,
-    ) -> Result<()> {
+    pub async fn dissociate_project_agent(&self, project_id: &Uuid, agent_id: &Uuid) -> Result<()> {
         self.delete(&format!("/projects/{project_id}/agents/{agent_id}")).await
     }
 
@@ -450,12 +439,8 @@ impl OrchestratorClient {
         workflow_id: &Uuid,
     ) -> Result<()> {
         let url = format!("{}/projects/{project_id}/workflows/{workflow_id}", self.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .send()
-            .await
-            .context(format!("Failed to POST {url}"))?;
+        let response =
+            self.client.post(&url).send().await.context(format!("Failed to POST {url}"))?;
         if response.status().is_success() {
             Ok(())
         } else {
