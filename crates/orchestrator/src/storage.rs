@@ -797,6 +797,60 @@ impl AgentStorage {
             last_event_at,
         })
     }
+
+    // -----------------------------------------------------------------------
+    // Retention / pruning
+    // -----------------------------------------------------------------------
+
+    /// Deletes conversation events whose `created_at` is older than
+    /// `retention_days` days.  Returns the number of rows deleted.
+    pub async fn prune_old_conversation_events(&self, retention_days: u64) -> Result<u64> {
+        use chrono::Duration;
+        let cutoff = (Utc::now() - Duration::days(retention_days as i64)).to_rfc3339();
+        let result = conv_entity::Entity::delete_many()
+            .filter(conv_entity::Column::CreatedAt.lt(cutoff))
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// For the given agent, deletes the oldest events that exceed `max_events`.
+    ///
+    /// If the current count is at or below `max_events`, nothing is deleted and
+    /// `0` is returned.  Otherwise the `(count - max_events)` oldest rows are
+    /// removed.
+    pub async fn prune_excess_conversation_events(
+        &self,
+        agent_id: Uuid,
+        max_events: u64,
+    ) -> Result<u64> {
+        let count = self.count_conversation_events(agent_id).await?;
+        if count <= max_events {
+            return Ok(0);
+        }
+        let to_delete = count - max_events;
+
+        // Fetch the IDs of the oldest `to_delete` events for this agent.
+        let oldest: Vec<String> = conv_entity::Entity::find()
+            .filter(conv_entity::Column::AgentId.eq(agent_id.to_string()))
+            .order_by(conv_entity::Column::CreatedAt, Order::Asc)
+            .limit(to_delete)
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+
+        if oldest.is_empty() {
+            return Ok(0);
+        }
+
+        let result = conv_entity::Entity::delete_many()
+            .filter(conv_entity::Column::Id.is_in(oldest))
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1901,12 +1955,12 @@ mod tests {
             .await
             .unwrap();
 
-        // `since` — only events on or after boundary.
+        // `since` -- only events on or after boundary.
         let opts = ConversationQuery { since: Some(boundary), ..Default::default() };
         let events = storage.list_conversation_events(agent_id, &opts).await.unwrap();
         assert_eq!(events.len(), 2, "since filter: expected 2 events after boundary");
 
-        // `until` — only events strictly before boundary.
+        // `until` -- only events strictly before boundary.
         let opts = ConversationQuery { until: Some(boundary), ..Default::default() };
         let events = storage.list_conversation_events(agent_id, &opts).await.unwrap();
         assert_eq!(events.len(), 1, "until filter: expected 1 event before boundary");
@@ -2038,5 +2092,110 @@ mod tests {
         assert!(summary.first_event_at.is_some());
         assert!(summary.last_event_at.is_some());
         assert!(summary.first_event_at <= summary.last_event_at);
+    }
+
+    // -----------------------------------------------------------------------
+    // Pruning tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_prune_old_events_removes_old_rows() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        // Insert an event with a timestamp 40 days in the past.
+        let old_event = ConversationEvent {
+            id: Uuid::new_v4(),
+            agent_id,
+            event_type: ConversationEventType::Output,
+            session_number: 0,
+            content: Some("old".to_string()),
+            metadata: None,
+            created_at: Utc::now() - chrono::Duration::days(40),
+        };
+        storage.insert_conversation_event(&old_event).await.unwrap();
+
+        // Insert a recent event.
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+            .await
+            .unwrap();
+
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 2);
+
+        // Prune events older than 30 days -- only the old one should be removed.
+        let pruned = storage.prune_old_conversation_events(30).await.unwrap();
+        assert_eq!(pruned, 1);
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_prune_old_events_no_op_when_nothing_old() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        for _ in 0..3 {
+            storage
+                .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+                .await
+                .unwrap();
+        }
+
+        let pruned = storage.prune_old_conversation_events(30).await.unwrap();
+        assert_eq!(pruned, 0);
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_prune_excess_removes_oldest_first() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        // Insert 5 events with *explicit* timestamps spaced 1 second apart so
+        // that `ORDER BY created_at ASC` is deterministic even on fast machines
+        // where multiple `Utc::now()` calls may return the same millisecond.
+        let base = Utc::now() - chrono::Duration::seconds(10);
+        for i in 0..5i64 {
+            let mut ev = ConversationEvent::new(
+                agent_id,
+                ConversationEventType::Output,
+                i,
+                Some(format!("line {i}")),
+                None,
+            );
+            ev.created_at = base + chrono::Duration::seconds(i);
+            storage.insert_conversation_event(&ev).await.unwrap();
+        }
+
+        // Cap at 3 -- 2 oldest events (session_numbers 0 and 1) should be deleted.
+        let pruned = storage.prune_excess_conversation_events(agent_id, 3).await.unwrap();
+        assert_eq!(pruned, 2);
+
+        let remaining = storage
+            .list_conversation_events(agent_id, &ConversationQuery::default())
+            .await
+            .unwrap();
+        assert_eq!(remaining.len(), 3);
+        // The 3 newest events (session_numbers 2, 3, 4) should remain.
+        let sessions: Vec<i64> = remaining.iter().map(|e| e.session_number).collect();
+        assert!(sessions.iter().all(|&s| s >= 2), "only recent events should remain: {sessions:?}");
+    }
+
+    #[tokio::test]
+    async fn test_prune_excess_no_op_under_cap() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        for _ in 0..3 {
+            storage
+                .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+                .await
+                .unwrap();
+        }
+
+        // Cap is 5 -- nothing should be pruned.
+        let pruned = storage.prune_excess_conversation_events(agent_id, 5).await.unwrap();
+        assert_eq!(pruned, 0);
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 3);
     }
 }

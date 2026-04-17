@@ -1,6 +1,8 @@
 use crate::scheduler::events::SystemEvent;
 use crate::storage::{AgentStorage, ProjectStorage};
-use crate::types::{Agent, AgentConfig, AgentStatus, AgentUsageStats, ClearContextResponse};
+use crate::types::{
+    Agent, AgentConfig, AgentStatus, AgentUsageStats, ClearContextResponse, RetentionConfig,
+};
 use crate::websocket::ConnectionRegistry;
 use chrono::Utc;
 use std::sync::Arc;
@@ -21,6 +23,8 @@ pub struct AgentManager {
     registry: ConnectionRegistry,
     /// The base URL agents will use to connect back via WebSocket.
     ws_base_url: String,
+    /// Conversation event retention policy applied at terminate and on schedule.
+    retention_config: Arc<RetentionConfig>,
 }
 
 impl AgentManager {
@@ -30,7 +34,25 @@ impl AgentManager {
         registry: ConnectionRegistry,
         ws_base_url: String,
     ) -> Self {
-        Self { storage, backend, registry, ws_base_url }
+        Self::with_retention(
+            storage,
+            backend,
+            registry,
+            ws_base_url,
+            Arc::new(RetentionConfig::from_env()),
+        )
+    }
+
+    /// Construct with an explicit [`RetentionConfig`] (useful for testing and
+    /// for wiring up the config read from env vars in `main`).
+    pub fn with_retention(
+        storage: Arc<AgentStorage>,
+        backend: Arc<dyn ExecutionBackend>,
+        registry: ConnectionRegistry,
+        ws_base_url: String,
+        retention_config: Arc<RetentionConfig>,
+    ) -> Self {
+        Self { storage, backend, registry, ws_base_url, retention_config }
     }
 
     pub fn registry(&self) -> &ConnectionRegistry {
@@ -237,6 +259,18 @@ impl AgentManager {
         if let Some(ref session) = agent.session_id {
             if let Err(e) = self.backend.kill_session(session).await {
                 warn!(agent_id = %id, %e, "Failed to kill session");
+            }
+        }
+
+        // Optionally delete all conversation events before removing the record.
+        if self.retention_config.cleanup_on_terminate {
+            match self.storage.delete_conversation_events_for_agent(*id).await {
+                Ok(n) => {
+                    info!(agent_id = %id, deleted = n, "Conversation events deleted on terminate")
+                }
+                Err(e) => {
+                    warn!(agent_id = %id, %e, "Failed to clean up conversation events on terminate")
+                }
             }
         }
 
