@@ -100,9 +100,29 @@ impl OrchestratorClient {
         &self,
         status: Option<&str>,
     ) -> Result<PaginatedResponse<AgentResponse>> {
-        let path = match status {
-            Some(s) => format!("/agents?status={}", s),
-            None => "/agents".to_string(),
+        self.list_agents_filtered(status, false).await
+    }
+
+    /// List agents with optional status filter and built-in inclusion.
+    ///
+    /// When `include_builtin` is `true`, passes `?include_builtin=true` so that
+    /// system agents are included alongside user agents.
+    pub async fn list_agents_filtered(
+        &self,
+        status: Option<&str>,
+        include_builtin: bool,
+    ) -> Result<PaginatedResponse<AgentResponse>> {
+        let mut params: Vec<String> = Vec::new();
+        if let Some(s) = status {
+            params.push(format!("status={}", s));
+        }
+        if include_builtin {
+            params.push("include_builtin=true".to_string());
+        }
+        let path = if params.is_empty() {
+            "/agents".to_string()
+        } else {
+            format!("/agents?{}", params.join("&"))
         };
         self.get(&path).await
     }

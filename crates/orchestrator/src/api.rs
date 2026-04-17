@@ -172,9 +172,7 @@ async fn list_agents(
 /// Returns only agents with `built_in = true`. These agents are created
 /// programmatically by the orchestrator at startup and are always present
 /// while the service is running.
-async fn list_system_agents(
-    State(state): State<ApiState>,
-) -> Result<impl IntoResponse, ApiError> {
+async fn list_system_agents(State(state): State<ApiState>) -> Result<impl IntoResponse, ApiError> {
     let agents = state.manager.list_system_agents().await?;
     let mut items: Vec<AgentResponse> = Vec::with_capacity(agents.len());
     for agent in agents {
@@ -231,7 +229,7 @@ async fn create_agent(
         rooms: req.rooms,
     };
 
-    let agent = state.manager.spawn_agent(req.name, config).await?;
+    let agent = state.manager.spawn_agent(req.name, config, false).await?;
 
     metrics::counter!("agents_created_total").increment(1);
 
@@ -253,6 +251,12 @@ async fn terminate_agent(
     State(state): State<ApiState>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Guard: built-in system agents cannot be deleted via the API.
+    let existing = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+    if existing.built_in {
+        return Err(ApiError::Forbidden("built-in system agents cannot be deleted".to_string()));
+    }
+
     let agent = state.manager.terminate_agent(&id).await?;
 
     metrics::counter!("agents_terminated_total").increment(1);

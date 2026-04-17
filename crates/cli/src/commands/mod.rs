@@ -36,6 +36,7 @@ pub mod memory;
 pub mod notify;
 pub mod orchestrator;
 pub mod prompt;
+pub mod system_agents;
 pub mod wrap;
 
 pub use ask::AskCommand;
@@ -45,4 +46,5 @@ pub use memory::MemoryCommand;
 pub use notify::NotifyCommand;
 pub use orchestrator::OrchestratorCommand;
 pub use prompt::PromptCommand;
+pub use system_agents::SystemAgentsCommand;
 pub use wrap::WrapCommand;

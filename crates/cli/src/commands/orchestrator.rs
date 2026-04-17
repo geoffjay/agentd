@@ -89,12 +89,22 @@ pub enum TriggerType {
 pub enum OrchestratorCommand {
     /// List all managed agents.
     ///
-    /// Returns all agents tracked by the orchestrator, optionally filtered
-    /// by status (pending, running, stopped, failed).
+    /// Returns user-created agents tracked by the orchestrator, optionally
+    /// filtered by status (pending, running, stopped, failed).
+    ///
+    /// Built-in system agents are excluded by default — use `agent system-agents list`
+    /// for a dedicated system-agent view, or pass `--include-builtin` to see all agents.
     ListAgents {
         /// Filter by agent status (pending, running, stopped, failed)
         #[arg(long)]
         status: Option<String>,
+        /// Include built-in system agents in the output.
+        ///
+        /// By default system agents are hidden from this list and visible only
+        /// via `agent system-agents list`. Pass this flag to see all agents
+        /// in a single table (useful for admin and debugging).
+        #[arg(long)]
+        include_builtin: bool,
     },
 
     /// Create a new agent.
@@ -868,8 +878,8 @@ impl OrchestratorCommand {
     /// * `json` - If true, output raw JSON instead of formatted text
     pub async fn execute(&self, client: &OrchestratorClient, json: bool) -> Result<()> {
         match self {
-            OrchestratorCommand::ListAgents { status } => {
-                list_agents(client, status.as_deref(), json).await
+            OrchestratorCommand::ListAgents { status, include_builtin } => {
+                list_agents(client, status.as_deref(), *include_builtin, json).await
             }
             OrchestratorCommand::CreateAgent {
                 name,
@@ -1062,8 +1072,16 @@ impl OrchestratorCommand {
 
 // -- Agent operations --
 
-async fn list_agents(client: &OrchestratorClient, status: Option<&str>, json: bool) -> Result<()> {
-    let response = client.list_agents(status).await.context("Failed to list agents")?;
+async fn list_agents(
+    client: &OrchestratorClient,
+    status: Option<&str>,
+    include_builtin: bool,
+    json: bool,
+) -> Result<()> {
+    let response = client
+        .list_agents_filtered(status, include_builtin)
+        .await
+        .context("Failed to list agents")?;
     let agents = response.items;
 
     if json {
