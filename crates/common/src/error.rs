@@ -64,18 +64,41 @@ pub enum ApiError {
     Internal(#[from] anyhow::Error),
 }
 
+impl ApiError {
+    /// Map each error variant to its corresponding HTTP status code.
+    ///
+    /// Useful for middleware, tests, and any caller that needs to inspect
+    /// the status code without constructing a full `axum::response::Response`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use agentd_common::error::ApiError;
+    /// use axum::http::StatusCode;
+    ///
+    /// assert_eq!(ApiError::NotFound.status_code(), StatusCode::NOT_FOUND);
+    /// assert_eq!(
+    ///     ApiError::InvalidInput("bad".into()).status_code(),
+    ///     StatusCode::BAD_REQUEST,
+    /// );
+    /// ```
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            ApiError::NotFound => StatusCode::NOT_FOUND,
+            ApiError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            ApiError::Forbidden(_) => StatusCode::FORBIDDEN,
+            ApiError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+            ApiError::Conflict(_) => StatusCode::CONFLICT,
+            ApiError::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            ApiError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            ApiError::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
-            ApiError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, self.to_string()),
-            ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, self.to_string()),
-            ApiError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            ApiError::Conflict(_) => (StatusCode::CONFLICT, self.to_string()),
-            ApiError::ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
-            ApiError::Internal(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-        };
-
+        let status = self.status_code();
+        let message = self.to_string();
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }
 }
@@ -83,6 +106,45 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_status_code_not_found() {
+        assert_eq!(ApiError::NotFound.status_code(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_status_code_unauthorized() {
+        assert_eq!(ApiError::Unauthorized("sig".into()).status_code(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn test_status_code_forbidden() {
+        assert_eq!(ApiError::Forbidden("no perms".into()).status_code(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn test_status_code_invalid_input() {
+        assert_eq!(ApiError::InvalidInput("bad".into()).status_code(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_status_code_conflict() {
+        assert_eq!(ApiError::Conflict("dup".into()).status_code(), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn test_status_code_service_unavailable() {
+        assert_eq!(
+            ApiError::ServiceUnavailable("down".into()).status_code(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn test_status_code_internal() {
+        let err: ApiError = anyhow::anyhow!("boom").into();
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 
     #[test]
     fn test_not_found_display() {
