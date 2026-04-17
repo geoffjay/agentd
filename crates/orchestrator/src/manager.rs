@@ -660,6 +660,10 @@ impl AgentManager {
             bus.publish(SystemEvent::ContextCleared { agent_id: *id });
         }
 
+        // Persist context_cleared conversation event and advance the in-memory
+        // session counter so subsequent events use the new session number.
+        self.registry.persist_context_cleared(*id, new_session_number as i64).await;
+
         info!(agent_id = %id, new_session_number, "Agent context cleared");
 
         Ok(ClearContextResponse { agent_id: *id, session_usage, new_session_number })

@@ -1,7 +1,11 @@
 use crate::approvals::ApprovalRegistry;
 use crate::manager::AgentManager;
 use crate::scheduler::events::{EventBus, SystemEvent};
-use crate::types::{ActivityState, ApprovalDecision, ResultInfo, ToolPolicy, UsageSnapshot};
+use crate::storage::AgentStorage;
+use crate::types::{
+    ActivityState, ApprovalDecision, ConversationEvent, ConversationEventType, ResultInfo,
+    ToolPolicy, UsageSnapshot,
+};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -46,6 +50,10 @@ pub struct ConnectionRegistry {
     pub approvals: ApprovalRegistry,
     /// Optional event bus for publishing lifecycle events.
     event_bus: Option<Arc<EventBus>>,
+    /// Optional storage backend for persisting conversation events.
+    storage: Option<AgentStorage>,
+    /// Per-agent session counter — incremented on every context clear.
+    session_numbers: Arc<RwLock<HashMap<Uuid, i64>>>,
 }
 
 impl Default for ConnectionRegistry {
@@ -66,6 +74,8 @@ impl ConnectionRegistry {
             connect_notify: Arc::new(tokio::sync::Notify::new()),
             approvals: ApprovalRegistry::new(300), // 5-minute default timeout
             event_bus: None,
+            storage: None,
+            session_numbers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -73,6 +83,66 @@ impl ConnectionRegistry {
     pub fn with_event_bus(mut self, bus: Arc<EventBus>) -> Self {
         self.event_bus = Some(bus);
         self
+    }
+
+    /// Attach a storage backend for fire-and-forget conversation event persistence.
+    pub fn with_storage(mut self, storage: AgentStorage) -> Self {
+        self.storage = Some(storage);
+        self
+    }
+
+    /// Spawn a fire-and-forget task that persists `event` to storage.
+    ///
+    /// If no storage is configured, this is a no-op. Storage errors are logged
+    /// at `warn` level but never propagate to the caller.
+    fn persist_event(&self, event: ConversationEvent) {
+        if let Some(ref storage) = self.storage {
+            let storage = storage.clone();
+            tokio::spawn(async move {
+                if let Err(e) = storage.insert_conversation_event(&event).await {
+                    warn!(
+                        agent_id = %event.agent_id,
+                        event_type = %event.event_type,
+                        error = %e,
+                        "Failed to persist conversation event"
+                    );
+                }
+            });
+        }
+    }
+
+    /// Return the current in-memory session number for an agent (default 0).
+    async fn get_session_number(&self, agent_id: &Uuid) -> i64 {
+        *self.session_numbers.read().await.get(agent_id).unwrap_or(&0)
+    }
+
+    /// Update the session counter and persist a `context_cleared` event.
+    ///
+    /// Called by [`AgentManager::clear_context`] after it has advanced the
+    /// storage session and computed the new session number.
+    pub async fn persist_context_cleared(&self, agent_id: Uuid, new_session_number: i64) {
+        // Keep the in-memory counter in sync with the storage session.
+        self.session_numbers.write().await.insert(agent_id, new_session_number);
+
+        let event = ConversationEvent::new(
+            agent_id,
+            ConversationEventType::ContextCleared,
+            new_session_number,
+            None,
+            None,
+        );
+        self.persist_event(event);
+
+        // Broadcast the context-cleared event on the multiplexed stream so
+        // live UI subscribers are notified immediately.
+        let stream_event = serde_json::json!({
+            "type": "agent:context_cleared",
+            "agent_id": agent_id.to_string(),
+            "agentId": agent_id.to_string(),
+            "session_number": new_session_number,
+            "timestamp": Utc::now().to_rfc3339(),
+        });
+        let _ = self.stream_tx.send(stream_event.to_string());
     }
 
     /// Return a reference to the event bus, if one was configured.
@@ -100,6 +170,39 @@ impl ConnectionRegistry {
         let active = self.connections.read().await.len();
         metrics::gauge!("agents_active").set(active as f64);
         info!(%agent_id, "Agent WebSocket registered");
+
+        // Initialize the in-memory session counter from storage (fire-and-forget).
+        // Defaults to 0 immediately; corrected to MAX(session_number) from
+        // conversation_events once the async lookup completes (typically within
+        // a few ms). Reading from conversation_events directly avoids any
+        // dependency on usage-session semantics.
+        self.session_numbers.write().await.entry(agent_id).or_insert(0);
+        if let Some(ref storage) = self.storage {
+            let storage = storage.clone();
+            let session_numbers = self.session_numbers.clone();
+            tokio::spawn(async move {
+                match storage.get_max_conversation_session_number(agent_id).await {
+                    Ok(session) => {
+                        // Only update if the storage value is greater than what
+                        // is currently in memory. This prevents the async
+                        // initialisation from clobbering a newer value that may
+                        // have been written by `persist_context_cleared` between
+                        // the time `register` was called and now.
+                        let mut guard = session_numbers.write().await;
+                        let current = guard.entry(agent_id).or_insert(0);
+                        if session > *current {
+                            *current = session;
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            %agent_id, error = %e,
+                            "Failed to initialize session number from storage; defaulting to 0"
+                        );
+                    }
+                }
+            });
+        }
     }
 
     /// Wait until a specific agent connects, or until the timeout expires.
@@ -130,6 +233,7 @@ impl ConnectionRegistry {
         self.connections.write().await.remove(agent_id);
         self.policies.write().await.remove(agent_id);
         self.activity_states.write().await.remove(agent_id);
+        self.session_numbers.write().await.remove(agent_id);
         if let Some(bus) = &self.event_bus {
             bus.publish(SystemEvent::AgentDisconnected { agent_id: *agent_id });
         }
@@ -183,8 +287,9 @@ impl ConnectionRegistry {
     /// Uses the Claude Code SDK `stream-json` input format:
     /// `{"type": "user", "message": {"role": "user", "content": "..."}}`
     ///
-    /// Transitions the agent's activity state to `Busy` and broadcasts an
-    /// `agent:activity_changed` event on the stream.
+    /// Transitions the agent's activity state to `Busy`, broadcasts an
+    /// `agent:activity_changed` event, and persists both a `prompt_sent` and
+    /// an `activity_changed` conversation event.
     pub async fn send_user_message(&self, agent_id: &Uuid, content: &str) -> anyhow::Result<()> {
         let connections = self.connections.read().await;
         let conn = connections
@@ -206,14 +311,31 @@ impl ConnectionRegistry {
 
         // Transition to Busy and broadcast activity change.
         self.activity_states.write().await.insert(*agent_id, ActivityState::Busy);
-        let event = serde_json::json!({
+        let activity_event = serde_json::json!({
             "type": "agent:activity_changed",
             "agent_id": agent_id.to_string(),
             "agentId": agent_id.to_string(),
             "activity": "busy",
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
-        let _ = self.stream_tx.send(event.to_string());
+        let _ = self.stream_tx.send(activity_event.to_string());
+
+        // Persist prompt_sent + activity_changed(busy) events.
+        let session = self.get_session_number(agent_id).await;
+        self.persist_event(ConversationEvent::new(
+            *agent_id,
+            ConversationEventType::PromptSent,
+            session,
+            Some(content.to_string()),
+            None,
+        ));
+        self.persist_event(ConversationEvent::new(
+            *agent_id,
+            ConversationEventType::ActivityChanged,
+            session,
+            Some("busy".to_string()),
+            None,
+        ));
 
         Ok(())
     }
@@ -494,21 +616,37 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
         let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
         debug!(%agent_id, %msg_type, "Received message from agent");
 
+        let session = registry.get_session_number(agent_id).await;
+
         match msg_type {
             "system" => {
                 let subtype = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
                 debug!(%agent_id, %subtype, "System message from agent");
+                // system messages are lifecycle-only; not persisted.
             }
             "assistant" => {
                 debug!(%agent_id, "Assistant response received");
                 // Extract text content, tool use blocks, and thinking lines; broadcast all.
                 if let Some(message) = msg.get("message") {
                     let (texts, tool_uses, thinking_lines) = extract_assistant_content(message);
-                    for text in texts {
-                        broadcast_output(agent_id, &text, registry);
+                    for text in &texts {
+                        broadcast_output(agent_id, text, registry);
+                        // Persist one Output event per non-empty line.
+                        for line in text.lines() {
+                            if line.is_empty() {
+                                continue;
+                            }
+                            registry.persist_event(ConversationEvent::new(
+                                *agent_id,
+                                ConversationEventType::Output,
+                                session,
+                                Some(line.to_string()),
+                                None,
+                            ));
+                        }
                     }
-                    for tool_use in tool_uses {
-                        let event = serde_json::json!({
+                    for tool_use in &tool_uses {
+                        let stream_event = serde_json::json!({
                             "type": "agent:tool_use",
                             "agent_id": agent_id.to_string(),
                             "agentId": agent_id.to_string(),
@@ -518,17 +656,31 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                             "summary": tool_use["summary"],
                             "timestamp": Utc::now().to_rfc3339(),
                         });
-                        let _ = registry.stream_tx.send(event.to_string());
+                        let _ = registry.stream_tx.send(stream_event.to_string());
+                        registry.persist_event(ConversationEvent::new(
+                            *agent_id,
+                            ConversationEventType::ToolUse,
+                            session,
+                            tool_use["summary"].as_str().map(|s| s.to_string()),
+                            Some(tool_use.clone()),
+                        ));
                     }
-                    for thinking in thinking_lines {
-                        let event = serde_json::json!({
+                    for thinking in &thinking_lines {
+                        let stream_event = serde_json::json!({
                             "type": "agent:thinking",
                             "agent_id": agent_id.to_string(),
                             "agentId": agent_id.to_string(),
                             "text": thinking,
                             "timestamp": Utc::now().to_rfc3339(),
                         });
-                        let _ = registry.stream_tx.send(event.to_string());
+                        let _ = registry.stream_tx.send(stream_event.to_string());
+                        registry.persist_event(ConversationEvent::new(
+                            *agent_id,
+                            ConversationEventType::Thinking,
+                            session,
+                            Some(thinking.clone()),
+                            None,
+                        ));
                     }
                 }
             }
@@ -569,7 +721,7 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
 
                 // Broadcast agent:usage_update event for UI consumers
                 if let Some(ref usage_snap) = usage {
-                    let event = serde_json::json!({
+                    let usage_event = serde_json::json!({
                         "type": "agent:usage_update",
                         "agent_id": agent_id.to_string(),
                         "agentId": agent_id.to_string(),
@@ -583,17 +735,46 @@ async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &Connect
                             "duration_ms": usage_snap.duration_ms,
                             "duration_api_ms": usage_snap.duration_api_ms,
                         },
-                        "session_number": 0,
+                        "session_number": session,
                         "timestamp": Utc::now().to_rfc3339(),
                     });
-                    let _ = registry.stream_tx.send(event.to_string());
+                    let _ = registry.stream_tx.send(usage_event.to_string());
                 }
+
+                // Persist result event with usage metadata.
+                let usage_meta = usage.as_ref().map(|u| {
+                    serde_json::json!({
+                        "is_error": is_error,
+                        "result_text": result_text,
+                        "input_tokens": u.input_tokens,
+                        "output_tokens": u.output_tokens,
+                        "total_cost_usd": u.total_cost_usd,
+                        "num_turns": u.num_turns,
+                        "duration_ms": u.duration_ms,
+                    })
+                });
+                registry.persist_event(ConversationEvent::new(
+                    *agent_id,
+                    ConversationEventType::Result,
+                    session,
+                    if result_text.is_empty() { None } else { Some(result_text.clone()) },
+                    usage_meta,
+                ));
+                // Persist activity_changed(idle) event.
+                registry.persist_event(ConversationEvent::new(
+                    *agent_id,
+                    ConversationEventType::ActivityChanged,
+                    session,
+                    Some("idle".to_string()),
+                    None,
+                ));
 
                 registry
                     .notify_result(ResultInfo { agent_id: *agent_id, is_error, usage, result_text })
                     .await;
             }
             "control_request" => {
+                // control_request is part of the approval flow; not persisted.
                 handle_control_request(agent_id, &msg, registry).await;
             }
             "keep_alive" => {
@@ -1453,5 +1634,283 @@ mod tests {
         // Verifies the TerminalRelayState can be cloned (required by axum State).
         fn assert_clone<T: Clone>() {}
         assert_clone::<TerminalRelayState>();
+    }
+
+    // -----------------------------------------------------------------------
+    // Persistence tests
+    // -----------------------------------------------------------------------
+
+    /// Build a temporary AgentStorage backed by a SQLite file in a TempDir.
+    async fn create_test_storage() -> (crate::storage::AgentStorage, tempfile::TempDir) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db =
+            crate::storage::AgentStorage::with_path(&tmp.path().join("test.db")).await.unwrap();
+        (db, tmp)
+    }
+
+    #[tokio::test]
+    async fn test_register_no_storage_session_counter_defaults_to_zero() {
+        let registry = ConnectionRegistry::new();
+        let agent_id = Uuid::new_v4();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        assert_eq!(registry.get_session_number(&agent_id).await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_unregister_removes_session_counter_entry() {
+        let registry = ConnectionRegistry::new();
+        let agent_id = Uuid::new_v4();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        // Counter exists after register.
+        assert_eq!(registry.session_numbers.read().await.contains_key(&agent_id), true);
+
+        registry.unregister(&agent_id).await;
+
+        // Counter removed - get_session_number falls back to the default 0.
+        assert_eq!(registry.session_numbers.read().await.contains_key(&agent_id), false);
+        assert_eq!(registry.get_session_number(&agent_id).await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_register_with_storage_reads_max_session_from_events() {
+        use crate::types::{ConversationEvent, ConversationEventType};
+
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        // Pre-seed two events at session_number 2 (simulating a reconnecting agent).
+        for _ in 0..2 {
+            let ev = ConversationEvent::new(
+                agent_id,
+                ConversationEventType::Output,
+                2,
+                Some("line".to_string()),
+                None,
+            );
+            storage.insert_conversation_event(&ev).await.unwrap();
+        }
+
+        let registry = ConnectionRegistry::new().with_storage(storage);
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        // Give the fire-and-forget task time to complete.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        assert_eq!(
+            registry.get_session_number(&agent_id).await,
+            2,
+            "session counter should be restored to MAX(session_number) = 2"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_persist_context_cleared_updates_counter_and_writes_event() {
+        use crate::types::ConversationEventType;
+
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let registry = ConnectionRegistry::new().with_storage(storage.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        registry.persist_context_cleared(agent_id, 1).await;
+
+        // Give the fire-and-forget task time to complete.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Counter updated synchronously by persist_context_cleared.
+        assert_eq!(registry.get_session_number(&agent_id).await, 1);
+
+        // Event persisted asynchronously.
+        let events = storage
+            .list_conversation_events(agent_id, &crate::types::ConversationQuery::default())
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, ConversationEventType::ContextCleared);
+    }
+
+    #[tokio::test]
+    async fn test_send_user_message_persists_prompt_sent_and_activity_changed() {
+        use crate::types::ConversationEventType;
+
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let registry = ConnectionRegistry::new().with_storage(storage.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        registry.send_user_message(&agent_id, "hello world").await.unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let events = storage
+            .list_conversation_events(agent_id, &crate::types::ConversationQuery::default())
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 2, "expected prompt_sent + activity_changed(busy)");
+
+        let types: Vec<_> = events.iter().map(|e| &e.event_type).collect();
+        assert!(types.contains(&&ConversationEventType::PromptSent), "expected PromptSent event");
+        assert!(
+            types.contains(&&ConversationEventType::ActivityChanged),
+            "expected ActivityChanged event"
+        );
+
+        let prompt_sent =
+            events.iter().find(|e| e.event_type == ConversationEventType::PromptSent).unwrap();
+        assert_eq!(prompt_sent.content.as_deref(), Some("hello world"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_incoming_message_assistant_output_persisted() {
+        use crate::types::ConversationEventType;
+
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let registry = ConnectionRegistry::new().with_storage(storage.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        let msg = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Here is my answer."}]
+            }
+        });
+        handle_incoming_message(&agent_id, &msg.to_string(), &registry).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let events = storage
+            .list_conversation_events(agent_id, &crate::types::ConversationQuery::default())
+            .await
+            .unwrap();
+
+        assert!(
+            events.iter().any(|e| e.event_type == ConversationEventType::Output),
+            "expected Output event from assistant message"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_incoming_message_tool_use_persisted() {
+        use crate::types::ConversationEventType;
+
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let registry = ConnectionRegistry::new().with_storage(storage.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        let msg = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "tool_abc123",
+                    "name": "Bash",
+                    "input": {"command": "ls"}
+                }]
+            }
+        });
+        handle_incoming_message(&agent_id, &msg.to_string(), &registry).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let events = storage
+            .list_conversation_events(agent_id, &crate::types::ConversationQuery::default())
+            .await
+            .unwrap();
+
+        assert!(
+            events.iter().any(|e| e.event_type == ConversationEventType::ToolUse),
+            "expected ToolUse event from assistant message"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_incoming_message_thinking_persisted() {
+        use crate::types::ConversationEventType;
+
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let registry = ConnectionRegistry::new().with_storage(storage.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        let msg = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{
+                    "type": "thinking",
+                    "thinking": "Let me reason through this."
+                }]
+            }
+        });
+        handle_incoming_message(&agent_id, &msg.to_string(), &registry).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let events = storage
+            .list_conversation_events(agent_id, &crate::types::ConversationQuery::default())
+            .await
+            .unwrap();
+
+        assert!(
+            events.iter().any(|e| e.event_type == ConversationEventType::Thinking),
+            "expected Thinking event from assistant message"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_incoming_message_result_persists_result_and_idle() {
+        use crate::types::ConversationEventType;
+
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let registry = ConnectionRegistry::new().with_storage(storage.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        registry.register(agent_id, AgentConnection { tx }).await;
+
+        let msg = serde_json::json!({
+            "type": "result",
+            "is_error": false,
+            "result": "done",
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5
+            }
+        });
+        handle_incoming_message(&agent_id, &msg.to_string(), &registry).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let events = storage
+            .list_conversation_events(agent_id, &crate::types::ConversationQuery::default())
+            .await
+            .unwrap();
+
+        let types: Vec<_> = events.iter().map(|e| &e.event_type).collect();
+        assert!(types.contains(&&ConversationEventType::Result), "expected Result event");
+        assert!(
+            types.contains(&&ConversationEventType::ActivityChanged),
+            "expected ActivityChanged(idle) event"
+        );
     }
 }
