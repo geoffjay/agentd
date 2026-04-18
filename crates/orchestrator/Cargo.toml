@@ -43,6 +43,9 @@ metrics-exporter-prometheus = { workspace = true }
 # default-features = false avoids native-tls (macOS TLS init panics on non-main threads).
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
+# URL encoding for query parameters
+urlencoding = "2.1"
+
 # WebSocket client (for MessageBridge → communicate service)
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 
@@ -72,4 +75,5 @@ libc = "0.2"
 [dev-dependencies]
 tempfile = "3.14"
 tower = { version = "0.5", features = ["util"] }
+urlencoding = "2"
 wiremock = "0.6"

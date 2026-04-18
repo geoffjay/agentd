@@ -35,7 +35,8 @@ use crate::scheduler::types::{
 };
 use crate::types::{
     AddDirRequest, AddDirResponse, AgentResponse, AgentUsageStats, ApprovalActionRequest,
-    ClearContextRequest, ClearContextResponse, CreateAgentRequest, CreateProjectRequest,
+    ClearContextRequest, ClearContextResponse, ConversationEventResponse, ConversationHistoryQuery,
+    ConversationHistoryResponse, ConversationSummary, CreateAgentRequest, CreateProjectRequest,
     HealthResponse, PaginatedResponse, PendingApproval, Project, ProjectResponse,
     SendMessageRequest, SendMessageResponse, SetModelRequest, ToolPolicy, UpdateProjectRequest,
 };
@@ -457,6 +458,53 @@ impl OrchestratorClient {
         workflow_id: &Uuid,
     ) -> Result<()> {
         self.delete(&format!("/projects/{project_id}/workflows/{workflow_id}")).await
+    }
+
+    // -- Conversation history --
+
+    /// List conversation events for an agent with optional filters.
+    ///
+    /// Supports `limit`, `before`/`after` (RFC 3339), `event_type` (comma-separated),
+    /// and `session` query parameters via [`ConversationHistoryQuery`].
+    pub async fn list_conversation_events(
+        &self,
+        agent_id: &Uuid,
+        query: &ConversationHistoryQuery,
+    ) -> Result<ConversationHistoryResponse> {
+        let mut params: Vec<String> = Vec::new();
+        if let Some(limit) = query.limit {
+            params.push(format!("limit={limit}"));
+        }
+        if let Some(ref before) = query.before {
+            // RFC 3339 timestamps may contain '+' (UTC-offset) which must be
+            // percent-encoded or the server receives a space instead.
+            params.push(format!("before={}", urlencoding::encode(before)));
+        }
+        if let Some(ref after) = query.after {
+            params.push(format!("after={}", urlencoding::encode(after)));
+        }
+        if let Some(ref event_type) = query.event_type {
+            params.push(format!("event_type={event_type}"));
+        }
+        if let Some(session) = query.session {
+            params.push(format!("session={session}"));
+        }
+        let qs = if params.is_empty() { String::new() } else { format!("?{}", params.join("&")) };
+        self.get(&format!("/agents/{agent_id}/conversation{qs}")).await
+    }
+
+    /// Get an aggregate summary of conversation events for an agent.
+    pub async fn get_conversation_summary(&self, agent_id: &Uuid) -> Result<ConversationSummary> {
+        self.get(&format!("/agents/{agent_id}/conversation/summary")).await
+    }
+
+    /// Get a single conversation event by ID for an agent.
+    pub async fn get_conversation_event(
+        &self,
+        agent_id: &Uuid,
+        event_id: &Uuid,
+    ) -> Result<ConversationEventResponse> {
+        self.get(&format!("/agents/{agent_id}/conversation/{event_id}")).await
     }
 
     // -- Private HTTP helpers --
