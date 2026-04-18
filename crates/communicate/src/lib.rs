@@ -28,6 +28,7 @@
 //!     description: None,
 //!     room_type: RoomType::Group,
 //!     created_by: "agent-1".to_string(),
+//!     project_id: None,
 //! }).await?;
 //!
 //! println!("Created room: {}", room.id);
