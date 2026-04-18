@@ -28,6 +28,7 @@ pub struct AgentManager {
 }
 
 impl AgentManager {
+    #[allow(dead_code)]
     pub fn new(
         storage: Arc<AgentStorage>,
         backend: Arc<dyn ExecutionBackend>,
