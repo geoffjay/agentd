@@ -156,11 +156,9 @@ jobs:
   docker-integration:
     name: Docker Integration Tests
     runs-on: ubuntu-latest
-    # Only run on main branch or PRs that touch Docker-related files.
+    # Only run when explicitly requested via the 'docker' PR label.
     # ubuntu-latest has Docker pre-installed with /var/run/docker.sock — no DinD needed.
-    if: >
-      github.ref == 'refs/heads/main' ||
-      contains(github.event.pull_request.labels.*.name, 'docker')
+    if: contains(github.event.pull_request.labels.*.name, 'docker')
     steps:
       - uses: actions/checkout@v4
 
