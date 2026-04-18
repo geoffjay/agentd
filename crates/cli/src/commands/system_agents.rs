@@ -273,9 +273,10 @@ async fn resolve_system_agent(client: &OrchestratorClient, id: &str) -> Result<A
     // Try UUID parse first.
     if let Ok(uuid) = Uuid::parse_str(id) {
         let all = client.list_system_agents().await.context("Failed to list system agents")?;
-        return all.into_iter().find(|a| a.id == uuid).ok_or_else(|| {
-            anyhow::anyhow!("System agent '{}' not found", id)
-        });
+        return all
+            .into_iter()
+            .find(|a| a.id == uuid)
+            .ok_or_else(|| anyhow::anyhow!("System agent '{}' not found", id));
     }
 
     // Fall back to name lookup.

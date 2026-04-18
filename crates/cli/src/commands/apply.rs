@@ -1420,7 +1420,10 @@ tool_policy:
         assert_eq!(tmpl.prompt.unwrap(), "Fix all the bugs");
         assert_eq!(
             tmpl.tool_policy,
-            ToolPolicy::AllowList { tools: vec!["Read".into(), "Grep".into(), "Edit".into()], sandbox_bypass: vec![] }
+            ToolPolicy::AllowList {
+                tools: vec!["Read".into(), "Grep".into(), "Edit".into()],
+                sandbox_bypass: vec![]
+            }
         );
     }
 
