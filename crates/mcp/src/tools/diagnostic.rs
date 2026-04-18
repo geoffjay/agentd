@@ -212,7 +212,7 @@ pub async fn run_diagnose_workflow(client: &AgentdClient, workflow_id: &str) -> 
             let completed =
                 items.iter().filter(|d| str_field(d, "status") == "Completed").count() as u64;
             let failed = items.iter().filter(|d| str_field(d, "status") == "Failed").count() as u64;
-            let success_rate = if dispatched > 0 { (completed * 100) / dispatched } else { 0 };
+            let success_rate = (completed * 100).checked_div(dispatched).unwrap_or(0);
 
             info.push(format!(
                 "Last {dispatched} dispatches: {completed} completed, {failed} failed \
