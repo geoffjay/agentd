@@ -2,6 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { defineConfig, loadEnv } from "vite";
+import { codecovVitePlugin } from "@codecov/vite-plugin";
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -9,13 +10,35 @@ export default defineConfig(({ mode }) => {
 
 	const askServiceUrl =
 		env.VITE_AGENTD_ASK_SERVICE_URL || "http://localhost:17001";
+    const communicateSServiceUrl =
+		env.VITE_AGENTD_COMMUNICATE_SERVICE_URL || "http://localhost:17010";
+    const coreServiceUrl =
+        env.VITE_AGENTD_CORE_SERVICE_URL || "http://localhost:1700";
+    const hookServiceUrl =
+        env.VITE_AGENTD_HOOK_SERVICE_URL || "http://localhost:17002";
+    const indexServiceUrl =
+        env.VITE_AGENTD_INDEX_SERVICE_URL || "http://localhost:17012";
+    const memoryServiceUrl =
+        env.VITE_AGENTD_MEMORY_SERVICE_URL || "http://localhost:17008";
+    const monitorServiceUrl =
+        env.VITE_AGENTD_MONITOR_SERVICE_URL || "http://localhost:17003";
 	const notifyServiceUrl =
 		env.VITE_AGENTD_NOTIFY_SERVICE_URL || "http://localhost:17004";
 	const orchestratorServiceUrl =
 		env.VITE_AGENTD_ORCHESTRATOR_SERVICE_URL || "http://localhost:17006";
+    const wrapServiceUrl =
+        env.VITE_AGENTD_WRAP_SERVICE_URL || "http://localhost:17005";
 
 	return {
-		plugins: [react(), tailwindcss()],
+		plugins: [
+            react(),
+            tailwindcss(),
+            codecovVitePlugin({
+                enableBundleAnalysis: process.env.CODECOV_TOKEN !== undefined,
+                bundleName: "agentd",
+                uploadToken: process.env.CODECOV_TOKEN,
+            }),
+        ],
 		resolve: {
 			alias: {
 				"@": path.resolve(__dirname, "./src"),
