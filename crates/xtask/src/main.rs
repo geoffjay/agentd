@@ -50,6 +50,10 @@ fn main() -> Result<()> {
             let service = args.get(2).context("Service name required")?;
             restart_service(service)?;
         }
+        Some("release") => {
+            let dry_run = args.iter().any(|a| a == "--dry-run");
+            release(dry_run)?;
+        }
         Some("generate-entities") => {
             let service = parse_service_flag(&args);
             generate_entities(service.as_deref())?;
@@ -96,6 +100,9 @@ fn print_help() {
         "migrate-status".green()
     );
     println!();
+    println!("{}", "Release:".cyan());
+    println!("  {} [--dry-run] - Tag the current version and prepare a release", "release".green());
+    println!();
     println!("{}", "Examples:".cyan());
     println!("  {}", "cargo xtask install-user".yellow());
     println!("  {}", "cargo xtask start-service notify".yellow());
@@ -105,6 +112,8 @@ fn print_help() {
     println!("  {}", "cargo xtask migrate-status".yellow());
     println!("  {}", "cargo xtask generate-entities".yellow());
     println!("  {}", "cargo xtask generate-entities --service orchestrator".yellow());
+    println!("  {}", "cargo xtask release --dry-run".yellow());
+    println!("  {}", "cargo xtask release".yellow());
     println!();
     println!("{}", "Available services:".cyan());
     println!("  {}", SERVICE_NAMES.join(", "));
@@ -600,6 +609,162 @@ fn install_completions() -> Result<()> {
     );
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Release command
+// ---------------------------------------------------------------------------
+
+/// `cargo xtask release [--dry-run]`
+///
+/// Prepares a release for the current workspace version:
+/// 1. Verifies the working tree is clean.
+/// 2. Reads `[workspace.package] version` from the root `Cargo.toml`.
+/// 3. Optionally updates `CHANGELOG.md` via `git-cliff` (if installed).
+/// 4. Creates an annotated git tag `v{version}`.
+///
+/// Pass `--dry-run` to preview the steps without making any changes.
+///
+/// After running, push the tag to trigger the GitHub Actions release workflow:
+///   `git push origin v{version}`
+fn release(dry_run: bool) -> Result<()> {
+    check_in_project_root()?;
+
+    // Verify the working tree is clean (skip in dry-run so developers can preview)
+    if !dry_run {
+        let output = Command::new("git")
+            .args(["status", "--porcelain"])
+            .output()
+            .context("Failed to run git status")?;
+        let dirty = String::from_utf8_lossy(&output.stdout);
+        if !dirty.trim().is_empty() {
+            anyhow::bail!(
+                "Working tree has uncommitted changes. Commit or stash them before releasing.\n{}",
+                dirty.trim()
+            );
+        }
+    }
+
+    // Read workspace version from Cargo.toml
+    let cargo_toml_src =
+        fs::read_to_string("Cargo.toml").context("Failed to read workspace Cargo.toml")?;
+    let version = extract_workspace_version(&cargo_toml_src)?;
+    let tag = format!("v{version}");
+
+    println!("{}", "Release Preparation".blue().bold());
+    println!();
+    println!("  Version : {}", version.cyan());
+    println!("  Tag     : {}", tag.cyan());
+    if dry_run {
+        println!();
+        println!("{}", "(dry-run mode — no changes will be made)".yellow());
+    }
+
+    // Optionally update CHANGELOG.md via git-cliff
+    let has_cliff = Command::new("git-cliff").arg("--version").output().is_ok();
+    if has_cliff {
+        println!();
+        if dry_run {
+            println!("{}", "Would run: git cliff --current --output CHANGELOG.md".bright_black());
+        } else {
+            println!("{}", "Updating CHANGELOG.md via git-cliff...".blue());
+            let status = Command::new("git-cliff")
+                .args(["--current", "--output", "CHANGELOG.md"])
+                .status()
+                .context("Failed to run git-cliff")?;
+            if status.success() {
+                println!("  {} CHANGELOG.md updated", "✓".green());
+                // Stage and commit the changelog if it changed
+                let changelog_changed = Command::new("git")
+                    .args(["diff", "--quiet", "CHANGELOG.md"])
+                    .status()
+                    .context("Failed to check CHANGELOG.md diff")?;
+                if !changelog_changed.success() {
+                    let add_status = Command::new("git")
+                        .args(["add", "CHANGELOG.md"])
+                        .status()
+                        .context("Failed to stage CHANGELOG.md")?;
+                    if !add_status.success() {
+                        anyhow::bail!("git add CHANGELOG.md failed");
+                    }
+                    let commit_status = Command::new("git")
+                        .args([
+                            "commit",
+                            "-m",
+                            &format!("chore(release): update changelog for {tag}"),
+                        ])
+                        .status()
+                        .context("Failed to commit CHANGELOG.md")?;
+                    if !commit_status.success() {
+                        anyhow::bail!("git commit for changelog update failed");
+                    }
+                    println!("  {} changelog commit created", "✓".green());
+                }
+            } else {
+                eprintln!("  {} git-cliff failed — CHANGELOG.md not updated", "⚠".yellow());
+            }
+        }
+    } else {
+        println!();
+        println!("  {} git-cliff not found — skipping changelog update", "⚠".yellow());
+        println!("  Install: {}", "cargo install git-cliff".cyan());
+    }
+
+    if dry_run {
+        println!();
+        println!("{}", format!("Would create annotated tag: {tag}").yellow());
+        println!("{}", "Run without --dry-run to proceed.".bright_black());
+        return Ok(());
+    }
+
+    // Create annotated tag
+    println!();
+    println!("{}", format!("Creating tag {tag}...").blue());
+    let tag_status = Command::new("git")
+        .args(["tag", "-a", &tag, "-m", &format!("Release {tag}")])
+        .status()
+        .context("Failed to create git tag")?;
+    if !tag_status.success() {
+        anyhow::bail!("Failed to create git tag '{tag}' — does it already exist?");
+    }
+    println!("  {} tag {} created", "✓".green(), tag.cyan());
+
+    println!();
+    println!("{}", "✓ Release prepared!".green().bold());
+    println!();
+    println!("Push the tag to trigger the GitHub Actions release workflow:");
+    println!("  {}", format!("git push origin {tag}").cyan());
+    println!();
+    println!("The workflow will:");
+    println!("  • Build binaries for macOS (arm64, x86_64) and Linux (x86_64)");
+    println!("  • Generate release notes from conventional commit history");
+    println!("  • Create a GitHub Release and attach the binaries");
+
+    Ok(())
+}
+
+/// Extract `version` from the `[workspace.package]` table in a `Cargo.toml` string.
+fn extract_workspace_version(cargo_toml: &str) -> Result<String> {
+    let mut in_section = false;
+    for line in cargo_toml.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[workspace.package]" {
+            in_section = true;
+            continue;
+        }
+        if in_section {
+            if trimmed.starts_with('[') {
+                break; // left the section
+            }
+            if let Some(rest) = trimmed.strip_prefix("version") {
+                if let Some(rest) = rest.trim().strip_prefix('=') {
+                    let ver = rest.trim().trim_matches('"');
+                    return Ok(ver.to_string());
+                }
+            }
+        }
+    }
+    anyhow::bail!("Could not find `version` in `[workspace.package]` section of Cargo.toml")
 }
 
 // === Shared helpers (used by platform modules via crate::) ===

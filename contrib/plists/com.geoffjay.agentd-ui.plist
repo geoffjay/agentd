@@ -35,10 +35,26 @@
         <string>/Applications/Agent.app/Contents/Resources/ui</string>
         <key>AGENTD_ASK_SERVICE_URL</key>
         <string>http://localhost:7001</string>
+        <key>AGENTD_COMMUNICATE_SERVICE_URL</key>
+        <string>http://localhost:7010</string>
+        <key>AGENTD_CORE_SERVICE_URL</key>
+        <string>http://localhost:7000</string>
+        <key>AGENTD_HOOK_SERVICE_URL</key>
+        <string>http://localhost:7002</string>
+        <key>AGENTD_INDEX_SERVICE_URL</key>
+        <string>http://localhost:7012</string>
+        <key>AGENTD_MEMORY_SERVICE_URL</key>
+        <string>http://localhost:7008</string>
+        <key>AGENTD_MONITOR_SERVICE_URL</key>
+        <string>http://localhost:7003</string>
         <key>AGENTD_NOTIFY_SERVICE_URL</key>
         <string>http://localhost:7004</string>
         <key>AGENTD_ORCHESTRATOR_SERVICE_URL</key>
         <string>http://localhost:7006</string>
+        <key>AGENTD_UI_SERVICE_URL</key>
+        <string>http://localhost:7009</string>
+        <key>AGENTD_WRAP_SERVICE_URL</key>
+        <string>http://localhost:7005</string>
     </dict>
 
     <key>WorkingDirectory</key>
