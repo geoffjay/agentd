@@ -675,16 +675,19 @@ fn release(dry_run: bool) -> Result<()> {
             if status.success() {
                 println!("  {} CHANGELOG.md updated", "✓".green());
                 // Stage and commit the changelog if it changed
-                let staged = Command::new("git")
+                let changelog_changed = Command::new("git")
                     .args(["diff", "--quiet", "CHANGELOG.md"])
                     .status()
                     .context("Failed to check CHANGELOG.md diff")?;
-                if !staged.success() {
-                    Command::new("git")
+                if !changelog_changed.success() {
+                    let add_status = Command::new("git")
                         .args(["add", "CHANGELOG.md"])
                         .status()
                         .context("Failed to stage CHANGELOG.md")?;
-                    Command::new("git")
+                    if !add_status.success() {
+                        anyhow::bail!("git add CHANGELOG.md failed");
+                    }
+                    let commit_status = Command::new("git")
                         .args([
                             "commit",
                             "-m",
@@ -692,6 +695,9 @@ fn release(dry_run: bool) -> Result<()> {
                         ])
                         .status()
                         .context("Failed to commit CHANGELOG.md")?;
+                    if !commit_status.success() {
+                        anyhow::bail!("git commit for changelog update failed");
+                    }
                     println!("  {} changelog commit created", "✓".green());
                 }
             } else {
