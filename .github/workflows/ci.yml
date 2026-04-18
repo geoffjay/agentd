@@ -12,13 +12,12 @@ env:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }}, ${{ matrix.toolchain }})
+    name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest]
-        toolchain: [stable, nightly]
     steps:
       - uses: actions/checkout@v4
 
@@ -30,14 +29,12 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install protobuf
 
-      - name: Install Rust ${{ matrix.toolchain }}
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.toolchain }}
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: build-${{ matrix.os }}-${{ matrix.toolchain }}
+          key: build-${{ matrix.os }}
 
       - name: Build workspace
         run: cargo build --workspace
