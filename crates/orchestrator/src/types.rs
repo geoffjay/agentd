@@ -1963,3 +1963,285 @@ mod tests {
         assert!(policy.sandbox_bypass().is_empty());
     }
 }
+
+// ─── Conversation events ──────────────────────────────────────────────────────
+
+/// The type of a conversation event recorded for an agent session.
+///
+/// Each variant maps to a distinct phase of the Claude Code conversation
+/// lifecycle.  Values are stored as snake_case strings in the database.
+// Consumed by #1160 (WebSocket persistence), #1161 (REST API), #1163 (retention
+// policy) — stacked on this PR; suppress until those land.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationEventType {
+    /// A chunk of text output from the assistant.
+    Output,
+    /// The assistant invoked a tool (e.g. Bash, Read, Write).
+    ToolUse,
+    /// An extended-thinking block produced by the model.
+    Thinking,
+    /// The final result returned at the end of a turn.
+    Result,
+    /// A prompt was sent to the agent.
+    PromptSent,
+    /// The agent's activity state changed (idle ↔ busy).
+    ActivityChanged,
+    /// A token/cost usage snapshot was recorded.
+    UsageUpdate,
+    /// The conversation context was cleared (session_number incremented).
+    ContextCleared,
+}
+
+impl std::fmt::Display for ConversationEventType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConversationEventType::Output => write!(f, "output"),
+            ConversationEventType::ToolUse => write!(f, "tool_use"),
+            ConversationEventType::Thinking => write!(f, "thinking"),
+            ConversationEventType::Result => write!(f, "result"),
+            ConversationEventType::PromptSent => write!(f, "prompt_sent"),
+            ConversationEventType::ActivityChanged => write!(f, "activity_changed"),
+            ConversationEventType::UsageUpdate => write!(f, "usage_update"),
+            ConversationEventType::ContextCleared => write!(f, "context_cleared"),
+        }
+    }
+}
+
+impl std::str::FromStr for ConversationEventType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "output" => Ok(ConversationEventType::Output),
+            "tool_use" => Ok(ConversationEventType::ToolUse),
+            "thinking" => Ok(ConversationEventType::Thinking),
+            "result" => Ok(ConversationEventType::Result),
+            "prompt_sent" => Ok(ConversationEventType::PromptSent),
+            "activity_changed" => Ok(ConversationEventType::ActivityChanged),
+            "usage_update" => Ok(ConversationEventType::UsageUpdate),
+            "context_cleared" => Ok(ConversationEventType::ContextCleared),
+            _ => Err(anyhow::anyhow!("Unknown conversation event type: {}", s)),
+        }
+    }
+}
+
+/// A single persisted conversation event for an agent session.
+///
+/// Events are written by the WebSocket handler as messages flow through and
+/// are replayed on demand via the REST API.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationEvent {
+    /// Unique event identifier (UUID v4).
+    pub id: Uuid,
+    /// The agent that produced this event.
+    pub agent_id: Uuid,
+    /// Discriminator for the event's structure and meaning.
+    pub event_type: ConversationEventType,
+    /// Monotonically increasing counter, reset each time the context is cleared.
+    pub session_number: i64,
+    /// Free-text payload (output text, prompt text, thinking text, etc.).
+    pub content: Option<String>,
+    /// Structured JSON payload (tool input/output, usage stats, etc.).
+    pub metadata: Option<serde_json::Value>,
+    /// When the event was recorded (UTC).
+    pub created_at: DateTime<Utc>,
+}
+
+impl ConversationEvent {
+    /// Create a new event with a generated UUID and the current timestamp.
+    // Used by integration tests (conversation_persistence.rs) on stacked branches.
+    #[allow(dead_code)]
+    pub fn new(
+        agent_id: Uuid,
+        event_type: ConversationEventType,
+        session_number: i64,
+        content: Option<String>,
+        metadata: Option<serde_json::Value>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            agent_id,
+            event_type,
+            session_number,
+            content,
+            metadata,
+            created_at: Utc::now(),
+        }
+    }
+}
+
+/// Options for querying conversation events.
+///
+/// All fields are optional — omitting a field removes that filter.
+/// Results are always ordered by `created_at ASC`.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConversationQuery {
+    /// Restrict to events of these types (empty = all types).
+    pub event_types: Option<Vec<ConversationEventType>>,
+    /// Only return events created on or after this timestamp.
+    pub since: Option<DateTime<Utc>>,
+    /// Only return events created before this timestamp.
+    pub until: Option<DateTime<Utc>>,
+    /// Restrict to events from a specific session number.
+    ///
+    /// When set, the DB filter is pushed down so that `limit`, `has_more`, and
+    /// `total` are all computed against the session-filtered result set rather
+    /// than the full history.
+    pub session_number: Option<i64>,
+    /// Maximum number of events to return.
+    pub limit: Option<u64>,
+    /// Skip this many events (for offset pagination).
+    pub offset: Option<u64>,
+}
+
+// ─── Conversation history API types ──────────────────────────────────────────
+
+/// A conversation event shaped for the REST API.
+///
+/// The `event_type` field uses the `"agent:<variant>"` prefix to match the
+/// format of live WebSocket stream events (e.g. `"agent:output"`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationEventResponse {
+    pub id: Uuid,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub agent_id: Uuid,
+    /// Free-text content (output text, prompt, thinking, etc.).
+    pub line: Option<String>,
+    /// Structured JSON payload (tool input/output, usage stats, etc.).
+    pub metadata: Option<serde_json::Value>,
+    pub timestamp: DateTime<Utc>,
+    pub session_number: i64,
+}
+
+impl From<ConversationEvent> for ConversationEventResponse {
+    fn from(ev: ConversationEvent) -> Self {
+        Self {
+            id: ev.id,
+            event_type: format!("agent:{}", ev.event_type),
+            agent_id: ev.agent_id,
+            line: ev.content,
+            metadata: ev.metadata,
+            timestamp: ev.created_at,
+            session_number: ev.session_number,
+        }
+    }
+}
+
+// ─── Retention / cleanup configuration ──────────────────────────────────────
+
+/// Configuration for conversation event retention and periodic pruning.
+///
+/// All values are read from environment variables at service startup via
+/// [`RetentionConfig::from_env`].  The defaults are conservative — 30-day
+/// history, 50 k events per agent, no on-terminate delete, 6-hour cleanup cycle.
+#[derive(Debug, Clone)]
+pub struct RetentionConfig {
+    /// Delete events older than this many days
+    /// (env: `AGENTD_CONVERSATION_RETENTION_DAYS`, default: 30).
+    /// Must be ≥ 1; `0` would delete all events and is rejected (falls back to default).
+    pub retention_days: u64,
+    /// Hard cap per agent; oldest events are evicted first.
+    /// Enforced both by the periodic cleanup task (for all known agents) and
+    /// on agent termination when `cleanup_on_terminate = true`.
+    /// (env: `AGENTD_CONVERSATION_MAX_EVENTS_PER_AGENT`, default: 50000).
+    /// Must be ≥ 1; `0` would delete all events and is rejected (falls back to default).
+    pub max_events_per_agent: u64,
+    /// If `true`, all events for an agent are deleted when it is terminated
+    /// (env: `AGENTD_CONVERSATION_CLEANUP_ON_TERMINATE`, default: false).
+    pub cleanup_on_terminate: bool,
+    /// How often the periodic cleanup task runs, in seconds
+    /// (env: `AGENTD_CONVERSATION_CLEANUP_INTERVAL_SECS`, default: 21600 = 6 h).
+    /// Must be ≥ 1; `0` panics `tokio::time::interval` and is rejected (falls back to default).
+    pub cleanup_interval_secs: u64,
+}
+
+impl RetentionConfig {
+    /// Safe, hardcoded fallback values used when env vars are absent or invalid.
+    pub const DEFAULT_RETENTION_DAYS: u64 = 30;
+    pub const DEFAULT_MAX_EVENTS_PER_AGENT: u64 = 50_000;
+    pub const DEFAULT_CLEANUP_INTERVAL_SECS: u64 = 21_600; // 6 h
+
+    /// Build a `RetentionConfig` from environment variables, falling back to
+    /// safe defaults when a variable is absent, unparseable, or out of range.
+    ///
+    /// Zero values for `retention_days`, `max_events_per_agent`, and
+    /// `cleanup_interval_secs` are rejected and replaced with defaults:
+    /// `0` retention days would wipe all events, `0` max events would delete
+    /// everything for every agent, and `0` interval panics `tokio::time::interval`.
+    pub fn from_env() -> Self {
+        Self {
+            retention_days: std::env::var("AGENTD_CONVERSATION_RETENTION_DAYS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .filter(|&v: &u64| v > 0)
+                .unwrap_or(Self::DEFAULT_RETENTION_DAYS),
+            max_events_per_agent: std::env::var("AGENTD_CONVERSATION_MAX_EVENTS_PER_AGENT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .filter(|&v: &u64| v > 0)
+                .unwrap_or(Self::DEFAULT_MAX_EVENTS_PER_AGENT),
+            cleanup_on_terminate: std::env::var("AGENTD_CONVERSATION_CLEANUP_ON_TERMINATE")
+                .ok()
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            cleanup_interval_secs: std::env::var("AGENTD_CONVERSATION_CLEANUP_INTERVAL_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .filter(|&v: &u64| v > 0)
+                .unwrap_or(Self::DEFAULT_CLEANUP_INTERVAL_SECS),
+        }
+    }
+}
+
+/// Query parameters for `GET /agents/{id}/conversation`.
+#[derive(Debug, Default, Deserialize)]
+pub struct ConversationHistoryQuery {
+    /// Maximum number of events to return (default: 100).
+    pub limit: Option<u64>,
+    /// Return events created before this RFC 3339 timestamp (exclusive).
+    pub before: Option<String>,
+    /// Return events created after this RFC 3339 timestamp (exclusive).
+    pub after: Option<String>,
+    /// Comma-separated list of event types to include (e.g. `"output,tool_use"`).
+    pub event_type: Option<String>,
+    /// Restrict results to a specific session number.
+    pub session: Option<i64>,
+}
+
+/// Paginated response body for `GET /agents/{id}/conversation`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConversationHistoryResponse {
+    pub events: Vec<ConversationEventResponse>,
+    pub total: u64,
+    pub has_more: bool,
+}
+
+/// Aggregate summary for `GET /agents/{id}/conversation/summary`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConversationSummary {
+    pub agent_id: Uuid,
+    pub total_events: u64,
+    /// Event counts keyed by the `"agent:<variant>"` event-type string.
+    pub event_counts: HashMap<String, u64>,
+    pub session_count: u64,
+    pub first_event_at: Option<DateTime<Utc>>,
+    pub last_event_at: Option<DateTime<Utc>>,
+}
+
+impl Default for RetentionConfig {
+    /// Returns hardcoded safe defaults.  Does **not** read environment variables.
+    /// Use [`RetentionConfig::from_env`] explicitly when env-var overrides are needed.
+    fn default() -> Self {
+        Self {
+            retention_days: Self::DEFAULT_RETENTION_DAYS,
+            max_events_per_agent: Self::DEFAULT_MAX_EVENTS_PER_AGENT,
+            cleanup_on_terminate: false,
+            cleanup_interval_secs: Self::DEFAULT_CLEANUP_INTERVAL_SECS,
+        }
+    }
+}

@@ -5,19 +5,21 @@
 
 use crate::{
     entity::agent as agent_entity,
+    entity::conversation_event as conv_entity,
     entity::project as project_entity,
     entity::usage_session as session_entity,
     migration::Migrator,
     types::{
-        Agent, AgentConfig, AgentStatus, AgentUsageStats, Project, SessionUsage, ToolPolicy,
-        UpdateProjectRequest, UsageSnapshot,
+        Agent, AgentConfig, AgentStatus, AgentUsageStats, ConversationEvent, ConversationQuery,
+        ConversationSummary, Project, SessionUsage, ToolPolicy, UpdateProjectRequest,
+        UsageSnapshot,
     },
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, Order,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
 };
 use sea_orm_migration::prelude::MigratorTrait;
 use std::collections::HashMap;
@@ -227,7 +229,11 @@ impl AgentStorage {
     /// It is used internally by reconciliation and debug endpoints that need
     /// the complete picture. Use [`list_paginated`] with a `built_in_filter`
     /// for user-facing listing where system agents should be excluded.
-    pub async fn list(&self, status_filter: Option<AgentStatus>, project_id: Option<Uuid>) -> Result<Vec<Agent>> {
+    pub async fn list(
+        &self,
+        status_filter: Option<AgentStatus>,
+        project_id: Option<Uuid>,
+    ) -> Result<Vec<Agent>> {
         let mut query =
             agent_entity::Entity::find().order_by(agent_entity::Column::CreatedAt, Order::Desc);
 
@@ -576,6 +582,275 @@ impl AgentStorage {
         let agents = models.into_iter().map(model_to_agent).collect::<Result<Vec<_>>>()?;
         Ok((agents, total))
     }
+
+    // -----------------------------------------------------------------------
+    // Conversation event CRUD
+    // These methods are consumed by #1160 (WebSocket persistence), #1161 (REST
+    // API), and #1163 (retention policy) — stacked on this PR.
+    // -----------------------------------------------------------------------
+
+    /// Inserts a conversation event and returns its UUID.
+    // Used by integration tests (conversation_persistence.rs) on stacked branches.
+    #[allow(dead_code)]
+    pub async fn insert_conversation_event(&self, event: &ConversationEvent) -> Result<Uuid> {
+        // Serialise metadata up front so failures propagate as `Result::Err`
+        // rather than silently collapsing to an empty string.
+        let metadata_str = event
+            .metadata
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|e| anyhow::anyhow!("Failed to serialize event metadata: {}", e))?;
+
+        let model = conv_entity::ActiveModel {
+            id: Set(event.id.to_string()),
+            agent_id: Set(event.agent_id.to_string()),
+            event_type: Set(event.event_type.to_string()),
+            session_number: Set(event.session_number),
+            content: Set(event.content.clone()),
+            metadata: Set(metadata_str),
+            created_at: Set(event.created_at.to_rfc3339()),
+        };
+        conv_entity::Entity::insert(model).exec(&self.db).await?;
+        Ok(event.id)
+    }
+
+    /// Returns all conversation events for `agent_id` matching `opts`.
+    ///
+    /// Results are ordered by `created_at ASC`.
+    #[allow(dead_code)]
+    pub async fn list_conversation_events(
+        &self,
+        agent_id: Uuid,
+        opts: &ConversationQuery,
+    ) -> Result<Vec<ConversationEvent>> {
+        let mut condition =
+            Condition::all().add(conv_entity::Column::AgentId.eq(agent_id.to_string()));
+
+        if let Some(ref types) = opts.event_types {
+            if !types.is_empty() {
+                let type_strs: Vec<String> = types.iter().map(|t| t.to_string()).collect();
+                condition = condition.add(conv_entity::Column::EventType.is_in(type_strs));
+            }
+        }
+
+        if let Some(since) = opts.since {
+            condition = condition.add(conv_entity::Column::CreatedAt.gte(since.to_rfc3339()));
+        }
+
+        if let Some(until) = opts.until {
+            condition = condition.add(conv_entity::Column::CreatedAt.lt(until.to_rfc3339()));
+        }
+
+        if let Some(session) = opts.session_number {
+            condition = condition.add(conv_entity::Column::SessionNumber.eq(session));
+        }
+
+        let mut query = conv_entity::Entity::find()
+            .filter(condition)
+            .order_by(conv_entity::Column::CreatedAt, Order::Asc);
+
+        if let Some(limit) = opts.limit {
+            query = query.limit(limit);
+        }
+        if let Some(offset) = opts.offset {
+            query = query.offset(offset);
+        }
+
+        let models = query.all(&self.db).await?;
+        models.into_iter().map(model_to_conversation_event).collect()
+    }
+
+    /// Returns the number of conversation events stored for `agent_id`.
+    #[allow(dead_code)]
+    pub async fn count_conversation_events(&self, agent_id: Uuid) -> Result<u64> {
+        let count = conv_entity::Entity::find()
+            .filter(conv_entity::Column::AgentId.eq(agent_id.to_string()))
+            .count(&self.db)
+            .await?;
+        Ok(count)
+    }
+
+    /// Returns the highest `session_number` stored in `conversation_events` for
+    /// `agent_id`, or `0` if no events exist yet.
+    ///
+    /// Used by [`crate::websocket::ConnectionRegistry::register`] to restore the
+    /// correct session counter on agent reconnect - reading directly from the
+    /// events table avoids any dependency on usage-session semantics.
+    pub async fn get_max_conversation_session_number(&self, agent_id: Uuid) -> Result<i64> {
+        let row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                self.db.get_database_backend(),
+                r#"SELECT COALESCE(MAX(session_number), 0) AS max_session
+               FROM conversation_events
+               WHERE agent_id = ?"#,
+                [sea_orm::Value::String(Some(Box::new(agent_id.to_string())))],
+            ))
+            .await?;
+        Ok(row.and_then(|r| r.try_get::<i64>("", "max_session").ok()).unwrap_or(0))
+    }
+
+    /// Deletes all conversation events for `agent_id`.
+    ///
+    /// Returns the number of rows deleted.
+    // Used by the REST API handler on this branch and by integration tests on
+    // stacked branches; allow(dead_code) silences the binary-only lint.
+    #[allow(dead_code)]
+    pub async fn delete_conversation_events_for_agent(&self, agent_id: Uuid) -> Result<u64> {
+        let result = conv_entity::Entity::delete_many()
+            .filter(conv_entity::Column::AgentId.eq(agent_id.to_string()))
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// Retrieves a single conversation event by its UUID, scoped to `agent_id`.
+    ///
+    /// Returns `None` if no event with that ID belongs to the given agent.
+    pub async fn get_conversation_event_by_id(
+        &self,
+        agent_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<Option<ConversationEvent>> {
+        let model = conv_entity::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(conv_entity::Column::AgentId.eq(agent_id.to_string()))
+                    .add(conv_entity::Column::Id.eq(event_id.to_string())),
+            )
+            .one(&self.db)
+            .await?;
+        model.map(model_to_conversation_event).transpose()
+    }
+
+    /// Returns an aggregate summary of all conversation events for `agent_id`.
+    ///
+    /// Uses two SQL aggregation queries instead of loading all rows into memory:
+    ///
+    /// 1. `GROUP BY event_type` + `COUNT(*)` — per-type counts and total.
+    /// 2. `COUNT(DISTINCT session_number)` + `MIN/MAX(created_at)` — session
+    ///    count and time bounds.
+    pub async fn get_conversation_summary(&self, agent_id: Uuid) -> Result<ConversationSummary> {
+        let backend = self.db.get_database_backend();
+        let agent_id_str = agent_id.to_string();
+
+        // --- Query 1: per-type event counts ---
+        let type_stmt = Statement::from_sql_and_values(
+            backend,
+            r#"SELECT event_type, COUNT(*) AS cnt
+               FROM conversation_events
+               WHERE agent_id = ?
+               GROUP BY event_type"#,
+            [sea_orm::Value::String(Some(Box::new(agent_id_str.clone())))],
+        );
+        let type_rows = self.db.query_all(type_stmt).await?;
+
+        let mut event_counts: HashMap<String, u64> = HashMap::new();
+        let mut total_events: u64 = 0;
+        for row in type_rows {
+            let event_type: String = row.try_get("", "event_type")?;
+            let cnt: i64 = row.try_get("", "cnt")?;
+            let key = format!("agent:{event_type}");
+            event_counts.insert(key, cnt as u64);
+            total_events += cnt as u64;
+        }
+
+        // --- Query 2: session count and time bounds ---
+        let stats_stmt = Statement::from_sql_and_values(
+            backend,
+            r#"SELECT COUNT(DISTINCT session_number) AS session_cnt,
+                      MIN(created_at) AS first_at,
+                      MAX(created_at) AS last_at
+               FROM conversation_events
+               WHERE agent_id = ?"#,
+            [sea_orm::Value::String(Some(Box::new(agent_id_str)))],
+        );
+        let stats_row = self.db.query_one(stats_stmt).await?;
+
+        let (session_count, first_event_at, last_event_at) = match stats_row {
+            Some(row) => {
+                let session_cnt: i64 = row.try_get("", "session_cnt")?;
+                let first_at: Option<String> = row.try_get("", "first_at")?;
+                let last_at: Option<String> = row.try_get("", "last_at")?;
+                let first = first_at
+                    .as_deref()
+                    .map(DateTime::parse_from_rfc3339)
+                    .transpose()?
+                    .map(|dt| dt.with_timezone(&Utc));
+                let last = last_at
+                    .as_deref()
+                    .map(DateTime::parse_from_rfc3339)
+                    .transpose()?
+                    .map(|dt| dt.with_timezone(&Utc));
+                (session_cnt as u64, first, last)
+            }
+            None => (0, None, None),
+        };
+
+        Ok(ConversationSummary {
+            agent_id,
+            total_events,
+            event_counts,
+            session_count,
+            first_event_at,
+            last_event_at,
+        })
+    }
+
+    // -----------------------------------------------------------------------
+    // Retention / pruning
+    // -----------------------------------------------------------------------
+
+    /// Deletes conversation events whose `created_at` is older than
+    /// `retention_days` days.  Returns the number of rows deleted.
+    pub async fn prune_old_conversation_events(&self, retention_days: u64) -> Result<u64> {
+        use chrono::Duration;
+        let cutoff = (Utc::now() - Duration::days(retention_days as i64)).to_rfc3339();
+        let result = conv_entity::Entity::delete_many()
+            .filter(conv_entity::Column::CreatedAt.lt(cutoff))
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    /// For the given agent, deletes the oldest events that exceed `max_events`.
+    ///
+    /// If the current count is at or below `max_events`, nothing is deleted and
+    /// `0` is returned.  Otherwise the `(count - max_events)` oldest rows are
+    /// removed.
+    pub async fn prune_excess_conversation_events(
+        &self,
+        agent_id: Uuid,
+        max_events: u64,
+    ) -> Result<u64> {
+        let count = self.count_conversation_events(agent_id).await?;
+        if count <= max_events {
+            return Ok(0);
+        }
+        let to_delete = count - max_events;
+
+        // Fetch the IDs of the oldest `to_delete` events for this agent.
+        let oldest: Vec<String> = conv_entity::Entity::find()
+            .filter(conv_entity::Column::AgentId.eq(agent_id.to_string()))
+            .order_by(conv_entity::Column::CreatedAt, Order::Asc)
+            .limit(to_delete)
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+
+        if oldest.is_empty() {
+            return Ok(0);
+        }
+
+        let result = conv_entity::Entity::delete_many()
+            .filter(conv_entity::Column::Id.is_in(oldest))
+            .exec(&self.db)
+            .await?;
+        Ok(result.rows_affected)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -769,6 +1044,25 @@ fn model_to_project(model: project_entity::Model) -> Result<Project> {
     })
 }
 
+#[allow(dead_code)]
+fn model_to_conversation_event(model: conv_entity::Model) -> Result<ConversationEvent> {
+    let metadata = model
+        .metadata
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(serde_json::from_str)
+        .transpose()?;
+    Ok(ConversationEvent {
+        id: Uuid::parse_str(&model.id)?,
+        agent_id: Uuid::parse_str(&model.agent_id)?,
+        event_type: model.event_type.parse()?,
+        session_number: model.session_number,
+        content: model.content,
+        metadata,
+        created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -776,6 +1070,7 @@ fn model_to_project(model: project_entity::Model) -> Result<Project> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{ConversationEvent, ConversationEventType, ConversationQuery};
     use tempfile::TempDir;
 
     async fn create_test_storage() -> (AgentStorage, TempDir) {
@@ -1458,5 +1753,449 @@ mod tests {
         ps.create(&Project::new("unique".to_string(), None)).await.unwrap();
         let result = ps.create(&Project::new("unique".to_string(), None)).await;
         assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Conversation event tests
+    // -----------------------------------------------------------------------
+
+    fn make_event(agent_id: Uuid, event_type: ConversationEventType) -> ConversationEvent {
+        ConversationEvent::new(agent_id, event_type, 0, Some("hello".to_string()), None)
+    }
+
+    #[tokio::test]
+    async fn test_conv_insert_and_count() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 0);
+
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+            .await
+            .unwrap();
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::ToolUse))
+            .await
+            .unwrap();
+
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_conv_list_all_events() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        for _ in 0..5 {
+            storage
+                .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+                .await
+                .unwrap();
+        }
+
+        let events = storage
+            .list_conversation_events(agent_id, &ConversationQuery::default())
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 5);
+        assert!(events.windows(2).all(|w| w[0].created_at <= w[1].created_at));
+    }
+
+    #[tokio::test]
+    async fn test_conv_list_filter_by_type() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+            .await
+            .unwrap();
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::ToolUse))
+            .await
+            .unwrap();
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::Thinking))
+            .await
+            .unwrap();
+
+        let opts = ConversationQuery {
+            event_types: Some(vec![ConversationEventType::Output, ConversationEventType::Thinking]),
+            ..Default::default()
+        };
+        let events = storage.list_conversation_events(agent_id, &opts).await.unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|e| e.event_type != ConversationEventType::ToolUse));
+    }
+
+    #[tokio::test]
+    async fn test_conv_list_limit_and_offset() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        for i in 0..10i64 {
+            storage
+                .insert_conversation_event(&ConversationEvent::new(
+                    agent_id,
+                    ConversationEventType::Output,
+                    i,
+                    Some(format!("line {i}")),
+                    None,
+                ))
+                .await
+                .unwrap();
+        }
+
+        let opts = ConversationQuery { limit: Some(3), offset: Some(2), ..Default::default() };
+        let events = storage.list_conversation_events(agent_id, &opts).await.unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].session_number, 2);
+    }
+
+    #[tokio::test]
+    async fn test_conv_delete_for_agent() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_a = Uuid::new_v4();
+        let agent_b = Uuid::new_v4();
+
+        for _ in 0..4 {
+            storage
+                .insert_conversation_event(&make_event(agent_a, ConversationEventType::Output))
+                .await
+                .unwrap();
+        }
+        storage
+            .insert_conversation_event(&make_event(agent_b, ConversationEventType::Output))
+            .await
+            .unwrap();
+
+        let deleted = storage.delete_conversation_events_for_agent(agent_a).await.unwrap();
+        assert_eq!(deleted, 4);
+
+        assert_eq!(storage.count_conversation_events(agent_a).await.unwrap(), 0);
+        assert_eq!(storage.count_conversation_events(agent_b).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_conv_metadata_roundtrip() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let meta = serde_json::json!({"tool": "Bash", "input": "ls -la"});
+        let event = ConversationEvent::new(
+            agent_id,
+            ConversationEventType::ToolUse,
+            0,
+            None,
+            Some(meta.clone()),
+        );
+        storage.insert_conversation_event(&event).await.unwrap();
+
+        let events = storage
+            .list_conversation_events(agent_id, &ConversationQuery::default())
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].metadata, Some(meta));
+    }
+
+    #[tokio::test]
+    async fn test_conv_event_type_roundtrip() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let types = [
+            ConversationEventType::Output,
+            ConversationEventType::ToolUse,
+            ConversationEventType::Thinking,
+            ConversationEventType::Result,
+            ConversationEventType::PromptSent,
+            ConversationEventType::ActivityChanged,
+            ConversationEventType::UsageUpdate,
+            ConversationEventType::ContextCleared,
+        ];
+
+        for et in types.iter().cloned() {
+            storage.insert_conversation_event(&make_event(agent_id, et)).await.unwrap();
+        }
+
+        let events = storage
+            .list_conversation_events(agent_id, &ConversationQuery::default())
+            .await
+            .unwrap();
+        assert_eq!(events.len(), types.len());
+        for (event, expected_type) in events.iter().zip(types.iter()) {
+            assert_eq!(event.event_type, *expected_type);
+        }
+    }
+
+    /// `since` and `until` filters in [`ConversationQuery`] should restrict
+    /// results to the specified time window without touching unrelated events.
+    #[tokio::test]
+    async fn test_conv_list_time_range() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        // Insert one event before the boundary.
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+            .await
+            .unwrap();
+
+        let boundary = Utc::now();
+
+        // Insert two events after the boundary.
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+            .await
+            .unwrap();
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+            .await
+            .unwrap();
+
+        // `since` -- only events on or after boundary.
+        let opts = ConversationQuery { since: Some(boundary), ..Default::default() };
+        let events = storage.list_conversation_events(agent_id, &opts).await.unwrap();
+        assert_eq!(events.len(), 2, "since filter: expected 2 events after boundary");
+
+        // `until` -- only events strictly before boundary.
+        let opts = ConversationQuery { until: Some(boundary), ..Default::default() };
+        let events = storage.list_conversation_events(agent_id, &opts).await.unwrap();
+        assert_eq!(events.len(), 1, "until filter: expected 1 event before boundary");
+    }
+
+    /// `session_number` filter should restrict results to a single session.
+    #[tokio::test]
+    async fn test_conv_list_filter_by_session() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        // Three events in session 0, two in session 1.
+        for _ in 0..3 {
+            storage
+                .insert_conversation_event(&ConversationEvent::new(
+                    agent_id,
+                    ConversationEventType::Output,
+                    0,
+                    Some("session 0".to_string()),
+                    None,
+                ))
+                .await
+                .unwrap();
+        }
+        for _ in 0..2 {
+            storage
+                .insert_conversation_event(&ConversationEvent::new(
+                    agent_id,
+                    ConversationEventType::Output,
+                    1,
+                    Some("session 1".to_string()),
+                    None,
+                ))
+                .await
+                .unwrap();
+        }
+
+        let opts = ConversationQuery { session_number: Some(0), ..Default::default() };
+        let events = storage.list_conversation_events(agent_id, &opts).await.unwrap();
+        assert_eq!(events.len(), 3, "session_number=0 should return 3 events");
+        assert!(events.iter().all(|e| e.session_number == 0));
+
+        let opts = ConversationQuery { session_number: Some(1), ..Default::default() };
+        let events = storage.list_conversation_events(agent_id, &opts).await.unwrap();
+        assert_eq!(events.len(), 2, "session_number=1 should return 2 events");
+        assert!(events.iter().all(|e| e.session_number == 1));
+    }
+
+    #[tokio::test]
+    async fn test_conv_get_by_id_returns_correct_event() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let event = make_event(agent_id, ConversationEventType::Output);
+        let event_id = event.id;
+        storage.insert_conversation_event(&event).await.unwrap();
+
+        let found = storage
+            .get_conversation_event_by_id(agent_id, event_id)
+            .await
+            .unwrap()
+            .expect("event should be found");
+        assert_eq!(found.id, event_id);
+        assert_eq!(found.event_type, ConversationEventType::Output);
+    }
+
+    #[tokio::test]
+    async fn test_conv_get_by_id_wrong_agent_returns_none() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_a = Uuid::new_v4();
+        let agent_b = Uuid::new_v4();
+
+        let event = make_event(agent_a, ConversationEventType::Output);
+        let event_id = event.id;
+        storage.insert_conversation_event(&event).await.unwrap();
+
+        // agent_b cannot see agent_a's event.
+        let result = storage.get_conversation_event_by_id(agent_b, event_id).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_conv_summary_empty() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        let summary = storage.get_conversation_summary(agent_id).await.unwrap();
+        assert_eq!(summary.total_events, 0);
+        assert!(summary.event_counts.is_empty());
+        assert_eq!(summary.session_count, 0);
+        assert!(summary.first_event_at.is_none());
+        assert!(summary.last_event_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_conv_summary_counts_and_sessions() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        // Insert 3 Output events across 2 sessions, plus 1 ToolUse in session 1.
+        for session in [0i64, 0, 1] {
+            storage
+                .insert_conversation_event(&ConversationEvent::new(
+                    agent_id,
+                    ConversationEventType::Output,
+                    session,
+                    None,
+                    None,
+                ))
+                .await
+                .unwrap();
+        }
+        storage
+            .insert_conversation_event(&ConversationEvent::new(
+                agent_id,
+                ConversationEventType::ToolUse,
+                1,
+                None,
+                None,
+            ))
+            .await
+            .unwrap();
+
+        let summary = storage.get_conversation_summary(agent_id).await.unwrap();
+        assert_eq!(summary.total_events, 4);
+        assert_eq!(summary.session_count, 2);
+        assert_eq!(summary.event_counts.get("agent:output").copied().unwrap_or(0), 3);
+        assert_eq!(summary.event_counts.get("agent:tool_use").copied().unwrap_or(0), 1);
+        assert!(summary.first_event_at.is_some());
+        assert!(summary.last_event_at.is_some());
+        assert!(summary.first_event_at <= summary.last_event_at);
+    }
+
+    // -----------------------------------------------------------------------
+    // Pruning tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_prune_old_events_removes_old_rows() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        // Insert an event with a timestamp 40 days in the past.
+        let old_event = ConversationEvent {
+            id: Uuid::new_v4(),
+            agent_id,
+            event_type: ConversationEventType::Output,
+            session_number: 0,
+            content: Some("old".to_string()),
+            metadata: None,
+            created_at: Utc::now() - chrono::Duration::days(40),
+        };
+        storage.insert_conversation_event(&old_event).await.unwrap();
+
+        // Insert a recent event.
+        storage
+            .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+            .await
+            .unwrap();
+
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 2);
+
+        // Prune events older than 30 days -- only the old one should be removed.
+        let pruned = storage.prune_old_conversation_events(30).await.unwrap();
+        assert_eq!(pruned, 1);
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_prune_old_events_no_op_when_nothing_old() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        for _ in 0..3 {
+            storage
+                .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+                .await
+                .unwrap();
+        }
+
+        let pruned = storage.prune_old_conversation_events(30).await.unwrap();
+        assert_eq!(pruned, 0);
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_prune_excess_removes_oldest_first() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        // Insert 5 events with *explicit* timestamps spaced 1 second apart so
+        // that `ORDER BY created_at ASC` is deterministic even on fast machines
+        // where multiple `Utc::now()` calls may return the same millisecond.
+        let base = Utc::now() - chrono::Duration::seconds(10);
+        for i in 0..5i64 {
+            let mut ev = ConversationEvent::new(
+                agent_id,
+                ConversationEventType::Output,
+                i,
+                Some(format!("line {i}")),
+                None,
+            );
+            ev.created_at = base + chrono::Duration::seconds(i);
+            storage.insert_conversation_event(&ev).await.unwrap();
+        }
+
+        // Cap at 3 -- 2 oldest events (session_numbers 0 and 1) should be deleted.
+        let pruned = storage.prune_excess_conversation_events(agent_id, 3).await.unwrap();
+        assert_eq!(pruned, 2);
+
+        let remaining = storage
+            .list_conversation_events(agent_id, &ConversationQuery::default())
+            .await
+            .unwrap();
+        assert_eq!(remaining.len(), 3);
+        // The 3 newest events (session_numbers 2, 3, 4) should remain.
+        let sessions: Vec<i64> = remaining.iter().map(|e| e.session_number).collect();
+        assert!(sessions.iter().all(|&s| s >= 2), "only recent events should remain: {sessions:?}");
+    }
+
+    #[tokio::test]
+    async fn test_prune_excess_no_op_under_cap() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent_id = Uuid::new_v4();
+
+        for _ in 0..3 {
+            storage
+                .insert_conversation_event(&make_event(agent_id, ConversationEventType::Output))
+                .await
+                .unwrap();
+        }
+
+        // Cap is 5 -- nothing should be pruned.
+        let pruned = storage.prune_excess_conversation_events(agent_id, 5).await.unwrap();
+        assert_eq!(pruned, 0);
+        assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 3);
     }
 }
