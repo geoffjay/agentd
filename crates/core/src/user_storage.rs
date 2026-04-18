@@ -208,7 +208,7 @@ impl UserStorage {
         let paginator = user::Entity::find().order_by_asc(Column::Email).paginate(&self.db, limit);
 
         let total = paginator.num_items().await?;
-        let page = if limit > 0 { offset / limit } else { 0 };
+        let page = offset.checked_div(limit).unwrap_or(0);
         let items = paginator.fetch_page(page).await?;
 
         Ok(PaginatedResponse {
