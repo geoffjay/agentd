@@ -73,6 +73,7 @@ export function AgentCommandInput({
 	/** -1 = not browsing, otherwise index into history from the end */
 	const historyIndexRef = useRef(-1);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
+	const flashTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
 	const MIN_ROWS = 3;
 	const MAX_ROWS = 10;
@@ -82,6 +83,11 @@ export function AgentCommandInput({
 		historyRef.current = loadHistory(agentId);
 		historyIndexRef.current = -1;
 	}, [agentId]);
+
+	// Clean up flash timer on unmount
+	useEffect(() => {
+		return () => clearTimeout(flashTimerRef.current);
+	}, []);
 
 	// Auto-resize textarea between MIN_ROWS and MAX_ROWS
 	const autoResize = useCallback(() => {
@@ -118,7 +124,8 @@ export function AgentCommandInput({
 
 			setValue("");
 			setSuccessFlash(true);
-			setTimeout(() => setSuccessFlash(false), 600);
+			clearTimeout(flashTimerRef.current);
+			flashTimerRef.current = setTimeout(() => setSuccessFlash(false), 600);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : "Failed to send message";
 			setError(msg);
