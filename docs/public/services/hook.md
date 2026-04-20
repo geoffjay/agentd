@@ -19,7 +19,6 @@ Port defaults to `17002` in development and `7002` in production, configurable v
 | `AGENTD_NOTIFY_ON_FAILURE` | `true` | Send notification when a command exits non-zero |
 | `AGENTD_NOTIFY_ON_LONG_RUNNING` | `true` | Send notification on long-running commands |
 | `AGENTD_LONG_RUNNING_THRESHOLD_MS` | `30000` | Threshold in ms for long-running detection |
-| `AGENTD_BAML_URL` | (unset) | URL for BAML analysis server (optional) |
 | `AGENTD_NOTIFY_SERVICE_URL` | (unset) | URL for the notify service (optional) |
 | `AGENTD_LOG_FORMAT` | `text` | Log format: `text` or `json` |
 

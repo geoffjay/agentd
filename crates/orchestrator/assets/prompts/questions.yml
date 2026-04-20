@@ -1,0 +1,359 @@
+# Question generation prompt functions for agentd ask service.
+#
+# These functions provide AI-powered question generation, enabling
+# contextual, intelligent questions based on system state and user behavior.
+#
+# Origin: Converted from baml_src/questions.baml
+
+functions:
+  - name: GenerateSystemQuestion
+    description: >
+      Generate a context-aware system question. Creates intelligent questions
+      based on system state, user context, and history. Used by the ask service
+      to replace hardcoded question templates.
+    inputs:
+      - name: check_type
+        type: string
+        description: "Type of system check (e.g., 'tmux_sessions', 'disk_space', 'service_health')"
+      - name: system_state
+        type: string
+        description: "Current system state (e.g., '0 tmux sessions running', '80% disk usage')"
+      - name: user_context
+        type: string
+        description: Information about user's current activity and preferences
+      - name: recent_history
+        type: string
+        description: Recent relevant events or user actions
+    output:
+      type: SystemQuestion
+      schema:
+        question_text:
+          type: string
+          description: The question text to present to the user
+        suggested_responses:
+          type: string[]
+          description: "Suggested responses (e.g., ['yes', 'no', 'later'], or specific options)"
+        reasoning:
+          type: string
+          description: Brief explanation of why this question is being asked
+        urgency:
+          type: string
+          enum: [low, normal, high, urgent]
+          description: Urgency level
+        follow_up_actions:
+          type: map<string, string>
+          description: Follow-up actions the system might take based on user response
+        help_text:
+          type: string
+          optional: true
+          description: Additional context or help text for the user
+    prompt: |
+      Generate a contextual question for the user based on system state.
+
+      **Check Type:** {{check_type}}
+
+      **Current System State:**
+      {{system_state}}
+
+      **User Context:**
+      {{user_context}}
+
+      **Recent History:**
+      {{recent_history}}
+
+      **Guidelines for Question Generation:**
+
+      1. **Clarity**: Question should be specific and unambiguous
+      2. **Actionability**: User should clearly understand what action to take
+      3. **Context**: Reference relevant information from system state and history
+      4. **Brevity**: Keep question concise, save details for help text
+      5. **Suggestions**: Provide 2-5 suggested responses that cover common cases
+
+      **Example Questions (for inspiration):**
+      - For tmux check: "No tmux sessions are running. Would you like to start your usual development session?"
+      - For disk space: "Disk usage is at 85%. Should I clean up old logs and temporary files?"
+      - For service health: "The notification service hasn't responded in 5 minutes. Should I restart it?"
+
+      **Follow-up Actions:**
+      Map each suggested response to a concrete system action:
+      - What should happen if user says "yes"?
+      - What should happen if user says "no"?
+      - What about other responses?
+
+      Generate the question structure now.
+    client: primary
+    tests:
+      - name: generate_tmux_session_question
+        inputs:
+          check_type: "tmux_sessions"
+          system_state: "0 tmux sessions running, tmux is installed"
+          user_context: "User is in terminal, last tmux session ended 2 hours ago"
+          recent_history: "User typically runs 2-3 tmux sessions during work hours. Previous session was named 'dev-main'."
+      - name: generate_service_health_question
+        inputs:
+          check_type: "service_health"
+          system_state: "agentd-notify service not responding, last heartbeat 5 minutes ago"
+          user_context: "User is actively using the system, notifications are enabled"
+          recent_history: "Service has been stable for 3 days. No recent configuration changes."
+
+  - name: AnalyzeAnswer
+    description: >
+      Analyze user's answer to a question. Interprets the user's answer,
+      extracting intent and determining next steps. Handles various answer
+      formats (yes/no, free-form text, etc.)
+    inputs:
+      - name: original_question
+        type: string
+        description: The question that was asked
+      - name: user_answer
+        type: string
+        description: The user's response
+      - name: expected_response_type
+        type: string
+        description: "Type of expected response (e.g., 'yes_no', 'free_form', 'choice')"
+    output:
+      type: AnswerAnalysis
+      schema:
+        interpretation:
+          type: string
+          description: Interpreted meaning of the user's answer
+        confidence:
+          type: float
+          description: Confidence in interpretation (0.0 - 1.0)
+        suggested_action:
+          type: string
+          description: Suggested system action based on this answer
+        needs_followup:
+          type: bool
+          description: Whether a follow-up question might be needed
+        followup_question:
+          type: string
+          optional: true
+          description: Optional follow-up question if needed
+    prompt: |
+      Analyze the user's answer to determine intent and next steps.
+
+      **Original Question:**
+      {{original_question}}
+
+      **User's Answer:**
+      "{{user_answer}}"
+
+      **Expected Response Type:** {{expected_response_type}}
+
+      **Analysis Guidelines:**
+
+      1. **Interpretation**: What is the user's intent?
+         - Handle variations (e.g., "yeah", "sure", "ok" all mean "yes")
+         - Detect uncertainty (e.g., "maybe", "I'm not sure")
+         - Recognize qualified answers (e.g., "yes, but only if...")
+
+      2. **Confidence**: How confident are you in the interpretation?
+         - High (0.9-1.0): Clear, unambiguous answer
+         - Medium (0.6-0.9): Reasonable interpretation, some ambiguity
+         - Low (0.0-0.6): Unclear answer, may need clarification
+
+      3. **Action**: What should the system do next?
+         - Be specific and actionable
+         - Consider edge cases
+         - Handle failure scenarios
+
+      4. **Follow-up**: Does this answer require additional clarification?
+
+      Analyze the answer now.
+    client: fast
+    tests:
+      - name: analyze_clear_yes_answer
+        inputs:
+          original_question: "Should I restart the notification service?"
+          user_answer: "yes"
+          expected_response_type: "yes_no"
+      - name: analyze_ambiguous_answer
+        inputs:
+          original_question: "Would you like to start a new tmux session?"
+          user_answer: "maybe later"
+          expected_response_type: "yes_no"
+
+  - name: GenerateFollowUpQuestion
+    description: >
+      Generate a clarifying follow-up question. When a user's answer is
+      ambiguous or unclear, generate a follow-up question to clarify intent.
+    inputs:
+      - name: original_question
+        type: string
+        description: The original question
+      - name: original_answer
+        type: string
+        description: The user's ambiguous answer
+      - name: ambiguity_reason
+        type: string
+        description: Why the answer needs clarification
+    output:
+      type: SystemQuestion
+      description: Clarifying question with updated context (same schema as GenerateSystemQuestion output)
+    prompt: |
+      Generate a clarifying follow-up question.
+
+      **Original Question:**
+      {{original_question}}
+
+      **User's Answer:**
+      "{{original_answer}}"
+
+      **Why Clarification Needed:**
+      {{ambiguity_reason}}
+
+      **Guidelines:**
+      - Reference the original context
+      - Be specific about what needs clarification
+      - Offer concrete options
+      - Keep it brief and focused
+
+      **Example:**
+      Original: "Should I restart the service?"
+      Answer: "maybe"
+      Follow-up: "I understand you're unsure. The service has been unresponsive for 10 minutes. Would you like me to: 1) Restart it now, 2) Wait 5 more minutes, or 3) Just alert you if it doesn't recover?"
+
+      Generate the follow-up question now.
+    client: fast
+    tests:
+      - name: generate_followup_for_ambiguous
+        inputs:
+          original_question: "Should I clean up old log files? Disk is 85% full."
+          original_answer: "depends how old"
+          ambiguity_reason: "User's answer doesn't clearly indicate yes/no, needs age threshold"
+
+  - name: EvaluateQuestionEffectiveness
+    description: >
+      Evaluate question effectiveness for continuous improvement. Analyzes
+      how effective a question was based on user response patterns.
+    inputs:
+      - name: question_text
+        type: string
+        description: The question that was asked
+      - name: response_time_seconds
+        type: int
+        description: How long it took the user to respond
+      - name: user_answer
+        type: string
+        description: The user's answer
+      - name: system_outcome
+        type: string
+        description: What happened after the answer (success/failure)
+    output:
+      type: QuestionFeedback
+      schema:
+        was_clear:
+          type: bool
+          description: Whether the question was clear and actionable
+        was_relevant:
+          type: bool
+          description: Whether the user found the question relevant
+        improvement_suggestions:
+          type: string[]
+          description: Suggestions for improving this question type
+        better_timing:
+          type: string
+          optional: true
+          description: Optimal time to ask this question (if timing was an issue)
+    prompt: |
+      Evaluate how effective this question was.
+
+      **Question:** {{question_text}}
+
+      **User Response Time:** {{response_time_seconds}} seconds
+
+      **User's Answer:** "{{user_answer}}"
+
+      **System Outcome:** {{system_outcome}}
+
+      **Evaluation Criteria:**
+
+      1. **Clarity**: Was the question clear?
+         - Very quick response (< 10s) suggests clarity
+         - Very slow response (> 120s) might indicate confusion
+         - Non-standard answers might indicate unclear options
+
+      2. **Relevance**: Was the question timely and relevant?
+         - Successful outcome suggests good relevance
+         - Failed outcome might indicate poor timing or context
+
+      3. **Improvements**: How could this question be better?
+         - Different phrasing?
+         - Better timing?
+         - More/fewer response options?
+         - Additional context?
+
+      Provide honest, actionable feedback.
+    client: fast
+    tests:
+      - name: evaluate_effective_question
+        inputs:
+          question_text: "Notification service is down. Restart it now?"
+          response_time_seconds: 3
+          user_answer: "yes"
+          system_outcome: "Service restarted successfully and is responding normally"
+      - name: evaluate_ineffective_question
+        inputs:
+          question_text: "Something might be wrong. What should I do?"
+          response_time_seconds: 45
+          user_answer: "I don't know, what's wrong?"
+          system_outcome: "No action taken, user confused about the situation"
+
+  - name: PersonalizeQuestion
+    description: >
+      Generate a personalized question based on user preferences. Creates
+      questions tailored to the user's communication style and preferences,
+      learned from previous interactions.
+    inputs:
+      - name: base_question
+        type: string
+        description: The basic question content
+      - name: user_preferences
+        type: string
+        description: "User's learned preferences (verbosity, formality, etc.)"
+      - name: interaction_history
+        type: string
+        description: Summary of past interactions
+    output:
+      type: SystemQuestion
+      description: Question adapted to user's preferences (same schema as GenerateSystemQuestion output)
+    prompt: |
+      Personalize this question for the user.
+
+      **Base Question:**
+      {{base_question}}
+
+      **User Preferences:**
+      {{user_preferences}}
+
+      **Interaction History:**
+      {{interaction_history}}
+
+      **Personalization Guidelines:**
+
+      1. **Tone Matching**:
+         - Formal user - Use professional language
+         - Casual user - Use conversational tone
+         - Technical user - Include technical details
+
+      2. **Verbosity**:
+         - Prefers brief - Short question, minimal help text
+         - Prefers detailed - Comprehensive context and options
+
+      3. **Response Style**:
+         - Quick decider - Binary choices (yes/no)
+         - Thoughtful - Multiple options with context
+
+      4. **Learning from History**:
+         - What question patterns work well for this user?
+         - What response types do they prefer?
+
+      Adapt the question now.
+    client: fast
+    tests:
+      - name: personalize_for_technical_user
+        inputs:
+          base_question: "A service is not responding. Should I restart it?"
+          user_preferences: "Technical user, prefers detailed information, uses technical terminology"
+          interaction_history: "Usually asks for more details before deciding. Prefers seeing error codes and logs."

@@ -1,0 +1,461 @@
+# Hook analysis prompt functions for agentd.
+#
+# These functions provide intelligent analysis of shell hook events,
+# determining which events warrant notifications and how to present them.
+#
+# Origin: Converted from baml_src/hooks.baml
+
+functions:
+  - name: AnalyzeShellEvent
+    description: >
+      Analyze a shell event to determine if notification is needed.
+      Intelligently decides whether a shell command execution warrants
+      a notification, and if so, what that notification should say.
+    inputs:
+      - name: command
+        type: string
+        description: The shell command that was executed
+      - name: exit_code
+        type: int
+        description: Exit code of the command (0 = success)
+      - name: output
+        type: string
+        description: stdout/stderr from the command (truncated if long)
+      - name: duration_ms
+        type: int
+        description: How long the command took to execute
+      - name: context
+        type: string
+        description: "Additional context (current directory, time of day, etc.)"
+    output:
+      type: HookAction
+      schema:
+        should_notify:
+          type: bool
+          description: Whether a notification should be sent
+        notification_title:
+          type: string
+          description: Notification title (if should_notify is true)
+        notification_message:
+          type: string
+          description: Notification message body (if should_notify is true)
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+          description: Suggested priority
+        reasoning:
+          type: string
+          description: Brief explanation of the decision
+        metadata:
+          type: map<string, string>
+          description: Metadata to attach to the notification for context
+        indicates_problem:
+          type: bool
+          description: Whether this event indicates a problem
+        suggested_actions:
+          type: string[]
+          optional: true
+          description: Suggested actions for the user (if applicable)
+    prompt: |
+      Analyze this shell command execution:
+
+      **Command:** `{{command}}`
+
+      **Exit Code:** {{exit_code}} (0 = success, non-zero = error)
+
+      **Duration:** {{duration_ms}}ms
+
+      **Output:**
+      ```
+      {{output}}
+      ```
+
+      **Context:** {{context}}
+
+      **Notification Decision Guidelines:**
+
+      **DO Notify For:**
+      1. **Long-running commands completing** (> 30 seconds)
+         - Build commands (make, cargo build, npm install)
+         - Tests (cargo test, npm test, pytest)
+         - Deployments
+         - Large file operations
+
+      2. **Commands with errors** (exit_code != 0)
+         - Especially if non-interactive
+         - Include error message in notification
+
+      3. **User-defined patterns**
+         - Commands explicitly marked for notification
+         - Commands matching learned patterns
+
+      4. **Background/async operations**
+         - Downloads, uploads
+         - Background jobs
+
+      **DON'T Notify For:**
+      1. **Fast interactive commands** (< 5 seconds)
+         - ls, cd, pwd, etc.
+         - Quick file edits
+         - Status checks
+
+      2. **Expected failures**
+         - Test commands often expected to fail during development
+         - Conditional commands (grep with no match)
+
+      3. **Silent commands**
+         - Commands that explicitly suppress output
+         - Background maintenance tasks
+
+      **Notification Priority:**
+      - **urgent**: Critical failures affecting system/data
+      - **high**: Command failures, unexpected errors
+      - **normal**: Long-running commands completed successfully
+      - **low**: Informational, optional completions
+
+      **Notification Content:**
+      - Title: Brief, actionable (e.g., "Build Failed" not "Command Completed")
+      - Message: Include key information (exit code, timing, error preview)
+      - Context: Directory, relevant output lines
+
+      Make your decision now.
+    client: fast
+    tests:
+      - name: analyze_long_build_success
+        inputs:
+          command: "cargo build --release"
+          exit_code: 0
+          output: "    Compiling myapp v0.1.0\n    Finished release [optimized] target(s) in 2m 15s"
+          duration_ms: 135000
+          context: "Directory: /projects/myapp, Time: 14:30"
+      - name: analyze_quick_command
+        inputs:
+          command: "ls -la"
+          exit_code: 0
+          output: "total 48\ndrwxr-xr-x  12 user  staff   384 Jan 15 14:00 ."
+          duration_ms: 15
+          context: "Directory: /projects, Time: 14:30"
+      - name: analyze_failed_test
+        inputs:
+          command: "cargo test"
+          exit_code: 101
+          output: "running 10 tests\ntest auth_test ... FAILED\ntest db_test ... ok\n\nfailures:\n    auth_test\n\ntest result: FAILED. 9 passed; 1 failed"
+          duration_ms: 5000
+          context: "Directory: /projects/myapp/tests, Time: 14:45"
+
+  - name: LearnCommandPatterns
+    description: >
+      Learn patterns from command history. Analyzes historical command
+      executions to identify patterns and improve future notification decisions.
+    inputs:
+      - name: command_history
+        type: string[]
+        description: Recent command executions with outcomes
+      - name: notification_history
+        type: string[]
+        description: Which commands generated notifications and user response
+    output:
+      type: HookPattern[]
+      schema:
+        items:
+          pattern_description:
+            type: string
+            description: Description of the pattern
+          matching_criteria:
+            type: string
+            description: Commands or events that match this pattern
+          should_notify:
+            type: bool
+            description: Whether events matching this pattern should notify
+          notification_priority:
+            type: string
+            description: Suggested notification priority for this pattern
+          occurrence_count:
+            type: int
+            description: How many times this pattern has been observed
+          confidence:
+            type: float
+            description: Confidence in this pattern (0.0 - 1.0)
+    prompt: |
+      Learn patterns from command execution history:
+
+      **Command History:**
+      {% for cmd in command_history %}
+      - {{cmd}}
+      {% endfor %}
+
+      **Notification History (and user reactions):**
+      {% for notif in notification_history %}
+      - {{notif}}
+      {% endfor %}
+
+      **Pattern Learning Guidelines:**
+
+      1. **Frequency Patterns**:
+         - Commands run regularly (daily backups, cron jobs)
+         - Only notify if they fail, not on success
+
+      2. **Duration Patterns**:
+         - If command usually takes X seconds, notify if it takes significantly longer
+         - Learn typical execution times for common commands
+
+      3. **Outcome Patterns**:
+         - Some commands regularly fail but that's expected (test-driven development)
+         - Other commands should always succeed (deployments, backups)
+
+      4. **User Response Patterns**:
+         - If user dismisses notifications for certain commands without action
+         - If user always acts on certain notification types
+
+      5. **Context Patterns**:
+         - Time-of-day patterns (late-night commands might be more important)
+         - Directory patterns (production dirs vs test dirs)
+
+      **Pattern Output:**
+      - Describe each pattern clearly
+      - Provide matching criteria (regex, command prefix, etc.)
+      - Specify notification behavior
+      - Include confidence level
+
+      Return only significant patterns (occurrence_count >= 3, confidence >= 0.7).
+    client: primary
+    tests:
+      - name: learn_patterns_from_history
+        inputs:
+          command_history:
+            - "cargo test | exit_code: 0 | duration: 4500ms | no notification"
+            - "cargo test | exit_code: 101 | duration: 4200ms | notified, user reviewed"
+            - "cargo build --release | exit_code: 0 | duration: 120000ms | notified, user acknowledged"
+            - "cargo build --release | exit_code: 0 | duration: 118000ms | notified, user acknowledged"
+            - "ls -la | exit_code: 0 | duration: 10ms | no notification"
+            - "git status | exit_code: 0 | duration: 50ms | no notification"
+          notification_history:
+            - "cargo test FAILED -> user immediately checked logs"
+            - "cargo build completed (2min) -> user acknowledged but no action"
+            - "cargo build completed (2min) -> user acknowledged but no action"
+
+  - name: AnalyzeCommandIntent
+    description: >
+      Provide insights about a command before execution. Analyzes a command
+      that's about to run and provides intelligence about what to expect,
+      useful for setting up appropriate monitoring.
+    inputs:
+      - name: command
+        type: string
+        description: The command that will be executed
+      - name: execution_context
+        type: string
+        description: Where and when it's running
+    output:
+      type: CommandInsight
+      schema:
+        purpose:
+          type: string
+          description: What the command appears to be doing
+        is_long_running:
+          type: bool
+          description: Whether this is a long-running command
+        expected_outcomes:
+          type: string[]
+          description: Expected behavior (success indicators)
+        potential_issues:
+          type: string[]
+          description: Potential issues to watch for
+        user_cares_about_completion:
+          type: bool
+          description: Whether user typically cares about this command's completion
+    prompt: |
+      Analyze this command that's about to execute:
+
+      **Command:** `{{command}}`
+
+      **Context:** {{execution_context}}
+
+      **Analysis Goals:**
+
+      1. **Purpose**: What is this command doing?
+         - Building/compiling
+         - Testing
+         - Deploying
+         - Data processing
+         - System maintenance
+         - File operations
+
+      2. **Long-running Detection**:
+         - Likely to take > 30 seconds?
+         - Based on command type (build, test, download)
+
+      3. **Expected Outcomes**:
+         - What indicates success?
+         - What outputs are normal?
+
+      4. **Potential Issues**:
+         - Common failure modes for this command
+         - What to watch for in output
+
+      5. **User Interest**:
+         - Do users typically care when this completes?
+         - Background task vs. active work
+
+      **Examples:**
+
+      - `cargo build --release` -> Long-running, user cares about completion
+      - `git status` -> Fast, informational only
+      - `pytest tests/` -> Medium duration, user cares about results
+      - `scp large-file.zip server:/path` -> Long-running, user wants notification
+
+      Provide analysis now.
+    client: fast
+    tests:
+      - name: analyze_command_intent_build
+        inputs:
+          command: "npm run build"
+          execution_context: "Project: web-app, Directory: /projects/webapp, User actively developing"
+      - name: analyze_command_intent_deploy
+        inputs:
+          command: "./deploy-production.sh"
+          execution_context: "Directory: /projects/myapp/scripts, Time: 22:30 (late night)"
+
+  - name: GenerateCompletionNotification
+    description: >
+      Generate smart notification content for command completion. Creates
+      informative, actionable notification content for a completed command.
+    inputs:
+      - name: command
+        type: string
+        description: The command that completed
+      - name: exit_code
+        type: int
+        description: Exit code (0 = success)
+      - name: duration_ms
+        type: int
+        description: Execution time
+      - name: output_summary
+        type: string
+        description: Key lines from output
+      - name: previous_attempts
+        type: int
+        description: Whether this command was retried
+    output:
+      type: string
+      description: "JSON object with 'title' and 'message' fields"
+    prompt: |
+      Generate notification content for this completed command:
+
+      **Command:** `{{command}}`
+
+      **Exit Code:** {{exit_code}}
+
+      **Duration:** {{duration_ms}}ms
+
+      **Output Summary:**
+      {{output_summary}}
+
+      **Previous Attempts:** {{previous_attempts}}
+
+      **Notification Guidelines:**
+
+      **Title:**
+      - Action-oriented and clear
+      - Include key result (success/failure)
+      - Keep under 50 characters
+      - Examples:
+        - "Build Completed Successfully" (not "Command Finished")
+        - "Tests Failed: 3 errors" (not "Test Run Done")
+        - "Deployment Finished in 2m" (not "Deploy Command Completed")
+
+      **Message:**
+      - Key information first
+      - Include timing if significant
+      - Include error preview if failed
+      - Include action items if failure
+      - Keep concise (2-3 lines max)
+
+      **Examples:**
+
+      Success:
+      Title: "Build Completed"
+      Message: "cargo build --release finished successfully in 2m 15s. Binary ready at target/release/myapp."
+
+      Failure:
+      Title: "Build Failed"
+      Message: "Compilation error in src/main.rs:42. Check output for details. Retry attempt 1 of 3."
+
+      Return JSON: {"title": "...", "message": "..."}
+    client: fast
+    tests:
+      - name: generate_success_notification
+        inputs:
+          command: "cargo test --all"
+          exit_code: 0
+          duration_ms: 8500
+          output_summary: "running 42 tests\ntest result: ok. 42 passed; 0 failed; 0 ignored"
+          previous_attempts: 0
+      - name: generate_failure_notification
+        inputs:
+          command: "cargo clippy --all-targets"
+          exit_code: 1
+          duration_ms: 3200
+          output_summary: "error: this function has too many arguments (8/7)\n  --> src/main.rs:42:1\nwarning: 5 warnings emitted\nerror: aborting due to previous error"
+          previous_attempts: 0
+
+  - name: FilterRelevantOutput
+    description: >
+      Filter out noise from command output. Extracts the most important lines
+      from verbose command output for inclusion in notifications.
+    inputs:
+      - name: full_output
+        type: string
+        description: Complete command output
+      - name: exit_code
+        type: int
+        description: Whether command succeeded
+      - name: max_lines
+        type: int
+        description: Maximum lines to include in summary
+    output:
+      type: string
+      description: Filtered, most relevant output lines
+    prompt: |
+      Extract the most relevant {{max_lines}} lines from this command output:
+
+      ```
+      {{full_output}}
+      ```
+
+      **Exit Code:** {{exit_code}}
+
+      **Filtering Guidelines:**
+
+      **If Failed (exit_code != 0):**
+      - Prioritize error messages
+      - Include context around errors
+      - Include the last few lines (often contain error summary)
+
+      **If Succeeded (exit_code == 0):**
+      - Prioritize summary lines
+      - Include final status/completion messages
+      - Skip verbose progress output
+
+      **Always:**
+      - Skip timestamp-only lines
+      - Skip debug/trace level logs
+      - Skip blank lines
+      - Keep warning messages
+      - Keep lines with numbers/statistics (e.g., "Compiled 42 files")
+
+      Return the {{max_lines}} most important lines, preserving their original text.
+      Separate lines with newlines. If output is shorter than {{max_lines}} lines,
+      return all of it.
+    client: fast
+    tests:
+      - name: filter_error_output
+        inputs:
+          full_output: "Compiling myapp v0.1.0\nCompiling dep1 v1.0.0\nCompiling dep2 v2.0.0\nerror[E0425]: cannot find value `foo` in this scope\n  --> src/main.rs:42:5\n   |\n42 |     foo.bar()\n   |     ^^^ not found in this scope\n\nerror: aborting due to previous error\nFor more information about this error, try `rustc --explain E0425`"
+          exit_code: 1
+          max_lines: 5
+      - name: filter_success_output
+        inputs:
+          full_output: "    Compiling dep1 v1.0.0\n    Compiling dep2 v2.0.0\n    Compiling dep3 v3.0.0\n    Compiling myapp v0.1.0\n    Finished release [optimized] target(s) in 2m 15s"
+          exit_code: 0
+          max_lines: 3

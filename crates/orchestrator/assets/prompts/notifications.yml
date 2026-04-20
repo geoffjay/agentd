@@ -1,0 +1,255 @@
+# Notification processing prompt functions for agentd.
+#
+# These functions provide AI-powered notification processing including
+# automatic categorization and prioritization, summarization and digests,
+# and smart filtering and grouping.
+#
+# Origin: Converted from baml_src/notifications.baml
+
+functions:
+  - name: CategorizeNotification
+    description: >
+      Categorize a notification automatically based on its content.
+      Analyzes the notification title, message, and source context to
+      determine the appropriate category, priority, and lifetime.
+    inputs:
+      - name: title
+        type: string
+        description: The notification title
+      - name: message
+        type: string
+        description: The notification message body
+      - name: source_context
+        type: string
+        description: Context about where the notification came from
+    output:
+      type: NotificationCategory
+      schema:
+        category:
+          type: string
+          enum: [urgent, info, action_required, reminder, system, error]
+          description: Category type
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+          description: Priority level
+        suggested_lifetime:
+          type: string
+          enum: [ephemeral, persistent]
+          description: "Ephemeral = auto-dismiss, persistent = keep until dismissed"
+        reasoning:
+          type: string
+          description: Brief explanation of the categorization decision
+        suggested_action:
+          type: string
+          optional: true
+          description: Recommended action for the user
+    prompt: |
+      Analyze this notification and determine its appropriate categorization:
+
+      **Title:** {{title}}
+
+      **Message:** {{message}}
+
+      **Source:** {{source_context}}
+
+      Please categorize this notification by considering:
+
+      **Category Guidelines:**
+      - "urgent": System failures, security issues, critical errors requiring immediate attention
+      - "action_required": User decisions needed, approvals, confirmations
+      - "error": Non-critical errors, warnings, issues that should be addressed
+      - "reminder": Time-based reminders, scheduled notifications
+      - "system": System status updates, background task completions
+      - "info": General information, FYI messages, status updates
+
+      **Priority Guidelines:**
+      - "urgent": Immediate attention required, system down, data loss risk
+      - "high": Important but not critical, should be addressed soon
+      - "normal": Standard notifications, can be addressed during normal workflow
+      - "low": Informational only, no action required
+
+      **Lifetime Guidelines:**
+      - "ephemeral": Auto-dismiss notifications that are time-sensitive or informational
+      - "persistent": Keep until user explicitly dismisses, for actionable items
+
+      Provide your analysis in the structured format.
+    client: local_primary
+    tests:
+      - name: categorize_urgent_system_failure
+        inputs:
+          title: "Database Connection Lost"
+          message: "Unable to connect to PostgreSQL database. All services are affected."
+          source_context: "production monitoring system"
+      - name: categorize_normal_task_completion
+        inputs:
+          title: "Backup Completed"
+          message: "Daily backup finished successfully. 2.3GB backed up to cloud storage."
+          source_context: "backup service"
+      - name: categorize_action_required
+        inputs:
+          title: "Approval Needed"
+          message: "Please approve the deployment to production environment"
+          source_context: "deployment pipeline"
+
+  - name: SummarizeNotifications
+    description: >
+      Generate a digest summarizing multiple notifications. Creates a
+      comprehensive summary of notification activity over a time period,
+      highlighting key actions, trends, and recommendations.
+    inputs:
+      - name: notifications
+        type: string[]
+        description: "List of notification summaries (format: 'title: message | source | priority')"
+      - name: time_period
+        type: string
+        description: "Description of the time period (e.g., 'last 24 hours', 'this week')"
+    output:
+      type: NotificationDigest
+      schema:
+        summary:
+          type: string
+          description: High-level summary of notification activity
+        key_actions:
+          type: string[]
+          description: Key actions that require user attention
+        urgent_count:
+          type: int
+          description: Count of urgent-priority notifications
+        high_count:
+          type: int
+          description: Count of high-priority notifications
+        normal_count:
+          type: int
+          description: Count of normal-priority notifications
+        low_count:
+          type: int
+          description: Count of low-priority notifications
+        categories:
+          type: map<string, int>
+          description: Distribution of notifications by category
+        trends:
+          type: string
+          description: Observed trends or patterns in notification activity
+        recommendations:
+          type: string[]
+          description: Actionable recommendations for the user
+    prompt: |
+      Summarize these notifications from {{time_period}}:
+
+      {% for notification in notifications %}
+      {{loop.index}}. {{notification}}
+      {% endfor %}
+
+      Please provide:
+
+      1. **Summary**: A high-level overview of notification activity during this period
+      2. **Key Actions**: Specific actions the user should take (be concrete and actionable)
+      3. **Counts**: Accurate counts of notifications by priority (urgent, high, normal, low)
+      4. **Categories**: Distribution of notifications by type
+      5. **Trends**: Any patterns or trends in the notification activity
+      6. **Recommendations**: Specific suggestions for the user based on the activity
+
+      Focus on actionable insights rather than just repeating what the notifications say.
+    client: primary
+    tests:
+      - name: summarize_daily_notifications
+        inputs:
+          notifications:
+            - "Database backup completed | backup-service | normal"
+            - "API response time degraded | monitoring | high"
+            - "Deployment approved by admin | ci/cd | normal"
+            - "Certificate expiring in 7 days | security | high"
+          time_period: "today"
+
+  - name: GroupRelatedNotifications
+    description: >
+      Suggest intelligent grouping of related notifications. Analyzes
+      multiple notifications to identify which ones should be grouped
+      together based on common themes, sources, or action items.
+    inputs:
+      - name: notifications
+        type: map<string, string>
+        description: Map of notification IDs to their content
+      - name: min_group_size
+        type: int
+        description: Minimum number of notifications to form a group (default 2)
+    output:
+      type: NotificationGroup[]
+      schema:
+        items:
+          title:
+            type: string
+            description: Group title/name
+          notification_ids:
+            type: string[]
+            description: IDs of notifications that should be grouped together
+          reasoning:
+            type: string
+            description: Reason for grouping
+          suggested_group_action:
+            type: string
+            optional: true
+            description: "Suggested group action (e.g., 'mark all as read', 'dismiss group')"
+    prompt: |
+      Analyze these notifications and suggest intelligent groupings:
+
+      {{notifications}}
+
+      **Grouping Rules:**
+      - Minimum group size: {{min_group_size}} notifications
+      - Group by common theme, source, or related actions
+      - Each notification should belong to at most one group
+      - Don't force groupings if notifications are unrelated
+
+      **Example groupings:**
+      - Multiple error notifications from the same service
+      - Series of status updates for a long-running task
+      - Related action items that can be handled together
+
+      Return a list of suggested groups. Include only meaningful groupings.
+    client: local_primary
+
+  - name: IsNotificationStillRelevant
+    description: >
+      Determine if a notification is still relevant. Analyzes a notification's
+      content, age, and current system state to determine if it should be
+      automatically dismissed or archived.
+    inputs:
+      - name: title
+        type: string
+        description: Notification title
+      - name: message
+        type: string
+        description: Notification message
+      - name: created_hours_ago
+        type: int
+        description: How many hours ago the notification was created
+      - name: current_system_state
+        type: string
+        description: Brief description of current system state
+    output:
+      type: bool
+      description: Whether the notification is still relevant and should be kept
+    prompt: |
+      Determine if this notification is still relevant:
+
+      **Notification:**
+      Title: {{title}}
+      Message: {{message}}
+      Created: {{created_hours_ago}} hours ago
+
+      **Current System State:**
+      {{current_system_state}}
+
+      **Relevance Criteria:**
+      - Time-sensitive notifications become irrelevant after the event/deadline passes
+      - Error notifications become irrelevant if the error is resolved
+      - Status update notifications become irrelevant once superseded by newer updates
+      - Persistent action items remain relevant until explicitly completed
+
+      Return true if the notification is still relevant and should be kept,
+      false if it can be safely archived or dismissed.
+
+      Answer with just 'true' or 'false'.
+    client: local_primary

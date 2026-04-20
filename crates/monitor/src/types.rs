@@ -121,7 +121,7 @@ pub struct CollectResponse {
     pub alerts: Vec<Alert>,
 }
 
-/// Request body for the `/analyze` endpoint (log analysis via BAML).
+/// Request body for the `/analyze` endpoint (log analysis).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalyzeRequest {
     /// Name of the service whose logs are being analyzed
@@ -137,7 +137,7 @@ pub struct AnalyzeRequest {
 pub struct AnalyzeResponse {
     /// Whether analysis completed successfully
     pub success: bool,
-    /// Raw analysis result as JSON value (schema depends on BAML output)
+    /// Raw analysis result as JSON value
     pub result: serde_json::Value,
     /// Human-readable summary
     pub summary: String,

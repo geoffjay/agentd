@@ -33,12 +33,6 @@ pub struct HookConfig {
     /// Minimum duration in milliseconds to consider a command "long-running" (default: 30_000)
     pub long_running_threshold_ms: u64,
 
-    /// Optional URL for the BAML analysis server.
-    ///
-    /// When set, shell events will be forwarded to BAML for AI-powered analysis.
-    /// Leave unset (or empty) to skip BAML analysis.
-    pub baml_url: Option<String>,
-
     /// Optional URL for the notification service.
     ///
     /// When set, notable events will be forwarded as notifications.
@@ -48,7 +42,6 @@ pub struct HookConfig {
 impl HookConfig {
     /// Construct configuration from environment variables with defaults.
     pub fn from_env() -> Self {
-        let baml_url = env::var("AGENTD_BAML_URL").ok().filter(|s| !s.is_empty());
         let notify_service_url =
             env::var("AGENTD_NOTIFY_SERVICE_URL").ok().filter(|s| !s.is_empty());
 
@@ -68,7 +61,6 @@ impl HookConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30_000),
-            baml_url,
             notify_service_url,
         }
     }
@@ -82,7 +74,6 @@ impl Default for HookConfig {
             notify_on_failure: true,
             notify_on_long_running: true,
             long_running_threshold_ms: 30_000,
-            baml_url: None,
             notify_service_url: None,
         }
     }
@@ -100,7 +91,6 @@ mod tests {
         assert!(config.notify_on_failure);
         assert!(config.notify_on_long_running);
         assert_eq!(config.long_running_threshold_ms, 30_000);
-        assert!(config.baml_url.is_none());
         assert!(config.notify_service_url.is_none());
     }
 

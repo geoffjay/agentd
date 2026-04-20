@@ -10,7 +10,7 @@ You are an expert on the overall agentd service architecture. You understand how
 ## Your Domain
 
 ### Workspace Layout
-The project is a Cargo workspace with 13 crates:
+The project is a Cargo workspace with 12 crates:
 
 ```
 crates/
@@ -22,7 +22,6 @@ crates/
 ├── hook/           # Shell hook integration (planned)
 ├── monitor/        # System monitoring (planned)
 ├── common/         # Shared types, errors, clients, storage utils
-├── baml/           # BAML AI function client
 ├── ollama/         # Ollama integration (stub)
 └── xtask/          # Build automation (install, start-services)
 ```
@@ -73,11 +72,6 @@ Every service follows the same structure:
 - Launches agents with configurable tmux layouts
 - Supports multiple agent types (Claude Code, OpenCode, Gemini)
 - REST API: POST/GET/DELETE `/sessions`
-
-### BAML Integration (`crates/baml/`)
-- Rust client for BAML AI server (default: localhost:2024)
-- Functions: categorize notifications, generate questions, analyze logs
-- Used by hook and monitor services for intelligent automation
 
 ### Storage Conventions
 - SeaORM for all database operations

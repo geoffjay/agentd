@@ -170,7 +170,7 @@ system_prompt: |
   | Milestone            | Assign when                                                        |
   |----------------------|--------------------------------------------------------------------|
   | v0.3.0 Stabilization | Bug fixes, code quality, common crate consolidation, docs          |
-  | v0.4.0 Complete Impls | hook, monitor, ollama crate work; BAML integration                |
+  | v0.4.0 Complete Impls | hook, monitor, ollama crate work                                 |
   | v0.4.2 Extensibility | New task sources, integration tests, server-side improvements      |
   | v0.9.0 Autonomous Pipeline | Agent/workflow YAML changes, git-spice, conductor, specialist agents |
   | v1.0.0 Production    | Auth, config management, deployment, sandboxing                    |

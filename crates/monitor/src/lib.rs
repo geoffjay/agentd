@@ -2,8 +2,7 @@
 //!
 //! The `agentd-monitor` service provides a REST API for collecting and querying
 //! system health metrics including CPU, memory, disk, and load average. It supports
-//! configurable thresholds for anomaly detection and optional AI-powered log analysis
-//! via the BAML integration.
+//! configurable thresholds for anomaly detection.
 //!
 //! # Features
 //!

@@ -1,0 +1,471 @@
+# Monitoring and log analysis prompt functions for agentd.
+#
+# These functions provide AI-powered log analysis, error detection,
+# and system health monitoring capabilities.
+#
+# Origin: Converted from baml_src/monitoring.baml
+
+functions:
+  - name: AnalyzeLogs
+    description: >
+      Analyze log entries for errors and issues. Performs comprehensive
+      analysis of log entries to detect errors, identify patterns, and
+      provide actionable recommendations.
+    inputs:
+      - name: service_name
+        type: string
+        description: Name of the service generating the logs
+      - name: log_entries
+        type: string[]
+        description: Array of log lines to analyze
+      - name: time_window
+        type: string
+        description: "Time period these logs cover (e.g., 'last 5 minutes')"
+    output:
+      type: LogAnalysis
+      schema:
+        has_errors:
+          type: bool
+          description: Whether errors were detected in the logs
+        error_summary:
+          type: string
+          description: High-level summary of error patterns or issues
+        affected_services:
+          type: string[]
+          description: List of services or components affected by issues
+        suggested_actions:
+          type: string[]
+          description: Specific, actionable steps to resolve issues
+        severity:
+          type: string
+          enum: [info, warning, error, critical]
+          description: Severity level
+        root_cause:
+          type: string
+          description: Root cause analysis (if determinable from logs)
+        requires_immediate_attention:
+          type: bool
+          description: Whether immediate action is required
+        impact_assessment:
+          type: string
+          description: Estimated impact on system operations
+    prompt: |
+      Analyze these logs from **{{service_name}}** ({{time_window}}):
+
+      {% for entry in log_entries %}
+      {{entry}}
+      {% endfor %}
+
+      **Analysis Guidelines:**
+
+      1. **Error Detection**:
+         - Look for error messages, stack traces, exceptions
+         - Identify warning signs that might lead to errors
+         - Detect unusual patterns or anomalies
+
+      2. **Severity Assessment**:
+         - **critical**: Service down, data loss, security breach
+         - **error**: Functionality broken, but service running
+         - **warning**: Potential issues, degraded performance
+         - **info**: No issues detected, informational only
+
+      3. **Root Cause**:
+         - Analyze error messages and context
+         - Look for common causes (connection issues, resource exhaustion, config errors)
+         - Consider timing and sequence of events
+
+      4. **Affected Services**:
+         - Which components are directly impacted?
+         - What downstream services might be affected?
+
+      5. **Actionable Recommendations**:
+         - Be specific: "Restart service X" not "fix the problem"
+         - Prioritize actions by impact
+         - Include investigation steps for unclear issues
+
+      6. **Immediate Attention**:
+         - Set to true only if system is down or actively failing
+         - Consider if the issue can wait for normal business hours
+
+      Provide comprehensive analysis now.
+    client: primary
+    tests:
+      - name: analyze_error_logs
+        inputs:
+          service_name: "agentd-notify"
+          log_entries:
+            - "[ERROR] Failed to connect to database: connection refused"
+            - "[ERROR] Retry attempt 1 failed: connection refused"
+            - "[ERROR] Retry attempt 2 failed: connection refused"
+            - "[WARN] Falling back to in-memory storage"
+            - "[INFO] Service continuing with degraded functionality"
+          time_window: "last 5 minutes"
+      - name: analyze_healthy_logs
+        inputs:
+          service_name: "agentd-ask"
+          log_entries:
+            - "[INFO] Service started on port 3001"
+            - "[INFO] Connected to notification service"
+            - "[INFO] Processed check request: tmux_sessions"
+            - "[INFO] Health check passed"
+          time_window: "last 10 minutes"
+
+  - name: DetectLogPatterns
+    description: >
+      Detect patterns in log data. Identifies recurring patterns, trends,
+      or anomalies in log entries that might indicate systemic issues or
+      emerging problems.
+    inputs:
+      - name: log_entries
+        type: string[]
+        description: Array of log entries to analyze
+      - name: pattern_window
+        type: string
+        description: "Time window for pattern detection (e.g., '1 hour', '24 hours')"
+    output:
+      type: LogPattern[]
+      schema:
+        items:
+          pattern_description:
+            type: string
+            description: Description of the detected pattern
+          occurrence_count:
+            type: int
+            description: How many times this pattern appeared
+          time_range:
+            type: string
+            description: Time range when pattern was observed
+          is_problematic:
+            type: bool
+            description: Whether this pattern indicates a problem
+          confidence:
+            type: float
+            description: Confidence in pattern detection (0.0 - 1.0)
+          investigation_steps:
+            type: string[]
+            description: Suggested investigation steps
+    prompt: |
+      Analyze these logs to detect patterns over {{pattern_window}}:
+
+      {% for entry in log_entries %}
+      {{entry}}
+      {% endfor %}
+
+      **Pattern Detection Guidelines:**
+
+      Look for:
+      1. **Repetitive Errors**:
+         - Same error occurring multiple times
+         - Increasing frequency might indicate escalating problem
+
+      2. **Temporal Patterns**:
+         - Errors at specific times (e.g., every hour during scheduled job)
+         - Gradual degradation over time
+
+      3. **Correlated Events**:
+         - Multiple services showing errors around the same time
+         - Cascade failures (A fails -> B fails -> C fails)
+
+      4. **Resource Patterns**:
+         - Memory/CPU usage warnings
+         - Connection pool exhaustion
+         - Rate limiting triggers
+
+      5. **Anomalies**:
+         - Unusual log messages that don't fit normal patterns
+         - Sudden changes in log volume
+         - New types of errors
+
+      For each pattern:
+      - Describe what you observed
+      - Count occurrences
+      - Assess if it's problematic
+      - Provide confidence level
+      - Suggest investigation steps
+
+      Return a list of significant patterns. Don't report trivial patterns.
+    client: primary
+    tests:
+      - name: detect_patterns_repetitive_error
+        inputs:
+          log_entries:
+            - "10:00:00 [ERROR] API timeout: /users endpoint"
+            - "10:05:00 [ERROR] API timeout: /users endpoint"
+            - "10:10:00 [ERROR] API timeout: /users endpoint"
+            - "10:15:00 [ERROR] API timeout: /users endpoint"
+            - "10:20:00 [INFO] Request succeeded: /products endpoint"
+            - "10:25:00 [ERROR] API timeout: /users endpoint"
+          pattern_window: "1 hour"
+
+  - name: AssessServiceHealth
+    description: >
+      Assess overall health of a service. Evaluates service health based on
+      logs, metrics, and system state, providing a comprehensive assessment.
+    inputs:
+      - name: service_name
+        type: string
+        description: Name of the service to assess
+      - name: recent_logs
+        type: string[]
+        description: Recent log entries from the service
+      - name: metrics
+        type: string
+        description: Key metrics (JSON string with metric names and values)
+      - name: expected_behavior
+        type: string
+        description: Description of normal/healthy behavior
+    output:
+      type: ServiceHealth
+      schema:
+        service_name:
+          type: string
+          description: Service name
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy, critical]
+          description: Overall health status
+        indicators:
+          type: map<string, string>
+          description: Specific health indicators and their values
+        issues:
+          type: string[]
+          description: Issues detected (if any)
+        recommendations:
+          type: string[]
+          description: Recommended remediation actions
+        confidence:
+          type: float
+          description: Confidence in health assessment (0.0 - 1.0)
+        impact_if_unresolved:
+          type: string
+          optional: true
+          description: Predicted impact if issues not addressed
+    prompt: |
+      Assess the health of **{{service_name}}**:
+
+      **Recent Logs:**
+      {% for log in recent_logs %}
+      {{log}}
+      {% endfor %}
+
+      **Metrics:**
+      {{metrics}}
+
+      **Expected Healthy Behavior:**
+      {{expected_behavior}}
+
+      **Health Assessment Guidelines:**
+
+      1. **Status Determination**:
+         - **healthy**: Operating normally, no issues
+         - **degraded**: Functional but with reduced performance/reliability
+         - **unhealthy**: Significant issues affecting functionality
+         - **critical**: Service down or critically impaired
+
+      2. **Health Indicators**:
+         - Error rate
+         - Response time
+         - Resource usage (CPU, memory)
+         - Request success rate
+         - Availability
+
+      3. **Issue Identification**:
+         - What specific problems exist?
+         - How do they affect operations?
+         - Are they getting worse?
+
+      4. **Recommendations**:
+         - Immediate actions (if unhealthy/critical)
+         - Preventive measures
+         - Monitoring improvements
+
+      5. **Confidence**:
+         - High if logs and metrics clearly indicate status
+         - Lower if incomplete data or ambiguous signals
+
+      6. **Impact Prediction**:
+         - What happens if issues aren't resolved?
+         - User impact, data impact, system impact
+
+      Provide comprehensive health assessment now.
+    client: primary
+    tests:
+      - name: assess_healthy_service
+        inputs:
+          service_name: "agentd-notify"
+          recent_logs:
+            - "[INFO] Processed 150 notifications"
+            - "[INFO] Database query completed in 23ms"
+            - "[INFO] Health check passed"
+          metrics: '{"error_rate": 0.0, "avg_response_time_ms": 45, "memory_usage_mb": 128, "active_connections": 5}'
+          expected_behavior: "Error rate < 1%, response time < 100ms, memory usage < 512MB"
+      - name: assess_degraded_service
+        inputs:
+          service_name: "agentd-monitor"
+          recent_logs:
+            - "[WARN] High memory usage: 450MB"
+            - "[WARN] Slow query: 2.5s"
+            - "[ERROR] Connection pool exhausted"
+            - "[INFO] Retry succeeded after 3 attempts"
+          metrics: '{"error_rate": 2.5, "avg_response_time_ms": 850, "memory_usage_mb": 450, "active_connections": 95}'
+          expected_behavior: "Error rate < 1%, response time < 200ms, memory usage < 256MB, connections < 50"
+
+  - name: DetectPerformanceAnomaly
+    description: >
+      Detect performance anomalies. Identifies performance metrics that
+      deviate from normal patterns, helping catch issues before they
+      become critical.
+    inputs:
+      - name: metric_name
+        type: string
+        description: Name of the metric to analyze
+      - name: current_value
+        type: string
+        description: Current value of the metric
+      - name: historical_values
+        type: string[]
+        description: Recent historical values for comparison
+      - name: baseline_description
+        type: string
+        description: Description of normal/expected values
+    output:
+      type: PerformanceAnomaly
+      nullable: true
+      description: Anomaly details if detected, null if metric is normal
+      schema:
+        metric_name:
+          type: string
+          description: Metric that shows anomalous behavior
+        current_value:
+          type: string
+          description: Current value of the metric
+        expected_range:
+          type: string
+          description: Expected/normal value range
+        deviation:
+          type: string
+          description: Deviation from normal (percentage or description)
+        possible_causes:
+          type: string[]
+          description: Possible causes of the anomaly
+        investigation_steps:
+          type: string[]
+          description: Recommended investigation steps
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+          description: Severity of the anomaly
+    prompt: |
+      Analyze this performance metric for anomalies:
+
+      **Metric:** {{metric_name}}
+
+      **Current Value:** {{current_value}}
+
+      **Recent Historical Values:**
+      {% for value in historical_values %}
+      - {{value}}
+      {% endfor %}
+
+      **Baseline/Expected Behavior:**
+      {{baseline_description}}
+
+      **Anomaly Detection Guidelines:**
+
+      1. **Compare to Baseline**:
+         - Is current value within expected range?
+         - How much does it deviate (percentage)?
+
+      2. **Trend Analysis**:
+         - Is there a concerning trend in recent values?
+         - Sudden spike vs. gradual increase
+
+      3. **Severity**:
+         - **critical**: Value far outside normal, system at risk
+         - **high**: Significant deviation, requires attention
+         - **medium**: Notable deviation, should monitor
+         - **low**: Minor deviation, possibly normal variation
+
+      4. **Possible Causes**:
+         - Increased load?
+         - Resource exhaustion?
+         - Configuration change?
+         - External dependency issue?
+
+      5. **Investigation**:
+         - What should be checked first?
+         - What logs to review?
+         - What other metrics to correlate?
+
+      **Important**: Return null if the metric appears normal (within expected
+      range with no concerning trends). Only return a result if you detect an
+      actual anomaly.
+    client: fast
+    tests:
+      - name: detect_performance_anomaly
+        inputs:
+          metric_name: "api_response_time_ms"
+          current_value: "1250ms"
+          historical_values: ["45ms", "52ms", "48ms", "51ms", "47ms", "49ms", "46ms", "1248ms"]
+          baseline_description: "Typically 40-60ms, 95th percentile < 100ms"
+
+  - name: CorrelateServiceErrors
+    description: >
+      Correlate errors across services. Analyzes errors from multiple services
+      to identify related failures, cascading issues, or common root causes.
+    inputs:
+      - name: service_errors
+        type: map<string, string[]>
+        description: Map of service names to their error messages
+      - name: time_window
+        type: string
+        description: Time period for correlation
+    output:
+      type: string
+      description: Narrative analysis describing correlations and likely root causes
+    prompt: |
+      Analyze these errors from multiple services to find correlations ({{time_window}}):
+
+      {{service_errors}}
+
+      **Correlation Analysis Guidelines:**
+
+      1. **Common Causes**:
+         - Do errors share common infrastructure (database, cache, network)?
+         - Are errors occurring at the same time?
+         - Do error messages reference the same resources?
+
+      2. **Cascade Detection**:
+         - Does one service failure trigger others?
+         - What's the sequence of failures?
+
+      3. **Root Cause Hypothesis**:
+         - What single issue could explain multiple failures?
+         - Infrastructure problem?
+         - Configuration change?
+         - Resource exhaustion?
+
+      4. **Impact Assessment**:
+         - Which service failed first?
+         - What's the blast radius?
+
+      Provide a narrative analysis describing:
+      - What correlations you found
+      - Likely root cause(s)
+      - Which service to investigate first
+      - Recommended remediation approach
+    client: primary
+    tests:
+      - name: correlate_database_failure
+        inputs:
+          service_errors:
+            agentd-notify:
+              - "Database connection failed"
+              - "Query timeout after 30s"
+            agentd-ask:
+              - "Cannot store question: database unavailable"
+              - "Falling back to in-memory storage"
+            agentd-monitor:
+              - "Database health check failed"
+              - "Unable to persist metrics"
+          time_window: "10:00-10:05"

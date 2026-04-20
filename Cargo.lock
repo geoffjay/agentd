@@ -666,21 +666,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "baml"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "mockito",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2918,7 +2903,6 @@ dependencies = [
  "agentd-common",
  "anyhow",
  "axum",
- "baml",
  "chrono",
  "http-body-util",
  "mockito",
@@ -4569,7 +4553,6 @@ dependencies = [
  "agentd-common",
  "anyhow",
  "axum",
- "baml",
  "chrono",
  "http-body-util",
  "hyper",
