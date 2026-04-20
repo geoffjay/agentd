@@ -361,7 +361,7 @@ async fn list_memories(
         .collect();
 
     // Newest first so the first page of results shows the most recent memories.
-    filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    filtered.sort_by_key(|m| std::cmp::Reverse(m.created_at));
 
     let total = filtered.len();
     let items: Vec<Memory> = filtered.into_iter().skip(offset).take(limit).collect();
