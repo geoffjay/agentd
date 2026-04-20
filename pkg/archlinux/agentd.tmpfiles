@@ -1,0 +1,3 @@
+d /var/lib/agentd 0750 agentd agentd -
+d /var/lib/agentd/db 0750 agentd agentd -
+d /var/log/agentd 0750 agentd agentd -

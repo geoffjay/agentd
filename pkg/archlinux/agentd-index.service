@@ -1,0 +1,19 @@
+[Unit]
+Description=agentd index service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=agentd
+Group=agentd
+EnvironmentFile=/etc/agentd/agentd.conf
+Environment=AGENTD_PORT=17012
+ExecStart=/usr/bin/agentd-index
+Restart=on-failure
+RestartSec=5
+StateDirectory=agentd
+LogsDirectory=agentd
+
+[Install]
+WantedBy=multi-user.target

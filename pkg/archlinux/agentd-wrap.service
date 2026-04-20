@@ -1,0 +1,19 @@
+[Unit]
+Description=agentd wrap service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=agentd
+Group=agentd
+EnvironmentFile=/etc/agentd/agentd.conf
+Environment=AGENTD_PORT=7005
+ExecStart=/usr/bin/agentd-wrap
+Restart=on-failure
+RestartSec=5
+StateDirectory=agentd
+LogsDirectory=agentd
+
+[Install]
+WantedBy=multi-user.target

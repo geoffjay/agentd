@@ -1,0 +1,19 @@
+[Unit]
+Description=agentd ask service
+After=network.target agentd-notify.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=agentd
+Group=agentd
+EnvironmentFile=/etc/agentd/agentd.conf
+Environment=AGENTD_PORT=7001
+ExecStart=/usr/bin/agentd-ask
+Restart=on-failure
+RestartSec=5
+StateDirectory=agentd
+LogsDirectory=agentd
+
+[Install]
+WantedBy=multi-user.target

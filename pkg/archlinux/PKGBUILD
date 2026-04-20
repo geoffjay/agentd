@@ -1,0 +1,87 @@
+# Maintainer: Geoff Johnson <geoff at geoffjay dot com>
+pkgname=agentd
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="A modular daemon system for managing AI agents, notifications, interactive questions, and system monitoring"
+arch=('x86_64' 'aarch64')
+url="https://github.com/geoffjay/agentd"
+license=('MIT' 'Apache-2.0')
+depends=('gcc-libs' 'sqlite' 'tmux')
+makedepends=('cargo' 'bun')
+optdepends=('protobuf: for gRPC support')
+backup=(
+    'etc/agentd/agentd.conf'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release --workspace --bins
+
+    # Build UI
+    cd ui
+    bun install --frozen-lockfile
+    bun run build
+}
+
+check() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo test --frozen --workspace
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+
+    # Install service binaries
+    local _services=(
+        agentd-ask
+        agentd-communicate
+        agentd-core
+        agentd-hook
+        agentd-index
+        agentd-memory
+        agentd-monitor
+        agentd-notify
+        agentd-orchestrator
+        agentd-ui
+        agentd-wrap
+    )
+
+    for _bin in "${_services[@]}"; do
+        install -Dm755 "target/release/$_bin" "$pkgdir/usr/bin/$_bin"
+    done
+
+    # Install CLI binary as "agent"
+    install -Dm755 "target/release/cli" "$pkgdir/usr/bin/agent"
+
+    # Install UI assets
+    install -dm755 "$pkgdir/usr/share/agentd/ui"
+    cp -r ui/dist/* "$pkgdir/usr/share/agentd/ui/"
+
+    # Install systemd units
+    for _unit in "$srcdir"/../agentd-*.service; do
+        install -Dm644 "$_unit" "$pkgdir/usr/lib/systemd/system/$(basename "$_unit")"
+    done
+
+    # Install default configuration
+    install -Dm644 "$srcdir/../agentd.conf" "$pkgdir/etc/agentd/agentd.conf"
+
+    # Install sysusers and tmpfiles
+    install -Dm644 "$srcdir/../agentd.sysusers" "$pkgdir/usr/lib/sysusers.d/agentd.conf"
+    install -Dm644 "$srcdir/../agentd.tmpfiles" "$pkgdir/usr/lib/tmpfiles.d/agentd.conf"
+
+    # Install licenses
+    install -Dm644 LICENSE-MIT "$pkgdir/usr/share/licenses/$pkgname/LICENSE-MIT"
+    install -Dm644 LICENSE-APACHE "$pkgdir/usr/share/licenses/$pkgname/LICENSE-APACHE"
+}

@@ -1,0 +1,1 @@
+u agentd - "agentd service account" /var/lib/agentd /usr/bin/nologin
