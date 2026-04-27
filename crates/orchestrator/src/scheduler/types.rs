@@ -400,6 +400,8 @@ pub struct UpdateWorkflowRequest {
     pub enabled: Option<bool>,
     /// Update the tool policy for the workflow's agent.
     pub tool_policy: Option<ToolPolicy>,
+    /// Replace the trigger configuration for the workflow.
+    pub trigger_config: Option<TriggerConfig>,
 }
 
 /// Response body for workflow endpoints.

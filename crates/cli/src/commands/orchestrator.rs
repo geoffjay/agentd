@@ -2605,6 +2605,7 @@ async fn update_workflow(
         poll_interval_secs: poll_interval,
         enabled,
         tool_policy: None,
+        trigger_config: None,
     };
 
     let workflow =

@@ -43,3 +43,4 @@ agentd-mcp = { path = "../mcp" }
 [dev-dependencies]
 mockito = "1.2"
 tokio-test = "0.4"
+tempfile = "3"

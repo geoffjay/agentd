@@ -449,8 +449,15 @@ async fn main() -> Result<()> {
                             .await?;
                     }
                     commands::apply::TemplateKind::Workflow => {
-                        commands::apply::apply_workflow_file(&client, &path, dry_run, cli.json)
-                            .await?;
+                        let _ =
+                            commands::apply::apply_workflow_file(&client, &path, dry_run, cli.json)
+                                .await?;
+                    }
+                    commands::apply::TemplateKind::Pipeline => {
+                        anyhow::bail!(
+                            "Pipeline templates must be applied as part of a directory \
+                             (e.g. `agent apply .agentd/`), not as standalone files."
+                        );
                     }
                 }
             }
