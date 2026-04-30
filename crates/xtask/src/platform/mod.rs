@@ -38,6 +38,7 @@ pub const SERVICES: &[ServiceInfo] = &[
     ServiceInfo { name: "orchestrator", binary: "agentd-orchestrator", port: 7006, extra_env: &[] },
     ServiceInfo { name: "memory", binary: "agentd-memory", port: 7008, extra_env: &[] },
     ServiceInfo { name: "communicate", binary: "agentd-communicate", port: 7010, extra_env: &[] },
+    #[cfg(feature = "index-service")]
     ServiceInfo { name: "index", binary: "agentd-index", port: 17012, extra_env: &[] },
     ServiceInfo { name: "core", binary: "agentd-core", port: 7000, extra_env: &[] },
     ServiceInfo {
@@ -62,6 +63,7 @@ pub const SERVICE_NAMES: &[&str] = &[
     "orchestrator",
     "memory",
     "communicate",
+    #[cfg(feature = "index-service")]
     "index",
     "core",
     "ui",
@@ -118,8 +120,9 @@ mod tests {
 
     #[test]
     fn test_service_info_completeness() {
-        assert_eq!(SERVICES.len(), 11);
-        assert_eq!(SERVICE_NAMES.len(), 11);
+        let expected = if cfg!(feature = "index-service") { 11 } else { 10 };
+        assert_eq!(SERVICES.len(), expected);
+        assert_eq!(SERVICE_NAMES.len(), expected);
 
         // Every service name should have a corresponding ServiceInfo
         for name in SERVICE_NAMES {

@@ -81,12 +81,15 @@ use ask::client::AskClient;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::*;
+#[cfg(feature = "index-service")]
 use commands::index::IndexClient;
 use commands::{
-    AskCommand, AuthCommand, CommunicateCommand, IndexCommand, MemoryCommand, NotifyCommand,
+    AskCommand, AuthCommand, CommunicateCommand, MemoryCommand, NotifyCommand,
     OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, SystemAgentsCommand,
     WrapCommand,
 };
+#[cfg(feature = "index-service")]
+use commands::IndexCommand;
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
 use notify::client::NotifyClient;
@@ -301,6 +304,7 @@ enum Commands {
     /// agent index list-repos
     /// agent index search "authentication middleware" --mode hybrid
     /// ```
+    #[cfg(feature = "index-service")]
     Index {
         #[command(subcommand)]
         command: IndexCommand,
@@ -500,6 +504,7 @@ async fn main() -> Result<()> {
             let comm_client = CommunicateClient::new(&comm_url);
             command.execute(&orch_client, &comm_client, cli.json).await?;
         }
+        #[cfg(feature = "index-service")]
         Commands::Index { command } => {
             let url = env::var("AGENTD_INDEX_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:17012".to_string());

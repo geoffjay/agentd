@@ -40,6 +40,10 @@ memory = { path = "../memory" }
 communicate = { path = "../communicate" }
 agentd-mcp = { path = "../mcp" }
 
+[features]
+default = ["index-service"]
+index-service = []
+
 [dev-dependencies]
 mockito = "1.2"
 tokio-test = "0.4"
