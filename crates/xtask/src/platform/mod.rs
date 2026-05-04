@@ -104,11 +104,8 @@ pub trait Platform {
 pub fn detect_platform() -> Box<dyn Platform> {
     if cfg!(target_os = "macos") {
         Box::new(macos::MacOSPlatform)
-    } else if cfg!(target_os = "linux") {
-        Box::new(linux::LinuxPlatform)
     } else {
-        // Fall back to Linux-style for other Unix systems
-        Box::new(linux::LinuxPlatform)
+        Box::new(linux::LinuxPlatform { system: crate::is_root() })
     }
 }
 

@@ -378,7 +378,8 @@ async fn migrate_status(service: Option<&str>) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 fn install_user() -> Result<()> {
-    println!("{}", "Installing agentd (user mode)...".blue().bold());
+    let mode = if is_root() { "system" } else { "user" };
+    println!("{}", format!("Installing agentd ({mode} mode)...").blue().bold());
     println!();
 
     check_in_project_root()?;
@@ -433,9 +434,6 @@ fn install_user() -> Result<()> {
 }
 
 fn install() -> Result<()> {
-    println!("{}", "Note: System-wide installation requires sudo".yellow());
-    println!("Consider using 'install-user' instead.");
-    println!();
     install_user()
 }
 
@@ -853,13 +851,32 @@ pub fn set_executable(path: &Path) -> Result<()> {
 
 pub fn get_prefix() -> PathBuf {
     env::var("PREFIX").map(PathBuf::from).unwrap_or_else(|_| {
-        if cfg!(target_os = "macos") {
+        if cfg!(target_os = "macos") || is_root() {
             PathBuf::from("/usr/local")
         } else {
-            // Linux: default to ~/.local for user installs
+            // Linux unprivileged: default to ~/.local
             home_dir().unwrap_or_else(|_| PathBuf::from("/usr/local")).join(".local")
         }
     })
+}
+
+/// Returns true when the effective user ID is 0 (root).
+pub fn is_root() -> bool {
+    #[cfg(unix)]
+    {
+        Command::new("id")
+            .arg("-u")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            .map(|uid| uid == 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
 }
 
 pub fn home_dir() -> Result<PathBuf> {
