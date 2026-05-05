@@ -76,11 +76,13 @@ vi.mock("@/hooks/useAgents", () => ({
 
 const mockGetWorkflow = vi.fn();
 const mockCreateWorkflow = vi.fn();
+const mockUpdateWorkflow = vi.fn();
 
 vi.mock("@/services/orchestrator", () => ({
 	orchestratorClient: {
 		getWorkflow: (...args: unknown[]) => mockGetWorkflow(...args),
 		createWorkflow: (...args: unknown[]) => mockCreateWorkflow(...args),
+		updateWorkflow: (...args: unknown[]) => mockUpdateWorkflow(...args),
 	},
 }));
 
@@ -134,6 +136,7 @@ describe("WorkflowBuilder", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockCreateWorkflow.mockResolvedValue({ id: "wf-new", name: "Saved" });
+		mockUpdateWorkflow.mockResolvedValue({ ...baseWorkflow, name: "Updated" });
 		mockGetWorkflow.mockResolvedValue(baseWorkflow);
 	});
 
@@ -178,13 +181,18 @@ describe("WorkflowBuilder", () => {
 			expect(mockNavigate).toHaveBeenCalledWith("/workflows");
 		});
 
-		it("shows status bar with validation error on empty save attempt", async () => {
+		it("empty graph save succeeds without a validation error (shows save confirmation)", async () => {
 			const user = userEvent.setup();
 			renderCreate();
+			// Status bar absent before any save attempt
+			expect(screen.queryByTestId("builder-status-bar")).not.toBeInTheDocument();
 			await user.click(screen.getByTestId("builder-save-btn"));
-			// No nodes = validation errors should appear (no unconnected-node error
-			// on empty graph, but the canvas area should still render)
-			expect(screen.getByTestId("builder-canvas-area")).toBeInTheDocument();
+			// Empty graph passes validateGraph → 0 requests → no createWorkflow call
+			// setSaveSuccess(true) is still set, so the status bar appears with "Saved"
+			await waitFor(() =>
+				expect(screen.getByTestId("builder-status-bar")).toBeInTheDocument(),
+			);
+			expect(mockCreateWorkflow).not.toHaveBeenCalled();
 		});
 
 		it("renders node palette sidebar", () => {
@@ -256,25 +264,37 @@ describe("WorkflowBuilder", () => {
 			resolve({ id: "x" });
 		});
 
-		it("calls createWorkflow with the workflow name when nodes exist", async () => {
-			// Empty canvas → validateGraph returns no errors only when there
-			// are no nodes (the rule is: unconnected nodes are errors, but
-			// empty graph is fine). So an empty graph bypasses validation.
-			// Provide a name to ensure it's applied.
+		it("does not call createWorkflow for an empty graph (no edges to serialize)", async () => {
+			// Empty canvas has no edges, so graphToWorkflows returns [] and
+			// createWorkflow is never invoked even though validation passes.
 			const user = userEvent.setup();
 			renderCreate();
 
 			await user.type(screen.getByTestId("builder-name-input"), "Test Flow");
 			await user.click(screen.getByTestId("builder-save-btn"));
 
-			// Empty graph passes validateGraph (no nodes = nothing to validate)
-			// and calls createWorkflow — or if there's a validation error, it won't
-			// call. Either way the call count tells us what happened.
-			await waitFor(() => {
-				// createWorkflow may or may not be called depending on empty-graph rule
-				// Just verify the component didn't crash
-				expect(screen.getByTestId("workflow-builder")).toBeInTheDocument();
-			});
+			await waitFor(() =>
+				expect(screen.getByTestId("builder-status-bar")).toBeInTheDocument(),
+			);
+			expect(mockCreateWorkflow).not.toHaveBeenCalled();
+		});
+
+		it("calls updateWorkflow (not createWorkflow) in edit mode", async () => {
+			const user = userEvent.setup();
+			renderEdit("wf-1");
+			await waitFor(() =>
+				expect(screen.getByTestId("builder-name-input")).toHaveValue(
+					"My Workflow",
+				),
+			);
+			await user.click(screen.getByTestId("builder-save-btn"));
+			await waitFor(() =>
+				expect(mockUpdateWorkflow).toHaveBeenCalledWith(
+					"wf-1",
+					expect.any(Object),
+				),
+			);
+			expect(mockCreateWorkflow).not.toHaveBeenCalled();
 		});
 	});
 });

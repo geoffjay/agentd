@@ -31,6 +31,7 @@ import {
 	type Connection,
 	type Edge,
 	type Node,
+	type ReactFlowInstance,
 } from "@xyflow/react";
 import { WorkflowCanvas } from "@/components/workflows/canvas/WorkflowCanvas";
 import {
@@ -94,13 +95,13 @@ export function WorkflowBuilder() {
 	const [loading, setLoading] = useState(isEditing);
 
 	// React Flow instance ref for screenToFlowPosition
-	const rfInstanceRef = useRef<{ screenToFlowPosition: (pos: { x: number; y: number }) => { x: number; y: number } } | null>(null);
+	const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
 
 	const { allAgents } = useAgents({ pageSize: 200 });
 
 	// ── Load existing workflow ─────────────────────────────────────────────
 	useEffect(() => {
-		if (!editWorkflowId) return;
+		if (!editWorkflowId || allAgents.length === 0) return;
 
 		setLoading(true);
 		orchestratorClient
@@ -118,8 +119,7 @@ export function WorkflowBuilder() {
 				);
 			})
 			.finally(() => setLoading(false));
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [editWorkflowId]);
+	}, [editWorkflowId, allAgents]);
 
 	// ── Dirty tracking ─────────────────────────────────────────────────────
 	const markDirty = useCallback(() => {
@@ -265,6 +265,9 @@ export function WorkflowBuilder() {
 					const named = workflowName.trim()
 						? { ...req, name: workflowName.trim() }
 						: req;
+					if (isEditing && editWorkflowId) {
+						return orchestratorClient.updateWorkflow(editWorkflowId, named);
+					}
 					return orchestratorClient.createWorkflow(named);
 				}),
 			);
