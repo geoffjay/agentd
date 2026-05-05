@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
 		askUrl: "http://localhost:17001",
 		memoryUrl: "http://localhost:17008",
 	},
-	ui: { theme: "agentd-dark", pageSize: 20 },
+	ui: { theme: "agentd-dark", sidebarDefaultOpen: false },
 };
 
 describe("useSettings", () => {
@@ -45,9 +45,9 @@ describe("useSettings", () => {
 	it("update merges top-level settings and persists", () => {
 		const { result } = renderHook(() => useSettings());
 		act(() => {
-			result.current.update({ ui: { theme: "nord-dark", pageSize: 50 } });
+			result.current.update({ version: 2 });
 		});
-		expect(result.current.settings.ui.theme).toBe("nord-dark");
+		expect(result.current.settings.version).toBe(2);
 		expect(mockSaveSettings).toHaveBeenCalled();
 	});
 
@@ -67,7 +67,7 @@ describe("useSettings", () => {
 			result.current.updateUI({ theme: "tokyo-night" });
 		});
 		expect(result.current.settings.ui.theme).toBe("tokyo-night");
-		expect(result.current.settings.ui.pageSize).toBe(20);
+		expect(result.current.settings.ui.sidebarDefaultOpen).toBe(false);
 		expect(mockSaveSettings).toHaveBeenCalled();
 	});
 

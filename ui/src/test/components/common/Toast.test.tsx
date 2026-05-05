@@ -13,6 +13,7 @@ function makeToast(overrides: Partial<ToastData> = {}): ToastData {
 		type: "info",
 		title: "Test toast",
 		duration: 0,
+		createdAt: Date.now(),
 		...overrides,
 	};
 }
