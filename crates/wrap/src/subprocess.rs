@@ -231,38 +231,22 @@ fn is_valid_env_name(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Log level for a drain task.
-#[derive(Clone, Copy)]
-enum DrainLevel {
-    Debug,
-    Warn,
-}
-
-/// Spawn a task that drains a piped stream to tracing logs.
+/// Spawn a task that drains a piped stream to tracing logs at WARN level.
 fn spawn_drain_task(
     stream: impl tokio::io::AsyncRead + Unpin + Send + 'static,
     session_name: String,
     stream_name: &'static str,
-    level: DrainLevel,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let reader = BufReader::new(stream);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            match level {
-                DrainLevel::Debug => debug!(
-                    session = %session_name,
-                    stream = stream_name,
-                    "{}",
-                    line,
-                ),
-                DrainLevel::Warn => warn!(
-                    session = %session_name,
-                    stream = stream_name,
-                    "{}",
-                    line,
-                ),
-            }
+            warn!(
+                session = %session_name,
+                stream = stream_name,
+                "{}",
+                line,
+            );
         }
     })
 }
@@ -400,8 +384,7 @@ impl ExecutionBackend for SubprocessBackend {
         });
 
         // stderr is drained to tracing; stdout is held for the orchestrator to take.
-        let stderr_task =
-            spawn_drain_task(stderr, session_name.to_string(), "stderr", DrainLevel::Warn);
+        let stderr_task = spawn_drain_task(stderr, session_name.to_string(), "stderr");
 
         info!(
             session = %session_name,
