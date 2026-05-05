@@ -1080,7 +1080,9 @@ fn build_claude_command(
     } else if use_stdio {
         // Subprocess stdio mode: communicate via stdin/stdout NDJSON.
         // --print keeps claude reading stdin until EOF (graceful shutdown).
+        // --verbose is required by --output-format=stream-json with --print.
         args.push("--print".to_string());
+        args.push("--verbose".to_string());
         args.push("--output-format stream-json".to_string());
         args.push("--input-format stream-json".to_string());
         args.push("--dangerously-skip-permissions".to_string());
