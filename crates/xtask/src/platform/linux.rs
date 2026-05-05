@@ -135,8 +135,7 @@ impl Platform for LinuxPlatform {
                 let unit_name = format!("agentd-{}.service", service.name);
                 let unit_path = unit_dir.join(&unit_name);
                 if unit_path.exists() {
-                    fs::remove_file(&unit_path)
-                        .context(format!("Failed to remove {unit_name}"))?;
+                    fs::remove_file(&unit_path).context(format!("Failed to remove {unit_name}"))?;
                     println!("  {} Removed {}", "✓".green(), unit_name);
                 }
             }
@@ -315,8 +314,7 @@ impl LinuxPlatform {
             let unit_name = format!("agentd-{}.service", service.name);
             let unit_path = unit_dir.join(&unit_name);
 
-            fs::write(&unit_path, &unit_content)
-                .context(format!("Failed to write {unit_name}"))?;
+            fs::write(&unit_path, &unit_content).context(format!("Failed to write {unit_name}"))?;
             println!("  {} {}", "✓".green(), unit_name);
         }
 

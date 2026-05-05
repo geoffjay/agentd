@@ -262,11 +262,7 @@ pub trait ExecutionBackend: Send + Sync {
     ///
     /// Only meaningful when [`supports_subprocess_stdio`](Self::supports_subprocess_stdio)
     /// returns `true`. The default returns an error.
-    async fn write_subprocess_stdin(
-        &self,
-        _session_name: &str,
-        _line: &str,
-    ) -> anyhow::Result<()> {
+    async fn write_subprocess_stdin(&self, _session_name: &str, _line: &str) -> anyhow::Result<()> {
         Err(anyhow::anyhow!("This backend does not support subprocess stdin"))
     }
 

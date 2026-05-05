@@ -961,11 +961,7 @@ impl AgentManager {
     /// Must be called immediately after `send_command` succeeds for subprocess
     /// backends. The agent is registered in the registry upon return, so
     /// `send_user_message` works without a wait loop.
-    async fn wire_subprocess_io(
-        &self,
-        agent_id: Uuid,
-        session_name: &str,
-    ) -> anyhow::Result<()> {
+    async fn wire_subprocess_io(&self, agent_id: Uuid, session_name: &str) -> anyhow::Result<()> {
         use crate::websocket::{handle_incoming_message, AgentConnection};
         use tokio::io::{AsyncBufReadExt, BufReader};
         use tokio::sync::mpsc;
@@ -981,9 +977,7 @@ impl AgentManager {
         let session_for_relay = session_name.to_string();
         tokio::spawn(async move {
             while let Some(msg) = ws_rx.recv().await {
-                if let Err(e) =
-                    backend.write_subprocess_stdin(&session_for_relay, &msg).await
-                {
+                if let Err(e) = backend.write_subprocess_stdin(&session_for_relay, &msg).await {
                     warn!(
                         agent_id = %agent_id,
                         %e,

@@ -719,10 +719,9 @@ impl SubprocessBackend {
     pub async fn write_stdin(&self, session_name: &str, line: &str) -> Result<()> {
         let sessions = self.sessions.read().await;
         match sessions.get(session_name) {
-            Some(SessionState::Running { stdin_tx: Some(tx), .. }) => {
-                tx.send(line.to_string())
-                    .map_err(|_| anyhow!("Stdin relay closed for session '{}'", session_name))
-            }
+            Some(SessionState::Running { stdin_tx: Some(tx), .. }) => tx
+                .send(line.to_string())
+                .map_err(|_| anyhow!("Stdin relay closed for session '{}'", session_name)),
             Some(SessionState::Running { stdin_tx: None, .. }) => {
                 Err(anyhow!("Stdin already closed for session '{}'", session_name))
             }
@@ -799,10 +798,9 @@ mod tests {
 
     #[test]
     fn parse_simple_command() {
-        let (env, binary, args) = parse_command(
-            "claude --print --output-format stream-json --input-format stream-json",
-        )
-        .unwrap();
+        let (env, binary, args) =
+            parse_command("claude --print --output-format stream-json --input-format stream-json")
+                .unwrap();
         assert!(env.is_empty());
         assert_binary(&binary, "claude");
         assert_eq!(
