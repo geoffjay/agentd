@@ -246,6 +246,38 @@ pub trait ExecutionBackend: Send + Sync {
         Ok(None)
     }
 
+    /// Returns `true` when this backend communicates with agents via subprocess
+    /// stdin/stdout (NDJSON stream-json) rather than WebSocket (`--sdk-url`).
+    ///
+    /// When `true`, the orchestrator skips the WebSocket connection wait loop
+    /// and instead wires stdin/stdout IO directly after `send_command`.
+    ///
+    /// [`SubprocessBackend`](crate::subprocess::SubprocessBackend) overrides
+    /// this to return `true`; all other backends use the default of `false`.
+    fn supports_subprocess_stdio(&self) -> bool {
+        false
+    }
+
+    /// Write one NDJSON line to the subprocess stdin relay.
+    ///
+    /// Only meaningful when [`supports_subprocess_stdio`](Self::supports_subprocess_stdio)
+    /// returns `true`. The default returns an error.
+    async fn write_subprocess_stdin(&self, _session_name: &str, _line: &str) -> anyhow::Result<()> {
+        Err(anyhow::anyhow!("This backend does not support subprocess stdin"))
+    }
+
+    /// Take the stdout reader for a subprocess session (callable only once).
+    ///
+    /// Returns a boxed [`AsyncRead`](tokio::io::AsyncRead) for object-safety.
+    /// Only meaningful when [`supports_subprocess_stdio`](Self::supports_subprocess_stdio)
+    /// returns `true`. The default returns an error.
+    async fn take_subprocess_stdout(
+        &self,
+        _session_name: &str,
+    ) -> anyhow::Result<Box<dyn tokio::io::AsyncRead + Send + Unpin>> {
+        Err(anyhow::anyhow!("This backend does not support subprocess stdout"))
+    }
+
     /// Stops all sessions managed by this backend.
     ///
     /// Used during graceful shutdown to clean up all running sessions.

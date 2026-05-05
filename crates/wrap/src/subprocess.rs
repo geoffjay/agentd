@@ -5,10 +5,10 @@
 //! multiplexer, no PTY, no intermediate shell -- the agent binary is exec'd
 //! with its full argv and environment.
 //!
-//! This backend is designed for SDK-mode agents that communicate via
-//! `--sdk-url` WebSocket. It eliminates the shell readiness races inherent
-//! in tmux/PTY backends where a shell must initialise before a command can
-//! be injected.
+//! This backend communicates with agents via subprocess stdin/stdout using
+//! NDJSON (the Claude Agent SDK protocol). stdin is kept open for the lifetime
+//! of the session; the orchestrator writes messages to it via an mpsc channel
+//! relay. stdout is exposed once to the orchestrator for NDJSON parsing.
 //!
 //! Sessions are tracked in-memory and do not survive process restarts.
 //!
@@ -33,9 +33,9 @@ use std::path::Path;
 use std::process::ExitStatus;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Child;
-use tokio::sync::RwLock;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::process::{Child, ChildStdout};
+use tokio::sync::{mpsc, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
@@ -44,6 +44,7 @@ const KILL_GRACE_SECS: u64 = 5;
 
 /// Internal state of a subprocess session.
 #[allow(dead_code)]
+#[allow(clippy::large_enum_variant)]
 enum SessionState {
     /// Reserved by `create_session` -- no process spawned yet.
     Pending { config: SessionConfig },
@@ -51,7 +52,12 @@ enum SessionState {
     Running {
         child: Child,
         pid: u32,
-        _stdout_task: JoinHandle<()>,
+        /// Stdout reader, available once via [`SubprocessBackend::take_stdout`].
+        stdout: Option<ChildStdout>,
+        /// Channel sender for the stdin relay task. Dropping this closes
+        /// the child's stdin (EOF), signalling a clean exit.
+        stdin_tx: Option<mpsc::UnboundedSender<String>>,
+        _stdin_task: JoinHandle<()>,
         _stderr_task: JoinHandle<()>,
         config: SessionConfig,
         created_at: Instant,
@@ -226,38 +232,22 @@ fn is_valid_env_name(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Log level for a drain task.
-#[derive(Clone, Copy)]
-enum DrainLevel {
-    Debug,
-    Warn,
-}
-
-/// Spawn a task that drains a piped stream to tracing logs.
+/// Spawn a task that drains a piped stream to tracing logs at WARN level.
 fn spawn_drain_task(
     stream: impl tokio::io::AsyncRead + Unpin + Send + 'static,
     session_name: String,
     stream_name: &'static str,
-    level: DrainLevel,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let reader = BufReader::new(stream);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            match level {
-                DrainLevel::Debug => debug!(
-                    session = %session_name,
-                    stream = stream_name,
-                    "{}",
-                    line,
-                ),
-                DrainLevel::Warn => warn!(
-                    session = %session_name,
-                    stream = stream_name,
-                    "{}",
-                    line,
-                ),
-            }
+            warn!(
+                session = %session_name,
+                stream = stream_name,
+                "{}",
+                line,
+            );
         }
     })
 }
@@ -342,7 +332,7 @@ impl ExecutionBackend for SubprocessBackend {
         cmd.args(&args)
             .current_dir(&working_dir)
             .envs(&env_vars)
-            .stdin(std::process::Stdio::null())
+            .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
@@ -373,13 +363,29 @@ impl ExecutionBackend for SubprocessBackend {
         let pid =
             child.id().ok_or_else(|| anyhow!("Child process has no PID (already exited?)"))?;
 
-        // Drain stdout/stderr to tracing to prevent pipe deadlock.
+        // Extract pipes before storing the child.
+        let stdin_pipe = child.stdin.take().expect("stdin was piped");
         let stdout = child.stdout.take().expect("stdout was piped");
         let stderr = child.stderr.take().expect("stderr was piped");
-        let stdout_task =
-            spawn_drain_task(stdout, session_name.to_string(), "stdout", DrainLevel::Debug);
-        let stderr_task =
-            spawn_drain_task(stderr, session_name.to_string(), "stderr", DrainLevel::Warn);
+
+        // Stdin relay: orchestrator writes to tx, this task forwards to child stdin.
+        // Dropping all tx handles closes the channel, causing the task to exit and
+        // the child's stdin to receive EOF (clean shutdown signal).
+        let (stdin_tx, mut stdin_rx) = mpsc::unbounded_channel::<String>();
+        let stdin_task = tokio::spawn(async move {
+            let mut writer = BufWriter::new(stdin_pipe);
+            while let Some(line) = stdin_rx.recv().await {
+                if writer.write_all(line.as_bytes()).await.is_err() {
+                    break;
+                }
+                if writer.flush().await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        // stderr is drained to tracing; stdout is held for the orchestrator to take.
+        let stderr_task = spawn_drain_task(stderr, session_name.to_string(), "stderr");
 
         info!(
             session = %session_name,
@@ -407,7 +413,9 @@ impl ExecutionBackend for SubprocessBackend {
             SessionState::Running {
                 child,
                 pid,
-                _stdout_task: stdout_task,
+                stdout: Some(stdout),
+                stdin_tx: Some(stdin_tx),
+                _stdin_task: stdin_task,
                 _stderr_task: stderr_task,
                 config,
                 created_at: Instant::now(),
@@ -473,6 +481,16 @@ impl ExecutionBackend for SubprocessBackend {
         };
 
         if let Some(pid) = pid {
+            // Drop stdin_tx so the relay task exits and stdin EOF reaches claude.
+            // This gives claude a chance to shut down cleanly before SIGTERM.
+            {
+                let mut sessions = self.sessions.write().await;
+                if let Some(SessionState::Running { stdin_tx, .. }) = sessions.get_mut(session_name)
+                {
+                    let _ = stdin_tx.take();
+                }
+            }
+
             // Phase 1: SIGTERM to process group.
             #[cfg(unix)]
             {
@@ -659,6 +677,68 @@ impl ExecutionBackend for SubprocessBackend {
         }
         Ok(())
     }
+
+    fn supports_subprocess_stdio(&self) -> bool {
+        true
+    }
+
+    async fn write_subprocess_stdin(&self, session_name: &str, line: &str) -> Result<()> {
+        self.write_stdin(session_name, line).await
+    }
+
+    async fn take_subprocess_stdout(
+        &self,
+        session_name: &str,
+    ) -> Result<Box<dyn tokio::io::AsyncRead + Send + Unpin>> {
+        let stdout = self.take_stdout(session_name).await?;
+        Ok(Box::new(stdout))
+    }
+}
+
+impl SubprocessBackend {
+    /// Write one NDJSON line to the subprocess stdin relay channel.
+    ///
+    /// The line is forwarded to the child's stdin by a background relay task.
+    /// Returns an error if the session is not running or the relay has exited.
+    pub async fn write_stdin(&self, session_name: &str, line: &str) -> Result<()> {
+        let sessions = self.sessions.read().await;
+        match sessions.get(session_name) {
+            Some(SessionState::Running { stdin_tx: Some(tx), .. }) => tx
+                .send(line.to_string())
+                .map_err(|_| anyhow!("Stdin relay closed for session '{}'", session_name)),
+            Some(SessionState::Running { stdin_tx: None, .. }) => {
+                Err(anyhow!("Stdin already closed for session '{}'", session_name))
+            }
+            Some(SessionState::Pending { .. }) => {
+                Err(anyhow!("Session '{}' not yet running", session_name))
+            }
+            Some(SessionState::Exited { .. }) => {
+                Err(anyhow!("Session '{}' has exited", session_name))
+            }
+            None => Err(anyhow!("Session '{}' not found", session_name)),
+        }
+    }
+
+    /// Take the stdout reader for a session. Callable only once per session.
+    ///
+    /// Returns an error if the session is not running or stdout has already
+    /// been taken. The caller is responsible for reading NDJSON from the
+    /// returned handle.
+    pub async fn take_stdout(&self, session_name: &str) -> Result<ChildStdout> {
+        let mut sessions = self.sessions.write().await;
+        match sessions.get_mut(session_name) {
+            Some(SessionState::Running { stdout, .. }) => {
+                stdout.take().ok_or_else(|| anyhow!("Stdout already taken for '{}'", session_name))
+            }
+            Some(SessionState::Pending { .. }) => {
+                Err(anyhow!("Session '{}' not yet running", session_name))
+            }
+            Some(SessionState::Exited { .. }) => {
+                Err(anyhow!("Session '{}' has exited", session_name))
+            }
+            None => Err(anyhow!("Session '{}' not found", session_name)),
+        }
+    }
 }
 
 /// Convert an [`ExitStatus`] to a [`SessionExitInfo`].
@@ -702,15 +782,14 @@ mod tests {
 
     #[test]
     fn parse_simple_command() {
-        let (env, binary, args) = parse_command(
-            "claude --sdk-url ws://localhost:7006/ws/abc --output-format stream-json",
-        )
-        .unwrap();
+        let (env, binary, args) =
+            parse_command("claude --print --output-format stream-json --input-format stream-json")
+                .unwrap();
         assert!(env.is_empty());
         assert_binary(&binary, "claude");
         assert_eq!(
             args,
-            vec!["--sdk-url", "ws://localhost:7006/ws/abc", "--output-format", "stream-json"]
+            vec!["--print", "--output-format", "stream-json", "--input-format", "stream-json"]
         );
     }
 
