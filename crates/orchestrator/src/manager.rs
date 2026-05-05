@@ -134,10 +134,16 @@ impl AgentManager {
             }
         }
 
+        // Subprocess stdio mode takes precedence: agents communicate via
+        // stdin/stdout NDJSON rather than WebSocket.
+        let use_stdio = self.backend.supports_subprocess_stdio();
+
         // Determine whether to use interactive / PTY mode.
         // PTY backend always uses PTY stdin (not WebSocket) so that the session
         // remains interactable. Config-level `interactive` flag is also respected.
-        let effective_interactive = agent.config.interactive || self.backend.supports_pty_input();
+        // Subprocess stdio mode is mutually exclusive with PTY/interactive mode.
+        let effective_interactive =
+            !use_stdio && (agent.config.interactive || self.backend.supports_pty_input());
 
         // Persist the effective interactive state so downstream consumers
         // (API, UI) see the correct mode.  The DB record is the single source
@@ -147,12 +153,13 @@ impl AgentManager {
             agent.config.interactive = true;
         }
 
-        // Build the claude command (never uses -p; prompt sent via WebSocket or PTY stdin).
+        // Build the claude command (prompt sent via WebSocket, PTY stdin, or subprocess stdin).
         let ws_url = self
             .backend
             .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
-        let claude_cmd = build_claude_command(&agent.config, &ws_url, effective_interactive);
+        let claude_cmd =
+            build_claude_command(&agent.config, &ws_url, effective_interactive, use_stdio);
 
         // Persist the launch command so the UI can display it for debugging.
         agent.launch_command = Some(claude_cmd.clone());
@@ -176,6 +183,12 @@ impl AgentManager {
         // Register the agent's tool policy with the WebSocket registry.
         self.registry.set_policy(agent.id, agent.config.tool_policy.clone()).await;
 
+        // For subprocess stdio mode, wire stdin/stdout IO immediately after spawn.
+        // The ConnectionRegistry is populated right away (no WebSocket handshake needed).
+        if use_stdio {
+            self.wire_subprocess_io(agent.id, &session_name).await?;
+        }
+
         info!(
             agent_id = %agent.id,
             session = %session_name,
@@ -184,6 +197,8 @@ impl AgentManager {
         );
 
         // If there's an initial prompt, deliver it via the appropriate channel.
+        //
+        // Subprocess stdio mode: registered immediately, send without waiting.
         //
         // Interactive / PTY mode: Claude reads from PTY stdin, not the WebSocket.
         //   Write the prompt directly to PTY stdin. A brief delay lets the
@@ -195,7 +210,14 @@ impl AgentManager {
             let prompt = prompt.clone();
             let agent_id = agent.id;
 
-            if effective_interactive {
+            if use_stdio {
+                // Stdio mode — registered immediately, send without a wait loop.
+                if let Err(e) = self.registry.send_user_message(&agent_id, &prompt).await {
+                    warn!(%agent_id, %e, "Failed to send initial prompt via subprocess stdin");
+                } else {
+                    info!(%agent_id, "Initial prompt sent via subprocess stdin");
+                }
+            } else if effective_interactive {
                 // Interactive mode — inject via PTY stdin.
                 let manager = self.clone();
                 tokio::spawn(async move {
@@ -460,31 +482,38 @@ impl AgentManager {
                 None => {
                     // No exit info means the backend has no record of this
                     // session. For in-memory backends (subprocess, PTY) this
-                    // happens after a service restart. The process may still
-                    // be alive if it was in its own process group (setpgid).
-                    // Check the stored PID before spawning a duplicate.
-                    if let Some(pid) = agent.pid {
-                        if is_process_alive(pid) {
+                    // happens after a service restart.
+                    //
+                    // Subprocess stdio agents cannot reconnect after a service
+                    // restart — the pipe pair is gone. Always restart them.
+                    //
+                    // For other backends the process may still be alive in its
+                    // own process group (setpgid). Check the stored PID before
+                    // spawning a duplicate.
+                    if !self.backend.supports_subprocess_stdio() {
+                        if let Some(pid) = agent.pid {
+                            if is_process_alive(pid) {
+                                info!(
+                                    agent_id = %agent.id,
+                                    session = %session_name,
+                                    pid,
+                                    "Agent process still alive after service restart, skipping restart"
+                                );
+                                return Ok(());
+                            }
                             info!(
                                 agent_id = %agent.id,
                                 session = %session_name,
                                 pid,
-                                "Agent process still alive after service restart, skipping restart"
+                                "Agent process is dead, restarting"
                             );
-                            return Ok(());
+                        } else {
+                            info!(
+                                agent_id = %agent.id,
+                                session = %session_name,
+                                "Agent session lost (no PID recorded), restarting"
+                            );
                         }
-                        info!(
-                            agent_id = %agent.id,
-                            session = %session_name,
-                            pid,
-                            "Agent process is dead, restarting"
-                        );
-                    } else {
-                        info!(
-                            agent_id = %agent.id,
-                            session = %session_name,
-                            "Agent session lost (no PID recorded), restarting"
-                        );
                     }
 
                     if let Err(e) = self.restart_agent(&agent).await {
@@ -869,7 +898,9 @@ impl AgentManager {
         }
 
         // Build and send the claude command with the updated config.
-        let effective_interactive = agent.config.interactive || self.backend.supports_pty_input();
+        let use_stdio = self.backend.supports_subprocess_stdio();
+        let effective_interactive =
+            !use_stdio && (agent.config.interactive || self.backend.supports_pty_input());
 
         // Persist the effective interactive state (mirrors the fix in spawn_agent).
         if effective_interactive && !agent.config.interactive {
@@ -880,7 +911,8 @@ impl AgentManager {
             .backend
             .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
-        let claude_cmd = build_claude_command(&agent.config, &ws_url, effective_interactive);
+        let claude_cmd =
+            build_claude_command(&agent.config, &ws_url, effective_interactive, use_stdio);
 
         // Persist the launch command so the UI can display it for debugging.
         agent.launch_command = Some(claude_cmd.clone());
@@ -903,6 +935,11 @@ impl AgentManager {
         // Re-register tool policy.
         self.registry.set_policy(agent.id, agent.config.tool_policy.clone()).await;
 
+        // Re-wire subprocess IO if needed.
+        if use_stdio {
+            self.wire_subprocess_io(agent.id, &session_name).await?;
+        }
+
         info!(
             agent_id = %agent.id,
             session = %session_name,
@@ -912,6 +949,66 @@ impl AgentManager {
         );
 
         Ok(agent)
+    }
+
+    /// Wire subprocess stdin/stdout IO for an agent running in stdio mode.
+    ///
+    /// - Takes the stdout reader from the backend and spawns a task that reads
+    ///   NDJSON lines and calls `handle_incoming_message`.
+    /// - Creates an mpsc channel, registers it in the ConnectionRegistry, and
+    ///   spawns a relay task that forwards channel messages to subprocess stdin.
+    ///
+    /// Must be called immediately after `send_command` succeeds for subprocess
+    /// backends. The agent is registered in the registry upon return, so
+    /// `send_user_message` works without a wait loop.
+    async fn wire_subprocess_io(
+        &self,
+        agent_id: Uuid,
+        session_name: &str,
+    ) -> anyhow::Result<()> {
+        use crate::websocket::{handle_incoming_message, AgentConnection};
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        use tokio::sync::mpsc;
+
+        let stdout_reader = self.backend.take_subprocess_stdout(session_name).await?;
+
+        // mpsc channel bridges ConnectionRegistry → subprocess stdin relay.
+        let (ws_tx, mut ws_rx) = mpsc::unbounded_channel::<String>();
+        self.registry.register(agent_id, AgentConnection { tx: ws_tx }).await;
+
+        // Stdin relay task: forwards registry messages → subprocess stdin.
+        let backend = self.backend.clone();
+        let session_for_relay = session_name.to_string();
+        tokio::spawn(async move {
+            while let Some(msg) = ws_rx.recv().await {
+                if let Err(e) =
+                    backend.write_subprocess_stdin(&session_for_relay, &msg).await
+                {
+                    warn!(
+                        agent_id = %agent_id,
+                        %e,
+                        "Subprocess stdin relay error"
+                    );
+                    break;
+                }
+            }
+        });
+
+        // Stdout reader task: NDJSON lines → handle_incoming_message.
+        let registry = self.registry.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout_reader).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                handle_incoming_message(&agent_id, &line, &registry).await;
+            }
+            registry.unregister(&agent_id).await;
+            info!(agent_id = %agent_id, "Subprocess stdout closed, agent unregistered");
+        });
+
+        Ok(())
     }
 }
 
@@ -968,14 +1065,27 @@ fn build_env_assignments(env: &std::collections::HashMap<String, String>) -> Vec
     assignments
 }
 
-fn build_claude_command(config: &AgentConfig, ws_url: &str, interactive: bool) -> String {
+fn build_claude_command(
+    config: &AgentConfig,
+    ws_url: &str,
+    interactive: bool,
+    use_stdio: bool,
+) -> String {
     let mut args = vec!["claude".to_string()];
 
     if interactive {
         // Interactive / PTY mode: no --sdk-url, no stream-json flags.
         // Prompts are delivered via PTY stdin injection; a human can also
         // type directly in the terminal.
+    } else if use_stdio {
+        // Subprocess stdio mode: communicate via stdin/stdout NDJSON.
+        // --print keeps claude reading stdin until EOF (graceful shutdown).
+        args.push("--print".to_string());
+        args.push("--output-format stream-json".to_string());
+        args.push("--input-format stream-json".to_string());
+        args.push("--dangerously-skip-permissions".to_string());
     } else {
+        // WebSocket / SDK mode (tmux, Docker backends).
         args.push(format!("--sdk-url {}", ws_url));
         args.push("--output-format stream-json".to_string());
         args.push("--input-format stream-json".to_string());
@@ -1010,11 +1120,6 @@ fn build_claude_command(config: &AgentConfig, ws_url: &str, interactive: bool) -
         // Neither prompt nor file set — no flag emitted.
         (_, None, None) => {}
     }
-
-    // NOTE: --print / -p is intentionally NOT used here. It causes claude to
-    // exit after processing a single conversation, making the agent unable to
-    // receive follow-up messages. In SDK mode (--sdk-url), the CLI stays alive
-    // and processes multiple messages without --print.
 
     let base = args.join(" ");
     let env_assignments = build_env_assignments(&config.env);
@@ -1075,7 +1180,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_no_model() {
         let config = base_config();
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(!cmd.contains("--model"));
         assert!(cmd.contains("claude"));
         assert!(cmd.contains("--sdk-url"));
@@ -1084,14 +1189,14 @@ mod tests {
     #[test]
     fn test_build_claude_command_with_model_alias() {
         let config = AgentConfig { model: Some("opus".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--model opus"));
     }
 
     #[test]
     fn test_build_claude_command_with_full_model_name() {
         let config = AgentConfig { model: Some("claude-sonnet-4-6".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--model claude-sonnet-4-6"));
     }
 
@@ -1099,7 +1204,7 @@ mod tests {
     fn test_build_claude_command_model_with_interactive() {
         let config =
             AgentConfig { model: Some("haiku".to_string()), interactive: true, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true, false);
         assert!(cmd.contains("--model haiku"));
         assert!(!cmd.contains("--sdk-url"));
     }
@@ -1111,7 +1216,7 @@ mod tests {
             user: Some("deploy".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.starts_with("sudo -u deploy"));
         assert!(cmd.contains("--model sonnet"));
     }
@@ -1123,7 +1228,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test123".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
 
         assert!(cmd.contains("ANTHROPIC_API_KEY='sk-ant-test123'"));
         // Env prefix must come before claude
@@ -1137,7 +1242,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test".to_string());
         let config = AgentConfig { user: Some("deploy".to_string()), env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
 
         // For sudo, env vars are injected via `env` to cross the sudo boundary
         assert!(cmd.starts_with("sudo -u deploy env"));
@@ -1151,7 +1256,7 @@ mod tests {
         // Value contains a single quote — must be properly escaped
         env.insert("MY_VAR".to_string(), "it's a value".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
 
         // Single-quote escaping: ' → '\''
         assert!(cmd.contains("MY_VAR='it'\\''s a value'"));
@@ -1165,7 +1270,7 @@ mod tests {
         env.insert("123STARTS_WITH_DIGIT".to_string(), "v".to_string());
         env.insert("GOOD_KEY".to_string(), "ok".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
 
         assert!(cmd.contains("GOOD_KEY='ok'"));
         assert!(!cmd.contains("BAD KEY"));
@@ -1176,7 +1281,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_empty_env_no_prefix() {
         let config = base_config(); // env is empty
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
 
         // Must start directly with claude (no env prefix)
         assert!(cmd.starts_with("claude"));
@@ -1187,7 +1292,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_BASE_URL".to_string(), "https://custom.api.example.com".to_string());
         let config = AgentConfig { interactive: true, env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true, false);
 
         assert!(cmd.contains("ANTHROPIC_BASE_URL='https://custom.api.example.com'"));
         assert!(!cmd.contains("--sdk-url"));
@@ -1201,8 +1306,8 @@ mod tests {
         env.insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
         env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), "tok-123".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd1 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
-        let cmd2 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd1 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd2 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
 
         // Output must be deterministic (sorted) across calls
         assert_eq!(cmd1, cmd2);
@@ -1240,7 +1345,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_no_system_prompt_flag_when_absent() {
         let config = base_config();
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(!cmd.contains("--system-prompt"), "no system-prompt flag when none configured");
         assert!(!cmd.contains("--append-system-prompt"), "no append flag when none configured");
     }
@@ -1251,7 +1356,7 @@ mod tests {
             system_prompt: Some("You are a Rust expert".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--system-prompt 'You are a Rust expert'"));
         assert!(!cmd.contains("--append-system-prompt"));
         assert!(!cmd.contains("--system-prompt-file"));
@@ -1263,7 +1368,7 @@ mod tests {
             system_prompt_file: Some("./.agentd/agents/expert.md".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--system-prompt-file './.agentd/agents/expert.md'"));
         assert!(!cmd.contains("--system-prompt "));
         assert!(!cmd.contains("--append-system-prompt"));
@@ -1276,7 +1381,7 @@ mod tests {
             append_system_prompt: true,
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--append-system-prompt 'Always use TypeScript'"));
         assert!(!cmd.contains("--system-prompt "));
         assert!(!cmd.contains("--system-prompt-file"));
@@ -1289,7 +1394,7 @@ mod tests {
             append_system_prompt: true,
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--append-system-prompt-file './style-rules.txt'"));
         assert!(!cmd.contains("--system-prompt "));
         assert!(!cmd.contains("--system-prompt-file "));
@@ -1300,7 +1405,7 @@ mod tests {
         // Single quotes in the prompt must be shell-escaped.
         let config =
             AgentConfig { system_prompt: Some("You're an expert".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--system-prompt 'You'\\''re an expert'"));
     }
 
@@ -1311,7 +1416,7 @@ mod tests {
             append_system_prompt: true,
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--append-system-prompt 'Don'\\''t skip tests'"));
     }
 
@@ -1323,7 +1428,7 @@ mod tests {
             system_prompt_file: Some("./file.md".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--system-prompt 'inline prompt'"));
         assert!(!cmd.contains("--system-prompt-file"));
     }
@@ -1337,7 +1442,7 @@ mod tests {
             append_system_prompt: true,
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--append-system-prompt 'inline append'"));
         assert!(!cmd.contains("--append-system-prompt-file"));
         assert!(!cmd.contains("--system-prompt-file"));
@@ -1349,7 +1454,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_no_add_dir_when_empty() {
         let config = base_config(); // additional_dirs is empty
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(!cmd.contains("--add-dir"), "no --add-dir flag when additional_dirs is empty");
     }
 
@@ -1359,7 +1464,7 @@ mod tests {
             additional_dirs: vec!["/tmp/project".to_string(), "/home/user/data".to_string()],
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--add-dir '/tmp/project'"), "first dir must appear");
         assert!(cmd.contains("--add-dir '/home/user/data'"), "second dir must appear");
     }
@@ -1371,7 +1476,7 @@ mod tests {
             additional_dirs: vec!["/tmp/my project/it's here".to_string()],
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         // Single-quote escaping: ' → '\''
         assert!(
             cmd.contains("--add-dir '/tmp/my project/it'\\''s here'"),
@@ -1383,7 +1488,7 @@ mod tests {
     fn test_build_claude_command_pty_backend_no_sdk_url() {
         // Simulates PTY backend: effective_interactive = true
         let config = base_config();
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true, false);
         assert!(!cmd.contains("--sdk-url"), "PTY mode must not include --sdk-url");
         assert!(!cmd.contains("--input-format"), "PTY mode must not include --input-format");
         assert!(!cmd.contains("--output-format"), "PTY mode must not include --output-format");
@@ -1394,7 +1499,7 @@ mod tests {
     fn test_build_claude_command_sdk_mode_has_sdk_url() {
         // Non-PTY backend: effective_interactive = false
         let config = base_config(); // interactive = false
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("--sdk-url"));
         assert!(cmd.contains("--input-format stream-json"));
         assert!(cmd.contains("--output-format stream-json"));
