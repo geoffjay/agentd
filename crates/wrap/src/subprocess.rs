@@ -44,6 +44,7 @@ const KILL_GRACE_SECS: u64 = 5;
 
 /// Internal state of a subprocess session.
 #[allow(dead_code)]
+#[allow(clippy::large_enum_variant)]
 enum SessionState {
     /// Reserved by `create_session` -- no process spawned yet.
     Pending { config: SessionConfig },
