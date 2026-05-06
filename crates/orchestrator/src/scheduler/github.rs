@@ -35,11 +35,18 @@ pub struct GithubIssueSource {
     repo: String,
     labels: Vec<String>,
     state: String,
+    assignee: Option<String>,
 }
 
 impl GithubIssueSource {
-    pub fn new(owner: String, repo: String, labels: Vec<String>, state: String) -> Self {
-        Self { owner, repo, labels, state }
+    pub fn new(
+        owner: String,
+        repo: String,
+        labels: Vec<String>,
+        state: String,
+        assignee: Option<String>,
+    ) -> Self {
+        Self { owner, repo, labels, state, assignee }
     }
 }
 
@@ -66,22 +73,13 @@ struct GhAssignee {
 #[async_trait]
 impl TaskSource for GithubIssueSource {
     async fn fetch_tasks(&self) -> anyhow::Result<Vec<Task>> {
-        let mut args = vec![
-            GH_PATH.clone(),
-            "issue".to_string(),
-            "list".to_string(),
-            "--json".to_string(),
-            "number,title,body,url,labels,assignees".to_string(),
-            "--repo".to_string(),
-            format!("{}/{}", self.owner, self.repo),
-            "--state".to_string(),
-            self.state.clone(),
-        ];
-
-        for label in &self.labels {
-            args.push("--label".to_string());
-            args.push(label.clone());
-        }
+        let args = build_issue_args(
+            &self.owner,
+            &self.repo,
+            &self.labels,
+            &self.state,
+            self.assignee.as_deref(),
+        );
 
         debug!(repo = %format!("{}/{}", self.owner, self.repo), "Fetching GitHub issues");
 
@@ -123,11 +121,18 @@ pub struct GithubPullRequestSource {
     repo: String,
     labels: Vec<String>,
     state: String,
+    assignee: Option<String>,
 }
 
 impl GithubPullRequestSource {
-    pub fn new(owner: String, repo: String, labels: Vec<String>, state: String) -> Self {
-        Self { owner, repo, labels, state }
+    pub fn new(
+        owner: String,
+        repo: String,
+        labels: Vec<String>,
+        state: String,
+        assignee: Option<String>,
+    ) -> Self {
+        Self { owner, repo, labels, state, assignee }
     }
 }
 
@@ -150,22 +155,13 @@ struct GhPullRequest {
 #[async_trait]
 impl TaskSource for GithubPullRequestSource {
     async fn fetch_tasks(&self) -> anyhow::Result<Vec<Task>> {
-        let mut args = vec![
-            GH_PATH.clone(),
-            "pr".to_string(),
-            "list".to_string(),
-            "--json".to_string(),
-            "number,title,body,url,labels,assignees,headRefName,baseRefName,isDraft".to_string(),
-            "--repo".to_string(),
-            format!("{}/{}", self.owner, self.repo),
-            "--state".to_string(),
-            self.state.clone(),
-        ];
-
-        for label in &self.labels {
-            args.push("--label".to_string());
-            args.push(label.clone());
-        }
+        let args = build_pr_args(
+            &self.owner,
+            &self.repo,
+            &self.labels,
+            &self.state,
+            self.assignee.as_deref(),
+        );
 
         debug!(repo = %format!("{}/{}", self.owner, self.repo), "Fetching GitHub pull requests");
 
@@ -206,6 +202,70 @@ impl TaskSource for GithubPullRequestSource {
     fn source_type(&self) -> &'static str {
         "github_pull_requests"
     }
+}
+
+/// Build the args list for `gh issue list` (extracted for testability).
+pub(crate) fn build_issue_args(
+    owner: &str,
+    repo: &str,
+    labels: &[String],
+    state: &str,
+    assignee: Option<&str>,
+) -> Vec<String> {
+    let mut args = vec![
+        GH_PATH.clone(),
+        "issue".to_string(),
+        "list".to_string(),
+        "--json".to_string(),
+        "number,title,body,url,labels,assignees".to_string(),
+        "--repo".to_string(),
+        format!("{}/{}", owner, repo),
+        "--state".to_string(),
+        state.to_string(),
+    ];
+    for label in labels {
+        args.push("--label".to_string());
+        args.push(label.clone());
+    }
+    if let Some(a) = assignee {
+        args.push("--assignee".to_string());
+        args.push(a.to_string());
+    }
+    args
+}
+
+/// Build the args list for `gh pr list` (extracted for testability).
+///
+/// Note: `gh pr list --assignee` accepts a single username string (not an
+/// array). If multi-assignee filtering is ever needed, use
+/// `--search "assignee:alice assignee:bob"` instead.
+pub(crate) fn build_pr_args(
+    owner: &str,
+    repo: &str,
+    labels: &[String],
+    state: &str,
+    assignee: Option<&str>,
+) -> Vec<String> {
+    let mut args = vec![
+        GH_PATH.clone(),
+        "pr".to_string(),
+        "list".to_string(),
+        "--json".to_string(),
+        "number,title,body,url,labels,assignees,headRefName,baseRefName,isDraft".to_string(),
+        "--repo".to_string(),
+        format!("{}/{}", owner, repo),
+        "--state".to_string(),
+        state.to_string(),
+    ];
+    for label in labels {
+        args.push("--label".to_string());
+        args.push(label.clone());
+    }
+    if let Some(a) = assignee {
+        args.push("--assignee".to_string());
+        args.push(a.to_string());
+    }
+    args
 }
 
 /// Parse `gh issue list --json` output into Tasks (useful for testing).
@@ -345,5 +405,51 @@ mod tests {
     fn test_parse_pull_requests_empty() {
         let tasks = parse_gh_pull_requests("[]").unwrap();
         assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn test_build_issue_args_no_assignee() {
+        let args = build_issue_args("myorg", "myrepo", &[], "open", None);
+        assert!(args.contains(&"--repo".to_string()));
+        assert!(args.contains(&"myorg/myrepo".to_string()));
+        assert!(args.contains(&"--state".to_string()));
+        assert!(args.contains(&"open".to_string()));
+        assert!(!args.contains(&"--assignee".to_string()));
+    }
+
+    #[test]
+    fn test_build_issue_args_with_assignee() {
+        let args = build_issue_args("myorg", "myrepo", &[], "open", Some("alice"));
+        assert!(args.contains(&"--assignee".to_string()));
+        assert!(args.contains(&"alice".to_string()));
+        // assignee arg should appear after --assignee flag
+        let idx = args.iter().position(|a| a == "--assignee").unwrap();
+        assert_eq!(args[idx + 1], "alice");
+    }
+
+    #[test]
+    fn test_build_issue_args_with_labels_and_assignee() {
+        let labels = vec!["bug".to_string(), "agent".to_string()];
+        let args = build_issue_args("myorg", "myrepo", &labels, "open", Some("bob"));
+        let label_count = args.iter().filter(|a| a.as_str() == "--label").count();
+        assert_eq!(label_count, 2);
+        assert!(args.contains(&"--assignee".to_string()));
+        assert!(args.contains(&"bob".to_string()));
+    }
+
+    #[test]
+    fn test_build_pr_args_no_assignee() {
+        let args = build_pr_args("myorg", "myrepo", &[], "open", None);
+        assert!(args.contains(&"--repo".to_string()));
+        assert!(args.contains(&"myorg/myrepo".to_string()));
+        assert!(!args.contains(&"--assignee".to_string()));
+    }
+
+    #[test]
+    fn test_build_pr_args_with_assignee() {
+        let args = build_pr_args("myorg", "myrepo", &[], "open", Some("alice"));
+        let assignee_count = args.iter().filter(|a| a.as_str() == "--assignee").count();
+        assert_eq!(assignee_count, 1);
+        assert!(args.contains(&"alice".to_string()));
     }
 }

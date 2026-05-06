@@ -287,15 +287,22 @@ pub async fn notify_complete(
 /// (cron, delay, webhook, manual).
 fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> {
     match config {
-        TriggerConfig::GithubIssues { owner, repo, labels, state } => Ok(Box::new(
-            GithubIssueSource::new(owner.clone(), repo.clone(), labels.clone(), state.clone()),
-        )),
-        TriggerConfig::GithubPullRequests { owner, repo, labels, state } => {
+        TriggerConfig::GithubIssues { owner, repo, labels, state, assignee } => {
+            Ok(Box::new(GithubIssueSource::new(
+                owner.clone(),
+                repo.clone(),
+                labels.clone(),
+                state.clone(),
+                assignee.clone(),
+            )))
+        }
+        TriggerConfig::GithubPullRequests { owner, repo, labels, state, assignee } => {
             Ok(Box::new(GithubPullRequestSource::new(
                 owner.clone(),
                 repo.clone(),
                 labels.clone(),
                 state.clone(),
+                assignee.clone(),
             )))
         }
         TriggerConfig::LinearIssues { team_key, project, status, labels, assignee } => {
@@ -316,13 +323,13 @@ fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> 
                 assignee.clone(),
             )?))
         }
-        TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignees } => {
+        TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignee } => {
             Ok(Box::new(GitlabMergeRequestSource::new(
                 owner.clone(),
                 repo.clone(),
                 labels.clone(),
                 state.clone(),
-                assignees.clone(),
+                assignee.clone(),
             )?))
         }
         other => anyhow::bail!(
