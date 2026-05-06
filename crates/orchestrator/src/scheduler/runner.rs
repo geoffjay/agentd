@@ -1,5 +1,6 @@
 use crate::scheduler::events::EventBus;
 use crate::scheduler::github::{GithubIssueSource, GithubPullRequestSource};
+use crate::scheduler::gitlab::{GitlabIssueSource, GitlabMergeRequestSource};
 use crate::scheduler::linear::LinearIssueSource;
 use crate::scheduler::source::TaskSource;
 use crate::scheduler::storage::SchedulerStorage;
@@ -306,8 +307,26 @@ fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> 
                 assignee.clone(),
             )?))
         }
+        TriggerConfig::GitlabIssues { owner, repo, labels, state, assignee } => {
+            Ok(Box::new(GitlabIssueSource::new(
+                owner.clone(),
+                repo.clone(),
+                labels.clone(),
+                state.clone(),
+                assignee.clone(),
+            )?))
+        }
+        TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignees } => {
+            Ok(Box::new(GitlabMergeRequestSource::new(
+                owner.clone(),
+                repo.clone(),
+                labels.clone(),
+                state.clone(),
+                assignees.clone(),
+            )?))
+        }
         other => anyhow::bail!(
-            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests, linear_issues",
+            "Trigger type '{}' is not yet implemented. Currently supported: github_issues, github_pull_requests, linear_issues, gitlab_issues, gitlab_merge_requests",
             other.trigger_type()
         ),
     }

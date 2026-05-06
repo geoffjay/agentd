@@ -79,6 +79,10 @@ pub enum TriggerType {
     LinearIssues,
     /// Queue-based trigger — consumes tasks from a named internal queue.
     Queue,
+    /// GitLab issues trigger — polls GitLab for matching issues.
+    GitlabIssues,
+    /// GitLab merge requests trigger — polls GitLab for matching merge requests.
+    GitlabMergeRequests,
 }
 
 /// Orchestrator service management subcommands.
@@ -2541,6 +2545,40 @@ async fn create_workflow(
                 visibility_timeout_secs: queue_visibility_timeout,
             }
         }
+        TriggerType::GitlabIssues => {
+            let owner = owner
+                .ok_or_else(|| anyhow::anyhow!("--owner is required for gitlab-issues trigger"))?;
+            let repo = repo
+                .ok_or_else(|| anyhow::anyhow!("--repo is required for gitlab-issues trigger"))?;
+            let labels_vec: Vec<String> = labels
+                .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default();
+            TriggerConfig::GitlabIssues {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                labels: labels_vec,
+                state: state.unwrap_or("opened").to_string(),
+                assignee: None,
+            }
+        }
+        TriggerType::GitlabMergeRequests => {
+            let owner = owner.ok_or_else(|| {
+                anyhow::anyhow!("--owner is required for gitlab-merge-requests trigger")
+            })?;
+            let repo = repo.ok_or_else(|| {
+                anyhow::anyhow!("--repo is required for gitlab-merge-requests trigger")
+            })?;
+            let labels_vec: Vec<String> = labels
+                .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default();
+            TriggerConfig::GitlabMergeRequests {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                labels: labels_vec,
+                state: state.unwrap_or("opened").to_string(),
+                assignees: None,
+            }
+        }
     };
 
     let request = CreateWorkflowRequest {
@@ -2938,6 +2976,28 @@ fn display_workflow(workflow: &WorkflowResponse) {
             }
             if let Some(p) = response_pattern {
                 println!("{}: {}", "Response Pattern".bold(), p);
+            }
+        }
+        TriggerConfig::GitlabIssues { owner, repo, labels, state, assignee } => {
+            println!("{}: {}/{}", "Repository".bold(), owner, repo);
+            if !labels.is_empty() {
+                println!("{}: {}", "Labels".bold(), labels.join(", "));
+            }
+            println!("{}: {}", "State".bold(), state);
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
+            }
+        }
+        TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignees } => {
+            println!("{}: {}/{}", "Repository".bold(), owner, repo);
+            if !labels.is_empty() {
+                println!("{}: {}", "Labels".bold(), labels.join(", "));
+            }
+            println!("{}: {}", "State".bold(), state);
+            if let Some(assignee_list) = assignees {
+                if !assignee_list.is_empty() {
+                    println!("{}: {}", "Assignees".bold(), assignee_list.join(", "));
+                }
             }
         }
     }

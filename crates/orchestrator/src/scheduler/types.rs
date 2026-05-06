@@ -251,6 +251,51 @@ pub enum TriggerConfig {
         #[serde(default)]
         response_pattern: Option<String>,
     },
+    /// GitLab issues trigger — polls GitLab for issues matching the given filters.
+    ///
+    /// Requires `AGENTD_GITLAB_TOKEN` to be set in the environment (or in the
+    /// `[gitlab]` section of the agentd config file).
+    ///
+    /// # Fields
+    ///
+    /// - `owner` — GitLab namespace (user or group).
+    /// - `repo` — GitLab project name.
+    /// - `labels` — Label names the issue must carry (comma-AND).
+    /// - `state` — Issue state: `opened` (default), `closed`, or `all`.
+    ///   Note: GitLab uses `opened`, not `open`.
+    /// - `assignee` — Filter by assignee username.
+    GitlabIssues {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_gitlab_issue_state")]
+        state: String,
+        #[serde(default)]
+        assignee: Option<String>,
+    },
+    /// GitLab merge requests trigger — polls GitLab for MRs matching the given filters.
+    ///
+    /// Requires `AGENTD_GITLAB_TOKEN` to be set in the environment (or in the
+    /// `[gitlab]` section of the agentd config file).
+    ///
+    /// # Fields
+    ///
+    /// - `owner` — GitLab namespace (user or group).
+    /// - `repo` — GitLab project name.
+    /// - `labels` — Label names the MR must carry.
+    /// - `state` — MR state: `opened` (default), `closed`, `merged`, or `all`.
+    /// - `assignees` — Filter by assignee username(s). First entry is used.
+    GitlabMergeRequests {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_gitlab_mr_state")]
+        state: String,
+        #[serde(default)]
+        assignees: Option<Vec<String>>,
+    },
 }
 
 fn default_issue_state() -> String {
@@ -259,6 +304,14 @@ fn default_issue_state() -> String {
 
 fn default_pr_state() -> String {
     "open".to_string()
+}
+
+fn default_gitlab_issue_state() -> String {
+    "opened".to_string()
+}
+
+fn default_gitlab_mr_state() -> String {
+    "opened".to_string()
 }
 
 impl TriggerConfig {
@@ -277,6 +330,8 @@ impl TriggerConfig {
             TriggerConfig::Composite { .. } => "composite",
             TriggerConfig::Queue { .. } => "queue",
             TriggerConfig::AskResponse { .. } => "ask_response",
+            TriggerConfig::GitlabIssues { .. } => "gitlab_issues",
+            TriggerConfig::GitlabMergeRequests { .. } => "gitlab_merge_requests",
         }
     }
 
@@ -295,7 +350,9 @@ impl TriggerConfig {
             | TriggerConfig::LinearIssues { .. }
             | TriggerConfig::Composite { .. }
             | TriggerConfig::Queue { .. }
-            | TriggerConfig::AskResponse { .. } => true,
+            | TriggerConfig::AskResponse { .. }
+            | TriggerConfig::GitlabIssues { .. }
+            | TriggerConfig::GitlabMergeRequests { .. } => true,
         }
     }
 

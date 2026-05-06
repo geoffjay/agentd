@@ -76,6 +76,14 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "team_name",
     "project",
     "linear_id",
+    // Metadata-backed (gitlab_issues trigger)
+    "gitlab_project_id",
+    "gitlab_iid",
+    // Metadata-backed (gitlab_merge_requests trigger)
+    "source_branch",
+    "target_branch",
+    "merge_status",
+    "draft",
     // Metadata-backed (composite triggers)
     "composite_sub_source_ids",
     // Metadata-backed (queue trigger)

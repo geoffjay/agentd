@@ -189,6 +189,25 @@ async fn create_workflow(
         TriggerConfig::AskResponse { .. } => {
             // No required fields — all filters (agent_id, category, response_pattern) are optional.
         }
+        TriggerConfig::GitlabIssues { owner, repo, state, .. }
+        | TriggerConfig::GitlabMergeRequests { owner, repo, state, .. } => {
+            if owner.trim().is_empty() || repo.trim().is_empty() {
+                return Err(ApiError::InvalidInput(
+                    "GitLab trigger requires non-empty 'owner' and 'repo'".to_string(),
+                ));
+            }
+            let valid_states: &[&str] = match &req.trigger_config {
+                TriggerConfig::GitlabIssues { .. } => &["opened", "closed", "all"],
+                _ => &["opened", "closed", "merged", "all"],
+            };
+            if !valid_states.contains(&state.as_str()) {
+                return Err(ApiError::InvalidInput(format!(
+                    "Invalid GitLab state '{}'. Valid values: {}",
+                    state,
+                    valid_states.join(", ")
+                )));
+            }
+        }
     }
 
     // Reject trigger types that are not yet implemented.
@@ -210,6 +229,19 @@ async fn create_workflow(
             "Linear API key not configured. \
              Set the AGENTD_LINEAR_API_KEY environment variable \
              or add 'api_key' to the [linear] section of the agentd config file."
+                .to_string(),
+        ));
+    }
+
+    if matches!(
+        req.trigger_config,
+        TriggerConfig::GitlabIssues { .. } | TriggerConfig::GitlabMergeRequests { .. }
+    ) && !crate::scheduler::gitlab::GitlabConfig::is_configured()
+    {
+        return Err(ApiError::InvalidInput(
+            "GitLab token not configured. \
+             Set the AGENTD_GITLAB_TOKEN environment variable \
+             or add 'token' to the [gitlab] section of the agentd config file."
                 .to_string(),
         ));
     }

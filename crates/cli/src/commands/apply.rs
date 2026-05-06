@@ -288,10 +288,40 @@ pub enum SourceTemplate {
         #[serde(default)]
         assignee: Option<String>,
     },
+    /// GitLab issues trigger — polls GitLab for issues matching the given filters.
+    ///
+    /// Requires `AGENTD_GITLAB_TOKEN` to be set in the environment.
+    GitlabIssues {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_gitlab_state")]
+        state: String,
+        #[serde(default)]
+        assignee: Option<String>,
+    },
+    /// GitLab merge requests trigger — polls GitLab for MRs matching the given filters.
+    ///
+    /// Requires `AGENTD_GITLAB_TOKEN` to be set in the environment.
+    GitlabMergeRequests {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_gitlab_state")]
+        state: String,
+        #[serde(default)]
+        assignees: Option<Vec<String>>,
+    },
 }
 
 fn default_state() -> String {
     "open".to_string()
+}
+
+fn default_gitlab_state() -> String {
+    "opened".to_string()
 }
 
 /// Detected template type for a single YAML file.
@@ -663,6 +693,12 @@ pub async fn apply_workflow_file(
         SourceTemplate::Manual {} => TriggerConfig::Manual {},
         SourceTemplate::LinearIssues { team_key, project, status, labels, assignee } => {
             TriggerConfig::LinearIssues { team_key, project, status, labels, assignee }
+        }
+        SourceTemplate::GitlabIssues { owner, repo, labels, state, assignee } => {
+            TriggerConfig::GitlabIssues { owner, repo, labels, state, assignee }
+        }
+        SourceTemplate::GitlabMergeRequests { owner, repo, labels, state, assignees } => {
+            TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignees }
         }
     };
 
