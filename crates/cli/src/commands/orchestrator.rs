@@ -2470,6 +2470,7 @@ async fn create_workflow(
                 repo: repo.to_string(),
                 labels: labels_vec,
                 state: state.unwrap_or("open").to_string(),
+                assignee: None,
             }
         }
         TriggerType::GithubPullRequests => {
@@ -2487,6 +2488,7 @@ async fn create_workflow(
                 repo: repo.to_string(),
                 labels: labels_vec,
                 state: state.unwrap_or("open").to_string(),
+                assignees: None,
             }
         }
         TriggerType::Cron => {
@@ -2891,19 +2893,27 @@ fn display_workflow(workflow: &WorkflowResponse) {
     println!("{}: {}s", "Poll Interval".bold(), workflow.poll_interval_secs);
     println!("{}: {}", "Trigger Type".bold(), workflow.trigger_config.trigger_type());
     match &workflow.trigger_config {
-        TriggerConfig::GithubIssues { owner, repo, labels, state } => {
+        TriggerConfig::GithubIssues { owner, repo, labels, state, assignee } => {
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
             if !labels.is_empty() {
                 println!("{}: {}", "Labels".bold(), labels.join(", "));
             }
             println!("{}: {}", "State".bold(), state);
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
+            }
         }
-        TriggerConfig::GithubPullRequests { owner, repo, labels, state } => {
+        TriggerConfig::GithubPullRequests { owner, repo, labels, state, assignees } => {
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
             if !labels.is_empty() {
                 println!("{}: {}", "Labels".bold(), labels.join(", "));
             }
             println!("{}: {}", "State".bold(), state);
+            if let Some(assignee_list) = assignees {
+                if !assignee_list.is_empty() {
+                    println!("{}: {}", "Assignees".bold(), assignee_list.join(", "));
+                }
+            }
         }
         TriggerConfig::Cron { expression } => {
             println!("{}: {}", "Expression".bold(), expression);

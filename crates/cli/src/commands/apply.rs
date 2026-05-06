@@ -238,6 +238,8 @@ pub enum SourceTemplate {
         labels: Vec<String>,
         #[serde(default = "default_state")]
         state: String,
+        #[serde(default)]
+        assignee: Option<String>,
     },
     GithubPullRequests {
         owner: String,
@@ -246,6 +248,8 @@ pub enum SourceTemplate {
         labels: Vec<String>,
         #[serde(default = "default_state")]
         state: String,
+        #[serde(default)]
+        assignees: Option<Vec<String>>,
     },
     Cron {
         expression: String,
@@ -675,11 +679,11 @@ pub async fn apply_workflow_file(
     }
 
     let trigger_config = match tmpl.source {
-        SourceTemplate::GithubIssues { owner, repo, labels, state } => {
-            TriggerConfig::GithubIssues { owner, repo, labels, state }
+        SourceTemplate::GithubIssues { owner, repo, labels, state, assignee } => {
+            TriggerConfig::GithubIssues { owner, repo, labels, state, assignee }
         }
-        SourceTemplate::GithubPullRequests { owner, repo, labels, state } => {
-            TriggerConfig::GithubPullRequests { owner, repo, labels, state }
+        SourceTemplate::GithubPullRequests { owner, repo, labels, state, assignees } => {
+            TriggerConfig::GithubPullRequests { owner, repo, labels, state, assignees }
         }
         SourceTemplate::Cron { expression } => TriggerConfig::Cron { expression },
         SourceTemplate::Delay { run_at } => TriggerConfig::Delay { run_at },
@@ -1551,11 +1555,12 @@ state: closed
 "#;
         let src: SourceTemplate = serde_yaml::from_str(yaml).unwrap();
         match src {
-            SourceTemplate::GithubIssues { owner, repo, labels, state } => {
+            SourceTemplate::GithubIssues { owner, repo, labels, state, assignee } => {
                 assert_eq!(owner, "myorg");
                 assert_eq!(repo, "myrepo");
                 assert_eq!(labels, vec!["bug"]);
                 assert_eq!(state, "closed");
+                assert!(assignee.is_none());
             }
             other => panic!("Expected GithubIssues, got {:?}", other),
         }

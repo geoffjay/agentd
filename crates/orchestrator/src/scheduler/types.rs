@@ -84,6 +84,8 @@ pub enum TriggerConfig {
         labels: Vec<String>,
         #[serde(default = "default_issue_state")]
         state: String,
+        #[serde(default)]
+        assignee: Option<String>,
     },
     GithubPullRequests {
         owner: String,
@@ -92,6 +94,8 @@ pub enum TriggerConfig {
         labels: Vec<String>,
         #[serde(default = "default_pr_state")]
         state: String,
+        #[serde(default)]
+        assignees: Option<Vec<String>>,
     },
     /// Cron-based trigger (Phase 2).
     Cron { expression: String },

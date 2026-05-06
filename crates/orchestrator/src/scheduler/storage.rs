@@ -573,6 +573,7 @@ mod tests {
                 repo: "repo".to_string(),
                 labels: vec!["agent".to_string()],
                 state: "open".to_string(),
+                assignee: None,
             },
             prompt_template: "Fix: {{title}}".to_string(),
             poll_interval_secs: 60,

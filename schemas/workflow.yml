@@ -137,9 +137,12 @@ definitions:
         type: string
         enum: [open, closed, all]
         default: "open"
+      assignee:
+        description: "Filter issues to those assigned to this GitHub username."
+        type: string
     required: [type, owner, repo]
     additionalProperties: false
-    propertyOrder: [type, owner, repo, labels, state]
+    propertyOrder: [type, owner, repo, labels, state, assignee]
     examples:
       -
         - "Issues labelled 'agent' in open state"
@@ -148,6 +151,13 @@ definitions:
           owner: myorg
           repo: myrepo
           labels: [agent]
+      -
+        - "Issues assigned to a specific user"
+        - |
+          type: github_issues
+          owner: myorg
+          repo: myrepo
+          assignee: alice
 
   # ---------------------------------------------------------------------------
   # GitHub Pull Requests
@@ -180,9 +190,15 @@ definitions:
         type: string
         enum: [open, closed, all]
         default: "open"
+      assignees:
+        description: "Filter PRs to those assigned to any of these GitHub usernames."
+        type: array
+        items:
+          type: string
+        default: []
     required: [type, owner, repo]
     additionalProperties: false
-    propertyOrder: [type, owner, repo, labels, state]
+    propertyOrder: [type, owner, repo, labels, state, assignees]
 
   # ---------------------------------------------------------------------------
   # Cron
