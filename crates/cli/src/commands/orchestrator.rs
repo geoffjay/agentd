@@ -2488,7 +2488,7 @@ async fn create_workflow(
                 repo: repo.to_string(),
                 labels: labels_vec,
                 state: state.unwrap_or("open").to_string(),
-                assignees: None,
+                assignee: None,
             }
         }
         TriggerType::Cron => {
@@ -2578,7 +2578,7 @@ async fn create_workflow(
                 repo: repo.to_string(),
                 labels: labels_vec,
                 state: state.unwrap_or("opened").to_string(),
-                assignees: None,
+                assignee: None,
             }
         }
     };
@@ -2903,16 +2903,14 @@ fn display_workflow(workflow: &WorkflowResponse) {
                 println!("{}: {}", "Assignee".bold(), a);
             }
         }
-        TriggerConfig::GithubPullRequests { owner, repo, labels, state, assignees } => {
+        TriggerConfig::GithubPullRequests { owner, repo, labels, state, assignee } => {
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
             if !labels.is_empty() {
                 println!("{}: {}", "Labels".bold(), labels.join(", "));
             }
             println!("{}: {}", "State".bold(), state);
-            if let Some(assignee_list) = assignees {
-                if !assignee_list.is_empty() {
-                    println!("{}: {}", "Assignees".bold(), assignee_list.join(", "));
-                }
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
             }
         }
         TriggerConfig::Cron { expression } => {
@@ -2998,16 +2996,14 @@ fn display_workflow(workflow: &WorkflowResponse) {
                 println!("{}: {}", "Assignee".bold(), a);
             }
         }
-        TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignees } => {
+        TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignee } => {
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
             if !labels.is_empty() {
                 println!("{}: {}", "Labels".bold(), labels.join(", "));
             }
             println!("{}: {}", "State".bold(), state);
-            if let Some(assignee_list) = assignees {
-                if !assignee_list.is_empty() {
-                    println!("{}: {}", "Assignees".bold(), assignee_list.join(", "));
-                }
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
             }
         }
     }
@@ -3098,6 +3094,7 @@ mod tests {
                 repo: "widgets".to_string(),
                 labels: vec!["bug".to_string()],
                 state: "open".to_string(),
+                assignee: None,
             },
             prompt_template: "Fix: {{title}}".to_string(),
             poll_interval_secs: 60,
@@ -3969,6 +3966,7 @@ mod tests {
             repo: "repo".into(),
             labels: vec!["review".into()],
             state: "open".into(),
+            assignees: None,
         };
         display_workflow(&w);
 
@@ -4160,6 +4158,7 @@ mod tests {
             repo: "b".into(),
             labels: vec![],
             state: "open".into(),
+            assignee: None,
         }
         .is_implemented());
         assert!(TriggerConfig::GithubPullRequests {
@@ -4167,6 +4166,7 @@ mod tests {
             repo: "b".into(),
             labels: vec![],
             state: "open".into(),
+            assignees: None,
         }
         .is_implemented());
         assert!(TriggerConfig::Cron { expression: "* * * * *".into() }.is_implemented());
