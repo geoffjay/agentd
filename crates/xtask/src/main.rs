@@ -822,6 +822,7 @@ pub fn build_ui() -> Result<()> {
         .arg("run")
         .arg("build")
         .current_dir(ui_dir)
+        .env("NODE_ENV", "production")
         .status()
         .context("Failed to execute bun run build")?;
 

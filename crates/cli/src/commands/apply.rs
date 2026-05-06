@@ -49,6 +49,8 @@ pub struct AgentTemplate {
     #[serde(default)]
     pub worktree: bool,
     pub prompt: Option<String>,
+    /// User to run the agent as (via sudo). If None, inherits the service user.
+    pub user: Option<String>,
     pub system_prompt: Option<String>,
     /// Path to a file whose contents replace or append to the system prompt.
     pub system_prompt_file: Option<String>,
@@ -1163,7 +1165,7 @@ async fn apply_agent(
     let request = CreateAgentRequest {
         name: tmpl.name.clone(),
         working_dir,
-        user: None,
+        user: tmpl.user.clone(),
         shell: tmpl.shell.clone(),
         interactive: tmpl.interactive,
         prompt: tmpl.prompt.clone(),
