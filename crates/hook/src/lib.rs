@@ -57,13 +57,12 @@ pub mod types;
 
 use anyhow::Result;
 use api::{create_router_with_tracing, ApiState};
-use std::net::SocketAddr;
 use tracing::{info, warn};
 
 /// Run the hook service with the given configuration.
 ///
-/// Binds to `0.0.0.0:<config.port>`, serves the REST API, and shuts down
-/// gracefully on CTRL+C.
+/// Binds to the address configured via `AGENTD_HOST` (default `0.0.0.0`) on
+/// the configured port, serves the REST API, and shuts down gracefully on CTRL+C.
 pub async fn run(config: config::HookConfig) -> Result<()> {
     let port = config.port;
     info!(port, "Starting agentd-hook daemon");
@@ -71,8 +70,9 @@ pub async fn run(config: config::HookConfig) -> Result<()> {
     let api_state = ApiState::new(config);
     let router = create_router_with_tracing(api_state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let host = std::env::var("AGENTD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let addr = format!("{host}:{port}");
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("HTTP server listening on http://{}", addr);
 
     let shutdown_signal = async {

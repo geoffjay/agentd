@@ -75,7 +75,6 @@ pub mod types;
 use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, routing::get};
 use metrics_exporter_prometheus::PrometheusHandle;
-use std::net::SocketAddr;
 use tracing::{info, warn};
 
 /// Initialize the Prometheus metrics recorder and return a handle for rendering.
@@ -151,8 +150,9 @@ pub async fn run(config: config::MonitorConfig) -> Result<()> {
         }
     });
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let host = std::env::var("AGENTD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let addr = format!("{host}:{port}");
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("HTTP server listening on http://{}", addr);
 
     let shutdown_signal = async {

@@ -16,6 +16,8 @@ mod state;
 mod storage;
 mod types;
 
+use std::env;
+
 use anyhow::Result;
 use api::{create_router_with_tracing, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
@@ -81,7 +83,8 @@ async fn main() -> Result<()> {
         .layer(agentd_common::server::metrics_layer())
         .layer(agentd_common::server::cors_layer());
 
-    let addr = format!("0.0.0.0:{port}");
+    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Listening on {}", addr);
 

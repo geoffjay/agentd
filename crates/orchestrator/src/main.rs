@@ -384,7 +384,8 @@ async fn main() -> anyhow::Result<()> {
     // Bind and start serving BEFORE reconciliation. Reconcile restarts agent
     // processes that connect back to our WebSocket endpoint — the server must
     // be accepting connections before those agents are launched.
-    let addr = format!("127.0.0.1:{}", port);
+    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let addr = format!("{host}:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Orchestrator API listening on http://{}", addr);
     info!("WebSocket endpoint at ws://{}/ws/{{agent_id}}", addr);

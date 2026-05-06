@@ -33,6 +33,7 @@
 //! - `GET  /repositories/:id/status`  — repository indexing status
 //! - `POST /repositories/:id/reindex` — trigger re-indexing
 
+use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -150,7 +151,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
-    let addr = format!("127.0.0.1:{}", config.port);
+    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let addr = format!("{host}:{}", config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Index API server listening on http://{}", addr);
 
