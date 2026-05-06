@@ -121,7 +121,7 @@ pub struct GithubPullRequestSource {
     repo: String,
     labels: Vec<String>,
     state: String,
-    assignees: Option<Vec<String>>,
+    assignee: Option<String>,
 }
 
 impl GithubPullRequestSource {
@@ -130,9 +130,9 @@ impl GithubPullRequestSource {
         repo: String,
         labels: Vec<String>,
         state: String,
-        assignees: Option<Vec<String>>,
+        assignee: Option<String>,
     ) -> Self {
-        Self { owner, repo, labels, state, assignees }
+        Self { owner, repo, labels, state, assignee }
     }
 }
 
@@ -160,7 +160,7 @@ impl TaskSource for GithubPullRequestSource {
             &self.repo,
             &self.labels,
             &self.state,
-            self.assignees.as_deref(),
+            self.assignee.as_deref(),
         );
 
         debug!(repo = %format!("{}/{}", self.owner, self.repo), "Fetching GitHub pull requests");
@@ -235,12 +235,16 @@ pub(crate) fn build_issue_args(
 }
 
 /// Build the args list for `gh pr list` (extracted for testability).
+///
+/// Note: `gh pr list --assignee` accepts a single username string (not an
+/// array). If multi-assignee filtering is ever needed, use
+/// `--search "assignee:alice assignee:bob"` instead.
 pub(crate) fn build_pr_args(
     owner: &str,
     repo: &str,
     labels: &[String],
     state: &str,
-    assignees: Option<&[String]>,
+    assignee: Option<&str>,
 ) -> Vec<String> {
     let mut args = vec![
         GH_PATH.clone(),
@@ -257,11 +261,9 @@ pub(crate) fn build_pr_args(
         args.push("--label".to_string());
         args.push(label.clone());
     }
-    if let Some(assignee_list) = assignees {
-        for a in assignee_list {
-            args.push("--assignee".to_string());
-            args.push(a.clone());
-        }
+    if let Some(a) = assignee {
+        args.push("--assignee".to_string());
+        args.push(a.to_string());
     }
     args
 }
@@ -436,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_pr_args_no_assignees() {
+    fn test_build_pr_args_no_assignee() {
         let args = build_pr_args("myorg", "myrepo", &[], "open", None);
         assert!(args.contains(&"--repo".to_string()));
         assert!(args.contains(&"myorg/myrepo".to_string()));
@@ -444,12 +446,10 @@ mod tests {
     }
 
     #[test]
-    fn test_build_pr_args_with_multiple_assignees() {
-        let assignees = vec!["alice".to_string(), "bob".to_string()];
-        let args = build_pr_args("myorg", "myrepo", &[], "open", Some(&assignees));
+    fn test_build_pr_args_with_assignee() {
+        let args = build_pr_args("myorg", "myrepo", &[], "open", Some("alice"));
         let assignee_count = args.iter().filter(|a| a.as_str() == "--assignee").count();
-        assert_eq!(assignee_count, 2);
+        assert_eq!(assignee_count, 1);
         assert!(args.contains(&"alice".to_string()));
-        assert!(args.contains(&"bob".to_string()));
     }
 }
