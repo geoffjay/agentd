@@ -10,6 +10,8 @@ This page is a consolidated quick-reference for all workflow trigger types. For 
 |---------|--------------|----------|--------------------------|-------------|--------------|
 | `github_issues` | New or updated GitHub issues matching filters | Yes - polls continuously | No | Yes | Yes |
 | `github_pull_requests` | New or updated GitHub PRs matching filters | Yes - polls continuously | No | Yes | Yes |
+| `gitlab_issues` | New or updated GitLab issues matching filters | Yes - polls continuously | No | Yes | Yes |
+| `gitlab_merge_requests` | New or updated GitLab MRs matching filters | Yes - polls continuously | No | Yes | Yes |
 | `linear_issues` | New or updated Linear issues matching filters | Yes - polls continuously | No | Yes | Yes |
 | `cron` | On a recurring cron schedule | Yes - indefinitely | No | Yes | Yes |
 | `delay` | Once at a specific datetime | No - auto-disables | No | Yes | Yes |
@@ -37,6 +39,24 @@ Do not use when:
 
 - You need sub-second latency (use `webhook` instead)
 - The trigger source is not GitHub
+
+### `gitlab_issues` / `gitlab_merge_requests`
+
+Use when:
+
+- You want an agent to react to GitLab issues or merge requests automatically
+- Your team uses GitLab (gitlab.com or self-hosted) as the primary issue tracker or code review platform
+- You are behind a firewall or don't want to expose a public endpoint
+- Latency of up to `poll_interval_secs` is acceptable (default: 60 s)
+
+Do not use when:
+
+- You need sub-second latency (use `webhook` instead)
+- The trigger source is not GitLab
+
+**Configuration:** Set `AGENTD_GITLAB_TOKEN` in the orchestrator's environment (or `[gitlab] token` in the agentd config file). For self-hosted GitLab, also set `AGENTD_GITLAB_URL` (default: `https://gitlab.com`).
+
+**State values:** GitLab uses `opened` (not `open`) — this differs from GitHub's state values.
 
 ### `linear_issues`
 
@@ -162,9 +182,11 @@ Use when:
 All trigger types use the `trigger_config` field with a `"type"` discriminant:
 
 ```json
-{ "type": "github_issues",        "owner": "myorg", "repo": "myrepo", "labels": ["agent"], "state": "open" }
-{ "type": "github_pull_requests", "owner": "myorg", "repo": "myrepo", "labels": [],        "state": "open" }
-{ "type": "linear_issues",        "team_key": "ENG", "status": ["Triage"], "labels": ["bug"] }
+{ "type": "github_issues",           "owner": "myorg", "repo": "myrepo", "labels": ["agent"], "state": "open" }
+{ "type": "github_pull_requests",    "owner": "myorg", "repo": "myrepo", "labels": [],        "state": "open" }
+{ "type": "gitlab_issues",           "owner": "mygroup", "repo": "myproject", "labels": ["agent"], "state": "opened" }
+{ "type": "gitlab_merge_requests",   "owner": "mygroup", "repo": "myproject", "labels": [],          "state": "opened" }
+{ "type": "linear_issues",           "team_key": "ENG", "status": ["Triage"], "labels": ["bug"] }
 { "type": "cron",                 "expression": "0 9 * * MON-FRI" }
 { "type": "delay",                "run_at": "2026-04-01T09:00:00Z" }
 { "type": "agent_lifecycle",      "event": "session_start" }
@@ -186,6 +208,7 @@ source:
   repo: myrepo
   labels: [agent]
   state: open
+  # assignee: alice   # optional - filter by assignee username
 
 # GitHub Pull Requests
 source:
@@ -193,6 +216,24 @@ source:
   owner: myorg
   repo: myrepo
   state: open
+  # assignees: [alice, bob]   # optional - filter by assignee usernames
+
+# GitLab Issues (note: 'opened' not 'open')
+source:
+  type: gitlab_issues
+  owner: mygroup
+  repo: myproject
+  labels: [agent]
+  state: opened
+  # assignee: alice   # optional - filter by assignee username
+
+# GitLab Merge Requests
+source:
+  type: gitlab_merge_requests
+  owner: mygroup
+  repo: myproject
+  state: opened
+  # assignees: [alice, bob]   # optional - filter by assignee usernames
 
 # Linear Issues
 source:
@@ -312,8 +353,40 @@ agent orchestrator create-workflow --name wf --agent-name agent \
 | `{{body}}` | Issue or PR body (markdown) |
 | `{{url}}` | GitHub HTML URL |
 | `{{labels}}` | Comma-separated label names |
-| `{{assignee}}` | Assignee login |
+| `{{assignee}}` | Assignee login (first assignee) |
 | `{{source_id}}` | Issue or PR number (string) |
+
+### `gitlab_issues`
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{title}}` | Issue title | `"Fix the widget"` |
+| `{{body}}` | Issue description (markdown) | Full markdown content |
+| `{{url}}` | GitLab issue web URL | `https://gitlab.com/mygroup/myproject/-/issues/42` |
+| `{{labels}}` | Comma-separated label names | `"bug, agent"` |
+| `{{assignee}}` | First assignee's username (empty if unassigned) | `alice` |
+| `{{source_id}}` | Project-scoped issue number (`iid`) as string | `"42"` |
+| `{{gitlab_project_id}}` | GitLab internal project ID | `"12345"` |
+| `{{gitlab_iid}}` | Project-scoped issue number (same as `source_id`) | `"42"` |
+| `{{state}}` | Issue state | `"opened"`, `"closed"` |
+
+### `gitlab_merge_requests`
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{title}}` | MR title | `"Add new feature"` |
+| `{{body}}` | MR description (markdown) | Full markdown content |
+| `{{url}}` | GitLab MR web URL | `https://gitlab.com/mygroup/myproject/-/merge_requests/15` |
+| `{{labels}}` | Comma-separated label names | `"enhancement"` |
+| `{{assignee}}` | First assignee's username (empty if unassigned) | `bob` |
+| `{{source_id}}` | Project-scoped MR number (`iid`) as string | `"15"` |
+| `{{gitlab_project_id}}` | GitLab internal project ID | `"12345"` |
+| `{{gitlab_iid}}` | Project-scoped MR number (same as `source_id`) | `"15"` |
+| `{{source_branch}}` | Source branch name | `"feature/new-thing"` |
+| `{{target_branch}}` | Target branch name | `"main"` |
+| `{{merge_status}}` | GitLab merge status | `"can_be_merged"` |
+| `{{draft}}` | Whether the MR is a draft | `"true"`, `"false"` |
+| `{{state}}` | MR state | `"opened"`, `"closed"`, `"merged"` |
 
 ### `linear_issues`
 

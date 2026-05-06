@@ -105,6 +105,8 @@ definitions:
       - $ref: "#/definitions/source_webhook"
       - $ref: "#/definitions/source_manual"
       - $ref: "#/definitions/source_linear_issues"
+      - $ref: "#/definitions/source_gitlab_issues"
+      - $ref: "#/definitions/source_gitlab_merge_requests"
 
   # ---------------------------------------------------------------------------
   # GitHub Issues
@@ -137,9 +139,12 @@ definitions:
         type: string
         enum: [open, closed, all]
         default: "open"
+      assignee:
+        description: "Filter issues to those assigned to this GitHub username."
+        type: string
     required: [type, owner, repo]
     additionalProperties: false
-    propertyOrder: [type, owner, repo, labels, state]
+    propertyOrder: [type, owner, repo, labels, state, assignee]
     examples:
       -
         - "Issues labelled 'agent' in open state"
@@ -148,6 +153,13 @@ definitions:
           owner: myorg
           repo: myrepo
           labels: [agent]
+      -
+        - "Issues assigned to a specific user"
+        - |
+          type: github_issues
+          owner: myorg
+          repo: myrepo
+          assignee: alice
 
   # ---------------------------------------------------------------------------
   # GitHub Pull Requests
@@ -180,9 +192,12 @@ definitions:
         type: string
         enum: [open, closed, all]
         default: "open"
+      assignee:
+        description: "Filter PRs to those assigned to this GitHub username."
+        type: string
     required: [type, owner, repo]
     additionalProperties: false
-    propertyOrder: [type, owner, repo, labels, state]
+    propertyOrder: [type, owner, repo, labels, state, assignee]
 
   # ---------------------------------------------------------------------------
   # Cron
@@ -419,6 +434,130 @@ definitions:
           status: ["Todo", "In Progress"]
           labels: ["needs-review"]
           assignee: "alice@example.com"
+
+  # ---------------------------------------------------------------------------
+  # GitLab Issues
+  # ---------------------------------------------------------------------------
+  source_gitlab_issues:
+    description: |
+      Polls GitLab for issues matching the given filters via REST API v4.
+
+      Requires AGENTD_GITLAB_TOKEN to be set in the orchestrator's
+      environment or configured in the agentd config file under
+      [gitlab].token. For self-hosted GitLab, set AGENTD_GITLAB_URL.
+
+      Note: GitLab uses 'opened' (not 'open') as the default state value.
+
+      Template variables: {{title}}, {{body}}, {{url}}, {{labels}},
+      {{assignee}}, {{source_id}}, {{gitlab_project_id}}, {{gitlab_iid}},
+      {{state}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [gitlab_issues]
+      owner:
+        description: "GitLab namespace (user or group) owning the project."
+        type: string
+      repo:
+        description: "GitLab project name (path component, not display name)."
+        type: string
+      labels:
+        description: "Filter issues to those carrying all listed labels."
+        type: array
+        items:
+          type: string
+        default: []
+      state:
+        description: |
+          Issue state filter. GitLab uses 'opened' (not 'open').
+        type: string
+        enum: [opened, closed, all]
+        default: "opened"
+      assignee:
+        description: "Filter issues assigned to this GitLab username."
+        type: string
+    required: [type, owner, repo]
+    additionalProperties: false
+    propertyOrder: [type, owner, repo, labels, state, assignee]
+    examples:
+      -
+        - "GitLab issues labelled 'agent' in opened state"
+        - |
+          type: gitlab_issues
+          owner: mygroup
+          repo: myproject
+          labels: [agent]
+      -
+        - "GitLab issues assigned to a specific user"
+        - |
+          type: gitlab_issues
+          owner: mygroup
+          repo: myproject
+          assignee: alice
+          state: opened
+
+  # ---------------------------------------------------------------------------
+  # GitLab Merge Requests
+  # ---------------------------------------------------------------------------
+  source_gitlab_merge_requests:
+    description: |
+      Polls GitLab for merge requests matching the given filters via
+      REST API v4.
+
+      Requires AGENTD_GITLAB_TOKEN to be set in the orchestrator's
+      environment or configured in the agentd config file under
+      [gitlab].token. For self-hosted GitLab, set AGENTD_GITLAB_URL.
+
+      Template variables: {{title}}, {{body}}, {{url}}, {{labels}},
+      {{assignee}}, {{source_id}}, {{gitlab_project_id}}, {{gitlab_iid}},
+      {{source_branch}}, {{target_branch}}, {{merge_status}}, {{draft}},
+      {{state}}.
+    type: object
+    properties:
+      type:
+        type: string
+        enum: [gitlab_merge_requests]
+      owner:
+        description: "GitLab namespace (user or group) owning the project."
+        type: string
+      repo:
+        description: "GitLab project name (path component, not display name)."
+        type: string
+      labels:
+        description: "Filter MRs to those carrying all listed labels."
+        type: array
+        items:
+          type: string
+        default: []
+      state:
+        description: |
+          Merge request state filter. GitLab uses 'opened' (not 'open').
+        type: string
+        enum: [opened, closed, merged, all]
+        default: "opened"
+      assignee:
+        description: "Filter MRs assigned to this GitLab username."
+        type: string
+    required: [type, owner, repo]
+    additionalProperties: false
+    propertyOrder: [type, owner, repo, labels, state, assignee]
+    examples:
+      -
+        - "Open GitLab MRs labelled 'needs-review'"
+        - |
+          type: gitlab_merge_requests
+          owner: mygroup
+          repo: myproject
+          labels: [needs-review]
+      -
+        - "Draft MR assigned to a specific user"
+        - |
+          type: gitlab_merge_requests
+          owner: mygroup
+          repo: myproject
+          state: opened
+          assignee: alice
 
 examples:
   -
