@@ -19,6 +19,9 @@ use crate::scheduler::types::Task;
 /// | `status`             | dispatch_result        | Completion status (`completed` or `failed`)    |
 /// | `timestamp`          | dispatch_result        | RFC 3339 timestamp of the completion event     |
 /// | `original_source_id` | dispatch_result        | Source ID from the parent dispatch (if any)    |
+/// | `head_ref`           | github_pull_requests   | Source branch name of the PR                   |
+/// | `base_ref`           | github_pull_requests   | Target branch name of the PR                   |
+/// | `is_draft`           | github_pull_requests   | `"true"` if the PR is a draft                  |
 /// | `action`             | webhook (GitHub/Linear)| Event action (e.g., `"opened"`, `"create"`)    |
 /// | `github_event`       | webhook (GitHub)       | GitHub event type (e.g., `"issues"`)           |
 /// | `delivery_id`        | webhook (GitHub)       | GitHub delivery UUID (`X-GitHub-Delivery`)     |
@@ -34,6 +37,13 @@ use crate::scheduler::types::Task;
 /// | `team_name`          | linear_issues, webhook (Linear) | Linear team display name                    |
 /// | `project`            | linear_issues          | Linear project name                            |
 /// | `linear_id`          | linear_issues, webhook (Linear) | Internal Linear UUID (stable dedup key)     |
+/// | `gitlab_project_id`  | gitlab_issues, gitlab_merge_requests | GitLab numeric project ID             |
+/// | `gitlab_iid`         | gitlab_issues, gitlab_merge_requests | Issue/MR internal ID within the project|
+/// | `state`              | gitlab_issues, gitlab_merge_requests | Issue/MR state (e.g., `"opened"`)     |
+/// | `source_branch`      | gitlab_merge_requests  | Source branch name of the MR                   |
+/// | `target_branch`      | gitlab_merge_requests  | Target branch name of the MR                   |
+/// | `merge_status`       | gitlab_merge_requests  | Merge status (e.g., `"can_be_merged"`)         |
+/// | `draft`              | gitlab_merge_requests  | `"true"` if the MR is a draft                  |
 pub const KNOWN_VARIABLES: &[&str] = &[
     // Top-level task fields
     "title",
@@ -55,6 +65,10 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "status",
     "timestamp",
     "original_source_id",
+    // Metadata-backed (github_pull_requests trigger)
+    "head_ref",
+    "base_ref",
+    "is_draft",
     // Metadata-backed (webhook triggers — GitHub)
     // Note: `action` is also used by Linear webhooks as `linear_action`; the
     // GitHub `action` key and the Linear `linear_action` key are kept separate

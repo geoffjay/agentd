@@ -302,8 +302,7 @@ impl GitlabIssueSource {
     }
 
     /// Create a source with an explicit token and base URL (for testing).
-    #[doc(hidden)]
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new_with_config(
         owner: String,
         repo: String,
@@ -409,7 +408,7 @@ impl TaskSource for GitlabIssueSource {
 ///
 /// - `state` — `opened`/`closed`/`merged`/`all`
 /// - `labels` — comma-separated label names
-/// - `assignees` — filter by `assignee_username` (first entry used)
+/// - `assignee` — filter by `assignee_username`
 ///
 /// # Pagination
 ///
@@ -419,7 +418,7 @@ pub struct GitlabMergeRequestSource {
     repo: String,
     labels: Vec<String>,
     state: String,
-    assignees: Option<Vec<String>>,
+    assignee: Option<String>,
     /// Pre-resolved token. Never logged.
     token: String,
     /// GitLab base URL.
@@ -434,7 +433,7 @@ impl std::fmt::Debug for GitlabMergeRequestSource {
             .field("repo", &self.repo)
             .field("labels", &self.labels)
             .field("state", &self.state)
-            .field("assignees", &self.assignees)
+            .field("assignee", &self.assignee)
             .field("token", &"<redacted>")
             .field("base_url", &self.base_url)
             .finish()
@@ -448,7 +447,7 @@ impl GitlabMergeRequestSource {
         repo: String,
         labels: Vec<String>,
         state: String,
-        assignees: Option<Vec<String>>,
+        assignee: Option<String>,
     ) -> Result<Self> {
         let config = GitlabConfig::resolve()?;
         Ok(Self {
@@ -456,7 +455,7 @@ impl GitlabMergeRequestSource {
             repo,
             labels,
             state,
-            assignees,
+            assignee,
             token: config.token().to_string(),
             base_url: config.base_url().to_string(),
             client: reqwest::Client::new(),
@@ -464,14 +463,13 @@ impl GitlabMergeRequestSource {
     }
 
     /// Create a source with an explicit token and base URL (for testing).
-    #[doc(hidden)]
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new_with_config(
         owner: String,
         repo: String,
         labels: Vec<String>,
         state: String,
-        assignees: Option<Vec<String>>,
+        assignee: Option<String>,
         token: String,
         base_url: String,
     ) -> Self {
@@ -480,7 +478,7 @@ impl GitlabMergeRequestSource {
             repo,
             labels,
             state,
-            assignees,
+            assignee,
             token,
             base_url,
             client: reqwest::Client::new(),
@@ -503,11 +501,8 @@ impl GitlabMergeRequestSource {
         if !self.labels.is_empty() {
             request = request.query(&[("labels", self.labels.join(","))]);
         }
-        // GitLab supports `assignee_username` filter for MRs (single value).
-        if let Some(assignees) = &self.assignees {
-            if let Some(first) = assignees.first() {
-                request = request.query(&[("assignee_username", first.as_str())]);
-            }
+        if let Some(assignee) = &self.assignee {
+            request = request.query(&[("assignee_username", assignee.as_str())]);
         }
 
         let response = request.send().await.context("Failed to connect to GitLab API")?;
@@ -614,25 +609,6 @@ fn map_merge_request(mr: GitlabMergeRequest) -> Task {
     }
 }
 
-/// Parse a JSON array of GitLab issue objects into [`Task`] structs.
-///
-/// Useful for testing and offline use, following the pattern established by
-/// `parse_gh_issues()` in `github.rs`.
-#[allow(dead_code)]
-pub fn parse_gitlab_issues(json: &str) -> Result<Vec<Task>> {
-    let issues: Vec<GitlabIssue> = serde_json::from_str(json)?;
-    Ok(map_issues(issues))
-}
-
-/// Parse a JSON array of GitLab merge request objects into [`Task`] structs.
-///
-/// Useful for testing and offline use.
-#[allow(dead_code)]
-pub fn parse_gitlab_merge_requests(json: &str) -> Result<Vec<Task>> {
-    let mrs: Vec<GitlabMergeRequest> = serde_json::from_str(json)?;
-    Ok(map_merge_requests(mrs))
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -640,6 +616,23 @@ pub fn parse_gitlab_merge_requests(json: &str) -> Result<Vec<Task>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Parse a JSON array of GitLab issue objects into [`Task`] structs.
+    ///
+    /// Useful for testing and offline use, following the pattern established by
+    /// `parse_gh_issues()` in `github.rs`.
+    pub fn parse_gitlab_issues(json: &str) -> Result<Vec<Task>> {
+        let issues: Vec<GitlabIssue> = serde_json::from_str(json)?;
+        Ok(map_issues(issues))
+    }
+
+    /// Parse a JSON array of GitLab merge request objects into [`Task`] structs.
+    ///
+    /// Useful for testing and offline use.
+    pub fn parse_gitlab_merge_requests(json: &str) -> Result<Vec<Task>> {
+        let mrs: Vec<GitlabMergeRequest> = serde_json::from_str(json)?;
+        Ok(map_merge_requests(mrs))
+    }
 
     // -------------------------------------------------------------------------
     // Shared env-var helpers
