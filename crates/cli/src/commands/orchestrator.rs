@@ -79,6 +79,10 @@ pub enum TriggerType {
     LinearIssues,
     /// Queue-based trigger — consumes tasks from a named internal queue.
     Queue,
+    /// GitLab issues trigger — polls GitLab for matching issues.
+    GitlabIssues,
+    /// GitLab merge requests trigger — polls GitLab for matching merge requests.
+    GitlabMergeRequests,
 }
 
 /// Orchestrator service management subcommands.
@@ -2466,6 +2470,7 @@ async fn create_workflow(
                 repo: repo.to_string(),
                 labels: labels_vec,
                 state: state.unwrap_or("open").to_string(),
+                assignee: None,
             }
         }
         TriggerType::GithubPullRequests => {
@@ -2483,6 +2488,7 @@ async fn create_workflow(
                 repo: repo.to_string(),
                 labels: labels_vec,
                 state: state.unwrap_or("open").to_string(),
+                assignee: None,
             }
         }
         TriggerType::Cron => {
@@ -2539,6 +2545,40 @@ async fn create_workflow(
                 queue_name: qname.to_string(),
                 poll_interval_secs: queue_poll_interval,
                 visibility_timeout_secs: queue_visibility_timeout,
+            }
+        }
+        TriggerType::GitlabIssues => {
+            let owner = owner
+                .ok_or_else(|| anyhow::anyhow!("--owner is required for gitlab-issues trigger"))?;
+            let repo = repo
+                .ok_or_else(|| anyhow::anyhow!("--repo is required for gitlab-issues trigger"))?;
+            let labels_vec: Vec<String> = labels
+                .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default();
+            TriggerConfig::GitlabIssues {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                labels: labels_vec,
+                state: state.unwrap_or("opened").to_string(),
+                assignee: None,
+            }
+        }
+        TriggerType::GitlabMergeRequests => {
+            let owner = owner.ok_or_else(|| {
+                anyhow::anyhow!("--owner is required for gitlab-merge-requests trigger")
+            })?;
+            let repo = repo.ok_or_else(|| {
+                anyhow::anyhow!("--repo is required for gitlab-merge-requests trigger")
+            })?;
+            let labels_vec: Vec<String> = labels
+                .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default();
+            TriggerConfig::GitlabMergeRequests {
+                owner: owner.to_string(),
+                repo: repo.to_string(),
+                labels: labels_vec,
+                state: state.unwrap_or("opened").to_string(),
+                assignee: None,
             }
         }
     };
@@ -2853,19 +2893,25 @@ fn display_workflow(workflow: &WorkflowResponse) {
     println!("{}: {}s", "Poll Interval".bold(), workflow.poll_interval_secs);
     println!("{}: {}", "Trigger Type".bold(), workflow.trigger_config.trigger_type());
     match &workflow.trigger_config {
-        TriggerConfig::GithubIssues { owner, repo, labels, state } => {
+        TriggerConfig::GithubIssues { owner, repo, labels, state, assignee } => {
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
             if !labels.is_empty() {
                 println!("{}: {}", "Labels".bold(), labels.join(", "));
             }
             println!("{}: {}", "State".bold(), state);
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
+            }
         }
-        TriggerConfig::GithubPullRequests { owner, repo, labels, state } => {
+        TriggerConfig::GithubPullRequests { owner, repo, labels, state, assignee } => {
             println!("{}: {}/{}", "Repository".bold(), owner, repo);
             if !labels.is_empty() {
                 println!("{}: {}", "Labels".bold(), labels.join(", "));
             }
             println!("{}: {}", "State".bold(), state);
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
+            }
         }
         TriggerConfig::Cron { expression } => {
             println!("{}: {}", "Expression".bold(), expression);
@@ -2938,6 +2984,26 @@ fn display_workflow(workflow: &WorkflowResponse) {
             }
             if let Some(p) = response_pattern {
                 println!("{}: {}", "Response Pattern".bold(), p);
+            }
+        }
+        TriggerConfig::GitlabIssues { owner, repo, labels, state, assignee } => {
+            println!("{}: {}/{}", "Repository".bold(), owner, repo);
+            if !labels.is_empty() {
+                println!("{}: {}", "Labels".bold(), labels.join(", "));
+            }
+            println!("{}: {}", "State".bold(), state);
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
+            }
+        }
+        TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignee } => {
+            println!("{}: {}/{}", "Repository".bold(), owner, repo);
+            if !labels.is_empty() {
+                println!("{}: {}", "Labels".bold(), labels.join(", "));
+            }
+            println!("{}: {}", "State".bold(), state);
+            if let Some(a) = assignee {
+                println!("{}: {}", "Assignee".bold(), a);
             }
         }
     }
@@ -3028,6 +3094,7 @@ mod tests {
                 repo: "widgets".to_string(),
                 labels: vec!["bug".to_string()],
                 state: "open".to_string(),
+                assignee: None,
             },
             prompt_template: "Fix: {{title}}".to_string(),
             poll_interval_secs: 60,
@@ -3899,6 +3966,7 @@ mod tests {
             repo: "repo".into(),
             labels: vec!["review".into()],
             state: "open".into(),
+            assignees: None,
         };
         display_workflow(&w);
 
@@ -4090,6 +4158,7 @@ mod tests {
             repo: "b".into(),
             labels: vec![],
             state: "open".into(),
+            assignee: None,
         }
         .is_implemented());
         assert!(TriggerConfig::GithubPullRequests {
@@ -4097,6 +4166,7 @@ mod tests {
             repo: "b".into(),
             labels: vec![],
             state: "open".into(),
+            assignees: None,
         }
         .is_implemented());
         assert!(TriggerConfig::Cron { expression: "* * * * *".into() }.is_implemented());

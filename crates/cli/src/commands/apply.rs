@@ -238,6 +238,8 @@ pub enum SourceTemplate {
         labels: Vec<String>,
         #[serde(default = "default_state")]
         state: String,
+        #[serde(default)]
+        assignee: Option<String>,
     },
     GithubPullRequests {
         owner: String,
@@ -246,6 +248,8 @@ pub enum SourceTemplate {
         labels: Vec<String>,
         #[serde(default = "default_state")]
         state: String,
+        #[serde(default)]
+        assignee: Option<String>,
     },
     Cron {
         expression: String,
@@ -288,10 +292,40 @@ pub enum SourceTemplate {
         #[serde(default)]
         assignee: Option<String>,
     },
+    /// GitLab issues trigger — polls GitLab for issues matching the given filters.
+    ///
+    /// Requires `AGENTD_GITLAB_TOKEN` to be set in the environment.
+    GitlabIssues {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_gitlab_state")]
+        state: String,
+        #[serde(default)]
+        assignee: Option<String>,
+    },
+    /// GitLab merge requests trigger — polls GitLab for MRs matching the given filters.
+    ///
+    /// Requires `AGENTD_GITLAB_TOKEN` to be set in the environment.
+    GitlabMergeRequests {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_gitlab_state")]
+        state: String,
+        #[serde(default)]
+        assignee: Option<String>,
+    },
 }
 
 fn default_state() -> String {
     "open".to_string()
+}
+
+fn default_gitlab_state() -> String {
+    "opened".to_string()
 }
 
 /// Detected template type for a single YAML file.
@@ -645,11 +679,11 @@ pub async fn apply_workflow_file(
     }
 
     let trigger_config = match tmpl.source {
-        SourceTemplate::GithubIssues { owner, repo, labels, state } => {
-            TriggerConfig::GithubIssues { owner, repo, labels, state }
+        SourceTemplate::GithubIssues { owner, repo, labels, state, assignee } => {
+            TriggerConfig::GithubIssues { owner, repo, labels, state, assignee }
         }
-        SourceTemplate::GithubPullRequests { owner, repo, labels, state } => {
-            TriggerConfig::GithubPullRequests { owner, repo, labels, state }
+        SourceTemplate::GithubPullRequests { owner, repo, labels, state, assignee } => {
+            TriggerConfig::GithubPullRequests { owner, repo, labels, state, assignee }
         }
         SourceTemplate::Cron { expression } => TriggerConfig::Cron { expression },
         SourceTemplate::Delay { run_at } => TriggerConfig::Delay { run_at },
@@ -663,6 +697,12 @@ pub async fn apply_workflow_file(
         SourceTemplate::Manual {} => TriggerConfig::Manual {},
         SourceTemplate::LinearIssues { team_key, project, status, labels, assignee } => {
             TriggerConfig::LinearIssues { team_key, project, status, labels, assignee }
+        }
+        SourceTemplate::GitlabIssues { owner, repo, labels, state, assignee } => {
+            TriggerConfig::GitlabIssues { owner, repo, labels, state, assignee }
+        }
+        SourceTemplate::GitlabMergeRequests { owner, repo, labels, state, assignee } => {
+            TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignee }
         }
     };
 
@@ -1515,11 +1555,12 @@ state: closed
 "#;
         let src: SourceTemplate = serde_yaml::from_str(yaml).unwrap();
         match src {
-            SourceTemplate::GithubIssues { owner, repo, labels, state } => {
+            SourceTemplate::GithubIssues { owner, repo, labels, state, assignee } => {
                 assert_eq!(owner, "myorg");
                 assert_eq!(repo, "myrepo");
                 assert_eq!(labels, vec!["bug"]);
                 assert_eq!(state, "closed");
+                assert!(assignee.is_none());
             }
             other => panic!("Expected GithubIssues, got {:?}", other),
         }
@@ -1871,5 +1912,94 @@ tool_policy:
         assert_eq!(tmpl.env.get("API_KEY"), Some(&"abc123".to_string()));
         assert_eq!(tmpl.env.get("BASE_URL"), Some(&"https://api.example.com".to_string()));
         assert_eq!(tmpl.tool_policy, ToolPolicy::AllowAll { sandbox_bypass: vec![] });
+    }
+
+    // -------------------------------------------------------------------------
+    // GitLab SourceTemplate parsing tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_gitlab_issues_source_template_full() {
+        let yaml = r#"
+type: gitlab_issues
+owner: mygroup
+repo: myproject
+labels: [bug, agent]
+state: opened
+assignee: alice
+"#;
+        let src: SourceTemplate = serde_yaml::from_str(yaml).unwrap();
+        match src {
+            SourceTemplate::GitlabIssues { owner, repo, labels, state, assignee } => {
+                assert_eq!(owner, "mygroup");
+                assert_eq!(repo, "myproject");
+                assert_eq!(labels, vec!["bug", "agent"]);
+                assert_eq!(state, "opened");
+                assert_eq!(assignee.as_deref(), Some("alice"));
+            }
+            other => panic!("Expected GitlabIssues, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_gitlab_issues_source_template_defaults() {
+        let yaml = r#"
+type: gitlab_issues
+owner: mygroup
+repo: myproject
+"#;
+        let src: SourceTemplate = serde_yaml::from_str(yaml).unwrap();
+        match src {
+            SourceTemplate::GitlabIssues { labels, state, assignee, .. } => {
+                assert!(labels.is_empty());
+                assert_eq!(state, "opened");
+                assert!(assignee.is_none());
+            }
+            other => panic!("Expected GitlabIssues, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_gitlab_merge_requests_source_template_full() {
+        let yaml = r#"
+type: gitlab_merge_requests
+owner: mygroup
+repo: myproject
+labels: [needs-review]
+state: opened
+assignees: [alice, bob]
+"#;
+        let src: SourceTemplate = serde_yaml::from_str(yaml).unwrap();
+        match src {
+            SourceTemplate::GitlabMergeRequests { owner, repo, labels, state, assignees } => {
+                assert_eq!(owner, "mygroup");
+                assert_eq!(repo, "myproject");
+                assert_eq!(labels, vec!["needs-review"]);
+                assert_eq!(state, "opened");
+                assert_eq!(
+                    assignees.as_deref(),
+                    Some(&["alice".to_string(), "bob".to_string()][..])
+                );
+            }
+            other => panic!("Expected GitlabMergeRequests, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_gitlab_merge_requests_source_template_defaults() {
+        let yaml = r#"
+type: gitlab_merge_requests
+owner: mygroup
+repo: myproject
+"#;
+        let src: SourceTemplate = serde_yaml::from_str(yaml).unwrap();
+        match src {
+            SourceTemplate::GitlabMergeRequests { labels, state, assignees, .. } => {
+                assert!(labels.is_empty());
+                assert_eq!(state, "opened");
+                assert!(assignees.is_none());
+            }
+            other => panic!("Expected GitlabMergeRequests, got {:?}", other),
+        }
     }
 }

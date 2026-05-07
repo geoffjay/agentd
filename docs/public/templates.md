@@ -293,6 +293,18 @@ Available `{{placeholders}}` in prompt templates:
 | `{{issue_number}}` | `webhook` (GitHub issues) | Issue number | `42` |
 | `{{pr_number}}` | `webhook` (GitHub PRs) | Pull request number | `99` |
 
+**GitLab trigger variables** - populated by `gitlab_issues` and `gitlab_merge_requests` triggers:
+
+| Variable | Trigger | Description | Example |
+|----------|---------|-------------|---------|
+| `{{gitlab_project_id}}` | both | GitLab internal project ID | `"12345"` |
+| `{{gitlab_iid}}` | both | Project-scoped issue/MR number | `"42"` |
+| `{{state}}` | both | Issue or MR state | `"opened"` |
+| `{{source_branch}}` | `gitlab_merge_requests` | Source branch name | `"feature/new-thing"` |
+| `{{target_branch}}` | `gitlab_merge_requests` | Target branch name | `"main"` |
+| `{{merge_status}}` | `gitlab_merge_requests` | GitLab merge status | `"can_be_merged"` |
+| `{{draft}}` | `gitlab_merge_requests` | Whether the MR is a draft | `"true"`, `"false"` |
+
 **Linear trigger variables** - populated by the `linear_issues` trigger:
 
 | Variable | Description | Example |
@@ -339,6 +351,7 @@ source:
   repo: myrepo           # Repository name
   labels: [bug, agent]   # Filter by labels (optional)
   state: open            # Issue state filter (default: open)
+  assignee: alice        # Filter by assignee username (optional)
 ```
 
 **GitHub Pull Requests:**
@@ -349,7 +362,34 @@ source:
   repo: myrepo           # Repository name
   labels: [needs-review] # Filter by labels (optional)
   state: open            # PR state filter (default: open)
+  assignees: [alice, bob] # Filter by assignee usernames (optional)
 ```
+
+**GitLab Issues:**
+```yaml
+source:
+  type: gitlab_issues
+  owner: mygroup         # GitLab namespace (user or group)
+  repo: myproject        # GitLab project path name
+  labels: [bug, agent]   # Filter by labels (optional)
+  state: opened          # Issue state filter — note: 'opened' not 'open' (default: opened)
+  assignee: alice        # Filter by assignee username (optional)
+```
+
+Requires `AGENTD_GITLAB_TOKEN` to be set in the environment. For self-hosted GitLab, also set `AGENTD_GITLAB_URL`. GitLab-specific variables (`{{gitlab_project_id}}`, `{{gitlab_iid}}`, `{{state}}`) are available in the prompt template.
+
+**GitLab Merge Requests:**
+```yaml
+source:
+  type: gitlab_merge_requests
+  owner: mygroup         # GitLab namespace (user or group)
+  repo: myproject        # GitLab project path name
+  labels: [needs-review] # Filter by labels (optional)
+  state: opened          # MR state filter — note: 'opened' not 'open' (default: opened)
+  assignees: [alice, bob] # Filter by assignee usernames (optional)
+```
+
+Requires `AGENTD_GITLAB_TOKEN`. MR-specific variables (`{{source_branch}}`, `{{target_branch}}`, `{{merge_status}}`, `{{draft}}`) are available in the prompt template.
 
 **Cron (recurring schedule):**
 ```yaml
