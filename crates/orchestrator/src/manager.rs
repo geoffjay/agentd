@@ -1122,12 +1122,17 @@ fn build_claude_command(
 
     match config.user.as_deref() {
         Some(user) => {
+            // Always invoke `env` after sudo to:
+            // 1. Unset SUDO_* variables — Claude Code silently ignores
+            //    ANTHROPIC_AUTH_TOKEN / ANTHROPIC_BASE_URL when any SUDO_*
+            //    variable is present in the environment.
+            // 2. Pass agent env vars across the sudo privilege boundary
+            //    regardless of the sudoers env_keep configuration.
+            let unset = "-u SUDO_USER -u SUDO_UID -u SUDO_GID -u SUDO_COMMAND";
             if env_assignments.is_empty() {
-                format!("sudo -u {} {}", user, base)
+                format!("sudo -u {} env {} {}", user, unset, base)
             } else {
-                // Pass env vars via `env` so they survive the sudo privilege
-                // boundary regardless of sudoers env_keep configuration.
-                format!("sudo -u {} env {} {}", user, env_assignments.join(" "), base)
+                format!("sudo -u {} env {} {} {}", user, unset, env_assignments.join(" "), base)
             }
         }
         None => {
@@ -1213,8 +1218,39 @@ mod tests {
             ..base_config()
         };
         let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
-        assert!(cmd.starts_with("sudo -u deploy"));
+        assert!(cmd.starts_with("sudo -u deploy env"));
         assert!(cmd.contains("--model sonnet"));
+    }
+
+    #[test]
+    fn test_build_claude_command_sudo_strips_sudo_env_vars() {
+        // The generated command must always unset SUDO_* variables so that
+        // Claude Code's env-var credential detection is not suppressed.
+        let config =
+            AgentConfig { user: Some("cap".to_string()), ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        assert!(cmd.contains("-u SUDO_USER"), "must unset SUDO_USER: {cmd}");
+        assert!(cmd.contains("-u SUDO_UID"), "must unset SUDO_UID: {cmd}");
+        assert!(cmd.contains("-u SUDO_GID"), "must unset SUDO_GID: {cmd}");
+        assert!(cmd.contains("-u SUDO_COMMAND"), "must unset SUDO_COMMAND: {cmd}");
+    }
+
+    #[test]
+    fn test_build_claude_command_sudo_with_env_strips_sudo_env_vars() {
+        let mut env = HashMap::new();
+        env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), "tok-123".to_string());
+        let config = AgentConfig { user: Some("cap".to_string()), env, ..base_config() };
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        assert!(cmd.starts_with("sudo -u cap env"));
+        assert!(cmd.contains("-u SUDO_USER"));
+        assert!(cmd.contains("-u SUDO_UID"));
+        assert!(cmd.contains("-u SUDO_GID"));
+        assert!(cmd.contains("-u SUDO_COMMAND"));
+        assert!(cmd.contains("ANTHROPIC_AUTH_TOKEN='tok-123'"));
+        // Unset flags must appear before the credential assignment.
+        let unset_pos = cmd.find("-u SUDO_USER").unwrap();
+        let cred_pos = cmd.find("ANTHROPIC_AUTH_TOKEN").unwrap();
+        assert!(unset_pos < cred_pos, "unset flags must precede credentials: {cmd}");
     }
 
     // -- env var injection tests --
