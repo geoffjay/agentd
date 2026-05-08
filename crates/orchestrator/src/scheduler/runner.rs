@@ -323,13 +323,13 @@ fn create_source(config: &TriggerConfig) -> anyhow::Result<Box<dyn TaskSource>> 
                 assignee.clone(),
             )?))
         }
-        TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignee } => {
+        TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignees } => {
             Ok(Box::new(GitlabMergeRequestSource::new(
                 owner.clone(),
                 repo.clone(),
                 labels.clone(),
                 state.clone(),
-                assignee.clone(),
+                assignees.as_ref().and_then(|v| v.first().cloned()),
             )?))
         }
         other => anyhow::bail!(

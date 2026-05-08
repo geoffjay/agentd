@@ -298,7 +298,7 @@ pub enum TriggerConfig {
         #[serde(default = "default_gitlab_mr_state")]
         state: String,
         #[serde(default)]
-        assignee: Option<String>,
+        assignees: Option<Vec<String>>,
     },
 }
 
