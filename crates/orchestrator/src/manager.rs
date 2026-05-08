@@ -1225,8 +1225,7 @@ mod tests {
     fn test_build_claude_command_sudo_strips_sudo_env_vars() {
         // The generated command must always unset SUDO_* variables so that
         // Claude Code's env-var credential detection is not suppressed.
-        let config =
-            AgentConfig { user: Some("cap".to_string()), ..base_config() };
+        let config = AgentConfig { user: Some("cap".to_string()), ..base_config() };
         let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
         assert!(cmd.contains("-u SUDO_USER"), "must unset SUDO_USER: {cmd}");
         assert!(cmd.contains("-u SUDO_UID"), "must unset SUDO_UID: {cmd}");

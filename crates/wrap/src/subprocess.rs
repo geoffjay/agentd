@@ -150,8 +150,7 @@ fn parse_command(command: &str) -> Result<(HashMap<String, String>, String, Vec<
             idx += 1; // skip username
         }
 
-        let user =
-            sudo_user.ok_or_else(|| anyhow!("sudo without -u in command: {}", command))?;
+        let user = sudo_user.ok_or_else(|| anyhow!("sudo without -u in command: {}", command))?;
 
         // Collect the pre-binary section: [env [-u VAR]... [KEY=VAL]...]
         let mut pre_binary: Vec<String> = Vec::new();
