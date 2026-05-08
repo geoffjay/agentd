@@ -536,14 +536,12 @@ definitions:
         type: string
         enum: [opened, closed, merged, all]
         default: "opened"
-      assignees:
-        description: "Filter MRs assigned to any of these GitLab usernames."
-        type: array
-        items:
-          type: string
+      assignee:
+        description: "Filter MRs assigned to this GitLab username."
+        type: string
     required: [type, owner, repo]
     additionalProperties: false
-    propertyOrder: [type, owner, repo, labels, state, assignees]
+    propertyOrder: [type, owner, repo, labels, state, assignee]
     examples:
       -
         - "Open GitLab MRs labelled 'needs-review'"
@@ -553,13 +551,13 @@ definitions:
           repo: myproject
           labels: [needs-review]
       -
-        - "MRs assigned to specific users"
+        - "Draft MR assigned to a specific user"
         - |
           type: gitlab_merge_requests
           owner: mygroup
           repo: myproject
           state: opened
-          assignees: [alice, bob]
+          assignee: alice
 
 examples:
   -

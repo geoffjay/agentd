@@ -298,7 +298,7 @@ pub enum TriggerConfig {
         #[serde(default = "default_gitlab_mr_state")]
         state: String,
         #[serde(default)]
-        assignees: Option<Vec<String>>,
+        assignee: Option<String>,
     },
 }
 
@@ -725,7 +725,7 @@ mod tests {
             repo: "myproject".into(),
             labels: vec![],
             state: "opened".into(),
-            assignees: None,
+            assignee: None,
         };
         assert_eq!(cfg.trigger_type(), "gitlab_merge_requests");
         assert!(cfg.is_implemented());
@@ -739,16 +739,16 @@ mod tests {
             "repo": "myproject",
             "labels": ["needs-review"],
             "state": "opened",
-            "assignees": ["alice", "bob"]
+            "assignee": "alice"
         }"#;
         let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.trigger_type(), "gitlab_merge_requests");
-        if let TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignees } = cfg {
+        if let TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignee } = cfg {
             assert_eq!(owner, "mygroup");
             assert_eq!(repo, "myproject");
             assert_eq!(labels, vec!["needs-review"]);
             assert_eq!(state, "opened");
-            assert_eq!(assignees.as_deref(), Some(&["alice".to_string(), "bob".to_string()][..]));
+            assert_eq!(assignee.as_deref(), Some("alice"));
         } else {
             panic!("Expected GitlabMergeRequests variant");
         }
@@ -758,10 +758,10 @@ mod tests {
     fn test_trigger_config_gitlab_merge_requests_serde_minimal_defaults() {
         let json = r#"{"type": "gitlab_merge_requests", "owner": "mygroup", "repo": "myproject"}"#;
         let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
-        if let TriggerConfig::GitlabMergeRequests { labels, state, assignees, .. } = cfg {
+        if let TriggerConfig::GitlabMergeRequests { labels, state, assignee, .. } = cfg {
             assert!(labels.is_empty());
             assert_eq!(state, "opened");
-            assert!(assignees.is_none());
+            assert!(assignee.is_none());
         } else {
             panic!("Expected GitlabMergeRequests variant");
         }
@@ -774,7 +774,7 @@ mod tests {
             repo: "myproject".into(),
             labels: vec!["enhancement".into()],
             state: "merged".into(),
-            assignees: Some(vec!["carol".into()]),
+            assignee: Some("carol".into()),
         };
         let json = serde_json::to_string(&original).unwrap();
         let decoded: TriggerConfig = serde_json::from_str(&json).unwrap();
