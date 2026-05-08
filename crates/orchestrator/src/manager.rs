@@ -1079,7 +1079,6 @@ fn build_claude_command(
         args.push("--verbose".to_string());
         args.push("--output-format stream-json".to_string());
         args.push("--input-format stream-json".to_string());
-        args.push("--dangerously-skip-permissions".to_string());
     } else {
         // WebSocket / SDK mode (tmux, Docker backends).
         args.push(format!("--sdk-url {}", ws_url));
