@@ -129,25 +129,76 @@ fn parse_command(command: &str) -> Result<(HashMap<String, String>, String, Vec<
         return Err(anyhow!("Empty command string"));
     }
 
-    let mut env = HashMap::new();
     let mut idx = 0;
 
-    // Handle `sudo -u USER [env]` prefix.
-    let mut sudo_user: Option<String> = None;
+    // Handle `sudo -u USER [env [-u VAR]... [KEY=VAL]...]` prefix.
+    //
+    // For the sudo case we preserve the full `env -u VAR ... KEY=VAL` sequence
+    // as args to sudo rather than hoisting env vars into the HashMap.  This is
+    // required because:
+    // a) sudo resets the environment, so vars set via cmd.envs() are dropped.
+    // b) The `env -u SUDO_*` flags must execute *after* sudo has run so that
+    //    sudo's own SUDO_USER / SUDO_UID / SUDO_GID / SUDO_COMMAND injections
+    //    are removed before claude starts.
     if words.get(idx).map(|w| w.as_str()) == Some("sudo") {
         idx += 1; // skip "sudo"
+
+        let mut sudo_user: Option<String> = None;
         if words.get(idx).map(|w| w.as_str()) == Some("-u") {
             idx += 1; // skip "-u"
             sudo_user = words.get(idx).cloned();
             idx += 1; // skip username
         }
-        // Skip "env" if present after sudo
+
+        let user = sudo_user.ok_or_else(|| anyhow!("sudo without -u in command: {}", command))?;
+
+        // Collect the pre-binary section: [env [-u VAR]... [KEY=VAL]...]
+        let mut pre_binary: Vec<String> = Vec::new();
         if words.get(idx).map(|w| w.as_str()) == Some("env") {
+            pre_binary.push("env".to_string());
             idx += 1;
+
+            // Consume `-u VAR` unset pairs (e.g. `-u SUDO_USER`).
+            while words.get(idx).map(|w| w.as_str()) == Some("-u") {
+                pre_binary.push("-u".to_string());
+                idx += 1;
+                if let Some(var) = words.get(idx) {
+                    pre_binary.push(var.clone());
+                    idx += 1;
+                }
+            }
+
+            // Consume KEY=VAL assignment pairs.
+            while idx < words.len() {
+                if let Some((key, _)) = words[idx].split_once('=') {
+                    if is_valid_env_name(key) {
+                        pre_binary.push(words[idx].clone());
+                        idx += 1;
+                        continue;
+                    }
+                }
+                break;
+            }
         }
+
+        let raw_binary = words
+            .get(idx)
+            .ok_or_else(|| anyhow!("No binary found in sudo command: {}", command))?
+            .clone();
+        let binary = resolve_binary(&raw_binary);
+
+        let sudo_bin = resolve_binary("sudo");
+        let mut sudo_args = vec!["-u".to_string(), user];
+        sudo_args.extend(pre_binary);
+        sudo_args.push(binary);
+        sudo_args.extend_from_slice(&words[idx + 1..]);
+
+        return Ok((HashMap::new(), sudo_bin, sudo_args));
     }
 
-    // Collect leading KEY=VALUE assignments.
+    let mut env = HashMap::new();
+
+    // Collect leading KEY=VALUE assignments (non-sudo path).
     while idx < words.len() {
         if let Some((key, value)) = words[idx].split_once('=') {
             if is_valid_env_name(key) {
@@ -163,15 +214,6 @@ fn parse_command(command: &str) -> Result<(HashMap<String, String>, String, Vec<
         words.get(idx).ok_or_else(|| anyhow!("No binary found in command: {}", command))?.clone();
     let binary = resolve_binary(&raw_binary);
     let args = words[idx + 1..].to_vec();
-
-    // If sudo was requested, we need to spawn through sudo. Reconstruct
-    // the command with sudo wrapping.
-    if let Some(user) = sudo_user {
-        let sudo_bin = resolve_binary("sudo");
-        let mut sudo_args = vec!["-u".to_string(), user, binary];
-        sudo_args.extend(args);
-        return Ok((env, sudo_bin, sudo_args));
-    }
 
     Ok((env, binary, args))
 }
@@ -808,9 +850,51 @@ mod tests {
         let (env, binary, args) =
             parse_command("sudo -u deploy env ANTHROPIC_API_KEY='sk-test' claude --model sonnet")
                 .unwrap();
-        assert_eq!(env.get("ANTHROPIC_API_KEY").unwrap(), "sk-test");
+        // Env vars are passed through as args to `env`, not hoisted into the HashMap.
+        assert!(env.is_empty());
         assert_binary(&binary, "sudo");
-        // The claude arg inside sudo is also resolved.
+        assert_eq!(args[0], "-u");
+        assert_eq!(args[1], "deploy");
+        assert_eq!(args[2], "env");
+        assert_eq!(args[3], "ANTHROPIC_API_KEY=sk-test");
+        assert!(args[4] == "claude" || args[4].ends_with("/claude"));
+        assert_eq!(args[5], "--model");
+        assert_eq!(args[6], "sonnet");
+    }
+
+    #[test]
+    fn parse_sudo_command_with_unset_flags() {
+        // Format produced by build_claude_command after the SUDO_* fix.
+        let (env, binary, args) = parse_command(
+            "sudo -u cap env -u SUDO_USER -u SUDO_UID -u SUDO_GID -u SUDO_COMMAND \
+             ANTHROPIC_AUTH_TOKEN='tok' claude --print",
+        )
+        .unwrap();
+        assert!(env.is_empty());
+        assert_binary(&binary, "sudo");
+        assert_eq!(args[0], "-u");
+        assert_eq!(args[1], "cap");
+        assert_eq!(args[2], "env");
+        assert_eq!(args[3], "-u");
+        assert_eq!(args[4], "SUDO_USER");
+        assert_eq!(args[5], "-u");
+        assert_eq!(args[6], "SUDO_UID");
+        assert_eq!(args[7], "-u");
+        assert_eq!(args[8], "SUDO_GID");
+        assert_eq!(args[9], "-u");
+        assert_eq!(args[10], "SUDO_COMMAND");
+        assert_eq!(args[11], "ANTHROPIC_AUTH_TOKEN=tok");
+        assert!(args[12] == "claude" || args[12].ends_with("/claude"));
+        assert_eq!(args[13], "--print");
+    }
+
+    #[test]
+    fn parse_sudo_command_no_env() {
+        // sudo without env prefix — env is always present after the fix, but
+        // parse_command must still handle the legacy/bare form gracefully.
+        let (env, binary, args) = parse_command("sudo -u deploy claude --model sonnet").unwrap();
+        assert!(env.is_empty());
+        assert_binary(&binary, "sudo");
         assert_eq!(args[0], "-u");
         assert_eq!(args[1], "deploy");
         assert!(args[2] == "claude" || args[2].ends_with("/claude"));
