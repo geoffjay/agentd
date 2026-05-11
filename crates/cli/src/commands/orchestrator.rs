@@ -3966,7 +3966,7 @@ mod tests {
             repo: "repo".into(),
             labels: vec!["review".into()],
             state: "open".into(),
-            assignees: None,
+            assignee: None,
         };
         display_workflow(&w);
 
@@ -4166,7 +4166,7 @@ mod tests {
             repo: "b".into(),
             labels: vec![],
             state: "open".into(),
-            assignees: None,
+            assignee: None,
         }
         .is_implemented());
         assert!(TriggerConfig::Cron { expression: "* * * * *".into() }.is_implemented());

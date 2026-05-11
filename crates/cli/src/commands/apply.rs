@@ -1967,19 +1967,16 @@ owner: mygroup
 repo: myproject
 labels: [needs-review]
 state: opened
-assignees: [alice, bob]
+assignee: alice
 "#;
         let src: SourceTemplate = serde_yaml::from_str(yaml).unwrap();
         match src {
-            SourceTemplate::GitlabMergeRequests { owner, repo, labels, state, assignees } => {
+            SourceTemplate::GitlabMergeRequests { owner, repo, labels, state, assignee } => {
                 assert_eq!(owner, "mygroup");
                 assert_eq!(repo, "myproject");
                 assert_eq!(labels, vec!["needs-review"]);
                 assert_eq!(state, "opened");
-                assert_eq!(
-                    assignees.as_deref(),
-                    Some(&["alice".to_string(), "bob".to_string()][..])
-                );
+                assert_eq!(assignee.as_deref(), Some("alice"));
             }
             other => panic!("Expected GitlabMergeRequests, got {:?}", other),
         }
@@ -1994,10 +1991,10 @@ repo: myproject
 "#;
         let src: SourceTemplate = serde_yaml::from_str(yaml).unwrap();
         match src {
-            SourceTemplate::GitlabMergeRequests { labels, state, assignees, .. } => {
+            SourceTemplate::GitlabMergeRequests { labels, state, assignee, .. } => {
                 assert!(labels.is_empty());
                 assert_eq!(state, "opened");
-                assert!(assignees.is_none());
+                assert!(assignee.is_none());
             }
             other => panic!("Expected GitlabMergeRequests, got {:?}", other),
         }
