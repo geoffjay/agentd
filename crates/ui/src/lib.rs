@@ -32,7 +32,6 @@ use anyhow::Result;
 use axum::routing::{any, get};
 use axum::Router;
 use proxy::ProxyState;
-use std::net::SocketAddr;
 use std::path::Path;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing::{info, warn};
@@ -74,8 +73,9 @@ pub async fn run(config: config::UiConfig) -> Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let host = std::env::var("AGENTD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let addr = format!("{host}:{port}");
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("HTTP server listening on http://{}", addr);
 
     let shutdown_signal = async {

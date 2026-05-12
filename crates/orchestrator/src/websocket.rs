@@ -597,7 +597,11 @@ fn broadcast_output(agent_id: &Uuid, text: &str, registry: &ConnectionRegistry) 
 }
 
 /// Process an incoming NDJSON message from a claude code instance.
-async fn handle_incoming_message(agent_id: &Uuid, text: &str, registry: &ConnectionRegistry) {
+pub(crate) async fn handle_incoming_message(
+    agent_id: &Uuid,
+    text: &str,
+    registry: &ConnectionRegistry,
+) {
     // Claude sends NDJSON — each line is a separate JSON message.
     for line in text.lines() {
         let line = line.trim();
@@ -1666,12 +1670,12 @@ mod tests {
         registry.register(agent_id, AgentConnection { tx }).await;
 
         // Counter exists after register.
-        assert_eq!(registry.session_numbers.read().await.contains_key(&agent_id), true);
+        assert!(registry.session_numbers.read().await.contains_key(&agent_id));
 
         registry.unregister(&agent_id).await;
 
         // Counter removed - get_session_number falls back to the default 0.
-        assert_eq!(registry.session_numbers.read().await.contains_key(&agent_id), false);
+        assert!(!registry.session_numbers.read().await.contains_key(&agent_id));
         assert_eq!(registry.get_session_number(&agent_id).await, 0);
     }
 

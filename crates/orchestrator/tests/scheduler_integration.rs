@@ -140,6 +140,7 @@ async fn non_manual_workflow_trigger_creates_dispatched_record() {
         repo: "repo".to_string(),
         labels: vec![],
         state: "open".to_string(),
+        assignee: None,
     };
     let workflow = make_workflow(agent_id, trigger);
     storage.add_workflow(&workflow).await.unwrap();
@@ -179,6 +180,7 @@ async fn trigger_workflow_fails_when_agent_not_connected() {
         repo: "repo".to_string(),
         labels: vec![],
         state: "open".to_string(),
+        assignee: None,
     };
     let workflow = make_workflow(agent_id, trigger);
     storage.add_workflow(&workflow).await.unwrap();
@@ -243,6 +245,7 @@ async fn notify_task_complete_marks_dispatched_record_completed() {
             repo: "repo".to_string(),
             labels: vec![],
             state: "open".to_string(),
+            assignee: None,
         },
     );
     storage.add_workflow(&workflow).await.unwrap();
@@ -284,6 +287,7 @@ async fn notify_task_complete_marks_dispatched_record_failed() {
             repo: "repo".to_string(),
             labels: vec![],
             state: "open".to_string(),
+            assignee: None,
         },
     );
     storage.add_workflow(&workflow).await.unwrap();
@@ -346,6 +350,7 @@ async fn concurrent_workflows_different_trigger_types() {
             repo: "repo".to_string(),
             labels: vec![],
             state: "open".to_string(),
+            assignee: None,
         },
     );
     wf_b.name = "workflow-b-github".to_string();

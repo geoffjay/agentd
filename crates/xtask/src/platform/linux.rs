@@ -1,4 +1,15 @@
-//! Linux platform implementation using systemd user units.
+//! Linux platform implementation using systemd user or system units.
+//!
+//! When running as root (`is_root()` returns true), all paths and systemd
+//! scope are system-wide:
+//!   binaries  → /usr/local/bin
+//!   assets    → /usr/local/share/agentd
+//!   units     → /etc/systemd/system  (WantedBy=multi-user.target)
+//!
+//! Otherwise the per-user XDG layout is used:
+//!   binaries  → ~/.local/bin
+//!   assets    → XDG_DATA_HOME/agentd
+//!   units     → XDG_CONFIG_HOME/systemd/user  (WantedBy=default.target)
 
 use super::{Platform, ServiceInfo, SERVICES};
 use anyhow::{Context, Result};
@@ -7,25 +18,71 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub struct LinuxPlatform;
+pub struct LinuxPlatform {
+    pub system: bool,
+}
+
+impl LinuxPlatform {
+    /// Build a `systemctl` command pre-populated with `--user` when not a system install.
+    fn systemctl(&self) -> Command {
+        let mut cmd = Command::new("systemctl");
+        if !self.system {
+            cmd.arg("--user");
+        }
+        cmd
+    }
+
+    fn systemd_dir(&self) -> PathBuf {
+        if self.system {
+            PathBuf::from("/etc/systemd/system")
+        } else {
+            let config_home = std::env::var("XDG_CONFIG_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| crate::home_dir().unwrap_or_default().join(".config"));
+            config_home.join("systemd/user")
+        }
+    }
+
+    fn ui_assets_dir(&self) -> Result<PathBuf> {
+        if self.system {
+            Ok(PathBuf::from("/usr/local/share/agentd/ui"))
+        } else {
+            let data_home = std::env::var("XDG_DATA_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| crate::home_dir().unwrap_or_default().join(".local/share"));
+            Ok(data_home.join("agentd/ui"))
+        }
+    }
+
+    fn log_directory(&self) -> Result<PathBuf> {
+        if self.system {
+            Ok(PathBuf::from("/usr/local/share/agentd/log"))
+        } else {
+            let data_home = std::env::var("XDG_DATA_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| crate::home_dir().unwrap_or_default().join(".local/share"));
+            Ok(data_home.join("agentd/log"))
+        }
+    }
+}
 
 impl Platform for LinuxPlatform {
     fn install(&self, bin_dir: &Path) -> Result<()> {
         install_binaries(bin_dir)?;
 
         // Install UI assets
-        install_ui_assets()?;
+        self.install_ui_assets()?;
 
         // Generate and install systemd unit files
-        let unit_dir = systemd_user_dir()?;
-        fs::create_dir_all(&unit_dir).context("Failed to create systemd user directory")?;
-        install_unit_files(&unit_dir, bin_dir)?;
+        let unit_dir = self.systemd_dir();
+        fs::create_dir_all(&unit_dir).context("Failed to create systemd directory")?;
+        self.install_unit_files(&unit_dir, bin_dir)?;
 
         // Reload systemd daemon
         println!();
         println!("{}", "Reloading systemd daemon...".blue());
-        let status = Command::new("systemctl")
-            .arg("--user")
+        let status = self
+            .systemctl()
             .arg("daemon-reload")
             .status()
             .context("Failed to execute systemctl daemon-reload")?;
@@ -37,7 +94,7 @@ impl Platform for LinuxPlatform {
         }
 
         // Setup log directory
-        setup_log_directory()?;
+        self.setup_log_directory()?;
 
         Ok(())
     }
@@ -72,7 +129,8 @@ impl Platform for LinuxPlatform {
         }
 
         // Remove unit files
-        if let Ok(unit_dir) = systemd_user_dir() {
+        let unit_dir = self.systemd_dir();
+        if unit_dir.exists() {
             for service in SERVICES {
                 let unit_name = format!("agentd-{}.service", service.name);
                 let unit_path = unit_dir.join(&unit_name);
@@ -83,7 +141,7 @@ impl Platform for LinuxPlatform {
             }
 
             // Reload daemon after removing units
-            let _ = Command::new("systemctl").arg("--user").arg("daemon-reload").status();
+            let _ = self.systemctl().arg("daemon-reload").status();
         }
 
         Ok(())
@@ -94,8 +152,8 @@ impl Platform for LinuxPlatform {
             let unit_name = format!("agentd-{}.service", service.name);
             print!("  Starting {}... ", unit_name);
 
-            let output = Command::new("systemctl")
-                .arg("--user")
+            let output = self
+                .systemctl()
                 .arg("start")
                 .arg(&unit_name)
                 .output()
@@ -116,8 +174,8 @@ impl Platform for LinuxPlatform {
             let unit_name = format!("agentd-{}.service", service.name);
             print!("  Stopping {}... ", unit_name);
 
-            let output = Command::new("systemctl")
-                .arg("--user")
+            let output = self
+                .systemctl()
                 .arg("stop")
                 .arg(&unit_name)
                 .output()
@@ -137,8 +195,8 @@ impl Platform for LinuxPlatform {
         let unit_name = format!("agentd-{service}.service");
         print!("  Starting {unit_name}... ");
 
-        let output = Command::new("systemctl")
-            .arg("--user")
+        let output = self
+            .systemctl()
             .arg("start")
             .arg(&unit_name)
             .output()
@@ -159,8 +217,8 @@ impl Platform for LinuxPlatform {
         let unit_name = format!("agentd-{service}.service");
         print!("  Stopping {unit_name}... ");
 
-        let output = Command::new("systemctl")
-            .arg("--user")
+        let output = self
+            .systemctl()
             .arg("stop")
             .arg(&unit_name)
             .output()
@@ -186,8 +244,7 @@ impl Platform for LinuxPlatform {
             let unit_name = format!("agentd-{}.service", service.name);
             print!("  agentd-{}: ", service.name);
 
-            let output =
-                Command::new("systemctl").arg("--user").arg("is-active").arg(&unit_name).output();
+            let output = self.systemctl().arg("is-active").arg(&unit_name).output();
 
             match output {
                 Ok(out) => {
@@ -209,7 +266,7 @@ impl Platform for LinuxPlatform {
 
     fn print_install_summary(&self) -> Result<()> {
         let prefix = crate::get_prefix();
-        let unit_dir = systemd_user_dir()?;
+        let unit_dir = self.systemd_dir();
         println!("Binaries: {}", prefix.join("bin").display().to_string().yellow());
         println!("CLI symlink: {}", prefix.join("bin/agent").display().to_string().yellow());
         println!("Unit files: {}", unit_dir.display().to_string().yellow());
@@ -217,14 +274,81 @@ impl Platform for LinuxPlatform {
     }
 }
 
-/// Generate a systemd user unit file for a service.
-pub fn generate_unit_file(service: &ServiceInfo, bin_path: &Path) -> String {
+impl LinuxPlatform {
+    fn install_ui_assets(&self) -> Result<()> {
+        println!("{}", "Installing UI assets...".blue());
+
+        let ui_dist = Path::new("ui/dist");
+        if !ui_dist.exists() {
+            println!("  {} UI dist not found (ui/dist/) — skipping", "⚠".yellow());
+            return Ok(());
+        }
+
+        let dest = self.ui_assets_dir()?;
+        if dest.exists() {
+            fs::remove_dir_all(&dest).context("Failed to remove old UI assets")?;
+        }
+        copy_dir_recursive(ui_dist, &dest)?;
+
+        println!("  {} UI assets installed to {}", "✓".green(), dest.display());
+        Ok(())
+    }
+
+    fn install_unit_files(&self, unit_dir: &Path, bin_dir: &Path) -> Result<()> {
+        let scope = if self.system { "system" } else { "user" };
+        println!("{}", format!("Installing systemd {scope} units...").blue());
+
+        for service in SERVICES {
+            let bin_path = bin_dir.join(service.binary);
+            let mut unit_content = generate_unit_file(service, &bin_path, self.system);
+
+            // Add AGENTD_UI_DIR for the ui service
+            if service.name == "ui" {
+                if let Ok(ui_dir) = self.ui_assets_dir() {
+                    let env_line = format!("\nEnvironment=AGENTD_UI_DIR={}", ui_dir.display());
+                    unit_content =
+                        unit_content.replace("\n\n[Install]", &format!("{env_line}\n\n[Install]"));
+                }
+            }
+
+            let unit_name = format!("agentd-{}.service", service.name);
+            let unit_path = unit_dir.join(&unit_name);
+
+            fs::write(&unit_path, &unit_content).context(format!("Failed to write {unit_name}"))?;
+            println!("  {} {}", "✓".green(), unit_name);
+        }
+
+        Ok(())
+    }
+
+    fn setup_log_directory(&self) -> Result<()> {
+        let log_dir = self.log_directory()?;
+
+        if !log_dir.exists() {
+            println!();
+            println!("{}", "Setting up log directory...".blue());
+            fs::create_dir_all(&log_dir)
+                .context(format!("Failed to create log directory: {}", log_dir.display()))?;
+            println!("  {} Log directory created at {}", "✓".green(), log_dir.display());
+        }
+
+        Ok(())
+    }
+}
+
+/// Generate a systemd unit file for a service.
+///
+/// `system` controls the `WantedBy=` target: `multi-user.target` for system
+/// units, `default.target` for user units.
+pub fn generate_unit_file(service: &ServiceInfo, bin_path: &Path, system: bool) -> String {
     let mut env_lines =
         format!("Environment=RUST_LOG=info\nEnvironment=AGENTD_PORT={}", service.port);
 
     for (key, value) in service.extra_env {
         env_lines.push_str(&format!("\nEnvironment={}={}", key, value));
     }
+
+    let wanted_by = if system { "multi-user.target" } else { "default.target" };
 
     format!(
         r#"[Unit]
@@ -239,22 +363,12 @@ RestartSec=5
 {env}
 
 [Install]
-WantedBy=default.target
+WantedBy={wanted_by}
 "#,
         name = service.name,
         bin = bin_path.display(),
         env = env_lines,
     )
-}
-
-/// Get the systemd user unit directory.
-fn systemd_user_dir() -> Result<PathBuf> {
-    // Respect XDG_CONFIG_HOME, fall back to ~/.config
-    let config_home = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| crate::home_dir().unwrap_or_default().join(".config"));
-
-    Ok(config_home.join("systemd/user"))
 }
 
 // -- Private helpers --
@@ -318,59 +432,6 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn install_unit_files(unit_dir: &Path, bin_dir: &Path) -> Result<()> {
-    println!("{}", "Installing systemd user units...".blue());
-
-    for service in SERVICES {
-        let bin_path = bin_dir.join(service.binary);
-        let mut unit_content = generate_unit_file(service, &bin_path);
-
-        // Add AGENTD_UI_DIR for the ui service
-        if service.name == "ui" {
-            if let Ok(ui_dir) = ui_assets_dir() {
-                let env_line = format!("\nEnvironment=AGENTD_UI_DIR={}", ui_dir.display());
-                unit_content =
-                    unit_content.replace("\n\n[Install]", &format!("{env_line}\n\n[Install]"));
-            }
-        }
-
-        let unit_name = format!("agentd-{}.service", service.name);
-        let unit_path = unit_dir.join(&unit_name);
-
-        fs::write(&unit_path, &unit_content).context(format!("Failed to write {unit_name}"))?;
-        println!("  {} {}", "✓".green(), unit_name);
-    }
-
-    Ok(())
-}
-
-/// Get the UI assets directory for Linux.
-fn ui_assets_dir() -> Result<PathBuf> {
-    let data_home = std::env::var("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| crate::home_dir().unwrap_or_default().join(".local/share"));
-    Ok(data_home.join("agentd/ui"))
-}
-
-fn install_ui_assets() -> Result<()> {
-    println!("{}", "Installing UI assets...".blue());
-
-    let ui_dist = Path::new("ui/dist");
-    if !ui_dist.exists() {
-        println!("  {} UI dist not found (ui/dist/) — skipping", "⚠".yellow());
-        return Ok(());
-    }
-
-    let dest = ui_assets_dir()?;
-    if dest.exists() {
-        fs::remove_dir_all(&dest).context("Failed to remove old UI assets")?;
-    }
-    copy_dir_recursive(ui_dist, &dest)?;
-
-    println!("  {} UI assets installed to {}", "✓".green(), dest.display());
-    Ok(())
-}
-
 /// Recursively copy a directory tree.
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     fs::create_dir_all(dest).context(format!("Failed to create directory: {}", dest.display()))?;
@@ -394,29 +455,6 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-fn setup_log_directory() -> Result<()> {
-    let log_dir = log_directory()?;
-
-    if !log_dir.exists() {
-        println!();
-        println!("{}", "Setting up log directory...".blue());
-        fs::create_dir_all(&log_dir)
-            .context(format!("Failed to create log directory: {}", log_dir.display()))?;
-        println!("  {} Log directory created at {}", "✓".green(), log_dir.display());
-    }
-
-    Ok(())
-}
-
-/// Get the log directory for Linux.
-fn log_directory() -> Result<PathBuf> {
-    let data_home = std::env::var("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| crate::home_dir().unwrap_or_default().join(".local/share"));
-
-    Ok(data_home.join("agentd/log"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -427,7 +465,7 @@ mod tests {
         let info =
             ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, extra_env: &[] };
         let bin_path = Path::new("/home/user/.local/bin/agentd-notify");
-        let unit = generate_unit_file(&info, bin_path);
+        let unit = generate_unit_file(&info, bin_path, false);
 
         assert!(unit.contains("Description=agentd-notify service"));
         assert!(unit.contains("ExecStart=/home/user/.local/bin/agentd-notify"));
@@ -441,6 +479,17 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_unit_file_system_mode() {
+        let info =
+            ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, extra_env: &[] };
+        let bin_path = Path::new("/usr/local/bin/agentd-notify");
+        let unit = generate_unit_file(&info, bin_path, true);
+
+        assert!(unit.contains("WantedBy=multi-user.target"));
+        assert!(unit.contains("ExecStart=/usr/local/bin/agentd-notify"));
+    }
+
+    #[test]
     fn test_generate_unit_file_with_extra_env() {
         let info = ServiceInfo {
             name: "ask",
@@ -449,7 +498,7 @@ mod tests {
             extra_env: &[("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004")],
         };
         let bin_path = Path::new("/usr/local/bin/agentd-ask");
-        let unit = generate_unit_file(&info, bin_path);
+        let unit = generate_unit_file(&info, bin_path, true);
 
         assert!(unit.contains("Description=agentd-ask service"));
         assert!(unit.contains("Environment=AGENTD_PORT=7001"));
@@ -460,7 +509,7 @@ mod tests {
     fn test_generate_unit_file_all_services() {
         for service in SERVICES {
             let bin_path = PathBuf::from(format!("/usr/local/bin/{}", service.binary));
-            let unit = generate_unit_file(service, &bin_path);
+            let unit = generate_unit_file(service, &bin_path, true);
 
             assert!(unit.contains(&format!("Description=agentd-{} service", service.name)));
             assert!(unit.contains(&format!("ExecStart=/usr/local/bin/{}", service.binary)));

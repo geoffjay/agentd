@@ -58,8 +58,9 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
+    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17010".to_string());
-    let addr = format!("127.0.0.1:{port}");
+    let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Communicate API server listening on http://{}", addr);
 

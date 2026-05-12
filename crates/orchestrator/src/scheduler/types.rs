@@ -84,6 +84,8 @@ pub enum TriggerConfig {
         labels: Vec<String>,
         #[serde(default = "default_issue_state")]
         state: String,
+        #[serde(default)]
+        assignee: Option<String>,
     },
     GithubPullRequests {
         owner: String,
@@ -92,6 +94,8 @@ pub enum TriggerConfig {
         labels: Vec<String>,
         #[serde(default = "default_pr_state")]
         state: String,
+        #[serde(default)]
+        assignee: Option<String>,
     },
     /// Cron-based trigger (Phase 2).
     Cron { expression: String },
@@ -251,6 +255,51 @@ pub enum TriggerConfig {
         #[serde(default)]
         response_pattern: Option<String>,
     },
+    /// GitLab issues trigger — polls GitLab for issues matching the given filters.
+    ///
+    /// Requires `AGENTD_GITLAB_TOKEN` to be set in the environment (or in the
+    /// `[gitlab]` section of the agentd config file).
+    ///
+    /// # Fields
+    ///
+    /// - `owner` — GitLab namespace (user or group).
+    /// - `repo` — GitLab project name.
+    /// - `labels` — Label names the issue must carry (comma-AND).
+    /// - `state` — Issue state: `opened` (default), `closed`, or `all`.
+    ///   Note: GitLab uses `opened`, not `open`.
+    /// - `assignee` — Filter by assignee username.
+    GitlabIssues {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_gitlab_issue_state")]
+        state: String,
+        #[serde(default)]
+        assignee: Option<String>,
+    },
+    /// GitLab merge requests trigger — polls GitLab for MRs matching the given filters.
+    ///
+    /// Requires `AGENTD_GITLAB_TOKEN` to be set in the environment (or in the
+    /// `[gitlab]` section of the agentd config file).
+    ///
+    /// # Fields
+    ///
+    /// - `owner` — GitLab namespace (user or group).
+    /// - `repo` — GitLab project name.
+    /// - `labels` — Label names the MR must carry.
+    /// - `state` — MR state: `opened` (default), `closed`, `merged`, or `all`.
+    /// - `assignee` — Filter by assignee username.
+    GitlabMergeRequests {
+        owner: String,
+        repo: String,
+        #[serde(default)]
+        labels: Vec<String>,
+        #[serde(default = "default_gitlab_mr_state")]
+        state: String,
+        #[serde(default)]
+        assignee: Option<String>,
+    },
 }
 
 fn default_issue_state() -> String {
@@ -259,6 +308,14 @@ fn default_issue_state() -> String {
 
 fn default_pr_state() -> String {
     "open".to_string()
+}
+
+fn default_gitlab_issue_state() -> String {
+    "opened".to_string()
+}
+
+fn default_gitlab_mr_state() -> String {
+    "opened".to_string()
 }
 
 impl TriggerConfig {
@@ -277,6 +334,8 @@ impl TriggerConfig {
             TriggerConfig::Composite { .. } => "composite",
             TriggerConfig::Queue { .. } => "queue",
             TriggerConfig::AskResponse { .. } => "ask_response",
+            TriggerConfig::GitlabIssues { .. } => "gitlab_issues",
+            TriggerConfig::GitlabMergeRequests { .. } => "gitlab_merge_requests",
         }
     }
 
@@ -295,7 +354,9 @@ impl TriggerConfig {
             | TriggerConfig::LinearIssues { .. }
             | TriggerConfig::Composite { .. }
             | TriggerConfig::Queue { .. }
-            | TriggerConfig::AskResponse { .. } => true,
+            | TriggerConfig::AskResponse { .. }
+            | TriggerConfig::GitlabIssues { .. }
+            | TriggerConfig::GitlabMergeRequests { .. } => true,
         }
     }
 
@@ -580,5 +641,144 @@ mod tests {
         assert_eq!(decoded.trigger_type(), "linear_issues");
         // Serialized tag must be snake_case.
         assert!(json.contains(r#""type":"linear_issues""#));
+    }
+
+    // -------------------------------------------------------------------------
+    // GitlabIssues TriggerConfig deserialization tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_trigger_config_gitlab_issues_trigger_type() {
+        let cfg = TriggerConfig::GitlabIssues {
+            owner: "mygroup".into(),
+            repo: "myproject".into(),
+            labels: vec![],
+            state: "opened".into(),
+            assignee: None,
+        };
+        assert_eq!(cfg.trigger_type(), "gitlab_issues");
+        assert!(cfg.is_implemented());
+    }
+
+    #[test]
+    fn test_trigger_config_gitlab_issues_serde_full() {
+        let json = r#"{
+            "type": "gitlab_issues",
+            "owner": "mygroup",
+            "repo": "myproject",
+            "labels": ["bug", "agent"],
+            "state": "opened",
+            "assignee": "alice"
+        }"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.trigger_type(), "gitlab_issues");
+        if let TriggerConfig::GitlabIssues { owner, repo, labels, state, assignee } = cfg {
+            assert_eq!(owner, "mygroup");
+            assert_eq!(repo, "myproject");
+            assert_eq!(labels, vec!["bug", "agent"]);
+            assert_eq!(state, "opened");
+            assert_eq!(assignee.as_deref(), Some("alice"));
+        } else {
+            panic!("Expected GitlabIssues variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_gitlab_issues_serde_minimal_defaults() {
+        // Only required fields — state should default to "opened", others empty/None.
+        let json = r#"{"type": "gitlab_issues", "owner": "mygroup", "repo": "myproject"}"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        if let TriggerConfig::GitlabIssues { owner, repo, labels, state, assignee } = cfg {
+            assert_eq!(owner, "mygroup");
+            assert_eq!(repo, "myproject");
+            assert!(labels.is_empty());
+            assert_eq!(state, "opened");
+            assert!(assignee.is_none());
+        } else {
+            panic!("Expected GitlabIssues variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_gitlab_issues_serde_roundtrip() {
+        let original = TriggerConfig::GitlabIssues {
+            owner: "mygroup".into(),
+            repo: "myproject".into(),
+            labels: vec!["agent".into()],
+            state: "closed".into(),
+            assignee: Some("bob".into()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: TriggerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.trigger_type(), "gitlab_issues");
+        assert!(json.contains(r#""type":"gitlab_issues""#));
+    }
+
+    // -------------------------------------------------------------------------
+    // GitlabMergeRequests TriggerConfig deserialization tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_trigger_config_gitlab_merge_requests_trigger_type() {
+        let cfg = TriggerConfig::GitlabMergeRequests {
+            owner: "mygroup".into(),
+            repo: "myproject".into(),
+            labels: vec![],
+            state: "opened".into(),
+            assignee: None,
+        };
+        assert_eq!(cfg.trigger_type(), "gitlab_merge_requests");
+        assert!(cfg.is_implemented());
+    }
+
+    #[test]
+    fn test_trigger_config_gitlab_merge_requests_serde_full() {
+        let json = r#"{
+            "type": "gitlab_merge_requests",
+            "owner": "mygroup",
+            "repo": "myproject",
+            "labels": ["needs-review"],
+            "state": "opened",
+            "assignee": "alice"
+        }"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.trigger_type(), "gitlab_merge_requests");
+        if let TriggerConfig::GitlabMergeRequests { owner, repo, labels, state, assignee } = cfg {
+            assert_eq!(owner, "mygroup");
+            assert_eq!(repo, "myproject");
+            assert_eq!(labels, vec!["needs-review"]);
+            assert_eq!(state, "opened");
+            assert_eq!(assignee.as_deref(), Some("alice"));
+        } else {
+            panic!("Expected GitlabMergeRequests variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_gitlab_merge_requests_serde_minimal_defaults() {
+        let json = r#"{"type": "gitlab_merge_requests", "owner": "mygroup", "repo": "myproject"}"#;
+        let cfg: TriggerConfig = serde_json::from_str(json).unwrap();
+        if let TriggerConfig::GitlabMergeRequests { labels, state, assignee, .. } = cfg {
+            assert!(labels.is_empty());
+            assert_eq!(state, "opened");
+            assert!(assignee.is_none());
+        } else {
+            panic!("Expected GitlabMergeRequests variant");
+        }
+    }
+
+    #[test]
+    fn test_trigger_config_gitlab_merge_requests_serde_roundtrip() {
+        let original = TriggerConfig::GitlabMergeRequests {
+            owner: "mygroup".into(),
+            repo: "myproject".into(),
+            labels: vec!["enhancement".into()],
+            state: "merged".into(),
+            assignee: Some("carol".into()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let decoded: TriggerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.trigger_type(), "gitlab_merge_requests");
+        assert!(json.contains(r#""type":"gitlab_merge_requests""#));
     }
 }

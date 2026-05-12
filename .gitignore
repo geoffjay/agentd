@@ -57,6 +57,7 @@ tags.temp
 
 # Other
 .env
+.env.production
 
 # Layer config
 .otter
@@ -97,3 +98,4 @@ ui/coverage/
 .sidecar-start.sh
 .sidecar-base
 .td-root
+.gitnexus
