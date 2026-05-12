@@ -5,6 +5,7 @@
 //! full binary.
 
 pub mod api;
+pub mod config;
 pub mod entity;
 pub mod membership_storage;
 pub mod middleware;
