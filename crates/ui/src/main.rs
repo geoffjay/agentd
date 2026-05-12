@@ -20,5 +20,5 @@ use ui::config::UiConfig;
 #[tokio::main]
 async fn main() -> Result<()> {
     agentd_common::server::init_tracing();
-    ui::run(UiConfig::from_env()).await
+    ui::run(UiConfig::load()).await
 }

@@ -66,6 +66,7 @@ dependencies = [
 name = "agentd-mcp"
 version = "0.2.0"
 dependencies = [
+ "agentd-common",
  "anyhow",
  "axum",
  "chrono",

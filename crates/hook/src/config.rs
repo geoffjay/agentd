@@ -40,17 +40,25 @@ pub struct HookConfig {
 }
 
 impl HookConfig {
-    /// Construct configuration from environment variables with defaults.
-    pub fn from_env() -> Self {
-        let notify_service_url =
-            env::var("AGENTD_NOTIFY_SERVICE_URL").ok().filter(|s| !s.is_empty());
+    /// Construct configuration from the shared config file and environment variables.
+    ///
+    /// Loads base values from [`agentd_common::config::load`], then overlays
+    /// legacy service-specific environment variables for backward compatibility.
+    pub fn load() -> Self {
+        let shared = agentd_common::config::load().unwrap_or_default();
+        let base = shared.services.hook;
+
+        let notify_service_url = env::var("AGENTD_NOTIFY_SERVICE_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or(base.notify_service_url);
 
         Self {
-            port: env::var("AGENTD_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(17002),
+            port: env::var("AGENTD_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(base.port),
             history_size: env::var("AGENTD_HISTORY_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(500),
+                .unwrap_or(base.history_size),
             notify_on_failure: env::var("AGENTD_NOTIFY_ON_FAILURE")
                 .map(|v| v != "false" && v != "0")
                 .unwrap_or(true),
@@ -63,6 +71,12 @@ impl HookConfig {
                 .unwrap_or(30_000),
             notify_service_url,
         }
+    }
+
+    /// Construct configuration from environment variables with defaults.
+    #[deprecated(note = "Use load() instead")]
+    pub fn from_env() -> Self {
+        Self::load()
     }
 }
 

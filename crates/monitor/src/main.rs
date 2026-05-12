@@ -24,5 +24,5 @@ use monitor::config::MonitorConfig;
 #[tokio::main]
 async fn main() -> Result<()> {
     agentd_common::server::init_tracing();
-    monitor::run(MonitorConfig::from_env()).await
+    monitor::run(MonitorConfig::load()).await
 }

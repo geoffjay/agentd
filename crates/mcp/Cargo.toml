@@ -15,6 +15,7 @@ name = "agentd-mcp"
 path = "src/main.rs"
 
 [dependencies]
+agentd-common = { path = "../common" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

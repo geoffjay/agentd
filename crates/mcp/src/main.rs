@@ -40,5 +40,5 @@ async fn main() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    agentd_mcp::run(AgentdMcpConfig::from_env()).await
+    agentd_mcp::run(AgentdMcpConfig::load()).await
 }
