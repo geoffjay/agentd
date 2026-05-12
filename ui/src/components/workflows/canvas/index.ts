@@ -27,3 +27,5 @@ export {
 	saveLayout,
 	loadLayout,
 } from "./serialization";
+export type { AutoLayoutOptions } from "./layout";
+export { autoLayout } from "./layout";

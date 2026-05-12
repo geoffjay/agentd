@@ -38,8 +38,28 @@ vi.mock("@xyflow/react", async (importOriginal) => {
 		MiniMap: () => null,
 		Controls: () => null,
 		Background: () => null,
+		// FitViewOnLoad calls useReactFlow; stub it so tests don't need a real provider
+		useReactFlow: () => ({ fitView: vi.fn() }),
 	};
 });
+
+// ---------------------------------------------------------------------------
+// Mock LayoutContext — WorkflowBuilder calls setFullBleed on mount
+// ---------------------------------------------------------------------------
+
+const mockSetFullBleed = vi.fn();
+vi.mock("@/layouts/context", () => ({
+	useLayout: () => ({
+		sidebarOpen: true,
+		toggleSidebar: vi.fn(),
+		setSidebarOpen: vi.fn(),
+		searchOpen: false,
+		openSearch: vi.fn(),
+		closeSearch: vi.fn(),
+		fullBleed: false,
+		setFullBleed: mockSetFullBleed,
+	}),
+}));
 
 // ---------------------------------------------------------------------------
 // Mock hooks and services
