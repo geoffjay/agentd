@@ -20,16 +20,40 @@ use directories::ProjectDirs;
 use sea_orm::{Database, DatabaseConnection};
 use std::path::{Path, PathBuf};
 
+/// Resolve the data directory for a project based on the `AGENTD_ENV`
+/// environment variable.
+///
+/// Returns `tmp/` in development mode, `tmp/test/` in test mode, or the
+/// XDG platform data directory in production. Does not create any directories.
+fn resolve_data_dir(project_name: &str) -> Result<PathBuf> {
+    match std::env::var("AGENTD_ENV").as_deref() {
+        Ok("development" | "dev") => Ok(PathBuf::from("tmp")),
+        Ok("test") => Ok(PathBuf::from("tmp/test")),
+        _ => {
+            let proj_dirs = ProjectDirs::from("", "", project_name).ok_or_else(|| {
+                anyhow::anyhow!("Failed to determine project directories for '{}'", project_name)
+            })?;
+            Ok(proj_dirs.data_dir().to_path_buf())
+        }
+    }
+}
+
 /// Resolve the platform-specific database file path for a service.
 ///
-/// Uses the XDG base directory specification (via `directories` crate) to
-/// determine the data directory, creates it if necessary, and returns the
-/// full path to the database file.
+/// Uses the `AGENTD_ENV` environment variable to select the data directory
+/// (`development`/`dev` → `tmp/`, `test` → `tmp/test/`, absent → XDG platform
+/// data dir), creates the directory if necessary, and returns the full path to
+/// the database file.
 ///
 /// # Arguments
 ///
 /// * `project_name` — XDG project qualifier (e.g., `"agentd-notify"`)
 /// * `db_filename` — Database filename (e.g., `"notify.db"`)
+///
+/// # Errors
+///
+/// Returns an error if the XDG project directories cannot be determined or
+/// if `create_dir_all` fails.
 ///
 /// # Examples
 ///
@@ -39,18 +63,8 @@ use std::path::{Path, PathBuf};
 /// // Linux: ~/.local/share/agentd-notify/notify.db
 /// ```
 pub fn get_db_path(project_name: &str, db_filename: &str) -> Result<PathBuf> {
-    let data_dir = match std::env::var("AGENTD_ENV").as_deref() {
-        Ok("development" | "dev") => PathBuf::from("tmp"),
-        Ok("test") => PathBuf::from("tmp/test"),
-        _ => {
-            let proj_dirs = ProjectDirs::from("", "", project_name)
-                .ok_or_else(|| anyhow::anyhow!("Failed to determine project directories"))?;
-            proj_dirs.data_dir().to_path_buf()
-        }
-    };
-
+    let data_dir = resolve_data_dir(project_name)?;
     std::fs::create_dir_all(&data_dir)?;
-
     Ok(data_dir.join(db_filename))
 }
 
@@ -123,6 +137,46 @@ pub async fn migration_status<M: sea_orm_migration::MigratorTrait>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -------------------------------------------------------------------------
+    // resolve_data_dir tests
+    // -------------------------------------------------------------------------
+    // All AGENTD_ENV variants are exercised in a single test to prevent
+    // data races between parallel test threads that share the process
+    // environment.
+
+    #[test]
+    fn test_resolve_data_dir_respects_agentd_env() {
+        // Run all AGENTD_ENV variants sequentially inside one test so only
+        // one thread mutates the process environment at a time.
+
+        // development
+        std::env::set_var("AGENTD_ENV", "development");
+        let dir = resolve_data_dir("agentd-test-common").unwrap();
+        assert_eq!(dir, PathBuf::from("tmp"));
+
+        // dev shorthand
+        std::env::set_var("AGENTD_ENV", "dev");
+        let dir = resolve_data_dir("agentd-test-common").unwrap();
+        assert_eq!(dir, PathBuf::from("tmp"));
+
+        // test
+        std::env::set_var("AGENTD_ENV", "test");
+        let dir = resolve_data_dir("agentd-test-common").unwrap();
+        assert_eq!(dir, PathBuf::from("tmp/test"));
+
+        // production (no AGENTD_ENV set) — XDG path must contain the project name
+        std::env::remove_var("AGENTD_ENV");
+        let dir = resolve_data_dir("agentd-test-common").unwrap();
+        assert!(
+            dir.to_string_lossy().contains("agentd-test-common"),
+            "production data dir should contain the project name"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // get_db_path tests (existing, kept for regression coverage)
+    // -------------------------------------------------------------------------
 
     #[test]
     fn test_get_db_path_respects_agentd_env() {

@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
+# PR rework workflow — polls pull requests and dispatches rework when labeled.
+#
+# Triggers when a PR in geoffjay/agentd has the "needs-rework" label applied.
+# The worker reads reviewer feedback, addresses it, and resubmits for review.
+#
+# Usage:
+#   agent apply .agentd/workflows/pull-request-rework.yml
+#   agent apply .agentd/  # creates agent + workflow together
+
+name: pull-request-rework
+agent: worker
+
+source:
+  type: github_pull_requests
+  owner: geoffjay
+  repo: agentd
+  labels:
+    - needs-rework
+  state: open
+
+poll_interval: 60
+enabled: true
+
+prompt_template: |
+  Address reviewer feedback on the following pull request:
+
+  PR #{{source_id}}: {{title}}
+  URL: {{url}}
+  Labels: {{labels}}
+
+  Description:
+  {{body}}
+
+  Step 0 — Gather context from memory:
+  Before addressing feedback, search shared memory for relevant context:
+  1. Search for memories related to this PR's topic:
+     agent memory search "{{title}}" --as-actor worker --limit 5 --json
+  2. Search for any prior review findings in this area:
+     agent memory search "review findings" --as-actor worker --tags reviewer --limit 5 --json
+  3. Review results to understand recurring issues or past decisions.
+  4. Search the code index for context around the files being changed:
+     agent index search "{{title}}" --mode hybrid --language rust --limit 5 --json
+
+  Instructions:
+  1. Check out the branch for this PR:
+     gh pr checkout {{source_id}} --repo geoffjay/agentd
+  2. Fetch all review comments to understand what needs to be addressed:
+     gh pr review list {{source_id}} --repo geoffjay/agentd
+     gh pr view {{source_id}} --repo geoffjay/agentd --comments
+  3. Read the full diff to understand the current state of the PR:
+     gh pr diff {{source_id}} --repo geoffjay/agentd
+  4. Address each piece of reviewer feedback in the code
+  5. Run tests to verify: cargo test
+  6. Ensure cargo fmt and cargo clippy pass for Rust changes
+  7. Commit the changes:
+     git-spice commit create -m "fix: address review feedback"
+  8. Resubmit the PR for review and transition labels:
+     git-spice branch submit --no-prompt --label review-agent \
+       --title "{{title}}" \
+       --body "{{body}}"
+     gh pr edit {{source_id}} --repo geoffjay/agentd --remove-label needs-rework
+  9. Store any significant findings made during rework:
+     agent memory remember "<what you learned>" --created-by worker --type information --tags worker,pr-{{source_id}} --visibility public
+
+  Label reference:
+  - needs-rework  — changes requested; worker must address feedback and resubmit
+  - review-agent  — PR ready for review; triggers the reviewer workflow
