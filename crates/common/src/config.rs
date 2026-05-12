@@ -39,7 +39,7 @@
 //! | `AGENTD_NOTIFY_PORT`                 | `services.notify.port`                        |
 //! | `AGENTD_ORCHESTRATOR_PORT`           | `services.orchestrator.port`                  |
 //! | `AGENTD_ORCHESTRATOR_BACKEND`        | `services.orchestrator.backend`               |
-//! | `AGENTD_ORCHESTRATOR_COMMUNICATE_URL`| `services.orchestrator.communicate_url`       |
+//! | `AGENTD_ORCHESTRATOR_COMMUNICATE_URL`| `services.orchestrator.communicate_url` *(replaces legacy `AGENTD_COMMUNICATE_SERVICE_URL`)* |
 //! | `AGENTD_WRAP_PORT`                   | `services.wrap.port`                          |
 //! | `AGENTD_WRAP_BACKEND`                | `services.wrap.backend`                       |
 //! | `AGENTD_MEMORY_PORT`                 | `services.memory.port`                        |
@@ -58,6 +58,29 @@
 //! | `AGENTD_MCP_ORCHESTRATOR_URL`        | `services.mcp.orchestrator_url`               |
 //! | `AGENTD_UI_PORT`                     | `services.ui.port`                            |
 //! | `AGENTD_UI_DIR`                      | `services.ui.ui_dir`                          |
+//! | `AGENTD_RECONCILE_INTERVAL_SECS`     | `services.orchestrator.reconcile_interval_secs` |
+//! | `AGENTD_COLLECTION_INTERVAL_SECS`    | `services.monitor.collection_interval_secs`     |
+//! | `AGENTD_INDEX_LANGUAGES`             | `services.index.languages`                      |
+//! | `AGENTD_INDEX_EMBEDDING_ENDPOINT`    | `services.index.embedding_endpoint`             |
+//! | `AGENTD_INDEX_EMBEDDING_API_KEY`     | `services.index.embedding_api_key`              |
+//! | `AGENTD_INDEX_LANCE_TABLE`           | `services.index.lance_table`                    |
+//! | `AGENTD_INDEX_WATCH_INTERVAL`        | `services.index.watch_interval_secs`            |
+//! | `AGENTD_INDEX_IGNORE_PATTERNS`       | `services.index.ignore_patterns`                |
+//! | `AGENTD_NOTIFY_SERVICE_URL`          | `services.hook.notify_service_url`              |
+//! | `AGENTD_NOTIFY_ON_FAILURE`           | `services.hook.notify_on_failure`               |
+//! | `AGENTD_NOTIFY_ON_LONG_RUNNING`      | `services.hook.notify_on_long_running`          |
+//! | `AGENTD_LONG_RUNNING_THRESHOLD_MS`   | `services.hook.long_running_threshold_ms`       |
+//! | `AGENTD_CPU_ALERT_THRESHOLD`         | `services.monitor.cpu_alert_threshold`          |
+//! | `AGENTD_MEMORY_ALERT_THRESHOLD`      | `services.monitor.memory_alert_threshold`       |
+//! | `AGENTD_DISK_ALERT_THRESHOLD`        | `services.monitor.disk_alert_threshold`         |
+//! | `AGENTD_MONITOR_HISTORY_SIZE`        | `services.monitor.history_size`                 |
+//! | `AGENTD_MCP_NOTIFY_URL`              | `services.mcp.notify_url`                       |
+//! | `AGENTD_MCP_ASK_URL`                 | `services.mcp.ask_url`                          |
+//! | `AGENTD_MCP_MEMORY_URL`              | `services.mcp.memory_url`                       |
+//! | `AGENTD_MCP_COMMUNICATE_URL`         | `services.mcp.communicate_url`                  |
+//! | `AGENTD_MCP_WRAP_URL`                | `services.mcp.wrap_url`                         |
+//! | `AGENTD_MCP_MONITOR_URL`             | `services.mcp.monitor_url`                      |
+//! | `AGENTD_MCP_HOOK_URL`                | `services.mcp.hook_url`                         |
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
@@ -219,6 +242,19 @@ pub struct IndexConfig {
     pub lance_path: String,
     /// Supported programming languages for indexing.
     pub languages: Vec<String>,
+    /// Ollama/OpenAI embedding endpoint URL.
+    ///
+    /// Defaults to `"http://localhost:11434/v1"`.
+    pub embedding_endpoint: String,
+    /// API key for embedding requests (required for remote OpenAI).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_api_key: Option<String>,
+    /// LanceDB table name for code chunks. Defaults to `"code_chunks"`.
+    pub lance_table: String,
+    /// File-system watch polling interval in seconds. Defaults to `30`.
+    pub watch_interval_secs: u64,
+    /// Glob patterns to exclude from indexing.
+    pub ignore_patterns: Vec<String>,
 }
 
 impl Default for IndexConfig {
@@ -229,6 +265,11 @@ impl Default for IndexConfig {
             embedding_model: "nomic-embed-text".to_string(),
             lance_path: default_index_lance_path(),
             languages: default_index_languages(),
+            embedding_endpoint: "http://localhost:11434/v1".to_string(),
+            embedding_api_key: None,
+            lance_table: "code_chunks".to_string(),
+            watch_interval_secs: 30,
+            ignore_patterns: default_index_ignore_patterns(),
         }
     }
 }
@@ -244,11 +285,24 @@ pub struct HookConfig {
     /// Optional notify service URL for forwarding notable events.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notify_service_url: Option<String>,
+    /// Send a notification when a command exits non-zero. Defaults to `true`.
+    pub notify_on_failure: bool,
+    /// Send a notification when a command runs longer than the threshold. Defaults to `true`.
+    pub notify_on_long_running: bool,
+    /// Minimum duration in milliseconds to consider a command "long-running". Defaults to `30_000`.
+    pub long_running_threshold_ms: u64,
 }
 
 impl Default for HookConfig {
     fn default() -> Self {
-        Self { port: 17002, history_size: 500, notify_service_url: None }
+        Self {
+            port: 17002,
+            history_size: 500,
+            notify_service_url: None,
+            notify_on_failure: true,
+            notify_on_long_running: true,
+            long_running_threshold_ms: 30_000,
+        }
     }
 }
 
@@ -260,11 +314,26 @@ pub struct MonitorConfig {
     pub port: u16,
     /// Metrics collection interval in seconds. Defaults to `15`.
     pub collection_interval_secs: u64,
+    /// CPU usage % above which an alert is raised. Defaults to `90.0`.
+    pub cpu_alert_threshold: f64,
+    /// Memory usage % above which an alert is raised. Defaults to `90.0`.
+    pub memory_alert_threshold: f64,
+    /// Disk usage % above which an alert is raised. Defaults to `90.0`.
+    pub disk_alert_threshold: f64,
+    /// Maximum number of metric snapshots to retain in memory. Defaults to `120`.
+    pub history_size: usize,
 }
 
 impl Default for MonitorConfig {
     fn default() -> Self {
-        Self { port: 17003, collection_interval_secs: 15 }
+        Self {
+            port: 17003,
+            collection_interval_secs: 15,
+            cpu_alert_threshold: 90.0,
+            memory_alert_threshold: 90.0,
+            disk_alert_threshold: 90.0,
+            history_size: 120,
+        }
     }
 }
 
@@ -474,6 +543,11 @@ pub fn load_from_path(path: Option<&std::path::Path>) -> Result<AgentdConfig> {
 /// field that was absent in the TOML file will equal its `Default` value in
 /// `file_cfg`.  We therefore treat the file value as an override only when it
 /// differs from the compiled default.
+///
+/// Note: `base` is always `AgentdConfig::default()` at all call sites. The
+/// function treats `file == default` as "not set in file" — this means a
+/// config file cannot explicitly reset a field back to its compiled default
+/// after a prior layer set it to something else.
 fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
     let d = AgentdConfig::default();
 
@@ -585,6 +659,33 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                 } else {
                     base.services.index.languages
                 },
+                embedding_endpoint: pick(
+                    &base.services.index.embedding_endpoint,
+                    &file.services.index.embedding_endpoint,
+                    &d.services.index.embedding_endpoint,
+                ),
+                embedding_api_key: file
+                    .services
+                    .index
+                    .embedding_api_key
+                    .or(base.services.index.embedding_api_key),
+                lance_table: pick(
+                    &base.services.index.lance_table,
+                    &file.services.index.lance_table,
+                    &d.services.index.lance_table,
+                ),
+                watch_interval_secs: pick_u64(
+                    base.services.index.watch_interval_secs,
+                    file.services.index.watch_interval_secs,
+                    d.services.index.watch_interval_secs,
+                ),
+                ignore_patterns: if file.services.index.ignore_patterns
+                    != d.services.index.ignore_patterns
+                {
+                    file.services.index.ignore_patterns
+                } else {
+                    base.services.index.ignore_patterns
+                },
             },
             hook: HookConfig {
                 port: pick_u16(
@@ -602,6 +703,25 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     .hook
                     .notify_service_url
                     .or(base.services.hook.notify_service_url),
+                notify_on_failure: if file.services.hook.notify_on_failure
+                    != d.services.hook.notify_on_failure
+                {
+                    file.services.hook.notify_on_failure
+                } else {
+                    base.services.hook.notify_on_failure
+                },
+                notify_on_long_running: if file.services.hook.notify_on_long_running
+                    != d.services.hook.notify_on_long_running
+                {
+                    file.services.hook.notify_on_long_running
+                } else {
+                    base.services.hook.notify_on_long_running
+                },
+                long_running_threshold_ms: pick_u64(
+                    base.services.hook.long_running_threshold_ms,
+                    file.services.hook.long_running_threshold_ms,
+                    d.services.hook.long_running_threshold_ms,
+                ),
             },
             monitor: MonitorConfig {
                 port: pick_u16(
@@ -613,6 +733,26 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     base.services.monitor.collection_interval_secs,
                     file.services.monitor.collection_interval_secs,
                     d.services.monitor.collection_interval_secs,
+                ),
+                cpu_alert_threshold: pick_f64(
+                    base.services.monitor.cpu_alert_threshold,
+                    file.services.monitor.cpu_alert_threshold,
+                    d.services.monitor.cpu_alert_threshold,
+                ),
+                memory_alert_threshold: pick_f64(
+                    base.services.monitor.memory_alert_threshold,
+                    file.services.monitor.memory_alert_threshold,
+                    d.services.monitor.memory_alert_threshold,
+                ),
+                disk_alert_threshold: pick_f64(
+                    base.services.monitor.disk_alert_threshold,
+                    file.services.monitor.disk_alert_threshold,
+                    d.services.monitor.disk_alert_threshold,
+                ),
+                history_size: pick_usize(
+                    base.services.monitor.history_size,
+                    file.services.monitor.history_size,
+                    d.services.monitor.history_size,
                 ),
             },
             communicate: CommunicateConfig {
@@ -765,6 +905,25 @@ fn apply_env_overrides(cfg: &mut AgentdConfig) {
             cfg.services.index.languages = langs;
         }
     }
+    if let Ok(v) = env::var("AGENTD_INDEX_EMBEDDING_ENDPOINT") {
+        cfg.services.index.embedding_endpoint = v;
+    }
+    if let Ok(v) = env::var("AGENTD_INDEX_EMBEDDING_API_KEY") {
+        cfg.services.index.embedding_api_key = Some(v);
+    }
+    if let Ok(v) = env::var("AGENTD_INDEX_LANCE_TABLE") {
+        cfg.services.index.lance_table = v;
+    }
+    if let Some(s) = parse_u64("AGENTD_INDEX_WATCH_INTERVAL") {
+        cfg.services.index.watch_interval_secs = s;
+    }
+    if let Ok(v) = env::var("AGENTD_INDEX_IGNORE_PATTERNS") {
+        let patterns: Vec<String> =
+            v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        if !patterns.is_empty() {
+            cfg.services.index.ignore_patterns = patterns;
+        }
+    }
 
     // ── Hook ──────────────────────────────────────────────────────────────
     if let Some(p) = parse_port("AGENTD_HOOK_PORT") {
@@ -778,6 +937,15 @@ fn apply_env_overrides(cfg: &mut AgentdConfig) {
             cfg.services.hook.notify_service_url = Some(v);
         }
     }
+    if let Ok(v) = env::var("AGENTD_NOTIFY_ON_FAILURE") {
+        cfg.services.hook.notify_on_failure = v != "false" && v != "0";
+    }
+    if let Ok(v) = env::var("AGENTD_NOTIFY_ON_LONG_RUNNING") {
+        cfg.services.hook.notify_on_long_running = v != "false" && v != "0";
+    }
+    if let Some(s) = parse_u64("AGENTD_LONG_RUNNING_THRESHOLD_MS") {
+        cfg.services.hook.long_running_threshold_ms = s;
+    }
 
     // ── Monitor ───────────────────────────────────────────────────────────
     if let Some(p) = parse_port("AGENTD_MONITOR_PORT") {
@@ -785,6 +953,18 @@ fn apply_env_overrides(cfg: &mut AgentdConfig) {
     }
     if let Some(s) = parse_u64("AGENTD_COLLECTION_INTERVAL_SECS") {
         cfg.services.monitor.collection_interval_secs = s;
+    }
+    if let Some(v) = parse_f64("AGENTD_CPU_ALERT_THRESHOLD") {
+        cfg.services.monitor.cpu_alert_threshold = v;
+    }
+    if let Some(v) = parse_f64("AGENTD_MEMORY_ALERT_THRESHOLD") {
+        cfg.services.monitor.memory_alert_threshold = v;
+    }
+    if let Some(v) = parse_f64("AGENTD_DISK_ALERT_THRESHOLD") {
+        cfg.services.monitor.disk_alert_threshold = v;
+    }
+    if let Some(s) = parse_usize("AGENTD_MONITOR_HISTORY_SIZE") {
+        cfg.services.monitor.history_size = s;
     }
 
     // ── Communicate ───────────────────────────────────────────────────────
@@ -873,6 +1053,15 @@ fn pick_usize(base: usize, file: usize, default: usize) -> usize {
     }
 }
 
+#[inline]
+fn pick_f64(base: f64, file: f64, default: f64) -> f64 {
+    if (file - default).abs() > f64::EPSILON {
+        file
+    } else {
+        base
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Env-var parse helpers
 // ---------------------------------------------------------------------------
@@ -887,6 +1076,10 @@ fn parse_u64(var: &str) -> Option<u64> {
 
 fn parse_usize(var: &str) -> Option<usize> {
     env::var(var).ok()?.parse::<usize>().ok()
+}
+
+fn parse_f64(var: &str) -> Option<f64> {
+    env::var(var).ok()?.parse::<f64>().ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -912,6 +1105,10 @@ fn default_index_languages() -> Vec<String> {
         "javascript".to_string(),
         "typescript".to_string(),
     ]
+}
+
+fn default_index_ignore_patterns() -> Vec<String> {
+    vec![".git".to_string(), "target".to_string(), "node_modules".to_string(), "dist".to_string()]
 }
 
 // ---------------------------------------------------------------------------
@@ -1173,5 +1370,70 @@ history_size = 1000
         let cfg = AgentdConfig::default();
         let cloned = cfg.clone();
         assert_eq!(cfg, cloned);
+    }
+
+    // ── New field tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_env_override_reconcile_interval() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_RECONCILE_INTERVAL_SECS", "60");
+        let cfg = load_from_path(None).expect("load failed");
+        env::remove_var("AGENTD_RECONCILE_INTERVAL_SECS");
+        assert_eq!(cfg.services.orchestrator.reconcile_interval_secs, 60);
+    }
+
+    #[test]
+    fn test_env_override_collection_interval() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_COLLECTION_INTERVAL_SECS", "60");
+        let cfg = load_from_path(None).expect("load failed");
+        env::remove_var("AGENTD_COLLECTION_INTERVAL_SECS");
+        assert_eq!(cfg.services.monitor.collection_interval_secs, 60);
+    }
+
+    #[test]
+    fn test_env_override_index_languages_with_spaces() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_INDEX_LANGUAGES", "go, ruby, kotlin");
+        let cfg = load_from_path(None).expect("load failed");
+        env::remove_var("AGENTD_INDEX_LANGUAGES");
+        assert_eq!(cfg.services.index.languages, vec!["go", "ruby", "kotlin"]);
+    }
+
+    #[test]
+    fn test_env_override_monitor_history_size() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_MONITOR_HISTORY_SIZE", "200");
+        let cfg = load_from_path(None).expect("load failed");
+        env::remove_var("AGENTD_MONITOR_HISTORY_SIZE");
+        assert_eq!(cfg.services.monitor.history_size, 200);
+    }
+
+    #[test]
+    fn test_default_monitor_fields() {
+        let cfg = AgentdConfig::default();
+        assert!((cfg.services.monitor.cpu_alert_threshold - 90.0).abs() < f64::EPSILON);
+        assert!((cfg.services.monitor.memory_alert_threshold - 90.0).abs() < f64::EPSILON);
+        assert!((cfg.services.monitor.disk_alert_threshold - 90.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.services.monitor.history_size, 120);
+    }
+
+    #[test]
+    fn test_default_hook_fields() {
+        let cfg = AgentdConfig::default();
+        assert!(cfg.services.hook.notify_on_failure);
+        assert!(cfg.services.hook.notify_on_long_running);
+        assert_eq!(cfg.services.hook.long_running_threshold_ms, 30_000);
+    }
+
+    #[test]
+    fn test_default_index_fields() {
+        let cfg = AgentdConfig::default();
+        assert_eq!(cfg.services.index.embedding_endpoint, "http://localhost:11434/v1");
+        assert!(cfg.services.index.embedding_api_key.is_none());
+        assert_eq!(cfg.services.index.lance_table, "code_chunks");
+        assert_eq!(cfg.services.index.watch_interval_secs, 30);
+        assert!(cfg.services.index.ignore_patterns.contains(&"target".to_string()));
     }
 }
