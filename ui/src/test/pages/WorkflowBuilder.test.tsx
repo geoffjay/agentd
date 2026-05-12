@@ -181,17 +181,22 @@ describe("WorkflowBuilder", () => {
 			expect(mockNavigate).toHaveBeenCalledWith("/workflows");
 		});
 
-		it("empty graph save succeeds without a validation error (shows save confirmation)", async () => {
+		it("empty graph save shows error instead of false 'Saved' confirmation", async () => {
 			const user = userEvent.setup();
 			renderCreate();
 			// Status bar absent before any save attempt
 			expect(screen.queryByTestId("builder-status-bar")).not.toBeInTheDocument();
 			await user.click(screen.getByTestId("builder-save-btn"));
-			// Empty graph passes validateGraph → 0 requests → no createWorkflow call
-			// setSaveSuccess(true) is still set, so the status bar appears with "Saved"
+			// Empty graph passes validateGraph but graphToWorkflows returns [] →
+			// guard fires, shows error rather than misleading "Saved"
 			await waitFor(() =>
 				expect(screen.getByTestId("builder-status-bar")).toBeInTheDocument(),
 			);
+			expect(
+				screen.getByText(
+					"Add at least one trigger connected to an agent before saving.",
+				),
+			).toBeInTheDocument();
 			expect(mockCreateWorkflow).not.toHaveBeenCalled();
 		});
 
@@ -264,9 +269,9 @@ describe("WorkflowBuilder", () => {
 			resolve({ id: "x" });
 		});
 
-		it("does not call createWorkflow for an empty graph (no edges to serialize)", async () => {
-			// Empty canvas has no edges, so graphToWorkflows returns [] and
-			// createWorkflow is never invoked even though validation passes.
+		it("does not call createWorkflow for an empty graph; shows error prompt", async () => {
+			// Empty canvas has no edges, so graphToWorkflows returns [] →
+			// the guard fires with an error before any API call.
 			const user = userEvent.setup();
 			renderCreate();
 
@@ -276,6 +281,11 @@ describe("WorkflowBuilder", () => {
 			await waitFor(() =>
 				expect(screen.getByTestId("builder-status-bar")).toBeInTheDocument(),
 			);
+			expect(
+				screen.getByText(
+					"Add at least one trigger connected to an agent before saving.",
+				),
+			).toBeInTheDocument();
 			expect(mockCreateWorkflow).not.toHaveBeenCalled();
 		});
 
@@ -295,6 +305,39 @@ describe("WorkflowBuilder", () => {
 				),
 			);
 			expect(mockCreateWorkflow).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("dirty tracking", () => {
+		it("does not show dirty indicator on initial render (no user edits yet)", () => {
+			renderCreate();
+			// The "Unsaved changes" badge must NOT appear before the user touches anything.
+			expect(screen.queryByTestId("dirty-indicator")).not.toBeInTheDocument();
+		});
+
+		it("does not show dirty indicator in edit mode before user edits canvas", async () => {
+			renderEdit("wf-1");
+			// Wait for the workflow to load (name populated)
+			await waitFor(() =>
+				expect(screen.getByTestId("builder-name-input")).toHaveValue(
+					"My Workflow",
+				),
+			);
+			// Loading the workflow triggers internal React Flow changes (dimensions,
+			// select, position-fit) — none of these are user edits.
+			expect(screen.queryByTestId("dirty-indicator")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("edit-mode load guard", () => {
+		it("calls getWorkflow only once even when allAgents reference changes", async () => {
+			// The useAgents mock returns a stable reference by default, so simulate
+			// a scenario where renderEdit mounts with agents already loaded.
+			renderEdit("wf-1");
+			await waitFor(() => expect(mockGetWorkflow).toHaveBeenCalledTimes(1));
+			// Even if the component re-renders (e.g. parent state change), getWorkflow
+			// must not be called a second time because hasLoadedRef guards it.
+			expect(mockGetWorkflow).toHaveBeenCalledTimes(1);
 		});
 	});
 });

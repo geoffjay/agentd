@@ -97,11 +97,18 @@ export function WorkflowBuilder() {
 	// React Flow instance ref for screenToFlowPosition
 	const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
 
+	// Guard so the edit-mode load runs only once per session. useAgents
+	// auto-refreshes every 10 s which would produce a new allAgents array
+	// reference on each poll, re-triggering the effect and overwriting any
+	// unsaved canvas edits (data-loss bug).
+	const hasLoadedRef = useRef(false);
+
 	const { allAgents } = useAgents({ pageSize: 200 });
 
 	// ── Load existing workflow ─────────────────────────────────────────────
 	useEffect(() => {
-		if (!editWorkflowId || allAgents.length === 0) return;
+		if (!editWorkflowId || allAgents.length === 0 || hasLoadedRef.current) return;
+		hasLoadedRef.current = true;
 
 		setLoading(true);
 		orchestratorClient
@@ -127,11 +134,22 @@ export function WorkflowBuilder() {
 		setSaveSuccess(false);
 	}, []);
 
-	// Intercept node/edge changes to mark dirty
+	// Intercept node/edge changes to mark dirty — only for genuine user edits.
+	// React Flow fires onNodesChange for internal housekeeping events
+	// (dimensions measurement, select/deselect, viewport fit) that are NOT user
+	// edits; marking dirty on those causes the "Unsaved changes" badge to appear
+	// immediately on page load in edit mode and arms the beforeunload guard
+	// unnecessarily.
 	const handleNodesChange = useCallback(
 		(changes: Parameters<typeof onNodesChange>[0]) => {
 			onNodesChange(changes);
-			markDirty();
+			const isUserEdit = changes.some(
+				(c) =>
+					c.type === "add" ||
+					c.type === "remove" ||
+					(c.type === "position" && c.dragging === true),
+			);
+			if (isUserEdit) markDirty();
 		},
 		[onNodesChange, markDirty],
 	);
@@ -139,7 +157,10 @@ export function WorkflowBuilder() {
 	const handleEdgesChange = useCallback(
 		(changes: Parameters<typeof onEdgesChange>[0]) => {
 			onEdgesChange(changes);
-			markDirty();
+			// "select" is internal; all other edge changes (add, remove, replace,
+			// reset) are genuine user edits.
+			const isUserEdit = changes.some((c) => c.type !== "select");
+			if (isUserEdit) markDirty();
 		},
 		[onEdgesChange, markDirty],
 	);
@@ -260,6 +281,13 @@ export function WorkflowBuilder() {
 
 		try {
 			const requests = graphToWorkflows(nodes, edges);
+			if (requests.length === 0) {
+				setSaveError(
+					"Add at least one trigger connected to an agent before saving.",
+				);
+				setSaving(false);
+				return;
+			}
 			const saved = await Promise.all(
 				requests.map((req) => {
 					const named = workflowName.trim()
@@ -382,6 +410,9 @@ export function WorkflowBuilder() {
 							nodeTypes={workflowNodeTypes}
 							edgeTypes={workflowEdgeTypes}
 							className="h-full"
+							onInit={(instance) => {
+								rfInstanceRef.current = instance;
+							}}
 						/>
 					)}
 				</div>
