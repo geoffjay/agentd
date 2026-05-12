@@ -35,7 +35,7 @@ export interface WorkflowTableProps {
 // ---------------------------------------------------------------------------
 
 function sourceLabel(workflow: Workflow): string {
-	const src = workflow.source_config;
+	const src = workflow.trigger_config;
 	if (!src) return "No source";
 	if (src.type === "github_issues") {
 		const parts = [`${src.owner}/${src.repo}`];

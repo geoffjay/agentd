@@ -18,33 +18,54 @@ import { DispatchHistory } from "@/components/workflows/DispatchHistory";
 import { WorkflowForm } from "@/components/workflows/WorkflowForm";
 import { useAgents } from "@/hooks/useAgents";
 import { useWorkflowDetail } from "@/hooks/useWorkflows";
-import type { CreateWorkflowRequest } from "@/types/orchestrator";
+import type { CreateWorkflowRequest, TriggerConfig } from "@/types/orchestrator";
+import { getTriggerLabel } from "@/types/orchestrator";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function sourceDetail(
-	src:
-		| {
-				type: string;
-				owner?: string;
-				repo?: string;
-				labels?: string[];
-				state?: string;
-		  }
-		| undefined,
-): string {
+function sourceDetail(src: TriggerConfig | undefined): string {
 	if (!src) return "No source configured";
-	if (src.type === "github_issues") {
-		const parts: string[] = [];
-		if (src.owner && src.repo) parts.push(`${src.owner}/${src.repo}`);
-		if (src.labels && src.labels.length > 0)
-			parts.push(`Labels: ${src.labels.join(", ")}`);
-		if (src.state) parts.push(`State: ${src.state}`);
-		return parts.join(" · ");
+	switch (src.type) {
+		case "github_issues":
+		case "github_pull_requests": {
+			const parts: string[] = [`${src.owner}/${src.repo}`];
+			if (src.labels.length > 0) parts.push(`Labels: ${src.labels.join(", ")}`);
+			if (src.state) parts.push(`State: ${src.state}`);
+			return parts.join(" · ");
+		}
+		case "cron":
+			return `Cron: ${src.expression}`;
+		case "delay":
+			return `Run at: ${new Date(src.run_at).toLocaleString()}`;
+		case "webhook":
+			return `Webhook (${src.source})`;
+		case "manual":
+			return "Manual trigger";
+		case "linear_issues": {
+			const parts: string[] = [];
+			if (src.team_key) parts.push(src.team_key);
+			if (src.project) parts.push(src.project);
+			return parts.length > 0 ? `Linear: ${parts.join(" / ")}` : "Linear Issues";
+		}
+		case "agent_lifecycle":
+			return `Agent lifecycle: ${src.event}`;
+		case "agent_idle":
+			return `Agent idle: ${src.idle_seconds}s`;
+		case "dispatch_result":
+			return src.source_workflow_id
+				? `Dispatch result from ${src.source_workflow_id}`
+				: "Dispatch result";
+		case "composite":
+			return `Composite (${src.mode.toUpperCase()}, ${src.triggers.length} triggers)`;
+		case "queue":
+			return `Queue: ${src.queue_name}`;
+		case "ask_response":
+			return src.category ? `Ask response: ${src.category}` : "Ask response";
+		default:
+			return getTriggerLabel((src as TriggerConfig).type);
 	}
-	return src.type;
 }
 
 function formatDateTime(iso: string): string {
@@ -211,7 +232,7 @@ export function WorkflowDetail() {
 				<dl>
 					<ConfigRow
 						label="Source"
-						value={sourceDetail(workflow.source_config)}
+						value={sourceDetail(workflow.trigger_config)}
 					/>
 					<ConfigRow
 						label="Poll interval"
