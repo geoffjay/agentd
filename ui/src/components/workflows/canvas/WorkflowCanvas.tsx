@@ -25,6 +25,7 @@ import {
 	type OnConnect,
 	type OnEdgesChange,
 	type OnNodesChange,
+	type ReactFlowInstance,
 } from "@xyflow/react";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,8 @@ export interface WorkflowCanvasProps {
 	edgeTypes?: EdgeTypes;
 	/** Optional CSS class applied to the outer wrapper */
 	className?: string;
+	/** Called with the ReactFlowInstance once the canvas is ready */
+	onInit?: (instance: ReactFlowInstance) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +66,7 @@ function Canvas({
 	nodeTypes,
 	edgeTypes,
 	className = "",
+	onInit,
 }: WorkflowCanvasProps) {
 	return (
 		<div
@@ -77,6 +81,7 @@ function Canvas({
 				onConnect={onConnect}
 				nodeTypes={nodeTypes}
 				edgeTypes={edgeTypes}
+				onInit={onInit}
 				fitView
 				snapToGrid
 				snapGrid={[16, 16]}

@@ -18,6 +18,7 @@ import {
 } from "@/pages";
 import { AgentDetail } from "@/pages/agents/AgentDetail";
 import { QuestionDetail } from "@/pages/questions/QuestionDetail";
+import { WorkflowBuilder } from "@/pages/workflows/WorkflowBuilder";
 import { WorkflowDetail } from "@/pages/workflows/WorkflowDetail";
 
 function App() {
@@ -34,7 +35,9 @@ function App() {
 						<Route path="/questions" element={<QuestionsPage />} />
 							<Route path="/questions/:id" element={<QuestionDetail />} />
 						<Route path="/workflows" element={<WorkflowsPage />} />
+						<Route path="/workflows/builder" element={<WorkflowBuilder />} />
 						<Route path="/workflows/:id" element={<WorkflowDetail />} />
+						<Route path="/workflows/:id/edit" element={<WorkflowBuilder />} />
 						<Route path="/monitoring" element={<MonitoringPage />} />
 						<Route path="/hooks" element={<HooksPage />} />
 						<Route path="/settings" element={<SettingsPage />} />
