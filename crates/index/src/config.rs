@@ -468,7 +468,9 @@ impl IndexConfig {
     pub fn from_env() -> Self {
         Self::load()
     }
+}
 
+impl ValidateConfig for IndexConfig {
     /// Validate the configuration, returning an error for invalid values.
     ///
     /// Checks:
@@ -476,11 +478,7 @@ impl IndexConfig {
     /// - At least one language must be configured.
     /// - Watch interval must be non-zero.
     /// - Embedding provider must be `"ollama"` or `"openai"`.
-    pub fn validate(&self) -> Result<()> {
-        self.validate_inner()
-    }
-
-    fn validate_inner(&self) -> Result<()> {
+    fn validate(&self) -> Result<()> {
         if self.port == 0 {
             bail!("port must be non-zero");
         }
@@ -497,12 +495,6 @@ impl IndexConfig {
             }
         }
         Ok(())
-    }
-}
-
-impl ValidateConfig for IndexConfig {
-    fn validate(&self) -> Result<()> {
-        self.validate_inner()
     }
 }
 
@@ -534,6 +526,7 @@ fn default_ignore_patterns() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agentd_common::config::ValidateConfig;
     use std::sync::Mutex;
 
     /// Serialises tests that call `load()` / `from_env()` so env var mutations

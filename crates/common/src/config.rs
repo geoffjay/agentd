@@ -429,7 +429,10 @@ fn validate_port(port: u16, service: &str) -> Result<()> {
 }
 
 /// Returns `Err` if the string does not start with `http://` or `https://`.
-fn validate_url(url: &str, field: &str) -> Result<()> {
+///
+/// Service crates can import this helper to avoid duplicating the same check
+/// in their own `ValidateConfig` implementations.
+pub fn validate_url(url: &str, field: &str) -> Result<()> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
         bail!("{field} must be a valid HTTP/HTTPS URL, got: {url}");
     }
