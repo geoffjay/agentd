@@ -27,11 +27,11 @@
 //! agent config show --raw
 //! ```
 
+use agentd_common::config::config_file_path;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
 use std::fs;
-use std::path::PathBuf;
 
 /// Config management subcommands.
 #[derive(Subcommand)]
@@ -89,7 +89,7 @@ impl ConfigCommand {
 // config init
 // ---------------------------------------------------------------------------
 
-fn cmd_init(force: bool) -> Result<()> {
+pub(crate) fn cmd_init(force: bool) -> Result<()> {
     let path = config_file_path().context(
         "could not determine config file path — \
          set AGENTD_CONFIG or ensure a home directory is available",
@@ -134,7 +134,7 @@ fn cmd_show(raw: bool, json: bool) -> Result<()> {
                 eprintln!("{}", "No config file found.".yellow());
                 eprintln!(
                     "Run `agent config init` to create one at {}",
-                    config_file_path()
+                    path.as_ref()
                         .map(|p| p.display().to_string())
                         .unwrap_or_else(|| "~/.config/agentd/config.toml".to_string())
                 );
@@ -154,16 +154,6 @@ fn cmd_show(raw: bool, json: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Returns the config file path using the same resolution logic as the
-/// agentd-common config module (AGENTD_CONFIG env var → XDG → home).
-fn config_file_path() -> Option<PathBuf> {
-    agentd_common::config::config_file_path()
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +379,11 @@ ui_dir = "./ui/dist"
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Serialise tests that set `AGENTD_CONFIG` so env-var mutations don't bleed
+    /// across concurrent test threads.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn template_is_valid_toml() {
@@ -408,23 +403,33 @@ mod tests {
 
     #[test]
     fn init_refuses_overwrite_without_force() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "# existing").unwrap();
+        std::env::set_var("AGENTD_CONFIG", path.to_str().unwrap());
 
-        // Simulate the guard logic (path.exists() && !force)
-        assert!(path.exists());
-        let would_error = path.exists() && !false; // force = false
-        assert!(would_error, "should refuse overwrite without --force");
+        let result = cmd_init(false);
+        std::env::remove_var("AGENTD_CONFIG");
+
+        assert!(result.is_err(), "cmd_init should fail when file exists and force=false");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("--force"), "error should mention --force, got: {msg}");
     }
 
     #[test]
     fn init_allows_overwrite_with_force() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "# existing").unwrap();
+        std::env::set_var("AGENTD_CONFIG", path.to_str().unwrap());
 
-        let would_error = path.exists() && !true; // force = true
-        assert!(!would_error, "should allow overwrite with --force");
+        let result = cmd_init(true);
+        std::env::remove_var("AGENTD_CONFIG");
+
+        assert!(result.is_ok(), "cmd_init should succeed when force=true, got: {:?}", result.err());
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("[general]"), "template should have been written, got: {written}");
     }
 }
