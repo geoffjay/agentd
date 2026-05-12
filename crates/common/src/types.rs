@@ -168,6 +168,16 @@ mod tests {
     }
 
     #[test]
+    fn test_clamp_limit_exact_minimum() {
+        assert_eq!(clamp_limit(Some(1)), 1);
+    }
+
+    #[test]
+    fn test_clamp_limit_exact_maximum() {
+        assert_eq!(clamp_limit(Some(MAX_PAGE_LIMIT)), MAX_PAGE_LIMIT);
+    }
+
+    #[test]
     fn test_clamp_limit_below_minimum() {
         assert_eq!(clamp_limit(Some(0)), 1);
     }
@@ -187,6 +197,26 @@ mod tests {
     }
 
     #[test]
+    fn test_paginated_response_empty_items() {
+        let response: PaginatedResponse<String> =
+            PaginatedResponse { items: vec![], total: 0, limit: 50, offset: 0 };
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: PaginatedResponse<String> = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.items.is_empty());
+        assert_eq!(deserialized.total, 0);
+    }
+
+    #[test]
+    fn test_paginated_response_offset_preserved_in_serde() {
+        let response = PaginatedResponse { items: vec!["x"], total: 100, limit: 1, offset: 99 };
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: PaginatedResponse<&str> = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.offset, 99);
+        assert_eq!(deserialized.limit, 1);
+        assert_eq!(deserialized.total, 100);
+    }
+
+    #[test]
     fn test_health_response_ok() {
         let resp = HealthResponse::ok("agentd-test", "1.0.0");
         assert_eq!(resp.status, "ok");
@@ -201,6 +231,27 @@ mod tests {
             .with_detail("agents_active", serde_json::json!(5));
         assert_eq!(resp.details.len(), 1);
         assert_eq!(resp.details["agents_active"], serde_json::json!(5));
+    }
+
+    #[test]
+    fn test_health_response_with_multiple_chained_details() {
+        let resp = HealthResponse::ok("agentd-test", "1.0.0")
+            .with_detail("agents_active", serde_json::json!(3))
+            .with_detail("queue_depth", serde_json::json!(12))
+            .with_detail("uptime_secs", serde_json::json!(3600));
+        assert_eq!(resp.details.len(), 3);
+        assert_eq!(resp.details["agents_active"], serde_json::json!(3));
+        assert_eq!(resp.details["queue_depth"], serde_json::json!(12));
+        assert_eq!(resp.details["uptime_secs"], serde_json::json!(3600));
+    }
+
+    #[test]
+    fn test_health_response_with_detail_overwrites_existing_key() {
+        let resp = HealthResponse::ok("agentd-test", "1.0.0")
+            .with_detail("count", serde_json::json!(1))
+            .with_detail("count", serde_json::json!(2));
+        assert_eq!(resp.details.len(), 1);
+        assert_eq!(resp.details["count"], serde_json::json!(2));
     }
 
     #[test]
