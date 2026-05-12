@@ -1,5 +1,6 @@
 mod api;
 mod approvals;
+mod config;
 mod entity;
 mod manager;
 mod message_bridge;
@@ -17,6 +18,7 @@ use communicate::error::CommunicateError;
 use communicate::types::{
     AddParticipantRequest, CreateRoomRequest, ParticipantKind, ParticipantRole, RoomType,
 };
+use config::OrchestratorConfig;
 use manager::AgentManager;
 use metrics_exporter_prometheus::PrometheusHandle;
 use scheduler::events::EventBus;
@@ -55,6 +57,8 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting agentd-orchestrator service...");
 
+    let cfg = OrchestratorConfig::load();
+
     // Initialize storage.
     let storage = AgentStorage::new().await?;
     info!("Agent storage initialized at: {:?}", AgentStorage::get_db_path()?);
@@ -62,9 +66,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Determine the port and WS base URL early — both the Docker backend
     // and the AgentManager need it.
-    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17006".to_string());
-    let port_num: u16 = port.parse().expect("AGENTD_PORT must be a valid u16");
-    let ws_base_url = format!("ws://127.0.0.1:{}", port);
+    let port_num: u16 = cfg.port;
+    let ws_base_url = format!("ws://127.0.0.1:{}", cfg.port);
 
     // Execution backend — selected via AGENTD_BACKEND env var.
     // Valid values: "tmux" (default), "docker", "pty".
@@ -77,11 +80,10 @@ async fn main() -> anyhow::Result<()> {
             Arc::new(TmuxBackend::new("agentd-orch"))
         }
         BackendType::Docker => {
-            let image = env::var("AGENTD_DOCKER_IMAGE")
-                .unwrap_or_else(|_| wrap::docker::DEFAULT_IMAGE.to_string());
+            let image = cfg.docker_image.as_deref().unwrap_or(wrap::docker::DEFAULT_IMAGE);
             info!(image = %image, "Using Docker execution backend");
 
-            let docker_backend = DockerBackend::new("agentd-orch", &image)
+            let docker_backend = DockerBackend::new("agentd-orch", image)
                 .map_err(|e| anyhow::anyhow!("Failed to initialize Docker backend: {}", e))?
                 .with_orchestrator_port(port_num);
 
@@ -348,17 +350,15 @@ async fn main() -> anyhow::Result<()> {
     // start() spawns background tasks and returns immediately — it does not
     // block the orchestrator startup even if the communicate service is slow.
     {
-        let communicate_url = env::var("AGENTD_COMMUNICATE_SERVICE_URL")
-            .unwrap_or_else(|_| "http://localhost:17010".to_string());
         let bridge = Arc::new(message_bridge::MessageBridge::new(
             registry.clone(),
             communicate.clone(),
             storage.clone(),
             event_bus.clone(),
-            &communicate_url,
+            &cfg.communicate_url,
         ));
         bridge.start().await;
-        info!("MessageBridge started (communicate service: {})", communicate_url);
+        info!("MessageBridge started (communicate service: {})", cfg.communicate_url);
     }
 
     // Initialize Prometheus metrics
@@ -384,8 +384,7 @@ async fn main() -> anyhow::Result<()> {
     // Bind and start serving BEFORE reconciliation. Reconcile restarts agent
     // processes that connect back to our WebSocket endpoint — the server must
     // be accepting connections before those agents are launched.
-    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let addr = format!("{host}:{}", port);
+    let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Orchestrator API listening on http://{}", addr);
     info!("WebSocket endpoint at ws://{}/ws/{{agent_id}}", addr);
@@ -410,10 +409,7 @@ async fn main() -> anyhow::Result<()> {
     // Periodic reconciliation: detect agents whose processes died after startup.
     {
         let manager_reconcile = manager.clone();
-        let interval_secs: u64 = env::var("AGENTD_RECONCILE_INTERVAL_SECS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(30);
+        let interval_secs = cfg.reconcile_interval_secs;
         info!(interval_secs, "Starting periodic reconciliation loop");
         tokio::spawn(async move {
             let mut interval =

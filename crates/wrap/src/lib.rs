@@ -32,6 +32,7 @@
 pub mod api;
 pub mod backend;
 pub mod client;
+pub mod config;
 pub mod docker;
 pub mod pty;
 pub mod pty_stream;
