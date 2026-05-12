@@ -11,6 +11,7 @@ Before starting, make sure you have:
 - **tmux** - `brew install tmux` (macOS) or `apt install tmux` (Linux)
 - **curl** and **jq** - for testing API endpoints
 - **Claude Code** - install from [claude.ai/download](https://claude.ai/download) (required for agent orchestration)
+- **sccache** and **llvm** - for builds on macOS
 
 ## 1. First Run (~5 minutes)
 
