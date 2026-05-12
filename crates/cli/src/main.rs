@@ -83,13 +83,12 @@ use clap_complete::Shell;
 use colored::*;
 #[cfg(feature = "index-service")]
 use commands::index::IndexClient;
-use commands::{
-    AskCommand, AuthCommand, CommunicateCommand, MemoryCommand, NotifyCommand,
-    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, SystemAgentsCommand,
-    WrapCommand,
-};
 #[cfg(feature = "index-service")]
 use commands::IndexCommand;
+use commands::{
+    AskCommand, AuthCommand, CommunicateCommand, MemoryCommand, NotifyCommand, OrchestratorCommand,
+    OrgCommand, ProjectCommand, PromptCommand, SystemAgentsCommand, WrapCommand,
+};
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
 use notify::client::NotifyClient;

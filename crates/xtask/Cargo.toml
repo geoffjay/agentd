@@ -15,5 +15,5 @@ communicate = { path = "../communicate" }
 agentd-common = { path = "../common" }
 
 [features]
-default = ["index-service"]
+default = []
 index-service = []

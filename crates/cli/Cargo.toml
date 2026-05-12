@@ -41,7 +41,7 @@ communicate = { path = "../communicate" }
 agentd-mcp = { path = "../mcp" }
 
 [features]
-default = ["index-service"]
+default = []
 index-service = []
 
 [dev-dependencies]
