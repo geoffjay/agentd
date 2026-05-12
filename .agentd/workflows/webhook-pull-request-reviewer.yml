@@ -49,10 +49,11 @@ agent: reviewer
 
 source:
   type: webhook
-  # secret: ""  # Set to a random string and configure the same value in GitHub
-                 # webhook settings to enable HMAC-SHA256 signature verification.
-                 # If omitted, all incoming requests are accepted without
-                 # verification (not recommended for production).
+  # secret: "replace-with-a-random-string"  # Configure the same value in GitHub
+                                             # webhook settings to enable HMAC-SHA256
+                                             # signature verification. If omitted, all
+                                             # incoming requests are accepted without
+                                             # verification (not recommended for production).
 
 enabled: false
 
@@ -105,8 +106,9 @@ prompt_template: |
 
   ```bash
   REVIEW_DIR="/tmp/agentd-review-{{pr_number}}"
-  gh pr checkout {{pr_number}} --repo geoffjay/agentd --worktree "$REVIEW_DIR" || \
-    git worktree add "$REVIEW_DIR" "origin/$(gh pr view {{pr_number}} --repo geoffjay/agentd --json headRefName --jq '.headRefName')"
+  BRANCH=$(gh pr view {{pr_number}} --repo geoffjay/agentd --json headRefName --jq '.headRefName')
+  git fetch origin "$BRANCH"
+  git worktree add "$REVIEW_DIR" "origin/$BRANCH"
   ```
 
   All file reads and test runs during the review should be performed from

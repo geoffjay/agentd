@@ -19,6 +19,10 @@ use crate::scheduler::types::Task;
 /// | `status`             | dispatch_result        | Completion status (`completed` or `failed`)    |
 /// | `timestamp`          | dispatch_result        | RFC 3339 timestamp of the completion event     |
 /// | `original_source_id` | dispatch_result        | Source ID from the parent dispatch (if any)    |
+/// | `github_event`       | webhook                | GitHub event name (e.g. `pull_request`)        |
+/// | `action`             | webhook                | Event action (e.g. `labeled`, `opened`)        |
+/// | `delivery_id`        | webhook                | GitHub delivery UUID from `X-GitHub-Delivery` |
+/// | `pr_number`          | webhook                | Pull request number (PR/issue webhook events)  |
 pub const KNOWN_VARIABLES: &[&str] = &[
     // Top-level task fields
     "title",
@@ -40,6 +44,11 @@ pub const KNOWN_VARIABLES: &[&str] = &[
     "status",
     "timestamp",
     "original_source_id",
+    // Metadata-backed (webhook triggers)
+    "github_event",
+    "action",
+    "delivery_id",
+    "pr_number",
 ];
 
 /// Validate a prompt template, returning any warnings or errors.
@@ -409,5 +418,65 @@ mod tests {
             result,
             "Cron job fired at 2025-06-01T09:00:00Z (schedule: 0 9 * * MON-FRI).\nRun the daily report generation."
         );
+    }
+
+    // ── Webhook trigger variable tests ───────────────────────────────
+
+    #[test]
+    fn test_validate_webhook_variables_accepted() {
+        let template = "{{github_event}} {{action}} {{delivery_id}} {{pr_number}}";
+        let warnings = validate_template(template);
+        assert!(warnings.is_empty(), "Expected no warnings, got: {:?}", warnings);
+    }
+
+    #[test]
+    fn test_render_webhook_variables() {
+        let mut task = sample_task();
+        task.metadata.insert("github_event".to_string(), "pull_request".to_string());
+        task.metadata.insert("action".to_string(), "labeled".to_string());
+        task.metadata.insert("delivery_id".to_string(), "abc-delivery-123".to_string());
+        task.metadata.insert("pr_number".to_string(), "42".to_string());
+
+        let result = render_template(
+            "Event: {{github_event}}, Action: {{action}}, Delivery: {{delivery_id}}, PR: {{pr_number}}",
+            &task,
+        );
+        assert_eq!(
+            result,
+            "Event: pull_request, Action: labeled, Delivery: abc-delivery-123, PR: 42"
+        );
+    }
+
+    #[test]
+    fn test_validate_all_variables_including_webhook() {
+        let template = "{{title}} {{body}} {{url}} {{labels}} {{assignee}} {{source_id}} {{metadata}} \
+                        {{fire_time}} {{cron_expression}} {{trigger_type}} {{run_at}} {{workflow_id}} \
+                        {{source_workflow_id}} {{dispatch_id}} {{status}} {{timestamp}} {{original_source_id}} \
+                        {{github_event}} {{action}} {{delivery_id}} {{pr_number}}";
+        let warnings = validate_template(template);
+        assert!(warnings.is_empty(), "Expected no warnings, got: {:?}", warnings);
+    }
+
+    #[test]
+    fn test_render_webhook_pr_review_guard_template() {
+        // Simulate a realistic webhook trigger task for a labeled PR event.
+        let mut task = Task {
+            source_id: "webhook:abc-delivery-123".to_string(),
+            title: "fix: address review feedback".to_string(),
+            body: String::new(),
+            url: "https://github.com/geoffjay/agentd/pull/42".to_string(),
+            labels: vec!["review-agent".to_string()],
+            assignee: None,
+            metadata: HashMap::new(),
+        };
+        task.metadata.insert("github_event".to_string(), "pull_request".to_string());
+        task.metadata.insert("action".to_string(), "labeled".to_string());
+        task.metadata.insert("delivery_id".to_string(), "abc-delivery-123".to_string());
+        task.metadata.insert("pr_number".to_string(), "42".to_string());
+
+        let template =
+            "Event: {{github_event}}, Action: {{action}}, PR: {{pr_number}}, Labels: {{labels}}";
+        let result = render_template(template, &task);
+        assert_eq!(result, "Event: pull_request, Action: labeled, PR: 42, Labels: review-agent");
     }
 }
