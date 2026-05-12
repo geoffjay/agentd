@@ -1229,6 +1229,7 @@ languages = ["go", "ruby"]
 
     #[test]
     fn test_load_with_config_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut f = tempfile::NamedTempFile::new().unwrap();
         writeln!(
             f,
@@ -1330,6 +1331,7 @@ history_size = 1000
 
     #[test]
     fn test_precedence_file_beats_default() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut f = tempfile::NamedTempFile::new().unwrap();
         writeln!(f, "[services.core]\nport = 19000").unwrap();
 
@@ -1435,5 +1437,188 @@ history_size = 1000
         assert_eq!(cfg.services.index.lance_table, "code_chunks");
         assert_eq!(cfg.services.index.watch_interval_secs, 30);
         assert!(cfg.services.index.ignore_patterns.contains(&"target".to_string()));
+    }
+
+    // ── Edge cases: empty / unknown keys / concurrent load ─────────────────
+
+    #[test]
+    fn test_load_empty_file_uses_defaults() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let f = tempfile::NamedTempFile::new().unwrap();
+        // File exists but contains no content
+        let cfg = load_from_path(Some(f.path())).expect("load failed on empty file");
+        assert_eq!(cfg.services.ask.port, 17001);
+        assert_eq!(cfg.general.log_level, "info");
+    }
+
+    #[test]
+    fn test_load_unknown_keys_are_ignored() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // TOML with unknown top-level and nested keys must not cause an error.
+        // serde's default behaviour is to ignore unknown fields for structs
+        // annotated with `#[serde(default)]`.
+        let toml_str = r#"
+[general]
+log_level = "debug"
+totally_unknown_field = "should be ignored"
+
+[services.ask]
+port = 19001
+another_unknown = 42
+
+[unknown_section]
+foo = "bar"
+"#;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        write!(f, "{}", toml_str).unwrap();
+
+        let cfg = load_from_path(Some(f.path())).expect("unknown keys should not error");
+        assert_eq!(cfg.general.log_level, "debug");
+        assert_eq!(cfg.services.ask.port, 19001);
+        // Unmentioned fields keep defaults
+        assert_eq!(cfg.services.notify.port, 17004);
+    }
+
+    #[test]
+    fn test_full_precedence_chain() {
+        // Verify all three layers: default < file < env var
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        // File sets notify port to a non-default value
+        writeln!(f, "[services.notify]\nport = 19004").unwrap();
+        writeln!(f, "[services.ask]\nport = 19001").unwrap();
+
+        // Env var overrides ask port (beats file), notify port is file-only
+        env::set_var("AGENTD_ASK_PORT", "29001");
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        // Remove env var BEFORE asserting so a panic can't leave it set
+        env::remove_var("AGENTD_ASK_PORT");
+
+        // File beats default: notify port is 19004 (not 17004)
+        assert_eq!(cfg.services.notify.port, 19004);
+        // Env beats file: ask port is 29001 (not 19001 from file)
+        assert_eq!(cfg.services.ask.port, 29001);
+        // Untouched service uses compiled default: wrap port is 17005
+        assert_eq!(cfg.services.wrap.port, 17005);
+    }
+
+    #[test]
+    fn test_env_absent_preserves_file_value() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // When the env var is not set the file value should survive unchanged.
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        writeln!(f, "[general]\nlog_level = \"warn\"").unwrap();
+
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        assert_eq!(cfg.general.log_level, "warn");
+    }
+
+    #[test]
+    fn test_partial_toml_leaves_other_services_at_defaults() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let toml_str = r#"
+[services.monitor]
+port = 13003
+"#;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        write!(f, "{}", toml_str).unwrap();
+
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        // Changed service
+        assert_eq!(cfg.services.monitor.port, 13003);
+        // Everything else unchanged
+        assert_eq!(cfg.services.ask.port, 17001);
+        assert_eq!(cfg.services.notify.port, 17004);
+        assert_eq!(cfg.services.orchestrator.port, 17006);
+        assert_eq!(cfg.services.wrap.port, 17005);
+        assert_eq!(cfg.services.memory.port, 17008);
+        assert_eq!(cfg.services.index.port, 17012);
+        assert_eq!(cfg.services.hook.port, 17002);
+        assert_eq!(cfg.services.communicate.port, 17010);
+        assert_eq!(cfg.services.core.port, 17000);
+        assert_eq!(cfg.services.ui.port, 17009);
+    }
+
+    #[test]
+    fn test_all_default_ports_match_spec() {
+        let cfg = AgentdConfig::default();
+        let ports = [
+            ("core", cfg.services.core.port, 17000u16),
+            ("ask", cfg.services.ask.port, 17001),
+            ("hook", cfg.services.hook.port, 17002),
+            ("monitor", cfg.services.monitor.port, 17003),
+            ("notify", cfg.services.notify.port, 17004),
+            ("wrap", cfg.services.wrap.port, 17005),
+            ("orchestrator", cfg.services.orchestrator.port, 17006),
+            ("memory", cfg.services.memory.port, 17008),
+            ("ui", cfg.services.ui.port, 17009),
+            ("communicate", cfg.services.communicate.port, 17010),
+            ("index", cfg.services.index.port, 17012),
+        ];
+        for (name, actual, expected) in ports {
+            assert_eq!(actual, expected, "{} port mismatch", name);
+        }
+    }
+
+    #[test]
+    fn test_concurrent_load_returns_consistent_results() {
+        // Spin up multiple threads all calling load_from_path(None) concurrently
+        // and verify each gets the same default result.
+        use std::thread;
+
+        let mut handles = vec![];
+        for _ in 0..8 {
+            handles.push(thread::spawn(|| load_from_path(None).expect("concurrent load failed")));
+        }
+        let results: Vec<AgentdConfig> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let first = &results[0];
+        for r in &results[1..] {
+            assert_eq!(r.services.ask.port, first.services.ask.port);
+            assert_eq!(r.general.log_level, first.general.log_level);
+        }
+    }
+
+    #[test]
+    fn test_hook_notify_url_from_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        writeln!(f, "[services.hook]\nnotify_service_url = \"http://notify:9004\"").unwrap();
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        assert_eq!(cfg.services.hook.notify_service_url, Some("http://notify:9004".to_string()));
+    }
+
+    #[test]
+    fn test_mcp_urls_from_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let toml_str = r#"
+[services.mcp]
+orchestrator_url = "http://orch:7006"
+notify_url = "http://ntf:7004"
+"#;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        write!(f, "{}", toml_str).unwrap();
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        assert_eq!(cfg.services.mcp.orchestrator_url, "http://orch:7006");
+        assert_eq!(cfg.services.mcp.notify_url, "http://ntf:7004");
+        // Unset MCP URLs keep defaults
+        assert_eq!(cfg.services.mcp.ask_url, "http://127.0.0.1:17001");
+    }
+
+    #[test]
+    fn test_index_languages_from_file_overrides_default() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let toml_str = "[services.index]\nlanguages = [\"go\", \"java\"]\n";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        write!(f, "{}", toml_str).unwrap();
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        assert_eq!(cfg.services.index.languages, vec!["go", "java"]);
     }
 }
