@@ -94,45 +94,33 @@ mod tests {
     // prevent env-var races across parallel test threads.
 
     #[test]
-    fn test_cors_layer_default_wildcard() {
+    fn test_cors_layer_respects_agentd_cors_origins() {
+        // default (no env var) — should not panic; defaults to AllowOrigin::any()
         std::env::remove_var("AGENTD_CORS_ORIGINS");
-        // Should not panic; defaults to AllowOrigin::any()
         let _layer = super::cors_layer();
-        std::env::remove_var("AGENTD_CORS_ORIGINS");
-    }
 
-    #[test]
-    fn test_cors_layer_explicit_wildcard() {
+        // explicit wildcard
         std::env::set_var("AGENTD_CORS_ORIGINS", "*");
         let _layer = super::cors_layer();
-        std::env::remove_var("AGENTD_CORS_ORIGINS");
-    }
 
-    #[test]
-    fn test_cors_layer_single_origin() {
+        // single origin
         std::env::set_var("AGENTD_CORS_ORIGINS", "https://app.example.com");
         let _layer = super::cors_layer();
-        std::env::remove_var("AGENTD_CORS_ORIGINS");
-    }
 
-    #[test]
-    fn test_cors_layer_multiple_origins() {
+        // multiple origins
         std::env::set_var(
             "AGENTD_CORS_ORIGINS",
             "https://app.example.com,https://admin.example.com",
         );
         let _layer = super::cors_layer();
-        std::env::remove_var("AGENTD_CORS_ORIGINS");
-    }
 
-    #[test]
-    fn test_cors_layer_origins_with_whitespace() {
-        // Whitespace around commas should be trimmed without panic.
+        // whitespace around commas should be trimmed without panic
         std::env::set_var(
             "AGENTD_CORS_ORIGINS",
             "https://app.example.com , https://admin.example.com",
         );
         let _layer = super::cors_layer();
+
         std::env::remove_var("AGENTD_CORS_ORIGINS");
     }
 }
