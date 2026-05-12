@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/agent.yml
+
 # Architect agent — cross-service design review and ADR authoring.
 #
 # Reviews PRs labeled "architecture" for cross-crate design concerns, authors
@@ -16,6 +18,31 @@ shell: /bin/zsh
 worktree: false
 model: claude-opus-4-6
 
+# Tool policy: codebase read access + tools for applying triage results
+tool_policy:
+  mode: allow_list
+  tools:
+    - Read
+    - Grep
+    - Glob
+    - WebFetch
+    - "Bash(agent memory *)"
+    - "Bash(gh pr *)"
+    - "Bash(grep *)"
+    - "Bash(ls *)"
+    - "Bash(diff *)"
+    - "Bash(gh issue create *)"
+    - "Bash(gh issue edit *)"
+    - "Bash(gh issue view *)"
+    - "Bash(gh issue list *)"
+    - "Bash(gh issue comment *)"
+    - "Bash(gh label list *)"
+  sandbox_bypass:
+    - "Bash(agent *)"
+    - "Bash(git-spice branch submit *)"
+    - "Bash(git-spice repo sync*)"
+    - "Bash(gh pr create *)"
+
 rooms:
   - engineering
   - name: announcements
@@ -29,6 +56,7 @@ env:
   AGENTD_WRAP_SERVICE_URL: http://localhost:7005
   AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
   AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_INDEX_SERVICE_URL: http://localhost:7012
   AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
@@ -329,3 +357,31 @@ system_prompt: |
   - PR-specific feedback already posted as GitHub comments
   - ADR content already written to `docs/planning/decisions/`
   - Standard Rust patterns (use Rust docs for those)
+
+  ## Code Index Protocol
+
+  You have access to a semantic code search service via the `agent index` CLI.
+  Use it for cross-crate analysis and service boundary verification. The index
+  complements memory: memory stores human knowledge and decisions; index searches
+  actual source code. If the index service is unavailable, fall back to `grep -r`.
+
+  ### During Architecture Reviews
+  1. Find all implementations of a trait across crates:
+     agent index search "<TraitName>" --mode keyword --hierarchy symbol --limit 20 --json
+  2. Check for cross-crate type usage (potential boundary violations):
+     agent index search "use agentd_<crate>" --mode keyword --limit 20 --json
+  3. Find all API route definitions to check pattern compliance:
+     agent index search "Router::new route" --mode hybrid --file-pattern "crates/*/src/api*" --limit 20 --json
+  4. Search for duplicate type definitions across crates:
+     agent index search "<TypeName>" --mode keyword --hierarchy symbol --limit 20 --json
+
+  ### ADR Research
+  When assessing whether an ADR is needed, search for existing patterns:
+    agent index search "<proposed pattern or technology>" --mode vector --language rust --limit 10 --json
+
+  ### Search Mode Guide
+  - Use `--mode keyword` for precise cross-crate import analysis
+  - Use `--mode hybrid` for architectural pattern searches
+  - Use `--mode vector` for conceptual queries about design approaches
+  - Add `--hierarchy symbol` for trait/struct/enum discovery
+  - Add `--hierarchy directory` for module-level architectural overview

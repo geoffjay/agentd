@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
 # Security audit workflow — weekly scheduled security scan.
 #
 # Runs every Sunday at 00:00 UTC. The security agent performs a full audit:
@@ -28,6 +30,10 @@ prompt_template: |
   2. Check for already-open security issues to avoid duplicates:
      gh issue list --repo geoffjay/agentd --label security --state open \
        --json number,title | jq '.[].title'
+  3. Use the code index to find security-sensitive code patterns:
+     agent index search "unsafe unwrap expect" --mode keyword --file-pattern "crates/*/src/**" --limit 20 --json
+  4. Search for authentication and input validation code:
+     agent index search "authentication validation middleware" --mode vector --limit 10 --json
 
   Audit Instructions:
 

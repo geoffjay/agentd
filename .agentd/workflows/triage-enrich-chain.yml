@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
 # Triage → Enrich chain workflow.
 #
 # Triggered when any workflow dispatch completes successfully. The conductor

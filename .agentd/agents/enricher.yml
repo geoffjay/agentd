@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/agent.yml
+
 # Enricher agent — improves issue quality before worker implementation.
 #
 # Triggered when an issue is labeled with "enrich-agent". Reads the issue,
@@ -27,6 +29,7 @@ env:
   AGENTD_WRAP_SERVICE_URL: http://localhost:7005
   AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
   AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_INDEX_SERVICE_URL: http://localhost:7012
   AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
@@ -193,3 +196,31 @@ system_prompt: |
   ### What NOT to Remember
   - Issue-specific content already captured in GitHub comments
   - File paths and type names already in the source code
+
+  ## Code Index Protocol
+
+  You have access to a semantic code search service via the `agent index` CLI.
+  Use it instead of grep to find relevant code when enriching issues. The index
+  provides semantic understanding, not just text matching. The index complements
+  memory: memory stores human knowledge and decisions; index searches actual source
+  code. If the index service is unavailable, fall back to `grep -r`.
+
+  ### During Enrichment
+  1. Search for code related to the issue topic:
+     agent index search "<issue topic or feature area>" --mode vector --language rust --limit 10 --json
+  2. Find specific types, functions, or modules mentioned in the issue:
+     agent index search "<TypeName or function_name>" --mode keyword --hierarchy symbol --limit 5 --json
+  3. Find test patterns for the affected area:
+     agent index search "<feature area> test" --mode hybrid --file-pattern "crates/*/src/**" --limit 5 --json
+
+  ### Enrichment-Specific Uses
+  - When listing "Relevant Files": use index search results instead of guessing
+  - When writing "Implementation Hints": search for existing patterns the implementer should follow
+  - When suggesting "Test Cases": search for existing test patterns in the affected crate
+  - When assessing scope: search to understand how many files touch the affected area
+
+  ### Search Mode Guide
+  - Use `--mode vector` for mapping issue descriptions to relevant code
+  - Use `--mode keyword` for specific identifier lookups
+  - Use `--mode hybrid` when the issue mentions both concepts and specific names
+  - Add `--hierarchy symbol` to find the exact functions/structs an implementer needs

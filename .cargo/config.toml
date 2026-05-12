@@ -1,6 +1,15 @@
 [alias]
 xtask = "run --package xtask --"
 
+# Uncomment after: brew install sccache
+[build]
+rustc-wrapper = "sccache"
+
+# Uncomment after: brew install llvm
+# [target.aarch64-apple-darwin]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=/opt/homebrew/opt/llvm/bin/ld64.lld"]
+
 [doc]
 rustdoc-line-numbers = true
 rustdoc-preferred-dark-theme = "ayu"

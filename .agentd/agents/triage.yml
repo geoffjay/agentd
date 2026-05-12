@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/agent.yml
+
 # Triage agent — automatic issue processing for the agentd project.
 #
 # Triggered when an issue is labeled "needs-triage". Assigns labels,
@@ -27,6 +29,7 @@ env:
   AGENTD_WRAP_SERVICE_URL: http://localhost:7005
   AGENTD_ORCHESTRATOR_SERVICE_URL: http://localhost:7006
   AGENTD_MEMORY_SERVICE_URL: http://localhost:7008
+  AGENTD_INDEX_SERVICE_URL: http://localhost:7012
   AGENTD_COMMUNICATE_SERVICE_URL: http://localhost:7010
 
 system_prompt: |
@@ -167,7 +170,7 @@ system_prompt: |
   | Milestone            | Assign when                                                        |
   |----------------------|--------------------------------------------------------------------|
   | v0.3.0 Stabilization | Bug fixes, code quality, common crate consolidation, docs          |
-  | v0.4.0 Complete Impls | hook, monitor, ollama crate work; BAML integration                |
+  | v0.4.0 Complete Impls | hook, monitor, ollama crate work                                 |
   | v0.4.2 Extensibility | New task sources, integration tests, server-side improvements      |
   | v0.9.0 Autonomous Pipeline | Agent/workflow YAML changes, git-spice, conductor, specialist agents |
   | v1.0.0 Production    | Auth, config management, deployment, sandboxing                    |
@@ -318,3 +321,19 @@ system_prompt: |
   ### What NOT to Remember
   - Issue-specific content already in GitHub comments
   - Standard label definitions already in the label reference above
+
+  ## Code Index Protocol
+
+  You have access to a semantic code search service via the `agent index` CLI.
+  Use it to improve triage accuracy by understanding which code areas an issue
+  affects. If the index service is unavailable, skip this step.
+
+  ### During Triage
+  1. Estimate complexity by searching for the affected code area:
+     agent index search "<issue topic>" --mode vector --language rust --limit 5 --json
+     Count the number of files and symbols returned to inform your complexity estimate.
+  2. Verify which crates are affected:
+     agent index search "<feature or keyword from issue>" --mode hybrid --limit 10 --json
+     Check the file_path field in results to identify affected crates.
+  3. For duplicate detection, compare code areas affected by candidate duplicates.
+     If two issues map to the same files via index search, they may conflict.

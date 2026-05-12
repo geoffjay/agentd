@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/geoffjay/agentd/main/schemas/workflow.yml
+
 # Documentation workflow — dispatches documentation issues to the documenter agent.
 #
 # Issues with the "docs-agent" label are picked up automatically.

@@ -20,36 +20,11 @@ use directories::ProjectDirs;
 use sea_orm::{Database, DatabaseConnection};
 use std::path::{Path, PathBuf};
 
-/// Resolve the platform-specific database file path for a service.
-///
-/// Uses the XDG base directory specification (via `directories` crate) to
-/// determine the data directory, creates it if necessary, and returns the
-/// full path to the database file.
-///
-/// # Arguments
-///
-/// * `project_name` — XDG project qualifier (e.g., `"agentd-notify"`)
-/// * `db_filename` — Database filename (e.g., `"notify.db"`)
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// let path = agentd_common::storage::get_db_path("agentd-notify", "notify.db")?;
-/// // macOS: ~/Library/Application Support/agentd-notify/notify.db
-/// // Linux: ~/.local/share/agentd-notify/notify.db
-/// ```
 /// Resolve the data directory for a project based on the `AGENTD_ENV`
 /// environment variable.
 ///
-/// | `AGENTD_ENV` value | Resolved path |
-/// |---|---|
-/// | `development` or `dev` | `tmp/` |
-/// | `test` | `tmp/test/` |
-/// | *(absent or any other value)* | XDG data dir for `project_name` |
-///
-/// Extracting this logic into its own function makes it independently
-/// testable: callers can set `AGENTD_ENV` and verify the result without
-/// triggering directory creation or database connection setup.
+/// Returns `tmp/` in development mode, `tmp/test/` in test mode, or the
+/// XDG platform data directory in production. Does not create any directories.
 fn resolve_data_dir(project_name: &str) -> Result<PathBuf> {
     match std::env::var("AGENTD_ENV").as_deref() {
         Ok("development" | "dev") => Ok(PathBuf::from("tmp")),
@@ -63,6 +38,30 @@ fn resolve_data_dir(project_name: &str) -> Result<PathBuf> {
     }
 }
 
+/// Resolve the platform-specific database file path for a service.
+///
+/// Uses the `AGENTD_ENV` environment variable to select the data directory
+/// (`development`/`dev` → `tmp/`, `test` → `tmp/test/`, absent → XDG platform
+/// data dir), creates the directory if necessary, and returns the full path to
+/// the database file.
+///
+/// # Arguments
+///
+/// * `project_name` — XDG project qualifier (e.g., `"agentd-notify"`)
+/// * `db_filename` — Database filename (e.g., `"notify.db"`)
+///
+/// # Errors
+///
+/// Returns an error if the XDG project directories cannot be determined or
+/// if `create_dir_all` fails.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// let path = agentd_common::storage::get_db_path("agentd-notify", "notify.db")?;
+/// // macOS: ~/Library/Application Support/agentd-notify/notify.db
+/// // Linux: ~/.local/share/agentd-notify/notify.db
+/// ```
 pub fn get_db_path(project_name: &str, db_filename: &str) -> Result<PathBuf> {
     let data_dir = resolve_data_dir(project_name)?;
     std::fs::create_dir_all(&data_dir)?;
@@ -147,31 +146,26 @@ mod tests {
     // environment.
 
     #[test]
-    fn test_resolve_data_dir_development() {
+    fn test_resolve_data_dir_respects_agentd_env() {
+        // Run all AGENTD_ENV variants sequentially inside one test so only
+        // one thread mutates the process environment at a time.
+
+        // development
         std::env::set_var("AGENTD_ENV", "development");
         let dir = resolve_data_dir("agentd-test-common").unwrap();
         assert_eq!(dir, PathBuf::from("tmp"));
-        std::env::remove_var("AGENTD_ENV");
-    }
 
-    #[test]
-    fn test_resolve_data_dir_dev_shorthand() {
+        // dev shorthand
         std::env::set_var("AGENTD_ENV", "dev");
         let dir = resolve_data_dir("agentd-test-common").unwrap();
         assert_eq!(dir, PathBuf::from("tmp"));
-        std::env::remove_var("AGENTD_ENV");
-    }
 
-    #[test]
-    fn test_resolve_data_dir_test() {
+        // test
         std::env::set_var("AGENTD_ENV", "test");
         let dir = resolve_data_dir("agentd-test-common").unwrap();
         assert_eq!(dir, PathBuf::from("tmp/test"));
-        std::env::remove_var("AGENTD_ENV");
-    }
 
-    #[test]
-    fn test_resolve_data_dir_production_contains_project_name() {
+        // production (no AGENTD_ENV set) — XDG path must contain the project name
         std::env::remove_var("AGENTD_ENV");
         let dir = resolve_data_dir("agentd-test-common").unwrap();
         assert!(
