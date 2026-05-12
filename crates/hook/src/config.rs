@@ -2,6 +2,8 @@
 //!
 //! All settings can be overridden via environment variables at startup.
 
+use agentd_common::config::ValidateConfig;
+use anyhow::{bail, Result};
 use std::env;
 
 /// Configuration for the hook daemon.
@@ -93,6 +95,23 @@ impl Default for HookConfig {
     }
 }
 
+impl ValidateConfig for HookConfig {
+    fn validate(&self) -> Result<()> {
+        if self.port == 0 {
+            bail!("hook.port must be non-zero");
+        }
+        if self.history_size == 0 {
+            bail!("hook.history_size must be greater than 0");
+        }
+        if let Some(ref url) = self.notify_service_url {
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                bail!("hook.notify_service_url must be a valid HTTP/HTTPS URL, got: {url}");
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +133,40 @@ mod tests {
         let cloned = config.clone();
         assert_eq!(config.port, cloned.port);
         assert_eq!(config.history_size, cloned.history_size);
+    }
+
+    #[test]
+    fn test_validate_default_passes() {
+        assert!(HookConfig::default().validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_zero_port_fails() {
+        let config = HookConfig { port: 0, ..HookConfig::default() };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_zero_history_size_fails() {
+        let config = HookConfig { history_size: 0, ..HookConfig::default() };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_invalid_notify_url_fails() {
+        let config = HookConfig {
+            notify_service_url: Some("not-a-url".to_string()),
+            ..HookConfig::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_valid_notify_url_passes() {
+        let config = HookConfig {
+            notify_service_url: Some("http://notify:17004".to_string()),
+            ..HookConfig::default()
+        };
+        assert!(config.validate().is_ok());
     }
 }

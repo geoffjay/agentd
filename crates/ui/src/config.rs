@@ -1,3 +1,6 @@
+use agentd_common::config::ValidateConfig;
+use anyhow::{bail, Result};
+
 /// Configuration for the UI service.
 #[derive(Debug, Clone)]
 pub struct UiConfig {
@@ -52,5 +55,55 @@ impl UiConfig {
     #[deprecated(note = "Use load() instead")]
     pub fn from_env() -> Self {
         Self::load()
+    }
+}
+
+impl ValidateConfig for UiConfig {
+    fn validate(&self) -> Result<()> {
+        if self.port == 0 {
+            bail!("ui.port must be non-zero");
+        }
+        if self.ui_dir.is_empty() {
+            bail!("ui.ui_dir must not be empty");
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_default_passes() {
+        let config = UiConfig::load();
+        // Default port is 17009 and ui_dir is "./ui/dist" — both valid.
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_zero_port_fails() {
+        let config = UiConfig {
+            port: 0,
+            ui_dir: "./ui/dist".to_string(),
+            ask_service_url: "http://localhost:7001".to_string(),
+            notify_service_url: "http://localhost:7004".to_string(),
+            orchestrator_service_url: "http://localhost:7006".to_string(),
+            index_service_url: "http://localhost:17012".to_string(),
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_empty_ui_dir_fails() {
+        let config = UiConfig {
+            port: 17009,
+            ui_dir: "".to_string(),
+            ask_service_url: "http://localhost:7001".to_string(),
+            notify_service_url: "http://localhost:7004".to_string(),
+            orchestrator_service_url: "http://localhost:7006".to_string(),
+            index_service_url: "http://localhost:17012".to_string(),
+        };
+        assert!(config.validate().is_err());
     }
 }

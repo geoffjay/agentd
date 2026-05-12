@@ -27,6 +27,7 @@
 //! directed to **stderr** so it does not interfere with the MCP JSON-RPC
 //! framing on stdout.
 
+use agentd_common::config::ValidateConfig;
 use agentd_mcp::config::AgentdMcpConfig;
 
 #[tokio::main]
@@ -40,5 +41,7 @@ async fn main() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    agentd_mcp::run(AgentdMcpConfig::load()).await
+    let cfg = AgentdMcpConfig::load();
+    cfg.validate()?;
+    agentd_mcp::run(cfg).await
 }

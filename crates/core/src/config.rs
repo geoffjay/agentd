@@ -10,6 +10,8 @@
 //! | `AGENTD_HOST`   | `127.0.0.1`   | HTTP bind host       |
 //! | `AGENTD_PORT`   | `17000`       | HTTP listen port     |
 
+use agentd_common::config::ValidateConfig;
+use anyhow::{bail, Result};
 use std::env;
 
 /// Configuration for the agentd-core service.
@@ -37,6 +39,15 @@ impl CoreConfig {
             .unwrap_or(shared.services.core.port);
 
         Self { host, port }
+    }
+}
+
+impl ValidateConfig for CoreConfig {
+    fn validate(&self) -> Result<()> {
+        if self.port == 0 {
+            bail!("core.port must be non-zero");
+        }
+        Ok(())
     }
 }
 
@@ -75,5 +86,17 @@ mod tests {
         let config = CoreConfig::load();
         env::remove_var("AGENTD_PORT");
         assert_eq!(config.port, 9000);
+    }
+
+    #[test]
+    fn test_validate_default_passes() {
+        let config = CoreConfig { host: "127.0.0.1".to_string(), port: 17000 };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_zero_port_fails() {
+        let config = CoreConfig { host: "127.0.0.1".to_string(), port: 0 };
+        assert!(config.validate().is_err());
     }
 }

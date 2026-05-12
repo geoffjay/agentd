@@ -30,6 +30,7 @@
 
 // Import from the library target — avoids re-declaring modules in the binary and
 // triggering dead-code warnings on items that are only used by the library.
+use agentd_common::config::ValidateConfig;
 use wrap::{
     api::{create_router, AppState},
     backend::{ExecutionBackend, TmuxBackend},
@@ -63,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting agentd-wrap service...");
 
     let cfg = WrapConfig::load();
+    cfg.validate()?;
 
     // --- Select execution backend ---
     // Unrecognised AGENTD_BACKEND values cause an immediate startup failure.

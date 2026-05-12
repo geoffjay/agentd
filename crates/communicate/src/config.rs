@@ -10,6 +10,8 @@
 //! | `AGENTD_HOST`   | `127.0.0.1`   | HTTP bind host   |
 //! | `AGENTD_PORT`   | `17010`       | HTTP listen port |
 
+use agentd_common::config::ValidateConfig;
+use anyhow::{bail, Result};
 use std::env;
 
 /// Configuration for the agentd-communicate service.
@@ -37,6 +39,15 @@ impl CommunicateConfig {
             .unwrap_or(shared.services.communicate.port);
 
         Self { host, port }
+    }
+}
+
+impl ValidateConfig for CommunicateConfig {
+    fn validate(&self) -> Result<()> {
+        if self.port == 0 {
+            bail!("communicate.port must be non-zero");
+        }
+        Ok(())
     }
 }
 
@@ -75,5 +86,17 @@ mod tests {
         let config = CommunicateConfig::load();
         env::remove_var("AGENTD_PORT");
         assert_eq!(config.port, 9010);
+    }
+
+    #[test]
+    fn test_validate_default_passes() {
+        let config = CommunicateConfig { host: "127.0.0.1".to_string(), port: 17010 };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_zero_port_fails() {
+        let config = CommunicateConfig { host: "127.0.0.1".to_string(), port: 0 };
+        assert!(config.validate().is_err());
     }
 }
