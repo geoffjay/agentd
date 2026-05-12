@@ -19,6 +19,7 @@
 //! | `AGENTD_INDEX_IGNORE_PATTERNS`        | `.git,target,node_modules,dist`      | Comma-separated glob patterns        |
 
 use agentd_common::config::IndexConfig as SharedIndexConfig;
+use agentd_common::config::ValidateConfig;
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -481,6 +482,10 @@ impl IndexConfig {
     /// - Watch interval must be non-zero.
     /// - Embedding provider must be `"ollama"` or `"openai"`.
     pub fn validate(&self) -> Result<()> {
+        self.validate_inner()
+    }
+
+    fn validate_inner(&self) -> Result<()> {
         if self.port == 0 {
             bail!("port must be non-zero");
         }
@@ -497,6 +502,12 @@ impl IndexConfig {
             }
         }
         Ok(())
+    }
+}
+
+impl ValidateConfig for IndexConfig {
+    fn validate(&self) -> Result<()> {
+        self.validate_inner()
     }
 }
 

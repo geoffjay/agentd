@@ -11,6 +11,8 @@
 //! | `AGENTD_PORT`             | `17001`                    | HTTP listen port          |
 //! | `AGENTD_ORCHESTRATOR_URL` | `http://localhost:17006`   | Orchestrator callback URL |
 
+use agentd_common::config::ValidateConfig;
+use anyhow::{bail, Result};
 use std::env;
 
 /// Configuration for the agentd-ask service.
@@ -43,6 +45,23 @@ impl AskConfig {
         let orchestrator_url = env::var("AGENTD_ORCHESTRATOR_URL").unwrap_or(base.orchestrator_url);
 
         Self { host, port, orchestrator_url }
+    }
+}
+
+impl ValidateConfig for AskConfig {
+    fn validate(&self) -> Result<()> {
+        if self.port == 0 {
+            bail!("ask.port must be non-zero");
+        }
+        if !self.orchestrator_url.starts_with("http://")
+            && !self.orchestrator_url.starts_with("https://")
+        {
+            bail!(
+                "ask.orchestrator_url must be a valid HTTP/HTTPS URL, got: {}",
+                self.orchestrator_url
+            );
+        }
+        Ok(())
     }
 }
 
@@ -90,5 +109,45 @@ mod tests {
         env::remove_var("AGENTD_ORCHESTRATOR_URL");
         assert_eq!(config.port, 9001);
         assert_eq!(config.orchestrator_url, "http://10.0.0.1:17006");
+    }
+
+    #[test]
+    fn test_validate_default_passes() {
+        let config = AskConfig {
+            host: "0.0.0.0".to_string(),
+            port: 17001,
+            orchestrator_url: "http://localhost:17006".to_string(),
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_zero_port_fails() {
+        let config = AskConfig {
+            host: "0.0.0.0".to_string(),
+            port: 0,
+            orchestrator_url: "http://localhost:17006".to_string(),
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_bad_orchestrator_url_fails() {
+        let config = AskConfig {
+            host: "0.0.0.0".to_string(),
+            port: 17001,
+            orchestrator_url: "localhost:17006".to_string(),
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_https_orchestrator_url_passes() {
+        let config = AskConfig {
+            host: "0.0.0.0".to_string(),
+            port: 17001,
+            orchestrator_url: "https://orchestrator.example.com".to_string(),
+        };
+        assert!(config.validate().is_ok());
     }
 }

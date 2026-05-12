@@ -11,6 +11,7 @@ mod storage;
 mod types;
 mod websocket;
 
+use agentd_common::config::ValidateConfig;
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
 use config::CommunicateConfig;
@@ -60,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::cors_layer());
 
     let cfg = CommunicateConfig::load();
+    cfg.validate()?;
     let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Communicate API server listening on http://{}", addr);

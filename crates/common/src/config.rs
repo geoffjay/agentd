@@ -82,11 +82,23 @@
 //! | `AGENTD_MCP_MONITOR_URL`             | `services.mcp.monitor_url`                      |
 //! | `AGENTD_MCP_HOOK_URL`                | `services.mcp.hook_url`                         |
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
+
+// ---------------------------------------------------------------------------
+// ValidateConfig trait
+// ---------------------------------------------------------------------------
+
+/// Trait for validating a configuration section.
+///
+/// Implementations should return `Ok(())` when the configuration is valid, or
+/// an error with a descriptive message indicating which field is invalid and why.
+pub trait ValidateConfig {
+    fn validate(&self) -> Result<()>;
+}
 
 // ---------------------------------------------------------------------------
 // GeneralConfig
@@ -471,6 +483,196 @@ pub struct AgentdConfig {
     pub general: GeneralConfig,
     /// Per-service configuration sections.
     pub services: ServicesConfig,
+}
+
+// ---------------------------------------------------------------------------
+// ValidateConfig implementations for shared config sections
+// ---------------------------------------------------------------------------
+
+/// Returns `Err` if the port is 0.
+fn validate_port(port: u16, service: &str) -> Result<()> {
+    if port == 0 {
+        bail!("{service}.port must be non-zero");
+    }
+    Ok(())
+}
+
+/// Returns `Err` if the string does not start with `http://` or `https://`.
+fn validate_url(url: &str, field: &str) -> Result<()> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        bail!("{field} must be a valid HTTP/HTTPS URL, got: {url}");
+    }
+    Ok(())
+}
+
+impl ValidateConfig for AskConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "ask")
+    }
+}
+
+impl ValidateConfig for NotifyConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "notify")
+    }
+}
+
+impl ValidateConfig for OrchestratorConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "orchestrator")?;
+        match self.backend.as_str() {
+            "tmux" | "docker" | "pty" | "subprocess" => {}
+            other => bail!(
+                "orchestrator.backend must be one of tmux, docker, pty, subprocess; got: {other}"
+            ),
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for WrapConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "wrap")?;
+        match self.backend.as_str() {
+            "tmux" | "docker" | "pty" | "subprocess" => {}
+            other => {
+                bail!("wrap.backend must be one of tmux, docker, pty, subprocess; got: {other}")
+            }
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for MemoryConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "memory")?;
+        match self.embedding_provider.as_str() {
+            "none" | "ollama" | "openai" => {}
+            other => {
+                bail!("memory.embedding_provider must be one of none, ollama, openai; got: {other}")
+            }
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for IndexConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "index")?;
+        if self.languages.is_empty() {
+            bail!("index.languages must contain at least one language");
+        }
+        match self.embedding_provider.as_str() {
+            "ollama" | "openai" => {}
+            other => bail!("index.embedding_provider must be one of ollama, openai; got: {other}"),
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for HookConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "hook")?;
+        if self.history_size == 0 {
+            bail!("hook.history_size must be greater than 0");
+        }
+        if let Some(ref url) = self.notify_service_url {
+            validate_url(url, "hook.notify_service_url")?;
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for MonitorConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "monitor")?;
+        if self.collection_interval_secs == 0 {
+            bail!("monitor.collection_interval_secs must be greater than 0");
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for McpConfig {
+    fn validate(&self) -> Result<()> {
+        for (name, url) in [
+            ("mcp.orchestrator_url", self.orchestrator_url.as_str()),
+            ("mcp.notify_url", self.notify_url.as_str()),
+            ("mcp.ask_url", self.ask_url.as_str()),
+            ("mcp.memory_url", self.memory_url.as_str()),
+            ("mcp.communicate_url", self.communicate_url.as_str()),
+            ("mcp.wrap_url", self.wrap_url.as_str()),
+            ("mcp.monitor_url", self.monitor_url.as_str()),
+            ("mcp.hook_url", self.hook_url.as_str()),
+        ] {
+            validate_url(url, name)?;
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for UiConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "ui")?;
+        if self.ui_dir.is_empty() {
+            bail!("ui.ui_dir must not be empty");
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for CoreConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "core")
+    }
+}
+
+impl ValidateConfig for CommunicateConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "communicate")
+    }
+}
+
+impl AgentdConfig {
+    /// Validate all service configuration sections.
+    ///
+    /// Collects errors from every section rather than stopping at the first
+    /// failure, so operators see all problems at once.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error listing all invalid settings if any section fails
+    /// validation.
+    pub fn validate(&self) -> Result<()> {
+        let mut errors: Vec<String> = Vec::new();
+
+        let checks: &[(&str, Result<()>)] = &[
+            ("[services.ask]", self.services.ask.validate()),
+            ("[services.notify]", self.services.notify.validate()),
+            ("[services.orchestrator]", self.services.orchestrator.validate()),
+            ("[services.wrap]", self.services.wrap.validate()),
+            ("[services.memory]", self.services.memory.validate()),
+            ("[services.index]", self.services.index.validate()),
+            ("[services.hook]", self.services.hook.validate()),
+            ("[services.monitor]", self.services.monitor.validate()),
+            ("[services.mcp]", self.services.mcp.validate()),
+            ("[services.ui]", self.services.ui.validate()),
+            ("[services.core]", self.services.core.validate()),
+            ("[services.communicate]", self.services.communicate.validate()),
+        ];
+
+        for (section, result) in checks {
+            if let Err(e) = result {
+                errors.push(format!("{section}: {e}"));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            bail!("configuration validation failed:\n  {}", errors.join("\n  "))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
