@@ -38,6 +38,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use agentd_common::config::ValidateConfig;
 use axum::{extract::State, response::IntoResponse, routing::get};
 use index::api::{create_router_with_state, AppState};
 use index::config::IndexConfig;

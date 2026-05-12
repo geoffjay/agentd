@@ -22,6 +22,8 @@
 //! assert!(!config.provider.is_empty() || config.provider == "none");
 //! ```
 
+use agentd_common::config::ValidateConfig;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
@@ -120,6 +122,22 @@ impl EmbeddingConfig {
     }
 }
 
+impl ValidateConfig for EmbeddingConfig {
+    /// Validate the embedding configuration.
+    ///
+    /// Returns an error if `provider` is not one of `"none"`, `"openai"`, or
+    /// `"ollama"`.
+    fn validate(&self) -> Result<()> {
+        match self.provider.as_str() {
+            "none" | "openai" | "ollama" => {}
+            other => {
+                bail!("memory.embedding_provider must be one of none, openai, ollama; got: {other}")
+            }
+        }
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // LanceDB configuration
 // ---------------------------------------------------------------------------
@@ -201,6 +219,21 @@ impl LanceConfig {
     }
 }
 
+impl ValidateConfig for LanceConfig {
+    /// Validate the LanceDB configuration.
+    ///
+    /// Returns an error if `path` or `table` is empty.
+    fn validate(&self) -> Result<()> {
+        if self.path.is_empty() {
+            bail!("memory.lance_path must not be empty");
+        }
+        if self.table.is_empty() {
+            bail!("memory.lance_table must not be empty");
+        }
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -208,6 +241,7 @@ impl LanceConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agentd_common::config::ValidateConfig;
 
     #[test]
     fn test_default_provider_is_none() {
@@ -338,5 +372,76 @@ mod tests {
         let cloned = config.clone();
         assert_eq!(cloned.path, config.path);
         assert_eq!(cloned.table, config.table);
+    }
+
+    // ── ValidateConfig for EmbeddingConfig ─────────────────────────────────
+
+    #[test]
+    fn test_embedding_validate_default_passes() {
+        let config = EmbeddingConfig::default();
+        assert!(config.validate().is_ok(), "default EmbeddingConfig should be valid");
+    }
+
+    #[test]
+    fn test_embedding_validate_none_provider_passes() {
+        let config = EmbeddingConfig { provider: "none".to_string(), ..Default::default() };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_embedding_validate_openai_provider_passes() {
+        let config = EmbeddingConfig { provider: "openai".to_string(), ..Default::default() };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_embedding_validate_ollama_provider_passes() {
+        let config = EmbeddingConfig { provider: "ollama".to_string(), ..Default::default() };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_embedding_validate_invalid_provider_fails() {
+        let config = EmbeddingConfig { provider: "huggingface".to_string(), ..Default::default() };
+        let err = config.validate().unwrap_err();
+        assert!(
+            err.to_string().contains("huggingface"),
+            "error should mention the invalid provider"
+        );
+    }
+
+    #[test]
+    fn test_embedding_validate_empty_provider_fails() {
+        let config = EmbeddingConfig { provider: "".to_string(), ..Default::default() };
+        assert!(config.validate().is_err());
+    }
+
+    // ── ValidateConfig for LanceConfig ─────────────────────────────────────
+
+    #[test]
+    fn test_lance_validate_default_passes() {
+        let config = LanceConfig::default();
+        assert!(config.validate().is_ok(), "default LanceConfig should be valid");
+    }
+
+    #[test]
+    fn test_lance_validate_empty_path_fails() {
+        let config = LanceConfig { path: "".to_string(), table: "memories".to_string() };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("path"), "error should mention path");
+    }
+
+    #[test]
+    fn test_lance_validate_empty_table_fails() {
+        let config = LanceConfig { path: "/tmp/lance".to_string(), table: "".to_string() };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("table"), "error should mention table");
+    }
+
+    #[test]
+    fn test_lance_validate_custom_values_pass() {
+        let config =
+            LanceConfig { path: "/data/lancedb".to_string(), table: "my_memories".to_string() };
+        assert!(config.validate().is_ok());
     }
 }
