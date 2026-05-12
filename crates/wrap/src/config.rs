@@ -38,22 +38,54 @@ impl WrapConfig {
     /// Reads base values from [`agentd_common::config::load`], then overlays
     /// legacy environment variables for backward compatibility.
     pub fn load() -> Self {
-        let shared = agentd_common::config::load().unwrap_or_default();
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
         let base = shared.services.wrap;
 
         let host = env::var("AGENTD_HOST").unwrap_or(shared.general.host);
         let port =
             env::var("AGENTD_PORT").ok().and_then(|v| v.parse::<u16>().ok()).unwrap_or(base.port);
         let backend = env::var("AGENTD_BACKEND").unwrap_or(base.backend);
+
+        // TODO: use base.history_bytes once WrapConfig schema gains this field (#1201)
         let history_bytes = env::var("AGENTD_WRAP_HISTORY_BYTES")
             .ok()
-            .and_then(|v| v.parse::<usize>().ok())
+            .and_then(|v| {
+                v.parse::<usize>()
+                    .map_err(|_| {
+                        tracing::warn!(
+                            "AGENTD_WRAP_HISTORY_BYTES={v:?} is not a valid usize; \
+                             using default {} bytes",
+                            DEFAULT_HISTORY_BYTES
+                        );
+                    })
+                    .ok()
+            })
             .unwrap_or(DEFAULT_HISTORY_BYTES);
+
+        // TODO: use base.channel_capacity once WrapConfig schema gains this field (#1201)
         let channel_capacity = env::var("AGENTD_WRAP_CHANNEL_CAPACITY")
             .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .map(|v| if v == 0 { 1 } else { v })
+            .and_then(|v| {
+                v.parse::<usize>()
+                    .map_err(|_| {
+                        tracing::warn!(
+                            "AGENTD_WRAP_CHANNEL_CAPACITY={v:?} is not a valid usize; \
+                             using default {}",
+                            DEFAULT_CHANNEL_CAPACITY
+                        );
+                    })
+                    .ok()
+            })
             .unwrap_or(DEFAULT_CHANNEL_CAPACITY);
+        let channel_capacity = if channel_capacity == 0 {
+            tracing::warn!("AGENTD_WRAP_CHANNEL_CAPACITY=0 is invalid; clamped to 1");
+            1
+        } else {
+            channel_capacity
+        };
 
         Self { host, port, backend, history_bytes, channel_capacity }
     }

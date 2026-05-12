@@ -28,7 +28,10 @@ impl CommunicateConfig {
     /// `AGENTD_HOST` and `AGENTD_PORT` environment variables for backward
     /// compatibility.
     pub fn load() -> Self {
-        let shared = agentd_common::config::load().unwrap_or_default();
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
 
         let host = env::var("AGENTD_HOST").unwrap_or(shared.general.host);
         let port = env::var("AGENTD_PORT")
