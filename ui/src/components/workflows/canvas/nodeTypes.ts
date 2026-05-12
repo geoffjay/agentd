@@ -1,18 +1,24 @@
 /**
- * workflowNodeTypes — React Flow node type registry for the workflow canvas.
+ * workflowNodeTypes / workflowEdgeTypes — React Flow type registries
+ * for the workflow canvas.
  *
- * Import this map and pass it as the `nodeTypes` prop to <WorkflowCanvas>
- * (or directly to <ReactFlow>) so React Flow can resolve custom node
- * components by their string type key.
- *
- * New node types (e.g. "agent") will be added here as they are implemented.
+ * Import these maps and pass them as the `nodeTypes` / `edgeTypes` props
+ * to <WorkflowCanvas> (or directly to <ReactFlow>) so React Flow can
+ * resolve custom node/edge components by their string type key.
  */
 
-import type { NodeTypes } from "@xyflow/react";
+import type { EdgeTypes, NodeTypes } from "@xyflow/react";
+import { PromptEdge } from "./edges/PromptEdge";
+import { AgentNode } from "./nodes/AgentNode";
 import { TriggerNode } from "./nodes/TriggerNode";
 
 export const workflowNodeTypes = {
 	trigger: TriggerNode,
+	agent: AgentNode,
 } satisfies NodeTypes;
+
+export const workflowEdgeTypes = {
+	prompt: PromptEdge,
+} satisfies EdgeTypes;
 
 export default workflowNodeTypes;
