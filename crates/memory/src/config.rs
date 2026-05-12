@@ -98,7 +98,10 @@ impl EmbeddingConfig {
     /// | `AGENTD_MEMORY_EMBEDDING_API_KEY`    | `None`                        |
     /// | `AGENTD_MEMORY_EMBEDDING_ENDPOINT`   | `None` (uses provider default)|
     pub fn load() -> Self {
-        let shared = agentd_common::config::load().unwrap_or_default();
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
         let base = shared.services.memory;
 
         Self {
@@ -179,7 +182,10 @@ impl LanceConfig {
     /// | `AGENTD_MEMORY_LANCE_PATH` | XDG data dir / `lancedb`        |
     /// | `AGENTD_MEMORY_LANCE_TABLE`| `"memories"`                    |
     pub fn load() -> Self {
-        let shared = agentd_common::config::load().unwrap_or_default();
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
         let base = shared.services.memory;
 
         Self {

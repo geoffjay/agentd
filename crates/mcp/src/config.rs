@@ -46,7 +46,10 @@ impl AgentdMcpConfig {
     /// | `AGENTD_MONITOR_URL`            | `http://127.0.0.1:17003`   |
     /// | `AGENTD_HOOK_URL`               | `http://127.0.0.1:17002`   |
     pub fn load() -> Self {
-        let shared = agentd_common::config::load().unwrap_or_default();
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
         let base = shared.services.mcp;
 
         Self {

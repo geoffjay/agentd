@@ -39,7 +39,10 @@ impl MonitorConfig {
     /// Loads base values from [`agentd_common::config::load`], then overlays
     /// legacy service-specific environment variables for backward compatibility.
     pub fn load() -> Self {
-        let shared = agentd_common::config::load().unwrap_or_default();
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
         let base = shared.services.monitor;
 
         Self {
@@ -48,18 +51,22 @@ impl MonitorConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(base.collection_interval_secs),
+            // TODO(#1201): migrate when shared schema adds cpu_alert_threshold
             cpu_alert_threshold: env::var("AGENTD_CPU_ALERT_THRESHOLD")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(90.0),
+            // TODO(#1201): migrate when shared schema adds memory_alert_threshold
             memory_alert_threshold: env::var("AGENTD_MEMORY_ALERT_THRESHOLD")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(90.0),
+            // TODO(#1201): migrate when shared schema adds disk_alert_threshold
             disk_alert_threshold: env::var("AGENTD_DISK_ALERT_THRESHOLD")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(90.0),
+            // TODO(#1201): migrate when shared schema adds history_size
             history_size: env::var("AGENTD_HISTORY_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())

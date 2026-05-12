@@ -45,7 +45,10 @@ impl HookConfig {
     /// Loads base values from [`agentd_common::config::load`], then overlays
     /// legacy service-specific environment variables for backward compatibility.
     pub fn load() -> Self {
-        let shared = agentd_common::config::load().unwrap_or_default();
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
         let base = shared.services.hook;
 
         let notify_service_url = env::var("AGENTD_NOTIFY_SERVICE_URL")
@@ -59,12 +62,15 @@ impl HookConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(base.history_size),
+            // TODO(#1201): migrate when shared schema adds notify_on_failure
             notify_on_failure: env::var("AGENTD_NOTIFY_ON_FAILURE")
                 .map(|v| v != "false" && v != "0")
                 .unwrap_or(true),
+            // TODO(#1201): migrate when shared schema adds notify_on_long_running
             notify_on_long_running: env::var("AGENTD_NOTIFY_ON_LONG_RUNNING")
                 .map(|v| v != "false" && v != "0")
                 .unwrap_or(true),
+            // TODO(#1201): migrate when shared schema adds long_running_threshold_ms
             long_running_threshold_ms: env::var("AGENTD_LONG_RUNNING_THRESHOLD_MS")
                 .ok()
                 .and_then(|v| v.parse().ok())

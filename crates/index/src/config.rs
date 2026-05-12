@@ -104,6 +104,7 @@ impl EmbeddingConfig {
                 .unwrap_or_else(|_| base.embedding_provider.clone()),
             model: env::var("AGENTD_INDEX_EMBEDDING_MODEL")
                 .unwrap_or_else(|_| base.embedding_model.clone()),
+            // TODO(#1201): migrate when shared schema adds embedding_endpoint
             endpoint: env::var("AGENTD_INDEX_EMBEDDING_ENDPOINT")
                 .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
             api_key: env::var("AGENTD_INDEX_EMBEDDING_API_KEY").ok(),
@@ -179,6 +180,7 @@ impl LanceConfig {
     pub fn load_with_base(base: &SharedIndexConfig) -> Self {
         Self {
             path: env::var("AGENTD_INDEX_LANCE_PATH").unwrap_or_else(|_| base.lance_path.clone()),
+            // TODO(#1201): migrate when shared schema adds lance_table
             table: env::var("AGENTD_INDEX_LANCE_TABLE")
                 .unwrap_or_else(|_| "code_chunks".to_string()),
         }
@@ -436,7 +438,10 @@ impl IndexConfig {
     /// | `AGENTD_INDEX_IGNORE_PATTERNS`     | `.git,target,node_modules,dist`     |
     /// | `AGENTD_INDEX_SUMMARY_ENABLED`     | `false`                             |
     pub fn load() -> Self {
-        let shared = agentd_common::config::load().unwrap_or_default();
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
         let base = shared.services.index;
 
         let port =

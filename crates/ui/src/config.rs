@@ -28,7 +28,10 @@ impl UiConfig {
     /// - `AGENTD_ORCHESTRATOR_SERVICE_URL` — orchestrator service URL (default: `http://localhost:7006`)
     /// - `AGENTD_INDEX_SERVICE_URL` — index service URL (default: `http://localhost:17012`)
     pub fn load() -> Self {
-        let shared = agentd_common::config::load().unwrap_or_default();
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
         let base = shared.services.ui;
 
         Self {
