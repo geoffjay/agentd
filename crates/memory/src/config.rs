@@ -86,7 +86,10 @@ impl Default for EmbeddingConfig {
 }
 
 impl EmbeddingConfig {
-    /// Load configuration from environment variables.
+    /// Load configuration from the shared config file and environment variables.
+    ///
+    /// Loads base values from [`agentd_common::config::load`], then overlays
+    /// legacy service-specific environment variables for backward compatibility.
     ///
     /// | Variable                             | Default                       |
     /// |--------------------------------------|-------------------------------|
@@ -94,15 +97,23 @@ impl EmbeddingConfig {
     /// | `AGENTD_MEMORY_EMBEDDING_MODEL`      | `"text-embedding-3-small"`    |
     /// | `AGENTD_MEMORY_EMBEDDING_API_KEY`    | `None`                        |
     /// | `AGENTD_MEMORY_EMBEDDING_ENDPOINT`   | `None` (uses provider default)|
-    pub fn from_env() -> Self {
+    pub fn load() -> Self {
+        let shared = agentd_common::config::load().unwrap_or_default();
+        let base = shared.services.memory;
+
         Self {
             provider: env::var("AGENTD_MEMORY_EMBEDDING_PROVIDER")
-                .unwrap_or_else(|_| "none".to_string()),
-            model: env::var("AGENTD_MEMORY_EMBEDDING_MODEL")
-                .unwrap_or_else(|_| "text-embedding-3-small".to_string()),
+                .unwrap_or(base.embedding_provider),
+            model: env::var("AGENTD_MEMORY_EMBEDDING_MODEL").unwrap_or(base.embedding_model),
             api_key: env::var("AGENTD_MEMORY_EMBEDDING_API_KEY").ok(),
             base_url: env::var("AGENTD_MEMORY_EMBEDDING_ENDPOINT").ok(),
         }
+    }
+
+    /// Load configuration from environment variables.
+    #[deprecated(note = "Use load() instead")]
+    pub fn from_env() -> Self {
+        Self::load()
     }
 }
 
@@ -158,18 +169,29 @@ impl LanceConfig {
             .unwrap_or_else(|| PathBuf::from("lancedb"))
     }
 
-    /// Load configuration from environment variables.
+    /// Load configuration from the shared config file and environment variables.
+    ///
+    /// Loads base values from [`agentd_common::config::load`], then overlays
+    /// legacy service-specific environment variables for backward compatibility.
     ///
     /// | Variable                   | Default                         |
     /// |----------------------------|---------------------------------|
     /// | `AGENTD_MEMORY_LANCE_PATH` | XDG data dir / `lancedb`        |
     /// | `AGENTD_MEMORY_LANCE_TABLE`| `"memories"`                    |
-    pub fn from_env() -> Self {
+    pub fn load() -> Self {
+        let shared = agentd_common::config::load().unwrap_or_default();
+        let base = shared.services.memory;
+
         Self {
-            path: env::var("AGENTD_MEMORY_LANCE_PATH")
-                .unwrap_or_else(|_| Self::default_path().to_string_lossy().to_string()),
+            path: env::var("AGENTD_MEMORY_LANCE_PATH").unwrap_or(base.lance_path),
             table: env::var("AGENTD_MEMORY_LANCE_TABLE").unwrap_or_else(|_| "memories".to_string()),
         }
+    }
+
+    /// Load configuration from environment variables.
+    #[deprecated(note = "Use load() instead")]
+    pub fn from_env() -> Self {
+        Self::load()
     }
 }
 
@@ -205,6 +227,7 @@ mod tests {
         assert!(config.base_url.is_none());
     }
 
+    #[allow(deprecated)]
     #[test]
     fn test_from_env_defaults_when_vars_absent() {
         // Ensure vars are not set in this process
@@ -285,6 +308,7 @@ mod tests {
         assert!(config.path.contains("agentd-memory") || config.path.contains("lancedb"));
     }
 
+    #[allow(deprecated)]
     #[test]
     fn test_lance_from_env_defaults_when_vars_absent() {
         let config = LanceConfig::from_env();

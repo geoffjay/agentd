@@ -70,8 +70,8 @@ async fn main() -> anyhow::Result<()> {
     info!("SQLite storage initialised");
 
     // ── Vector store ─────────────────────────────────────────────────────
-    let lance_config = LanceConfig::from_env();
-    let embedding_config = EmbeddingConfig::from_env();
+    let lance_config = LanceConfig::load();
+    let embedding_config = EmbeddingConfig::load();
 
     info!(
         lance_path = %lance_config.path,

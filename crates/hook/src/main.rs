@@ -24,5 +24,5 @@ use hook::config::HookConfig;
 #[tokio::main]
 async fn main() -> Result<()> {
     agentd_common::server::init_tracing();
-    hook::run(HookConfig::from_env()).await
+    hook::run(HookConfig::load()).await
 }

@@ -34,14 +34,20 @@ pub struct MonitorConfig {
 }
 
 impl MonitorConfig {
-    /// Construct configuration from environment variables with defaults.
-    pub fn from_env() -> Self {
+    /// Construct configuration from the shared config file and environment variables.
+    ///
+    /// Loads base values from [`agentd_common::config::load`], then overlays
+    /// legacy service-specific environment variables for backward compatibility.
+    pub fn load() -> Self {
+        let shared = agentd_common::config::load().unwrap_or_default();
+        let base = shared.services.monitor;
+
         Self {
-            port: env::var("AGENTD_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(17003),
+            port: env::var("AGENTD_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(base.port),
             collection_interval_secs: env::var("AGENTD_COLLECTION_INTERVAL_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(30),
+                .unwrap_or(base.collection_interval_secs),
             cpu_alert_threshold: env::var("AGENTD_CPU_ALERT_THRESHOLD")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -59,6 +65,12 @@ impl MonitorConfig {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(120),
         }
+    }
+
+    /// Construct configuration from environment variables with defaults.
+    #[deprecated(note = "Use load() instead")]
+    pub fn from_env() -> Self {
+        Self::load()
     }
 }
 

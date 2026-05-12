@@ -95,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting agentd-index service...");
 
-    let config = IndexConfig::from_env();
+    let config = IndexConfig::load();
 
     // ── LanceDB directory ─────────────────────────────────────────────────
     std::fs::create_dir_all(&config.lance.path)?;
