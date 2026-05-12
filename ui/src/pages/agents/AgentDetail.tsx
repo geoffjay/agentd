@@ -771,7 +771,7 @@ export function AgentDetail() {
         {/* Log / Terminal tabs (takes 2/3 width on large screens) */}
         <div className="flex flex-col gap-3 lg:col-span-2">
           {/* Tab bar */}
-          <div className="flex border-b border-gray-200 dark:border-gray-700">
+          <div role="tablist" aria-label="Agent output view" className="flex border-b border-gray-200 dark:border-gray-700">
             <button
               type="button"
               role="tab"

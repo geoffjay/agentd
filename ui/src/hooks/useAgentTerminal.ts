@@ -8,16 +8,18 @@
  * Connection states:
  *   connecting    → WS opened, waiting for first data
  *   connected     → receiving PTY output
- *   reconnecting  → WS dropped, WebSocketManager backing off
  *   disconnected  → intentional close or agent terminated
  *   unavailable   → backend returned 404 or {"error":"pty_not_supported"}
  *
  * Lazy connection: the WS and terminal are created only when `activate()`
  * is called for the first time. Subsequent tab switches do not reconnect.
+ *
+ * Note: a raw WebSocket (not WebSocketManager) is used here because xterm.js
+ * requires binary frames to arrive as ArrayBuffer. WebSocketManager defaults
+ * binaryType to 'blob', which causes binary PTY frames to be silently dropped.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { WebSocketManager } from '@/services/websocket'
 import { serviceConfig } from '@/services/config'
 import { XTERM_THEME } from '@/styles/themes'
 
@@ -83,10 +85,13 @@ export function useAgentTerminal(agentId: string): UseAgentTerminalResult {
   // Stable refs for xterm and WS instances — never triggers re-renders
   const terminalRef = useRef<import('@xterm/xterm').Terminal | null>(null)
   const fitAddonRef = useRef<import('@xterm/addon-fit').FitAddon | null>(null)
-  const wsRef = useRef<WebSocketManager | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
   const activatedRef = useRef(false)
   const interactiveRef = useRef(false)
   const decoderRef = useRef(new TextDecoder())
+  // Used by the fast-close heuristic (connecting → disconnected < 800ms → unavailable)
+  const firstDataRef = useRef(false)
+  const connectTimeRef = useRef<number | null>(null)
 
   // Keep interactiveRef in sync for use inside WS message handler
   const setInteractive = useCallback((value: boolean) => {
@@ -175,36 +180,34 @@ export function useAgentTerminal(agentId: string): UseAgentTerminalResult {
     await initTerminal()
 
     const url = terminalWsUrl(agentId)
-    const ws = new WebSocketManager(url)
+    setStatus('connecting')
+
+    // Use a raw WebSocket so we can set binaryType = 'arraybuffer' before any
+    // frames arrive. WebSocketManager cannot be used here because it defaults
+    // binaryType to 'blob', which causes binary PTY frames to fail the
+    // `instanceof ArrayBuffer` check and be silently dropped.
+    const ws = new WebSocket(url)
+    ws.binaryType = 'arraybuffer'
     wsRef.current = ws
 
-    ws.onStateChange((state) => {
-      switch (state) {
-        case 'Connecting':
-          setStatus('connecting')
-          break
-        case 'Connected':
-          setStatus('connected')
-          break
-        case 'Reconnecting': {
-          setStatus('reconnecting')
-          // Inject a visual separator into the terminal
-          terminalRef.current?.write(
-            '\r\n\x1b[2m\x1b[33m─── reconnecting… ───\x1b[0m\r\n',
-          )
-          break
-        }
-        case 'Disconnected':
-          setStatus('disconnected')
-          break
-      }
-    })
+    ws.onopen = () => {
+      setStatus('connected')
+    }
 
-    ws.onMessage((event) => {
+    ws.onclose = () => {
+      setStatus('disconnected')
+    }
+
+    ws.onmessage = (event) => {
+      // Mark that at least one frame has arrived.
+      // The fast-close heuristic (connecting → disconnected within 800 ms)
+      // checks this flag to decide whether to promote the status to 'unavailable'.
+      firstDataRef.current = true
+
       const terminal = terminalRef.current
       if (!terminal) return
 
-      // Binary frame — raw PTY output
+      // Binary frame — raw PTY output (guaranteed ArrayBuffer by binaryType setting above)
       if (event.data instanceof ArrayBuffer) {
         terminal.write(decoderRef.current.decode(event.data))
         return
@@ -217,7 +220,7 @@ export function useAgentTerminal(agentId: string): UseAgentTerminalResult {
           const msg = JSON.parse(event.data) as Record<string, unknown>
           if (msg.error === 'pty_not_supported') {
             setStatus('unavailable')
-            ws.disconnect()
+            ws.close()
             return
           }
           // Unknown JSON — ignore silently
@@ -227,21 +230,16 @@ export function useAgentTerminal(agentId: string): UseAgentTerminalResult {
           terminal.write(event.data)
         }
       }
-    })
-
-    ws.connect()
+    }
   }, [agentId, initTerminal])
 
   // ---------------------------------------------------------------------------
   // Handle 404 (endpoint not found → unavailable)
   // We detect this via the WS close code 1006 immediately after connect,
   // or via the HTTP upgrade failing. The simplest heuristic: if we transition
-  // Connecting → Disconnected within 500ms without receiving any data,
+  // connecting → disconnected within 800ms without receiving any data,
   // treat as unavailable.
   // ---------------------------------------------------------------------------
-
-  const firstDataRef = useRef(false)
-  const connectTimeRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (status === 'connecting') {
@@ -262,7 +260,7 @@ export function useAgentTerminal(agentId: string): UseAgentTerminalResult {
 
   useEffect(() => {
     return () => {
-      wsRef.current?.disconnect()
+      wsRef.current?.close()
       terminalRef.current?.dispose()
     }
   }, [])
