@@ -13,3 +13,7 @@ notify = { path = "../notify" }
 orchestrator = { path = "../orchestrator" }
 communicate = { path = "../communicate" }
 agentd-common = { path = "../common" }
+
+[features]
+default = []
+index-service = []
