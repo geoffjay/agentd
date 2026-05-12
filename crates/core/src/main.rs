@@ -22,6 +22,7 @@
 //! | `AGENTD_LOG_FORMAT` | (text)  | Set to `json` for JSON |
 //! | `AGENTD_ENV`        | (prod)  | `development`/`test`   |
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use agentd_common::config::ValidateConfig;
@@ -212,7 +213,7 @@ async fn run_migrate_down(all: bool, yes: bool, db_path_override: Option<PathBuf
 
     // Require explicit confirmation when no TTY is attached.
     if !yes {
-        let is_tty = atty::is(atty::Stream::Stdin);
+        let is_tty = std::io::stdin().is_terminal();
         if !is_tty {
             anyhow::bail!(
                 "stdin is not a TTY — pass --yes to confirm rollback without a prompt.\n\
