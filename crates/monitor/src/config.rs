@@ -2,6 +2,8 @@
 //!
 //! All settings can be overridden via environment variables at startup.
 
+use agentd_common::config::ValidateConfig;
+use anyhow::{bail, Result};
 use std::env;
 
 /// Configuration for the monitor service.
@@ -94,6 +96,27 @@ impl Default for MonitorConfig {
     }
 }
 
+impl ValidateConfig for MonitorConfig {
+    fn validate(&self) -> Result<()> {
+        if self.port == 0 {
+            bail!("monitor.port must be non-zero");
+        }
+        if self.collection_interval_secs == 0 {
+            bail!("monitor.collection_interval_secs must be greater than 0");
+        }
+        for (name, threshold) in [
+            ("monitor.cpu_alert_threshold", self.cpu_alert_threshold),
+            ("monitor.memory_alert_threshold", self.memory_alert_threshold),
+            ("monitor.disk_alert_threshold", self.disk_alert_threshold),
+        ] {
+            if !(0.0..=100.0).contains(&threshold) {
+                bail!("{name} must be between 0.0 and 100.0, got: {threshold}");
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,5 +138,45 @@ mod tests {
         let cloned = config.clone();
         assert_eq!(config.port, cloned.port);
         assert_eq!(config.history_size, cloned.history_size);
+    }
+
+    #[test]
+    fn test_validate_default_passes() {
+        assert!(MonitorConfig::default().validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_zero_port_fails() {
+        let config = MonitorConfig { port: 0, ..MonitorConfig::default() };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_zero_interval_fails() {
+        let config = MonitorConfig { collection_interval_secs: 0, ..MonitorConfig::default() };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_cpu_threshold_above_100_fails() {
+        let config = MonitorConfig { cpu_alert_threshold: 101.0, ..MonitorConfig::default() };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_memory_threshold_negative_fails() {
+        let config = MonitorConfig { memory_alert_threshold: -1.0, ..MonitorConfig::default() };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_boundary_thresholds_pass() {
+        let config = MonitorConfig {
+            cpu_alert_threshold: 0.0,
+            memory_alert_threshold: 100.0,
+            disk_alert_threshold: 50.0,
+            ..MonitorConfig::default()
+        };
+        assert!(config.validate().is_ok());
     }
 }

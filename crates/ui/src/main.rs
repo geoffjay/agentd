@@ -14,11 +14,14 @@
 //! AGENTD_PORT=7009 AGENTD_UI_DIR=/path/to/dist agentd-ui
 //! ```
 
+use agentd_common::config::ValidateConfig;
 use anyhow::Result;
 use ui::config::UiConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     agentd_common::server::init_tracing();
-    ui::run(UiConfig::load()).await
+    let cfg = UiConfig::load();
+    cfg.validate()?;
+    ui::run(cfg).await
 }

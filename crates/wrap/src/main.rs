@@ -30,20 +30,21 @@
 
 // Import from the library target — avoids re-declaring modules in the binary and
 // triggering dead-code warnings on items that are only used by the library.
+use agentd_common::config::ValidateConfig;
 use wrap::{
     api::{create_router, AppState},
     backend::{ExecutionBackend, TmuxBackend},
+    config::WrapConfig,
     docker::{DockerBackend, DEFAULT_IMAGE},
     pty::PtyBackend,
-    pty_stream::{DEFAULT_CHANNEL_CAPACITY, DEFAULT_HISTORY_BYTES},
     subprocess::SubprocessBackend,
     types::BackendType,
 };
 
 use axum::{extract::State, response::IntoResponse, routing::get};
 use metrics_exporter_prometheus::PrometheusHandle;
-use std::{env, sync::Arc};
-use tracing::{info, warn};
+use std::sync::Arc;
+use tracing::info;
 
 fn init_metrics() -> PrometheusHandle {
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
@@ -62,6 +63,9 @@ async fn main() -> anyhow::Result<()> {
     agentd_common::server::init_tracing();
     info!("Starting agentd-wrap service...");
 
+    let cfg = WrapConfig::load();
+    cfg.validate()?;
+
     // --- Select execution backend ---
     // Unrecognised AGENTD_BACKEND values cause an immediate startup failure.
     let backend_type = BackendType::from_env_strict()?;
@@ -70,51 +74,11 @@ async fn main() -> anyhow::Result<()> {
     let exec_backend: Arc<dyn ExecutionBackend> = match &backend_type {
         BackendType::Pty => {
             info!("Initialising PTY backend");
-            let history_bytes = env::var("AGENTD_WRAP_HISTORY_BYTES")
-                .ok()
-                .and_then(|raw| {
-                    raw.parse::<usize>()
-                        .map_err(|_| {
-                            warn!(
-                                "AGENTD_WRAP_HISTORY_BYTES={:?} is not a valid usize; \
-                             using default {} bytes",
-                                raw, DEFAULT_HISTORY_BYTES
-                            );
-                        })
-                        .ok()
-                })
-                .unwrap_or(DEFAULT_HISTORY_BYTES);
-            let channel_capacity = {
-                let parsed = env::var("AGENTD_WRAP_CHANNEL_CAPACITY")
-                    .ok()
-                    .and_then(|raw| {
-                        raw.parse::<usize>()
-                            .map_err(|_| {
-                                warn!(
-                                    "AGENTD_WRAP_CHANNEL_CAPACITY={:?} is not a valid usize; \
-                                 using default {}",
-                                    raw, DEFAULT_CHANNEL_CAPACITY
-                                );
-                            })
-                            .ok()
-                    })
-                    .unwrap_or(DEFAULT_CHANNEL_CAPACITY);
-                // broadcast::channel(0) panics — clamp to at least 1.
-                if parsed == 0 {
-                    warn!(
-                        "AGENTD_WRAP_CHANNEL_CAPACITY=0 is invalid \
-                         (tokio broadcast::channel requires capacity ≥ 1); clamped to 1"
-                    );
-                    1
-                } else {
-                    parsed
-                }
-            };
             info!(
                 "PTY ring-buffer: history_bytes={}, channel_capacity={}",
-                history_bytes, channel_capacity
+                cfg.history_bytes, cfg.channel_capacity
             );
-            Arc::new(PtyBackend::new_with_config("agentd", channel_capacity, history_bytes))
+            Arc::new(PtyBackend::new_with_config("agentd", cfg.channel_capacity, cfg.history_bytes))
         }
         BackendType::Docker => {
             info!("Initialising Docker backend");
@@ -152,9 +116,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer());
 
     // --- Bind and serve ---
-    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17005".to_string());
-    let addr = format!("{host}:{port}");
+    let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Wrap API server listening on http://{}", addr);
 

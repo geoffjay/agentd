@@ -38,6 +38,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use agentd_common::config::ValidateConfig;
 use axum::{extract::State, response::IntoResponse, routing::get};
 use index::api::{create_router_with_state, AppState};
 use index::config::IndexConfig;
@@ -96,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting agentd-index service...");
 
     let config = IndexConfig::load();
+    config.validate()?;
 
     // ── LanceDB directory ─────────────────────────────────────────────────
     std::fs::create_dir_all(&config.lance.path)?;
