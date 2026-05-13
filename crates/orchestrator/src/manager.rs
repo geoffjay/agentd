@@ -1174,6 +1174,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         }
     }
 

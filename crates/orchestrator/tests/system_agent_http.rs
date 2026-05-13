@@ -150,6 +150,7 @@ async fn insert_builtin_agent(storage: &AgentStorage, name: &str) -> Agent {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec!["system".to_string()],
+            skills: vec![],
         },
     );
     agent.built_in = true;
@@ -182,6 +183,7 @@ async fn insert_user_agent(storage: &AgentStorage, name: &str) -> Agent {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         },
     );
     storage.add(&agent).await.unwrap();

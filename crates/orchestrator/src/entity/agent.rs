@@ -68,6 +68,8 @@ pub struct Model {
     /// System agents are created programmatically and managed by the orchestrator;
     /// user-created agents always have this set to 0.
     pub built_in: i32,
+    /// JSON-serialized `Vec<String>` of skill names assigned to this agent.
+    pub skills: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

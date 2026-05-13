@@ -1249,6 +1249,7 @@ async fn create_agent(
         resource_limits,
         additional_dirs: add_dirs.to_vec(),
         rooms: vec![],
+        skills: vec![],
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -3069,6 +3070,7 @@ mod tests {
                 resource_limits: None,
                 additional_dirs: vec![],
                 rooms: vec![],
+                skills: vec![],
             },
             session_id: Some("agentd-orch-abc123".to_string()),
             backend_type: Some("tmux".to_string()),
@@ -3930,6 +3932,7 @@ mod tests {
                 }),
                 additional_dirs: vec![],
                 rooms: vec![],
+                skills: vec![],
             },
             session_id: Some("abc123container".to_string()),
             backend_type: Some("docker".to_string()),

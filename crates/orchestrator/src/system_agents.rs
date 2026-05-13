@@ -81,6 +81,7 @@ pub fn build_system_agent_config() -> AgentConfig {
         resource_limits: None,
         additional_dirs: vec![],
         rooms: vec!["system".to_string()],
+        skills: vec![],
     }
 }
 

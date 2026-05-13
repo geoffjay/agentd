@@ -146,6 +146,7 @@ async fn create_agent(storage: &AgentStorage) -> Uuid {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         },
     );
     storage.add(&agent).await.unwrap();

@@ -252,6 +252,7 @@ async fn create_agent(
         resource_limits: req.resource_limits,
         additional_dirs: req.additional_dirs,
         rooms: req.rooms,
+        skills: req.skills,
     };
 
     let agent = state.manager.spawn_agent(req.name, config, false).await?;
