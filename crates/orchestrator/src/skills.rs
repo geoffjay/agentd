@@ -45,6 +45,98 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
+// Materialization
+// ---------------------------------------------------------------------------
+
+/// Result of a [`materialize_skills`] call.
+#[derive(Debug, Default, PartialEq)]
+pub struct MaterializeResult {
+    /// Skill names whose `SKILL.md` file was successfully written.
+    pub written: Vec<String>,
+    /// Skill names that were skipped because the target file already existed.
+    ///
+    /// The agent's own `.claude/skills/<name>/SKILL.md` takes precedence over
+    /// the agentd-managed copy.
+    pub skipped: Vec<String>,
+    /// Skill names that were requested but are not in `discovered_skills`.
+    pub not_found: Vec<String>,
+}
+
+/// Write skill files into the agent's `.claude/skills/` directory.
+///
+/// For each skill name in `skill_names`, copies the skill content from
+/// `discovered_skills` into `<working_dir>/.claude/skills/<name>/SKILL.md`.
+///
+/// - Creates the directory structure if it does not exist.
+/// - Does **not** overwrite existing skill files; agent-local skills take
+///   precedence (reported as [`MaterializeResult::skipped`]).
+/// - Skill names not present in `discovered_skills` are reported in
+///   [`MaterializeResult::not_found`] rather than returning an error.
+///
+/// # Worktree agents
+///
+/// When an agent uses `--worktree`, Claude Code creates a temporary git
+/// worktree.  Skills are written to the source `working_dir` *before* launch.
+/// Because `.claude/` is typically in `.gitignore`, the worktree does not
+/// inherit those files — the agent's `additional_dirs` (already wired up in
+/// `build_claude_command`) point back at the project root where the skills live.
+pub async fn materialize_skills(
+    working_dir: &Path,
+    skill_names: &[String],
+    discovered_skills: &[Skill],
+) -> Result<MaterializeResult> {
+    use std::collections::HashMap;
+
+    let index: HashMap<&str, &Skill> =
+        discovered_skills.iter().map(|s| (s.name.as_str(), s)).collect();
+
+    let mut result = MaterializeResult::default();
+
+    for name in skill_names {
+        match index.get(name.as_str()) {
+            None => {
+                result.not_found.push(name.clone());
+            }
+            Some(skill) => {
+                let target_dir = working_dir.join(".claude").join("skills").join(name);
+                let target_file = target_dir.join("SKILL.md");
+
+                if target_file.exists() {
+                    result.skipped.push(name.clone());
+                    continue;
+                }
+
+                if let Err(e) = tokio::fs::create_dir_all(&target_dir).await {
+                    tracing::warn!(
+                        skill = %name,
+                        dir = %target_dir.display(),
+                        error = %e,
+                        "Failed to create skill directory; skipping"
+                    );
+                    result.not_found.push(name.clone());
+                    continue;
+                }
+
+                if let Err(e) = tokio::fs::write(&target_file, &skill.content).await {
+                    tracing::warn!(
+                        skill = %name,
+                        file = %target_file.display(),
+                        error = %e,
+                        "Failed to write skill file; skipping"
+                    );
+                    result.not_found.push(name.clone());
+                    continue;
+                }
+
+                result.written.push(name.clone());
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------------
 // Skill model
 // ---------------------------------------------------------------------------
 
