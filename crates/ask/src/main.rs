@@ -9,6 +9,7 @@
 //! - `RUST_LOG` - Logging configuration (default: info)
 
 mod api;
+mod config;
 mod entity;
 mod error;
 mod migration;
@@ -16,11 +17,11 @@ mod state;
 mod storage;
 mod types;
 
-use std::env;
-
+use agentd_common::config::ValidateConfig;
 use anyhow::Result;
 use api::{create_router_with_tracing, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
+use config::AskConfig;
 use metrics_exporter_prometheus::PrometheusHandle;
 use state::AppState;
 use storage::QuestionStorage;
@@ -44,15 +45,9 @@ async fn main() -> Result<()> {
 
     info!("Starting agentd-ask service...");
 
-    let port = std::env::var("AGENTD_PORT")
-        .unwrap_or_else(|_| "17001".to_string())
-        .parse::<u16>()
-        .unwrap_or(17001);
-
-    let orchestrator_url = std::env::var("AGENTD_ORCHESTRATOR_URL")
-        .unwrap_or_else(|_| "http://localhost:17006".to_string());
-
-    info!("Configuration: port={}, orchestrator={}", port, orchestrator_url);
+    let cfg = AskConfig::load();
+    cfg.validate()?;
+    info!("Configuration: port={}, orchestrator={}", cfg.port, cfg.orchestrator_url);
 
     // Initialize persistent storage.
     let storage = match QuestionStorage::new().await {
@@ -70,7 +65,7 @@ async fn main() -> Result<()> {
 
     let api_state = ApiState {
         app_state: app_state.clone(),
-        orchestrator_url: Some(orchestrator_url),
+        orchestrator_url: Some(cfg.orchestrator_url),
         http_client: reqwest::Client::new(),
     };
 
@@ -83,8 +78,7 @@ async fn main() -> Result<()> {
         .layer(agentd_common::server::metrics_layer())
         .layer(agentd_common::server::cors_layer());
 
-    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let addr = format!("{host}:{port}");
+    let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Listening on {}", addr);
 

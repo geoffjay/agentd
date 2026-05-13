@@ -18,11 +18,14 @@
 //! AGENTD_LOG_FORMAT=json agentd-monitor
 //! ```
 
+use agentd_common::config::ValidateConfig;
 use anyhow::Result;
 use monitor::config::MonitorConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     agentd_common::server::init_tracing();
-    monitor::run(MonitorConfig::from_env()).await
+    let cfg = MonitorConfig::load();
+    cfg.validate()?;
+    monitor::run(cfg).await
 }

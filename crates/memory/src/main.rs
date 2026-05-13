@@ -36,12 +36,12 @@
 
 mod api;
 
+use agentd_common::config::ValidateConfig;
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
 use memory::config::{EmbeddingConfig, LanceConfig};
 use memory::storage::MemoryStorage;
 use metrics_exporter_prometheus::PrometheusHandle;
-use std::env;
 use tracing::info;
 
 fn init_metrics() -> PrometheusHandle {
@@ -62,6 +62,17 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting agentd-memory service...");
 
+    // ── Configuration & validation ────────────────────────────────────────
+    // Load the shared config first so port and host are validated before
+    // any I/O is attempted (catches port=0 with a clear error message).
+    let shared = agentd_common::config::load()?;
+    shared.services.memory.validate()?;
+
+    let lance_config = LanceConfig::load();
+    let embedding_config = EmbeddingConfig::load();
+    lance_config.validate()?;
+    embedding_config.validate()?;
+
     // ── Metrics ──────────────────────────────────────────────────────────
     let metrics_handle = init_metrics();
 
@@ -70,9 +81,6 @@ async fn main() -> anyhow::Result<()> {
     info!("SQLite storage initialised");
 
     // ── Vector store ─────────────────────────────────────────────────────
-    let lance_config = LanceConfig::from_env();
-    let embedding_config = EmbeddingConfig::from_env();
-
     info!(
         lance_path = %lance_config.path,
         lance_table = %lance_config.table,
@@ -96,9 +104,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
-    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17008".to_string());
-    let addr = format!("{host}:{port}");
+    let addr = format!("{}:{}", shared.general.host, shared.services.memory.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Memory API server listening on http://{}", addr);
 
