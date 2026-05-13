@@ -2063,4 +2063,48 @@ repo: myproject
             other => panic!("Expected GitlabMergeRequests, got {:?}", other),
         }
     }
+
+    // ── AgentTemplate.skills field parsing ───────────────────────────────────
+
+    #[test]
+    fn test_parse_agent_skills_list() {
+        let yaml = "name: worker\nskills:\n  - git-spice\n  - agent-memory\n";
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        match &tmpl.skills {
+            SkillsField::Named(names) => {
+                assert_eq!(names, &["git-spice", "agent-memory"]);
+            }
+            other => panic!("Expected Named, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_agent_skills_all() {
+        let yaml = "name: worker\nskills: all\n";
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        match &tmpl.skills {
+            SkillsField::All(s) => assert_eq!(s, "all"),
+            other => panic!("Expected All, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_agent_skills_omitted_defaults_to_empty() {
+        let yaml = "name: worker\n";
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        match &tmpl.skills {
+            SkillsField::Named(names) => assert!(names.is_empty()),
+            other => panic!("Expected Named([]), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_agent_skills_empty_list() {
+        let yaml = "name: worker\nskills: []\n";
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        match &tmpl.skills {
+            SkillsField::Named(names) => assert!(names.is_empty()),
+            other => panic!("Expected Named([]), got {:?}", other),
+        }
+    }
 }
