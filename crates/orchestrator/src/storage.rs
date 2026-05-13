@@ -2203,4 +2203,39 @@ mod tests {
         assert_eq!(pruned, 0);
         assert_eq!(storage.count_conversation_events(agent_id).await.unwrap(), 3);
     }
+
+    // ── skills field tests ───────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_add_with_skills() {
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("skilled-agent");
+        agent.config.skills = vec!["git-spice".to_string(), "agent-memory".to_string()];
+        storage.add(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.skills, vec!["git-spice", "agent-memory"]);
+    }
+
+    #[tokio::test]
+    async fn test_skills_defaults_to_empty() {
+        let (storage, _tmp) = create_test_storage().await;
+        let agent = test_agent("no-skills-agent");
+        assert!(agent.config.skills.is_empty());
+        storage.add(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert!(retrieved.config.skills.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_skills_round_trips_through_storage() {
+        let (storage, _tmp) = create_test_storage().await;
+        let mut agent = test_agent("skill-roundtrip-agent");
+        agent.config.skills = vec!["alpha".to_string(), "beta".to_string(), "gamma".to_string()];
+        storage.add(&agent).await.unwrap();
+
+        let retrieved = storage.get(&agent.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.config.skills, agent.config.skills);
+    }
 }

@@ -602,4 +602,134 @@ mod tests {
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "valid");
     }
+
+    // ── materialize_skills ───────────────────────────────────────────────────
+
+    fn make_discovered_skill(name: &str, description: &str) -> Skill {
+        Skill {
+            name: name.to_string(),
+            description: Some(description.to_string()),
+            content: format!("---\nname: {name}\ndescription: {description}\n---\n\n# {name}"),
+            source_path: PathBuf::from(format!(".agentd/skills/{name}.md")),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_materialize_writes_skill_file() {
+        let tmp = TempDir::new().unwrap();
+        let skill = make_discovered_skill("git-spice", "Branch stacking.");
+        let discovered = vec![skill];
+
+        let result =
+            materialize_skills(tmp.path(), &["git-spice".to_string()], &discovered).await.unwrap();
+
+        assert_eq!(result.written, vec!["git-spice"]);
+        assert!(result.skipped.is_empty());
+        assert!(result.not_found.is_empty());
+
+        let dest = tmp.path().join(".claude/skills/git-spice/SKILL.md");
+        assert!(dest.exists(), "SKILL.md should exist at {}", dest.display());
+        let content = fs::read_to_string(&dest).unwrap();
+        assert!(content.contains("git-spice"));
+    }
+
+    #[tokio::test]
+    async fn test_materialize_creates_directory_structure() {
+        let tmp = TempDir::new().unwrap();
+        let skill = make_discovered_skill("agent-ops", "Agent operations.");
+        let discovered = vec![skill];
+
+        materialize_skills(tmp.path(), &["agent-ops".to_string()], &discovered).await.unwrap();
+
+        let skills_dir = tmp.path().join(".claude/skills/agent-ops");
+        assert!(skills_dir.is_dir(), ".claude/skills/agent-ops/ should be created");
+    }
+
+    #[tokio::test]
+    async fn test_materialize_does_not_overwrite_existing_file() {
+        let tmp = TempDir::new().unwrap();
+        // Pre-create the agent-local skill file.
+        let skill_dir = tmp.path().join(".claude/skills/git-spice");
+        fs::create_dir_all(&skill_dir).unwrap();
+        let existing = skill_dir.join("SKILL.md");
+        fs::write(&existing, "# My local version").unwrap();
+
+        let skill = make_discovered_skill("git-spice", "Different content.");
+        let discovered = vec![skill];
+
+        let result =
+            materialize_skills(tmp.path(), &["git-spice".to_string()], &discovered).await.unwrap();
+
+        assert!(result.written.is_empty());
+        assert_eq!(result.skipped, vec!["git-spice"]);
+
+        // Original content must be preserved.
+        let content = fs::read_to_string(&existing).unwrap();
+        assert_eq!(content, "# My local version");
+    }
+
+    #[tokio::test]
+    async fn test_materialize_reports_not_found() {
+        let tmp = TempDir::new().unwrap();
+        let discovered: Vec<Skill> = vec![]; // no skills discovered
+
+        let result = materialize_skills(tmp.path(), &["missing-skill".to_string()], &discovered)
+            .await
+            .unwrap();
+
+        assert!(result.written.is_empty());
+        assert!(result.skipped.is_empty());
+        assert_eq!(result.not_found, vec!["missing-skill"]);
+    }
+
+    #[tokio::test]
+    async fn test_materialize_empty_skill_list_is_noop() {
+        let tmp = TempDir::new().unwrap();
+        let skill = make_discovered_skill("git-spice", "Branch stacking.");
+        let discovered = vec![skill];
+
+        let result = materialize_skills(tmp.path(), &[], &discovered).await.unwrap();
+
+        assert!(result.written.is_empty());
+        assert!(result.skipped.is_empty());
+        assert!(result.not_found.is_empty());
+
+        // No .claude directory should have been created.
+        assert!(!tmp.path().join(".claude").exists());
+    }
+
+    #[tokio::test]
+    async fn test_materialize_multiple_skills() {
+        let tmp = TempDir::new().unwrap();
+        let discovered = vec![
+            make_discovered_skill("git-spice", "Branch stacking."),
+            make_discovered_skill("agent-memory", "Memory service."),
+            make_discovered_skill("service-ops", "Service operations."),
+        ];
+
+        let names: Vec<String> =
+            ["git-spice", "agent-memory", "missing"].iter().map(|s| s.to_string()).collect();
+
+        let result = materialize_skills(tmp.path(), &names, &discovered).await.unwrap();
+
+        let mut written = result.written.clone();
+        written.sort();
+        assert_eq!(written, vec!["agent-memory", "git-spice"]);
+        assert!(result.skipped.is_empty());
+        assert_eq!(result.not_found, vec!["missing"]);
+    }
+
+    #[tokio::test]
+    async fn test_materialize_written_count_matches_files() {
+        let tmp = TempDir::new().unwrap();
+        let discovered =
+            vec![make_discovered_skill("a", "Skill A."), make_discovered_skill("b", "Skill B.")];
+        let names: Vec<String> = ["a", "b"].iter().map(|s| s.to_string()).collect();
+
+        let result = materialize_skills(tmp.path(), &names, &discovered).await.unwrap();
+
+        assert_eq!(result.written.len(), 2);
+        assert!(tmp.path().join(".claude/skills/a/SKILL.md").exists());
+        assert!(tmp.path().join(".claude/skills/b/SKILL.md").exists());
+    }
 }
