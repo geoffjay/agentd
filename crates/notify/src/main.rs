@@ -61,16 +61,18 @@
 //! ```
 
 mod api;
+mod config;
 mod entity;
 mod migration;
 mod notification;
 mod storage;
 mod types;
 
+use agentd_common::config::ValidateConfig;
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
+use config::NotifyConfig;
 use metrics_exporter_prometheus::PrometheusHandle;
-use std::env;
 use std::sync::Arc;
 use storage::NotificationStorage;
 use tokio::time::{interval, Duration};
@@ -158,10 +160,9 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
-    // Bind to address (use AGENTD_PORT env var, default 17004 for dev, 7004 for production)
-    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17004".to_string());
-    let addr = format!("{host}:{port}");
+    let cfg = NotifyConfig::load();
+    cfg.validate()?;
+    let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Notification API server listening on http://{}", addr);
 

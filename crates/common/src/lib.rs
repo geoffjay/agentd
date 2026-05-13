@@ -47,6 +47,7 @@
 //! - #47 — Extract tracing/server init → `server`
 
 pub mod client;
+pub mod config;
 pub mod error;
 pub mod server;
 pub mod storage;
