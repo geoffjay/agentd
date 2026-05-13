@@ -87,8 +87,8 @@ use commands::index::IndexClient;
 use commands::IndexCommand;
 use commands::{
     AskCommand, AuthCommand, CommunicateCommand, ConfigCommand, MemoryCommand, NotifyCommand,
-    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, SystemAgentsCommand,
-    WrapCommand,
+    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, SkillCommand,
+    SystemAgentsCommand, WrapCommand,
 };
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
@@ -404,6 +404,25 @@ enum Commands {
         #[command(subcommand)]
         command: Box<SystemAgentsCommand>,
     },
+
+    /// Manage agent skills from .agentd/skills/
+    ///
+    /// List and inspect skills that can be assigned to agents via the `skills`
+    /// field in agent templates.  Skills are discovered from project-level
+    /// `.agentd/skills/` and user-level `~/.config/agentd/skills/`.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent skill list
+    /// agent skill list --json
+    /// agent skill show git-spice
+    /// agent skill show git-spice --json
+    /// ```
+    Skill {
+        #[command(subcommand)]
+        command: SkillCommand,
+    },
 }
 
 /// Main entry point for the agent CLI.
@@ -550,6 +569,9 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "http://localhost:7006".to_string());
             let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
+        }
+        Commands::Skill { command } => {
+            command.execute(cli.json).await?;
         }
     }
 

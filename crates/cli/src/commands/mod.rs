@@ -41,6 +41,7 @@ pub mod orchestrator;
 pub mod org;
 pub mod project;
 pub mod prompt;
+pub mod skill;
 pub mod system_agents;
 pub mod wrap;
 
@@ -56,5 +57,6 @@ pub use orchestrator::OrchestratorCommand;
 pub use org::OrgCommand;
 pub use project::ProjectCommand;
 pub use prompt::PromptCommand;
+pub use skill::SkillCommand;
 pub use system_agents::SystemAgentsCommand;
 pub use wrap::WrapCommand;
