@@ -4,16 +4,18 @@
 //! SQLite database at platform-specific path (`agentd-communicate/communicate.db`).
 
 mod api;
+mod config;
 mod entity;
 mod migration;
 mod storage;
 mod types;
 mod websocket;
 
+use agentd_common::config::ValidateConfig;
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
+use config::CommunicateConfig;
 use metrics_exporter_prometheus::PrometheusHandle;
-use std::env;
 use std::sync::Arc;
 use storage::CommunicateStorage;
 use tracing::info;
@@ -58,9 +60,9 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::trace_layer())
         .layer(agentd_common::server::cors_layer());
 
-    let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = env::var("AGENTD_PORT").unwrap_or_else(|_| "17010".to_string());
-    let addr = format!("{host}:{port}");
+    let cfg = CommunicateConfig::load();
+    cfg.validate()?;
+    let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Communicate API server listening on http://{}", addr);
 

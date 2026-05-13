@@ -86,8 +86,9 @@ use commands::index::IndexClient;
 #[cfg(feature = "index-service")]
 use commands::IndexCommand;
 use commands::{
-    AskCommand, AuthCommand, CommunicateCommand, MemoryCommand, NotifyCommand, OrchestratorCommand,
-    OrgCommand, ProjectCommand, PromptCommand, SystemAgentsCommand, WrapCommand,
+    AskCommand, AuthCommand, CommunicateCommand, ConfigCommand, MemoryCommand, NotifyCommand,
+    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, SystemAgentsCommand,
+    WrapCommand,
 };
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
@@ -309,6 +310,25 @@ enum Commands {
         command: IndexCommand,
     },
 
+    /// Manage the agentd configuration file.
+    ///
+    /// Generate a default config.toml or display the fully resolved
+    /// configuration after applying defaults, file, and environment variables.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent config init
+    /// agent config init --force
+    /// agent config show
+    /// agent config show --json
+    /// agent config show --raw
+    /// ```
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
+    },
+
     /// Authenticate with the agentd core service.
     ///
     /// Register, log in, log out, and check auth status. The session token
@@ -472,13 +492,13 @@ async fn main() -> Result<()> {
             check_all_services(cli.json).await?;
         }
         Commands::Hook => {
-            hook::run(hook::config::HookConfig::from_env()).await?;
+            hook::run(hook::config::HookConfig::load()).await?;
         }
         Commands::Monitor => {
-            monitor::run(monitor::config::MonitorConfig::from_env()).await?;
+            monitor::run(monitor::config::MonitorConfig::load()).await?;
         }
         Commands::Mcp => {
-            agentd_mcp::run(agentd_mcp::config::AgentdMcpConfig::from_env()).await?;
+            agentd_mcp::run(agentd_mcp::config::AgentdMcpConfig::load()).await?;
         }
         Commands::Memory { command } => {
             // Use AGENTD_MEMORY_SERVICE_URL env var, default to production port
@@ -509,6 +529,9 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "http://localhost:17012".to_string());
             let client = IndexClient::new(url);
             command.execute(&client, cli.json).await?;
+        }
+        Commands::Config { command } => {
+            command.execute(cli.json)?;
         }
         Commands::Auth { command } => {
             command.execute(cli.json).await?;

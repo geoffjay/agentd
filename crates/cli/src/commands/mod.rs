@@ -32,6 +32,7 @@ pub mod apply;
 pub mod ask;
 pub mod auth;
 pub mod communicate;
+pub mod config;
 #[cfg(feature = "index-service")]
 pub mod index;
 pub mod memory;
@@ -46,6 +47,7 @@ pub mod wrap;
 pub use ask::AskCommand;
 pub use auth::AuthCommand;
 pub use communicate::CommunicateCommand;
+pub use config::ConfigCommand;
 #[cfg(feature = "index-service")]
 pub use index::IndexCommand;
 pub use memory::MemoryCommand;

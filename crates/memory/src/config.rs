@@ -22,6 +22,8 @@
 //! assert!(!config.provider.is_empty() || config.provider == "none");
 //! ```
 
+use agentd_common::config::ValidateConfig;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
@@ -86,7 +88,10 @@ impl Default for EmbeddingConfig {
 }
 
 impl EmbeddingConfig {
-    /// Load configuration from environment variables.
+    /// Load configuration from the shared config file and environment variables.
+    ///
+    /// Loads base values from [`agentd_common::config::load`], then overlays
+    /// legacy service-specific environment variables for backward compatibility.
     ///
     /// | Variable                             | Default                       |
     /// |--------------------------------------|-------------------------------|
@@ -94,15 +99,42 @@ impl EmbeddingConfig {
     /// | `AGENTD_MEMORY_EMBEDDING_MODEL`      | `"text-embedding-3-small"`    |
     /// | `AGENTD_MEMORY_EMBEDDING_API_KEY`    | `None`                        |
     /// | `AGENTD_MEMORY_EMBEDDING_ENDPOINT`   | `None` (uses provider default)|
-    pub fn from_env() -> Self {
+    pub fn load() -> Self {
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
+        let base = shared.services.memory;
+
         Self {
             provider: env::var("AGENTD_MEMORY_EMBEDDING_PROVIDER")
-                .unwrap_or_else(|_| "none".to_string()),
-            model: env::var("AGENTD_MEMORY_EMBEDDING_MODEL")
-                .unwrap_or_else(|_| "text-embedding-3-small".to_string()),
+                .unwrap_or(base.embedding_provider),
+            model: env::var("AGENTD_MEMORY_EMBEDDING_MODEL").unwrap_or(base.embedding_model),
             api_key: env::var("AGENTD_MEMORY_EMBEDDING_API_KEY").ok(),
             base_url: env::var("AGENTD_MEMORY_EMBEDDING_ENDPOINT").ok(),
         }
+    }
+
+    /// Load configuration from environment variables.
+    #[deprecated(note = "Use load() instead")]
+    pub fn from_env() -> Self {
+        Self::load()
+    }
+}
+
+impl ValidateConfig for EmbeddingConfig {
+    /// Validate the embedding configuration.
+    ///
+    /// Returns an error if `provider` is not one of `"none"`, `"openai"`, or
+    /// `"ollama"`.
+    fn validate(&self) -> Result<()> {
+        match self.provider.as_str() {
+            "none" | "openai" | "ollama" => {}
+            other => {
+                bail!("memory.embedding_provider must be one of none, openai, ollama; got: {other}")
+            }
+        }
+        Ok(())
     }
 }
 
@@ -158,18 +190,47 @@ impl LanceConfig {
             .unwrap_or_else(|| PathBuf::from("lancedb"))
     }
 
-    /// Load configuration from environment variables.
+    /// Load configuration from the shared config file and environment variables.
+    ///
+    /// Loads base values from [`agentd_common::config::load`], then overlays
+    /// legacy service-specific environment variables for backward compatibility.
     ///
     /// | Variable                   | Default                         |
     /// |----------------------------|---------------------------------|
     /// | `AGENTD_MEMORY_LANCE_PATH` | XDG data dir / `lancedb`        |
     /// | `AGENTD_MEMORY_LANCE_TABLE`| `"memories"`                    |
-    pub fn from_env() -> Self {
+    pub fn load() -> Self {
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
+        let base = shared.services.memory;
+
         Self {
-            path: env::var("AGENTD_MEMORY_LANCE_PATH")
-                .unwrap_or_else(|_| Self::default_path().to_string_lossy().to_string()),
+            path: env::var("AGENTD_MEMORY_LANCE_PATH").unwrap_or(base.lance_path),
             table: env::var("AGENTD_MEMORY_LANCE_TABLE").unwrap_or_else(|_| "memories".to_string()),
         }
+    }
+
+    /// Load configuration from environment variables.
+    #[deprecated(note = "Use load() instead")]
+    pub fn from_env() -> Self {
+        Self::load()
+    }
+}
+
+impl ValidateConfig for LanceConfig {
+    /// Validate the LanceDB configuration.
+    ///
+    /// Returns an error if `path` or `table` is empty.
+    fn validate(&self) -> Result<()> {
+        if self.path.is_empty() {
+            bail!("memory.lance_path must not be empty");
+        }
+        if self.table.is_empty() {
+            bail!("memory.lance_table must not be empty");
+        }
+        Ok(())
     }
 }
 
@@ -180,6 +241,7 @@ impl LanceConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agentd_common::config::ValidateConfig;
 
     #[test]
     fn test_default_provider_is_none() {
@@ -205,6 +267,7 @@ mod tests {
         assert!(config.base_url.is_none());
     }
 
+    #[allow(deprecated)]
     #[test]
     fn test_from_env_defaults_when_vars_absent() {
         // Ensure vars are not set in this process
@@ -285,6 +348,7 @@ mod tests {
         assert!(config.path.contains("agentd-memory") || config.path.contains("lancedb"));
     }
 
+    #[allow(deprecated)]
     #[test]
     fn test_lance_from_env_defaults_when_vars_absent() {
         let config = LanceConfig::from_env();
@@ -308,5 +372,76 @@ mod tests {
         let cloned = config.clone();
         assert_eq!(cloned.path, config.path);
         assert_eq!(cloned.table, config.table);
+    }
+
+    // ── ValidateConfig for EmbeddingConfig ─────────────────────────────────
+
+    #[test]
+    fn test_embedding_validate_default_passes() {
+        let config = EmbeddingConfig::default();
+        assert!(config.validate().is_ok(), "default EmbeddingConfig should be valid");
+    }
+
+    #[test]
+    fn test_embedding_validate_none_provider_passes() {
+        let config = EmbeddingConfig { provider: "none".to_string(), ..Default::default() };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_embedding_validate_openai_provider_passes() {
+        let config = EmbeddingConfig { provider: "openai".to_string(), ..Default::default() };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_embedding_validate_ollama_provider_passes() {
+        let config = EmbeddingConfig { provider: "ollama".to_string(), ..Default::default() };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_embedding_validate_invalid_provider_fails() {
+        let config = EmbeddingConfig { provider: "huggingface".to_string(), ..Default::default() };
+        let err = config.validate().unwrap_err();
+        assert!(
+            err.to_string().contains("huggingface"),
+            "error should mention the invalid provider"
+        );
+    }
+
+    #[test]
+    fn test_embedding_validate_empty_provider_fails() {
+        let config = EmbeddingConfig { provider: "".to_string(), ..Default::default() };
+        assert!(config.validate().is_err());
+    }
+
+    // ── ValidateConfig for LanceConfig ─────────────────────────────────────
+
+    #[test]
+    fn test_lance_validate_default_passes() {
+        let config = LanceConfig::default();
+        assert!(config.validate().is_ok(), "default LanceConfig should be valid");
+    }
+
+    #[test]
+    fn test_lance_validate_empty_path_fails() {
+        let config = LanceConfig { path: "".to_string(), table: "memories".to_string() };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("path"), "error should mention path");
+    }
+
+    #[test]
+    fn test_lance_validate_empty_table_fails() {
+        let config = LanceConfig { path: "/tmp/lance".to_string(), table: "".to_string() };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("table"), "error should mention table");
+    }
+
+    #[test]
+    fn test_lance_validate_custom_values_pass() {
+        let config =
+            LanceConfig { path: "/data/lancedb".to_string(), table: "my_memories".to_string() };
+        assert!(config.validate().is_ok());
     }
 }
