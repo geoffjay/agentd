@@ -25,11 +25,13 @@ futures-util = "0.3"
 crossterm = { version = "0.28", features = ["event-stream"] }
 bytes = "1"
 serde_yaml = "0.9"
+toml = { workspace = true }
 urlencoding = "2.1"
 dialoguer = "0.11"
 dirs = "5"
 
 # Internal dependencies
+agentd-common = { path = "../common" }
 notify = { path = "../notify" }
 ask = { path = "../ask" }
 wrap = { path = "../wrap" }
@@ -47,3 +49,4 @@ index-service = []
 [dev-dependencies]
 mockito = "1.2"
 tokio-test = "0.4"
+tempfile = "3"

@@ -55,6 +55,8 @@ agent status
 
 For a complete walkthrough from first run to managing autonomous agents, see the **[Getting Started Guide](docs/public/getting-started.md)**.
 
+For configuration options (TOML file, environment variables, per-service settings), see the **[Configuration Reference](docs/configuration.md)**.
+
 ## Features
 
 ### Declarative YAML Templates

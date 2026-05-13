@@ -52,10 +52,21 @@
 //! | `AGENTD_INDEX_LANCE_PATH`            | `services.index.lance_path`                   |
 //! | `AGENTD_HOOK_PORT`                   | `services.hook.port`                          |
 //! | `AGENTD_HISTORY_SIZE`                | `services.hook.history_size`                  |
+//! | `AGENTD_NOTIFY_SERVICE_URL`          | `services.hook.notify_service_url`            |
 //! | `AGENTD_MONITOR_PORT`                | `services.monitor.port`                       |
+//! | `AGENTD_COLLECTION_INTERVAL_SECS`    | `services.monitor.collection_interval_secs`   |
 //! | `AGENTD_COMMUNICATE_PORT`            | `services.communicate.port`                   |
 //! | `AGENTD_CORE_PORT`                   | `services.core.port`                          |
 //! | `AGENTD_MCP_ORCHESTRATOR_URL`        | `services.mcp.orchestrator_url`               |
+//! | `AGENTD_MCP_NOTIFY_URL`              | `services.mcp.notify_url`                     |
+//! | `AGENTD_MCP_ASK_URL`                 | `services.mcp.ask_url`                        |
+//! | `AGENTD_MCP_MEMORY_URL`              | `services.mcp.memory_url`                     |
+//! | `AGENTD_MCP_COMMUNICATE_URL`         | `services.mcp.communicate_url`                |
+//! | `AGENTD_MCP_WRAP_URL`                | `services.mcp.wrap_url`                       |
+//! | `AGENTD_MCP_MONITOR_URL`             | `services.mcp.monitor_url`                    |
+//! | `AGENTD_MCP_HOOK_URL`                | `services.mcp.hook_url`                       |
+//! | `AGENTD_INDEX_LANGUAGES`             | `services.index.languages`                    |
+//! | `AGENTD_RECONCILE_INTERVAL_SECS`     | `services.orchestrator.reconcile_interval_secs` |
 //! | `AGENTD_UI_PORT`                     | `services.ui.port`                            |
 //! | `AGENTD_UI_DIR`                      | `services.ui.ui_dir`                          |
 //! | `AGENTD_RECONCILE_INTERVAL_SECS`     | `services.orchestrator.reconcile_interval_secs` |
@@ -82,11 +93,23 @@
 //! | `AGENTD_MCP_MONITOR_URL`             | `services.mcp.monitor_url`                      |
 //! | `AGENTD_MCP_HOOK_URL`                | `services.mcp.hook_url`                         |
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
+
+// ---------------------------------------------------------------------------
+// ValidateConfig trait
+// ---------------------------------------------------------------------------
+
+/// Trait for validating a configuration section.
+///
+/// Implementations should return `Ok(())` when the configuration is valid, or
+/// an error with a descriptive message indicating which field is invalid and why.
+pub trait ValidateConfig {
+    fn validate(&self) -> Result<()>;
+}
 
 // ---------------------------------------------------------------------------
 // GeneralConfig
@@ -471,6 +494,199 @@ pub struct AgentdConfig {
     pub general: GeneralConfig,
     /// Per-service configuration sections.
     pub services: ServicesConfig,
+}
+
+// ---------------------------------------------------------------------------
+// ValidateConfig implementations for shared config sections
+// ---------------------------------------------------------------------------
+
+/// Returns `Err` if the port is 0.
+fn validate_port(port: u16, service: &str) -> Result<()> {
+    if port == 0 {
+        bail!("{service}.port must be non-zero");
+    }
+    Ok(())
+}
+
+/// Returns `Err` if the string does not start with `http://` or `https://`.
+///
+/// Service crates can import this helper to avoid duplicating the same check
+/// in their own `ValidateConfig` implementations.
+pub fn validate_url(url: &str, field: &str) -> Result<()> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        bail!("{field} must be a valid HTTP/HTTPS URL, got: {url}");
+    }
+    Ok(())
+}
+
+impl ValidateConfig for AskConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "ask")
+    }
+}
+
+impl ValidateConfig for NotifyConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "notify")
+    }
+}
+
+impl ValidateConfig for OrchestratorConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "orchestrator")?;
+        match self.backend.as_str() {
+            "tmux" | "docker" | "pty" | "subprocess" => {}
+            other => bail!(
+                "orchestrator.backend must be one of tmux, docker, pty, subprocess; got: {other}"
+            ),
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for WrapConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "wrap")?;
+        match self.backend.as_str() {
+            "tmux" | "docker" | "pty" | "subprocess" => {}
+            other => {
+                bail!("wrap.backend must be one of tmux, docker, pty, subprocess; got: {other}")
+            }
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for MemoryConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "memory")?;
+        match self.embedding_provider.as_str() {
+            "none" | "ollama" | "openai" => {}
+            other => {
+                bail!("memory.embedding_provider must be one of none, ollama, openai; got: {other}")
+            }
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for IndexConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "index")?;
+        if self.languages.is_empty() {
+            bail!("index.languages must contain at least one language");
+        }
+        match self.embedding_provider.as_str() {
+            "ollama" | "openai" => {}
+            other => bail!("index.embedding_provider must be one of ollama, openai; got: {other}"),
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for HookConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "hook")?;
+        if self.history_size == 0 {
+            bail!("hook.history_size must be greater than 0");
+        }
+        if let Some(ref url) = self.notify_service_url {
+            validate_url(url, "hook.notify_service_url")?;
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for MonitorConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "monitor")?;
+        if self.collection_interval_secs == 0 {
+            bail!("monitor.collection_interval_secs must be greater than 0");
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for McpConfig {
+    fn validate(&self) -> Result<()> {
+        for (name, url) in [
+            ("mcp.orchestrator_url", self.orchestrator_url.as_str()),
+            ("mcp.notify_url", self.notify_url.as_str()),
+            ("mcp.ask_url", self.ask_url.as_str()),
+            ("mcp.memory_url", self.memory_url.as_str()),
+            ("mcp.communicate_url", self.communicate_url.as_str()),
+            ("mcp.wrap_url", self.wrap_url.as_str()),
+            ("mcp.monitor_url", self.monitor_url.as_str()),
+            ("mcp.hook_url", self.hook_url.as_str()),
+        ] {
+            validate_url(url, name)?;
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for UiConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "ui")?;
+        if self.ui_dir.is_empty() {
+            bail!("ui.ui_dir must not be empty");
+        }
+        Ok(())
+    }
+}
+
+impl ValidateConfig for CoreConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "core")
+    }
+}
+
+impl ValidateConfig for CommunicateConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "communicate")
+    }
+}
+
+impl AgentdConfig {
+    /// Validate all service configuration sections.
+    ///
+    /// Collects errors from every section rather than stopping at the first
+    /// failure, so operators see all problems at once.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error listing all invalid settings if any section fails
+    /// validation.
+    pub fn validate(&self) -> Result<()> {
+        let mut errors: Vec<String> = Vec::new();
+
+        let checks: &[(&str, Result<()>)] = &[
+            ("[services.ask]", self.services.ask.validate()),
+            ("[services.notify]", self.services.notify.validate()),
+            ("[services.orchestrator]", self.services.orchestrator.validate()),
+            ("[services.wrap]", self.services.wrap.validate()),
+            ("[services.memory]", self.services.memory.validate()),
+            ("[services.index]", self.services.index.validate()),
+            ("[services.hook]", self.services.hook.validate()),
+            ("[services.monitor]", self.services.monitor.validate()),
+            ("[services.mcp]", self.services.mcp.validate()),
+            ("[services.ui]", self.services.ui.validate()),
+            ("[services.core]", self.services.core.validate()),
+            ("[services.communicate]", self.services.communicate.validate()),
+        ];
+
+        for (section, result) in checks {
+            if let Err(e) = result {
+                errors.push(format!("{section}: {e}"));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            bail!("configuration validation failed:\n  {}", errors.join("\n  "))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1229,6 +1445,7 @@ languages = ["go", "ruby"]
 
     #[test]
     fn test_load_with_config_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut f = tempfile::NamedTempFile::new().unwrap();
         writeln!(
             f,
@@ -1330,6 +1547,7 @@ history_size = 1000
 
     #[test]
     fn test_precedence_file_beats_default() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut f = tempfile::NamedTempFile::new().unwrap();
         writeln!(f, "[services.core]\nport = 19000").unwrap();
 
@@ -1435,5 +1653,188 @@ history_size = 1000
         assert_eq!(cfg.services.index.lance_table, "code_chunks");
         assert_eq!(cfg.services.index.watch_interval_secs, 30);
         assert!(cfg.services.index.ignore_patterns.contains(&"target".to_string()));
+    }
+
+    // ── Edge cases: empty / unknown keys / concurrent load ─────────────────
+
+    #[test]
+    fn test_load_empty_file_uses_defaults() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let f = tempfile::NamedTempFile::new().unwrap();
+        // File exists but contains no content
+        let cfg = load_from_path(Some(f.path())).expect("load failed on empty file");
+        assert_eq!(cfg.services.ask.port, 17001);
+        assert_eq!(cfg.general.log_level, "info");
+    }
+
+    #[test]
+    fn test_load_unknown_keys_are_ignored() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // TOML with unknown top-level and nested keys must not cause an error.
+        // serde's default behaviour is to ignore unknown fields for structs
+        // annotated with `#[serde(default)]`.
+        let toml_str = r#"
+[general]
+log_level = "debug"
+totally_unknown_field = "should be ignored"
+
+[services.ask]
+port = 19001
+another_unknown = 42
+
+[unknown_section]
+foo = "bar"
+"#;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        write!(f, "{}", toml_str).unwrap();
+
+        let cfg = load_from_path(Some(f.path())).expect("unknown keys should not error");
+        assert_eq!(cfg.general.log_level, "debug");
+        assert_eq!(cfg.services.ask.port, 19001);
+        // Unmentioned fields keep defaults
+        assert_eq!(cfg.services.notify.port, 17004);
+    }
+
+    #[test]
+    fn test_full_precedence_chain() {
+        // Verify all three layers: default < file < env var
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        // File sets notify port to a non-default value
+        writeln!(f, "[services.notify]\nport = 19004").unwrap();
+        writeln!(f, "[services.ask]\nport = 19001").unwrap();
+
+        // Env var overrides ask port (beats file), notify port is file-only
+        env::set_var("AGENTD_ASK_PORT", "29001");
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        // Remove env var BEFORE asserting so a panic can't leave it set
+        env::remove_var("AGENTD_ASK_PORT");
+
+        // File beats default: notify port is 19004 (not 17004)
+        assert_eq!(cfg.services.notify.port, 19004);
+        // Env beats file: ask port is 29001 (not 19001 from file)
+        assert_eq!(cfg.services.ask.port, 29001);
+        // Untouched service uses compiled default: wrap port is 17005
+        assert_eq!(cfg.services.wrap.port, 17005);
+    }
+
+    #[test]
+    fn test_env_absent_preserves_file_value() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // When the env var is not set the file value should survive unchanged.
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        writeln!(f, "[general]\nlog_level = \"warn\"").unwrap();
+
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        assert_eq!(cfg.general.log_level, "warn");
+    }
+
+    #[test]
+    fn test_partial_toml_leaves_other_services_at_defaults() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let toml_str = r#"
+[services.monitor]
+port = 13003
+"#;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        write!(f, "{}", toml_str).unwrap();
+
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        // Changed service
+        assert_eq!(cfg.services.monitor.port, 13003);
+        // Everything else unchanged
+        assert_eq!(cfg.services.ask.port, 17001);
+        assert_eq!(cfg.services.notify.port, 17004);
+        assert_eq!(cfg.services.orchestrator.port, 17006);
+        assert_eq!(cfg.services.wrap.port, 17005);
+        assert_eq!(cfg.services.memory.port, 17008);
+        assert_eq!(cfg.services.index.port, 17012);
+        assert_eq!(cfg.services.hook.port, 17002);
+        assert_eq!(cfg.services.communicate.port, 17010);
+        assert_eq!(cfg.services.core.port, 17000);
+        assert_eq!(cfg.services.ui.port, 17009);
+    }
+
+    #[test]
+    fn test_all_default_ports_match_spec() {
+        let cfg = AgentdConfig::default();
+        let ports = [
+            ("core", cfg.services.core.port, 17000u16),
+            ("ask", cfg.services.ask.port, 17001),
+            ("hook", cfg.services.hook.port, 17002),
+            ("monitor", cfg.services.monitor.port, 17003),
+            ("notify", cfg.services.notify.port, 17004),
+            ("wrap", cfg.services.wrap.port, 17005),
+            ("orchestrator", cfg.services.orchestrator.port, 17006),
+            ("memory", cfg.services.memory.port, 17008),
+            ("ui", cfg.services.ui.port, 17009),
+            ("communicate", cfg.services.communicate.port, 17010),
+            ("index", cfg.services.index.port, 17012),
+        ];
+        for (name, actual, expected) in ports {
+            assert_eq!(actual, expected, "{} port mismatch", name);
+        }
+    }
+
+    #[test]
+    fn test_concurrent_load_returns_consistent_results() {
+        // Spin up multiple threads all calling load_from_path(None) concurrently
+        // and verify each gets the same default result.
+        use std::thread;
+
+        let mut handles = vec![];
+        for _ in 0..8 {
+            handles.push(thread::spawn(|| load_from_path(None).expect("concurrent load failed")));
+        }
+        let results: Vec<AgentdConfig> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let first = &results[0];
+        for r in &results[1..] {
+            assert_eq!(r.services.ask.port, first.services.ask.port);
+            assert_eq!(r.general.log_level, first.general.log_level);
+        }
+    }
+
+    #[test]
+    fn test_hook_notify_url_from_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        writeln!(f, "[services.hook]\nnotify_service_url = \"http://notify:9004\"").unwrap();
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        assert_eq!(cfg.services.hook.notify_service_url, Some("http://notify:9004".to_string()));
+    }
+
+    #[test]
+    fn test_mcp_urls_from_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let toml_str = r#"
+[services.mcp]
+orchestrator_url = "http://orch:7006"
+notify_url = "http://ntf:7004"
+"#;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        write!(f, "{}", toml_str).unwrap();
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        assert_eq!(cfg.services.mcp.orchestrator_url, "http://orch:7006");
+        assert_eq!(cfg.services.mcp.notify_url, "http://ntf:7004");
+        // Unset MCP URLs keep defaults
+        assert_eq!(cfg.services.mcp.ask_url, "http://127.0.0.1:17001");
+    }
+
+    #[test]
+    fn test_index_languages_from_file_overrides_default() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let toml_str = "[services.index]\nlanguages = [\"go\", \"java\"]\n";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write;
+        write!(f, "{}", toml_str).unwrap();
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        assert_eq!(cfg.services.index.languages, vec!["go", "java"]);
     }
 }

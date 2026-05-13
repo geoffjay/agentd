@@ -18,6 +18,8 @@
 //! | `AGENTD_INDEX_LANGUAGES`              | `rust,python,javascript,typescript`  | Comma-separated supported languages  |
 //! | `AGENTD_INDEX_IGNORE_PATTERNS`        | `.git,target,node_modules,dist`      | Comma-separated glob patterns        |
 
+use agentd_common::config::IndexConfig as SharedIndexConfig;
+use agentd_common::config::ValidateConfig;
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -92,6 +94,23 @@ impl EmbeddingConfig {
             api_key: env::var("AGENTD_INDEX_EMBEDDING_API_KEY").ok(),
         }
     }
+
+    /// Load embedding configuration using shared config base values as fallbacks.
+    ///
+    /// Uses the shared [`SharedIndexConfig`] for `provider` and `model` defaults,
+    /// while keeping `endpoint` and `api_key` as env-var-only settings.
+    pub fn load_with_base(base: &SharedIndexConfig) -> Self {
+        Self {
+            provider: env::var("AGENTD_INDEX_EMBEDDING_PROVIDER")
+                .unwrap_or_else(|_| base.embedding_provider.clone()),
+            model: env::var("AGENTD_INDEX_EMBEDDING_MODEL")
+                .unwrap_or_else(|_| base.embedding_model.clone()),
+            // TODO(#1201): migrate when shared schema adds embedding_endpoint
+            endpoint: env::var("AGENTD_INDEX_EMBEDDING_ENDPOINT")
+                .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
+            api_key: env::var("AGENTD_INDEX_EMBEDDING_API_KEY").ok(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +169,19 @@ impl LanceConfig {
         Self {
             path: env::var("AGENTD_INDEX_LANCE_PATH")
                 .unwrap_or_else(|_| Self::default_path().to_string_lossy().to_string()),
+            table: env::var("AGENTD_INDEX_LANCE_TABLE")
+                .unwrap_or_else(|_| "code_chunks".to_string()),
+        }
+    }
+
+    /// Load LanceDB configuration using shared config base values as fallbacks.
+    ///
+    /// Uses the shared [`SharedIndexConfig`] for `path` default, while `table`
+    /// has no shared equivalent and falls back to `"code_chunks"`.
+    pub fn load_with_base(base: &SharedIndexConfig) -> Self {
+        Self {
+            path: env::var("AGENTD_INDEX_LANCE_PATH").unwrap_or_else(|_| base.lance_path.clone()),
+            // TODO(#1201): migrate when shared schema adds lance_table
             table: env::var("AGENTD_INDEX_LANCE_TABLE")
                 .unwrap_or_else(|_| "code_chunks".to_string()),
         }
@@ -395,7 +427,10 @@ impl Default for IndexConfig {
 }
 
 impl IndexConfig {
-    /// Load configuration from environment variables, falling back to defaults.
+    /// Load configuration from the shared config file and environment variables.
+    ///
+    /// Loads base values from [`agentd_common::config::load`], then overlays
+    /// legacy service-specific environment variables for backward compatibility.
     ///
     /// | Variable                           | Default                             |
     /// |------------------------------------|-------------------------------------|
@@ -403,13 +438,19 @@ impl IndexConfig {
     /// | `AGENTD_INDEX_LANGUAGES`           | `rust,python,javascript,typescript` |
     /// | `AGENTD_INDEX_IGNORE_PATTERNS`     | `.git,target,node_modules,dist`     |
     /// | `AGENTD_INDEX_SUMMARY_ENABLED`     | `false`                             |
-    pub fn from_env() -> Self {
+    pub fn load() -> Self {
+        let shared = agentd_common::config::load().unwrap_or_else(|e| {
+            tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+            agentd_common::config::AgentdConfig::default()
+        });
+        let base = shared.services.index;
+
         let port =
-            env::var("AGENTD_PORT").ok().and_then(|v| v.parse::<u16>().ok()).unwrap_or(17012);
+            env::var("AGENTD_PORT").ok().and_then(|v| v.parse::<u16>().ok()).unwrap_or(base.port);
 
         let languages = env::var("AGENTD_INDEX_LANGUAGES")
             .map(|v| parse_csv(&v))
-            .unwrap_or_else(|_| default_languages());
+            .unwrap_or_else(|_| base.languages.clone());
 
         let ignore_patterns = env::var("AGENTD_INDEX_IGNORE_PATTERNS")
             .map(|v| parse_csv(&v))
@@ -417,8 +458,8 @@ impl IndexConfig {
 
         Self {
             port,
-            embedding: EmbeddingConfig::from_env(),
-            lance: LanceConfig::from_env(),
+            embedding: EmbeddingConfig::load_with_base(&base),
+            lance: LanceConfig::load_with_base(&base),
             watch: WatchConfig::from_env(),
             summary: SummaryConfig::from_env(),
             rerank: RerankConfig::from_env(),
@@ -427,6 +468,14 @@ impl IndexConfig {
         }
     }
 
+    /// Load configuration from environment variables, falling back to defaults.
+    #[deprecated(note = "Use load() instead")]
+    pub fn from_env() -> Self {
+        Self::load()
+    }
+}
+
+impl ValidateConfig for IndexConfig {
     /// Validate the configuration, returning an error for invalid values.
     ///
     /// Checks:
@@ -434,7 +483,7 @@ impl IndexConfig {
     /// - At least one language must be configured.
     /// - Watch interval must be non-zero.
     /// - Embedding provider must be `"ollama"` or `"openai"`.
-    pub fn validate(&self) -> Result<()> {
+    fn validate(&self) -> Result<()> {
         if self.port == 0 {
             bail!("port must be non-zero");
         }
@@ -482,6 +531,12 @@ fn default_ignore_patterns() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agentd_common::config::ValidateConfig;
+    use std::sync::Mutex;
+
+    /// Serialises tests that call `load()` / `from_env()` so env var mutations
+    /// from concurrent tests cannot bleed across.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     // ── EmbeddingConfig ────────────────────────────────────────────────────
 
@@ -509,6 +564,7 @@ mod tests {
         assert!(config.api_key.is_none());
     }
 
+    #[allow(deprecated)]
     #[test]
     fn test_embedding_from_env_defaults() {
         let config = EmbeddingConfig::from_env();
@@ -566,6 +622,7 @@ mod tests {
         assert!(path_str.contains("agentd-index") || path_str.contains("lancedb"));
     }
 
+    #[allow(deprecated)]
     #[test]
     fn test_lance_from_env_defaults() {
         let config = LanceConfig::from_env();
@@ -675,9 +732,25 @@ mod tests {
         assert!(config.ignore_patterns.contains(&"dist".to_string()));
     }
 
+    #[allow(deprecated)]
     #[test]
     fn test_index_from_env_defaults() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Clear env vars that could override defaults (e.g. AGENTD_PORT set by agentd itself)
+        let port_saved = env::var("AGENTD_PORT").ok();
+        let index_port_saved = env::var("AGENTD_INDEX_PORT").ok();
+        env::remove_var("AGENTD_PORT");
+        env::remove_var("AGENTD_INDEX_PORT");
+
         let config = IndexConfig::from_env();
+
+        if let Some(v) = port_saved {
+            env::set_var("AGENTD_PORT", v);
+        }
+        if let Some(v) = index_port_saved {
+            env::set_var("AGENTD_INDEX_PORT", v);
+        }
+
         assert_eq!(config.port, 17012);
         assert!(!config.languages.is_empty());
         assert!(!config.ignore_patterns.is_empty());
