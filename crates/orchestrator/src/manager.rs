@@ -134,6 +134,53 @@ impl AgentManager {
             }
         }
 
+        // Materialize skills into the agent's .claude/skills/ directory before
+        // the claude process is launched so that Claude Code discovers them on
+        // startup.  Missing skills produce a warning rather than a hard failure
+        // so that a typo in the skills list does not prevent the agent from
+        // starting entirely.
+        if !agent.config.skills.is_empty() {
+            let discovered = crate::skills::discover_all_skills();
+            match crate::skills::materialize_skills(
+                std::path::Path::new(&agent.config.working_dir),
+                &agent.config.skills,
+                &discovered,
+            )
+            .await
+            {
+                Ok(result) => {
+                    if !result.written.is_empty() {
+                        info!(
+                            agent_id = %agent.id,
+                            written = result.written.len(),
+                            "materialized skills into .claude/skills/"
+                        );
+                    }
+                    if !result.skipped.is_empty() {
+                        info!(
+                            agent_id = %agent.id,
+                            skipped = result.skipped.len(),
+                            "skipped skill materialization (agent-local files take precedence)"
+                        );
+                    }
+                    if !result.not_found.is_empty() {
+                        warn!(
+                            agent_id = %agent.id,
+                            missing = ?result.not_found,
+                            "some requested skills were not found in discovered skill set"
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        agent_id = %agent.id,
+                        error = %e,
+                        "skill materialization failed; agent will start without skills"
+                    );
+                }
+            }
+        }
+
         // Subprocess stdio mode takes precedence: agents communicate via
         // stdin/stdout NDJSON rather than WebSocket.
         let use_stdio = self.backend.supports_subprocess_stdio();
