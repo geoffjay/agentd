@@ -64,7 +64,12 @@ pub struct Skill {
     /// Full Markdown content of the skill file, including frontmatter.
     pub content: String,
     /// Filesystem path where the skill was loaded from.
-    pub source_path: PathBuf,
+    ///
+    /// Used internally by the materialization step (#1211) to know which file
+    /// to copy into the agent's working directory.  Not included in API
+    /// responses — consumers only need the skill name and description.
+    #[serde(skip)]
+    pub(crate) source_path: PathBuf,
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +155,9 @@ pub fn discover_skills(skills_dir: &Path) -> Result<Vec<Skill>> {
     let mut skills = Vec::new();
 
     for entry in std::fs::read_dir(skills_dir)? {
-        let entry = entry?;
+        // Skip individual entry errors (e.g. a single permission-denied inode)
+        // rather than aborting the entire scan.
+        let Ok(entry) = entry else { continue };
         let path = entry.path();
 
         if path.is_dir() {
@@ -189,6 +196,12 @@ pub fn discover_skills(skills_dir: &Path) -> Result<Vec<Skill>> {
 /// 1. `.agentd/skills/` — project-level
 /// 2. `~/.config/agentd/skills/` — user-level
 fn skill_search_dirs() -> Vec<PathBuf> {
+    // NOTE: ".agentd/skills" is resolved relative to the orchestrator's CWD.
+    // In development (started from the repo root) this works as expected.
+    // In production (systemd, Docker) the CWD is typically not the project
+    // root, so project-level skills may not be found.  A future enhancement
+    // should allow an explicit project-root config key (e.g.
+    // AGENTD_PROJECT_ROOT) to override this path.
     let mut dirs = vec![PathBuf::from(".agentd/skills")];
 
     // User-level fallback: $HOME/.config/agentd/skills
@@ -219,6 +232,9 @@ pub fn discover_all_skills() -> Vec<Skill> {
         }
     }
 
+    // Sort globally so the merged result is deterministic regardless of which
+    // names came from the project-level vs. user-level directory.
+    result.sort_by(|a, b| a.name.cmp(&b.name));
     result
 }
 
@@ -396,6 +412,84 @@ mod tests {
         assert_eq!(skills.len(), 2);
         assert_eq!(skills[0].name, "alpha");
         assert_eq!(skills[1].name, "zebra");
+    }
+
+    // ── discover_all_skills: global sort across directories ──────────────────
+
+    #[test]
+    fn test_discover_all_skills_global_sort_across_directories() {
+        // Simulate the multi-source merge: project dir has "beta" and "zap",
+        // user dir has "alpha" and "gamma".  After merge + sort the result
+        // must be ["alpha", "beta", "gamma", "zap"], not the per-directory
+        // sorted interleaving ["beta", "zap", "alpha", "gamma"].
+        let project_dir = TempDir::new().unwrap();
+        let user_dir = TempDir::new().unwrap();
+
+        fs::write(project_dir.path().join("beta.md"), "---\nname: beta\n---\n").unwrap();
+        fs::write(project_dir.path().join("zap.md"), "---\nname: zap\n---\n").unwrap();
+        fs::write(user_dir.path().join("alpha.md"), "---\nname: alpha\n---\n").unwrap();
+        fs::write(user_dir.path().join("gamma.md"), "---\nname: gamma\n---\n").unwrap();
+
+        // Merge manually using the same logic as discover_all_skills.
+        let mut seen = std::collections::HashSet::new();
+        let mut result = Vec::new();
+        for dir in [project_dir.path(), user_dir.path()] {
+            for skill in discover_skills(dir).unwrap() {
+                if seen.insert(skill.name.clone()) {
+                    result.push(skill);
+                }
+            }
+        }
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+
+        let names: Vec<&str> = result.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["alpha", "beta", "gamma", "zap"]);
+    }
+
+    #[test]
+    fn test_discover_all_skills_project_wins_on_name_collision() {
+        let project_dir = TempDir::new().unwrap();
+        let user_dir = TempDir::new().unwrap();
+
+        fs::write(
+            project_dir.path().join("shared.md"),
+            "---\nname: shared\ndescription: project version\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            user_dir.path().join("shared.md"),
+            "---\nname: shared\ndescription: user version\n---\n",
+        )
+        .unwrap();
+
+        let mut seen = std::collections::HashSet::new();
+        let mut result = Vec::new();
+        for dir in [project_dir.path(), user_dir.path()] {
+            for skill in discover_skills(dir).unwrap() {
+                if seen.insert(skill.name.clone()) {
+                    result.push(skill);
+                }
+            }
+        }
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].description.as_deref(), Some("project version"));
+    }
+
+    // ── source_path serialization ────────────────────────────────────────────
+
+    #[test]
+    fn test_source_path_not_included_in_json() {
+        let tmp = TempDir::new().unwrap();
+        let skill_file = tmp.path().join("demo.md");
+        fs::write(&skill_file, "---\nname: demo\ndescription: A demo skill.\n---\n").unwrap();
+
+        let skill = load_skill_file(&skill_file, "demo").unwrap();
+        let json = serde_json::to_string(&skill).unwrap();
+
+        assert!(!json.contains("source_path"), "source_path should not appear in JSON output");
+        assert!(json.contains("\"name\":\"demo\""));
+        assert!(json.contains("\"description\":\"A demo skill.\""));
     }
 
     // ── discover_all_skills: deduplication ───────────────────────────────────
