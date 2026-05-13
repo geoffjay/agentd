@@ -13,6 +13,8 @@
 //! | `AGENTD_WRAP_HISTORY_BYTES`   | `524288`   | PTY ring-buffer size in bytes (512 KiB)  |
 //! | `AGENTD_WRAP_CHANNEL_CAPACITY`| `256`      | PTY broadcast channel capacity           |
 
+use agentd_common::config::ValidateConfig;
+use anyhow::{bail, Result};
 use std::env;
 
 use crate::pty_stream::{DEFAULT_CHANNEL_CAPACITY, DEFAULT_HISTORY_BYTES};
@@ -91,6 +93,24 @@ impl WrapConfig {
     }
 }
 
+impl ValidateConfig for WrapConfig {
+    fn validate(&self) -> Result<()> {
+        if self.port == 0 {
+            bail!("wrap.port must be non-zero");
+        }
+        match self.backend.as_str() {
+            "tmux" | "docker" | "pty" | "subprocess" => {}
+            other => {
+                bail!("wrap.backend must be one of tmux, docker, pty, subprocess; got: {other}")
+            }
+        }
+        if self.channel_capacity < 1 {
+            bail!("wrap.channel_capacity must be at least 1");
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +168,56 @@ mod tests {
         env::remove_var("AGENTD_BACKEND");
         assert_eq!(config.port, 9005);
         assert_eq!(config.backend, "pty");
+    }
+
+    #[test]
+    fn test_validate_default_passes() {
+        let config = WrapConfig {
+            host: "127.0.0.1".to_string(),
+            port: 17005,
+            backend: "tmux".to_string(),
+            history_bytes: DEFAULT_HISTORY_BYTES,
+            channel_capacity: DEFAULT_CHANNEL_CAPACITY,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_zero_port_fails() {
+        let config = WrapConfig {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            backend: "tmux".to_string(),
+            history_bytes: DEFAULT_HISTORY_BYTES,
+            channel_capacity: DEFAULT_CHANNEL_CAPACITY,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_invalid_backend_fails() {
+        let config = WrapConfig {
+            host: "127.0.0.1".to_string(),
+            port: 17005,
+            backend: "unknown".to_string(),
+            history_bytes: DEFAULT_HISTORY_BYTES,
+            channel_capacity: DEFAULT_CHANNEL_CAPACITY,
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("unknown"));
+    }
+
+    #[test]
+    fn test_validate_all_valid_backends_pass() {
+        for backend in &["tmux", "docker", "pty", "subprocess"] {
+            let config = WrapConfig {
+                host: "127.0.0.1".to_string(),
+                port: 17005,
+                backend: backend.to_string(),
+                history_bytes: DEFAULT_HISTORY_BYTES,
+                channel_capacity: DEFAULT_CHANNEL_CAPACITY,
+            };
+            assert!(config.validate().is_ok(), "backend {backend} should be valid");
+        }
     }
 }

@@ -10,6 +10,7 @@
 //! | `RUST_LOG`          | `info`  | Log level / filter     |
 //! | `AGENTD_LOG_FORMAT` | (text)  | Set to `json` for JSON |
 
+use agentd_common::config::ValidateConfig;
 use axum::{extract::State, response::IntoResponse, routing::get};
 use metrics_exporter_prometheus::PrometheusHandle;
 use std::future::IntoFuture;
@@ -60,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::cors_layer());
 
     let cfg = agentd_core::config::CoreConfig::load();
+    cfg.validate()?;
     let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Core API listening on http://{}", addr);

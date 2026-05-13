@@ -11,6 +11,7 @@ mod system_agents;
 mod types;
 mod websocket;
 
+use agentd_common::config::ValidateConfig;
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
 use communicate::client::CommunicateClient;
@@ -58,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting agentd-orchestrator service...");
 
     let cfg = OrchestratorConfig::load();
+    cfg.validate()?;
 
     // Initialize storage.
     let storage = AgentStorage::new().await?;

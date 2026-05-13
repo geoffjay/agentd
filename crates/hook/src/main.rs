@@ -18,11 +18,14 @@
 //! AGENTD_LOG_FORMAT=json agentd-hook
 //! ```
 
+use agentd_common::config::ValidateConfig;
 use anyhow::Result;
 use hook::config::HookConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     agentd_common::server::init_tracing();
-    hook::run(HookConfig::load()).await
+    let cfg = HookConfig::load();
+    cfg.validate()?;
+    hook::run(cfg).await
 }

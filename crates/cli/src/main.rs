@@ -492,13 +492,13 @@ async fn main() -> Result<()> {
             check_all_services(cli.json).await?;
         }
         Commands::Hook => {
-            hook::run(hook::config::HookConfig::from_env()).await?;
+            hook::run(hook::config::HookConfig::load()).await?;
         }
         Commands::Monitor => {
-            monitor::run(monitor::config::MonitorConfig::from_env()).await?;
+            monitor::run(monitor::config::MonitorConfig::load()).await?;
         }
         Commands::Mcp => {
-            agentd_mcp::run(agentd_mcp::config::AgentdMcpConfig::from_env()).await?;
+            agentd_mcp::run(agentd_mcp::config::AgentdMcpConfig::load()).await?;
         }
         Commands::Memory { command } => {
             // Use AGENTD_MEMORY_SERVICE_URL env var, default to production port

@@ -68,6 +68,7 @@ mod notification;
 mod storage;
 mod types;
 
+use agentd_common::config::ValidateConfig;
 use api::{create_router, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
 use config::NotifyConfig;
@@ -160,6 +161,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(agentd_common::server::cors_layer());
 
     let cfg = NotifyConfig::load();
+    cfg.validate()?;
     let addr = format!("{}:{}", cfg.host, cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Notification API server listening on http://{}", addr);

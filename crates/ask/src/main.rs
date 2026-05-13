@@ -17,6 +17,7 @@ mod state;
 mod storage;
 mod types;
 
+use agentd_common::config::ValidateConfig;
 use anyhow::Result;
 use api::{create_router_with_tracing, ApiState};
 use axum::{extract::State, response::IntoResponse, routing::get};
@@ -45,6 +46,7 @@ async fn main() -> Result<()> {
     info!("Starting agentd-ask service...");
 
     let cfg = AskConfig::load();
+    cfg.validate()?;
     info!("Configuration: port={}, orchestrator={}", cfg.port, cfg.orchestrator_url);
 
     // Initialize persistent storage.
