@@ -107,6 +107,9 @@ impl AgentStorage {
             rooms: Set(
                 serde_json::to_string(&agent.config.rooms).unwrap_or_else(|_| "[]".to_string())
             ),
+            skills: Set(
+                serde_json::to_string(&agent.config.skills).unwrap_or_else(|_| "[]".to_string())
+            ),
             launch_command: Set(agent.launch_command.clone()),
             pid: Set(agent.pid.map(|p| p as i64)),
             project_id: Set(agent.project_id.map(|id| id.to_string())),
@@ -997,6 +1000,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
                 .and_then(|s| serde_json::from_str(s).ok()),
             additional_dirs: serde_json::from_str(&model.additional_dirs).unwrap_or_default(),
             rooms: serde_json::from_str(&model.rooms).unwrap_or_default(),
+            skills: serde_json::from_str(&model.skills).unwrap_or_default(),
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
@@ -1103,6 +1107,7 @@ mod tests {
                 resource_limits: None,
                 additional_dirs: vec![],
                 rooms: vec![],
+                skills: vec![],
             },
         )
     }

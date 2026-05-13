@@ -467,6 +467,10 @@ pub struct AgentConfig {
     /// Each entry is a room name — rooms will be created if they don't exist.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rooms: Vec<String>,
+    /// Skills to make available to this agent.
+    /// Names are resolved against discovered skills from .agentd/skills/.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<String>,
 }
 
 fn default_shell() -> String {
@@ -657,6 +661,10 @@ pub struct CreateAgentRequest {
     /// Rooms the agent should automatically join when it connects.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rooms: Vec<String>,
+    /// Skills to make available to this agent.
+    /// Names are resolved against discovered skills from .agentd/skills/.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<String>,
 }
 
 /// Response body for agent endpoints.
@@ -1067,6 +1075,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -1097,6 +1106,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -1125,6 +1135,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
@@ -1159,6 +1170,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1191,6 +1203,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1235,6 +1248,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -1270,6 +1284,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);
@@ -1389,6 +1404,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("docker_image"));
@@ -1425,6 +1441,7 @@ mod tests {
             }),
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("custom-image:v1"));
@@ -1471,6 +1488,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec!["/opt/configs".to_string(), "/shared/libs".to_string()],
             rooms: vec![],
+            skills: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("additional_dirs"));
@@ -1503,6 +1521,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
         let json = serde_json::to_string(&config).unwrap();
         // Empty vec should be omitted from JSON output
@@ -1863,6 +1882,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            skills: vec![],
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);

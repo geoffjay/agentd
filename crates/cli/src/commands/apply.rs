@@ -36,6 +36,28 @@ use uuid::Uuid;
 
 // ── YAML template types ──────────────────────────────────────────────
 
+/// The `skills` field in an agent YAML template.
+///
+/// Supports two forms:
+/// - `skills: all` — include every skill discovered from `.agentd/skills/`
+/// - `skills: [name1, name2]` — include specific skills by name
+///
+/// Omitting the field or setting `skills: []` assigns no skills (current behavior).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum SkillsField {
+    /// A string value — must be `"all"` to include all discovered skills.
+    All(String),
+    /// An explicit list of skill names to assign.
+    Named(Vec<String>),
+}
+
+impl Default for SkillsField {
+    fn default() -> Self {
+        SkillsField::Named(vec![])
+    }
+}
+
 /// YAML agent template (`.agentd/agents/<name>.yml`).
 #[derive(Debug, Deserialize)]
 pub struct AgentTemplate {
@@ -87,6 +109,13 @@ pub struct AgentTemplate {
     /// Rooms are created (if missing) during `agent apply` before agents start.
     #[serde(default)]
     pub rooms: Vec<AgentRoomConfig>,
+    /// Skills to make available to this agent.
+    ///
+    /// Use `skills: all` to include every discovered skill, or
+    /// `skills: [name1, name2]` for a specific set. Skill names are validated
+    /// against `.agentd/skills/` at apply time.
+    #[serde(default)]
+    pub skills: SkillsField,
 }
 
 fn default_working_dir() -> String {
@@ -1202,6 +1231,40 @@ async fn apply_agent(
         }
     });
 
+    // Resolve skills: validate named skills against discovered skills; expand "all".
+    let skills: Vec<String> = match &tmpl.skills {
+        SkillsField::All(s) if s == "all" => {
+            // Expand to all discovered skill names from .agentd/skills/ (and user-level dirs).
+            orchestrator::skills::discover_all_skills().into_iter().map(|sk| sk.name).collect()
+        }
+        SkillsField::All(s) => {
+            bail!(
+                "Agent '{}': invalid skills value '{}' — use 'all' to include all skills, or a list: [name1, name2]",
+                tmpl.name,
+                s
+            );
+        }
+        SkillsField::Named(names) if names.is_empty() => vec![],
+        SkillsField::Named(names) => {
+            let available = orchestrator::skills::discover_all_skills();
+            let available_names: std::collections::HashSet<&str> =
+                available.iter().map(|sk| sk.name.as_str()).collect();
+            let missing: Vec<&str> = names
+                .iter()
+                .filter(|n| !available_names.contains(n.as_str()))
+                .map(String::as_str)
+                .collect();
+            if !missing.is_empty() {
+                bail!(
+                    "Agent '{}' references unknown skill(s): {}. Run 'agent skill list' to see available skills.",
+                    tmpl.name,
+                    missing.join(", ")
+                );
+            }
+            names.clone()
+        }
+    };
+
     let request = CreateAgentRequest {
         name: tmpl.name.clone(),
         working_dir,
@@ -1227,6 +1290,7 @@ async fn apply_agent(
         resource_limits: tmpl.resource_limits.clone(),
         additional_dirs,
         rooms: tmpl.rooms.iter().map(|r| r.name().to_string()).collect(),
+        skills,
     };
 
     let agent = client.create_agent(&request).await?;

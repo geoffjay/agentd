@@ -27,6 +27,7 @@ mod m20260415_000013_add_builtin_to_agents;
 mod m20260417_000014_create_projects_table;
 mod m20260417_000015_add_project_id_to_agents_workflows;
 mod m20260417_000016_add_conversation_events;
+mod m20260513_000017_add_skills_to_agents;
 
 /// The migration runner — applies all known migrations in order.
 pub struct Migrator;
@@ -51,6 +52,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260417_000014_create_projects_table::Migration),
             Box::new(m20260417_000015_add_project_id_to_agents_workflows::Migration),
             Box::new(m20260417_000016_add_conversation_events::Migration),
+            Box::new(m20260513_000017_add_skills_to_agents::Migration),
         ]
     }
 }

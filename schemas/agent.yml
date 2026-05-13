@@ -27,6 +27,7 @@ propertyOrder:
   - auto_clear_threshold
   - additional_dirs
   - rooms
+  - skills
   - network_policy
   - docker_image
   - extra_mounts
@@ -202,6 +203,35 @@ properties:
             - engineering
             - name: operations
               role: observer
+
+  skills:
+    description: |
+      Skills to make available to this agent. Each entry is a skill name
+      that must exist in .agentd/skills/. Use "all" to include every
+      discovered skill, or provide a list of specific skill names.
+
+      Skills are written to .claude/skills/ in the agent's working directory
+      before the agent process is launched. The agent's own local skills
+      take precedence over materialized skills.
+    oneOf:
+      - type: array
+        items:
+          type: string
+        description: "Explicit list of skill names."
+      - type: string
+        enum: [all]
+        description: "Include all skills discovered from .agentd/skills/."
+    default: []
+    examples:
+      -
+        - "Specific skills"
+        - |
+          skills:
+            - git-spice
+            - agent-memory
+      -
+        - "All discovered skills"
+        - "skills: all"
 
 required:
   - name

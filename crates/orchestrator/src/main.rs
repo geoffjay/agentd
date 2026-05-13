@@ -6,6 +6,7 @@ mod manager;
 mod message_bridge;
 mod migration;
 mod scheduler;
+mod skills;
 mod storage;
 mod system_agents;
 mod types;
