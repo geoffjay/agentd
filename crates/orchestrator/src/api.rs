@@ -91,6 +91,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/approvals/{id}", get(get_approval))
         .route("/approvals/{id}/approve", post(approve_tool))
         .route("/approvals/{id}/deny", post(deny_tool))
+        .route("/skills", get(list_skills))
         .route("/debug/agents", get(debug_agents))
         .route("/events/ask", post(ask_event_handler))
         // Project management
@@ -635,6 +636,16 @@ struct DebugSummary {
     running_but_disconnected: Vec<Uuid>,
     connected_but_not_running: Vec<Uuid>,
     active_workflows: usize,
+}
+
+/// `GET /skills` — list all discoverable skills.
+///
+/// Scans `.agentd/skills/` (project-level) and `~/.config/agentd/skills/`
+/// (user-level) and returns a JSON array of [`Skill`] objects.  The list is
+/// sorted by name.  Returns an empty array when no skills directory exists.
+async fn list_skills() -> impl IntoResponse {
+    let skills = crate::skills::discover_all_skills();
+    Json(skills)
 }
 
 async fn debug_agents(State(state): State<ApiState>) -> Result<impl IntoResponse, ApiError> {
