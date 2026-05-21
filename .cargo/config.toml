@@ -2,8 +2,8 @@
 xtask = "run --package xtask --"
 
 # Uncomment after: brew install sccache
-[build]
-rustc-wrapper = "sccache"
+# [build]
+# rustc-wrapper = "sccache"
 
 # Uncomment after: brew install llvm
 # [target.aarch64-apple-darwin]

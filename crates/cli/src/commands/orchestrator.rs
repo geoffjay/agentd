@@ -378,16 +378,24 @@ pub enum OrchestratorCommand {
     ///
     ///   agent orchestrator stream 550e8400-e29b-41d4-a716-446655440000
     ///
+    /// Watch output from a named agent:
+    ///
+    ///   agent orchestrator stream --name my-agent
+    ///
     /// Watch output from all agents:
     ///
     ///   agent orchestrator stream --all
     Stream {
         /// Agent ID to stream (omit for --all)
-        #[arg(conflicts_with = "all")]
+        #[arg(conflicts_with = "all", conflicts_with = "name")]
         id: Option<String>,
 
+        /// Agent name to stream
+        #[arg(long, conflicts_with = "id", conflicts_with = "all")]
+        name: Option<String>,
+
         /// Stream output from all connected agents
-        #[arg(long, conflicts_with = "id")]
+        #[arg(long, conflicts_with = "id", conflicts_with = "name")]
         all: bool,
 
         /// Show keep-alive and debug messages
@@ -946,8 +954,15 @@ impl OrchestratorCommand {
             OrchestratorCommand::SendMessage { id, message, msg_stdin } => {
                 send_message_cmd(client, id, message.as_deref(), *msg_stdin, json).await
             }
-            OrchestratorCommand::Stream { id, all, verbose } => {
-                stream_agents(id.as_deref(), *all, *verbose, json).await
+            OrchestratorCommand::Stream { id, name, all, verbose } => {
+                let resolved_id = match (id.as_deref(), name.as_deref()) {
+                    (_, Some(n)) => {
+                        let uuid = resolve_agent_id(client, None, Some(n)).await?;
+                        Some(uuid.to_string())
+                    }
+                    _ => id.clone(),
+                };
+                stream_agents(resolved_id.as_deref(), *all, *verbose, json).await
             }
             OrchestratorCommand::GetPolicy { id } => get_policy(client, id, json).await,
             OrchestratorCommand::SetPolicy { id, policy } => {
@@ -1876,66 +1891,56 @@ fn format_stream_message(text: &str, verbose: bool) {
     let prefix = format!("[{}]", agent_short).bright_black();
 
     match msg_type {
-        "assistant" => {
-            if let Some(message) = msg.get("message") {
-                if let Some(content) = message.get("content") {
-                    if let Some(text) = content.as_str() {
-                        for line in text.lines() {
-                            println!("{} {}", prefix, line);
-                        }
-                    } else if let Some(blocks) = content.as_array() {
-                        for block in blocks {
-                            if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                                for line in text.lines() {
-                                    println!("{} {}", prefix, line);
-                                }
-                            } else if block.get("type").and_then(|v| v.as_str()) == Some("tool_use")
-                            {
-                                let tool =
-                                    block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                                println!(
-                                    "{} {}",
-                                    prefix,
-                                    format!("🔧 Using tool: {}", tool).yellow()
-                                );
-                            }
-                        }
-                    }
+        "agent:output" => {
+            if let Some(line) = msg.get("line").and_then(|v| v.as_str()) {
+                println!("{} {}", prefix, line);
+            }
+        }
+        "agent:tool_use" => {
+            let tool = msg.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let summary = msg.get("summary").and_then(|v| v.as_str());
+            let label = match summary {
+                Some(s) if !s.is_empty() => format!("🔧 {}: {}", tool, s),
+                _ => format!("🔧 {}", tool),
+            };
+            println!("{} {}", prefix, label.yellow());
+        }
+        "agent:thinking" => {
+            if verbose {
+                if let Some(text) = msg.get("text").and_then(|v| v.as_str()) {
+                    println!("{} {}", prefix, format!("💭 {}", text).bright_black());
                 }
             }
         }
-        "result" => {
-            let is_error = msg.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
-            let result_text = msg.get("result").and_then(|v| v.as_str()).unwrap_or("");
-            if is_error {
-                println!("{} {}", prefix, format!("❌ Error: {}", result_text).red());
-            } else {
-                let display = if result_text.is_empty() {
-                    "✅ Task completed".to_string()
-                } else if result_text.len() > 120 {
-                    format!("✅ {}", &result_text[..117])
-                } else {
-                    format!("✅ {}", result_text)
-                };
-                println!("{} {}", prefix, display.green());
-            }
-        }
-        "system" => {
+        "agent:activity_changed" => {
             if verbose {
-                let s = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
-                println!("{} {}", prefix, format!("[system:{}]", s).bright_black());
+                let activity = msg.get("activity").and_then(|v| v.as_str()).unwrap_or("unknown");
+                println!("{} {}", prefix, format!("[{}]", activity).bright_black());
             }
         }
-        "control_request" => {
-            if let Some(request) = msg.get("request") {
-                let tool = request.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                println!("{} {}", prefix, format!("⚡ Permission request: {}", tool).yellow());
-            }
-        }
-        "keep_alive" => {
+        "agent:usage_update" => {
             if verbose {
-                println!("{} {}", prefix, "♥ keep-alive".bright_black());
+                if let Some(usage) = msg.get("usage") {
+                    let input = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let output = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let cost =
+                        usage.get("total_cost_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    println!(
+                        "{} {}",
+                        prefix,
+                        format!("[usage: {}in {}out ${:.4}]", input, output, cost).bright_black()
+                    );
+                }
             }
+        }
+        "agent:context_cleared" => {
+            if verbose {
+                println!("{} {}", prefix, "[context cleared]".bright_black());
+            }
+        }
+        "pending_approval" => {
+            let tool = msg.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            println!("{} {}", prefix, format!("⚡ Approval required: {}", tool).yellow());
         }
         _ => {
             if verbose {
