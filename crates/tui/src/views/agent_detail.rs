@@ -13,29 +13,24 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
+    let inner_width = area.width.saturating_sub(2) as usize;
+    let input_rows = crate::input::compute_input_rows(&app.input_buffer, inner_width);
+    let input_box_height = input_rows.clamp(1, crate::input::MAX_INPUT_ROWS) + 2;
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),  // compact info bar
-            Constraint::Min(5),     // conversation
-            Constraint::Length(3),  // input box
+            Constraint::Length(5),
+            Constraint::Min(5),
+            Constraint::Length(input_box_height),
         ])
         .split(area);
 
     render_info(f, app, chunks[0]);
     render_conversation(f, app, chunks[1]);
     render_input(f, app, chunks[2]);
-
-    // Position the terminal cursor inside the input box when in input mode.
-    if app.input_mode {
-        let inner = chunks[2];
-        // Account for the block border (1 cell) and the "> " prefix (2 cells).
-        let cursor_col = inner.x + 1 + 2 + visible_cursor_col(app);
-        let cursor_row = inner.y + 1;
-        if cursor_col < inner.x + inner.width.saturating_sub(1) {
-            f.set_cursor_position((cursor_col, cursor_row));
-        }
-    }
+    // Cursor is rendered as a styled span inside the input lines; no
+    // set_cursor_position call needed.
 }
 
 fn render_info(f: &mut Frame, app: &App, area: Rect) {
@@ -130,7 +125,27 @@ fn render_conversation(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(para, area);
 }
 
-fn render_input(f: &mut Frame, app: &App, area: Rect) {
+fn render_input(f: &mut Frame, app: &mut App, area: Rect) {
+    let inner_width = area.width.saturating_sub(2) as usize;
+
+    // Expose inner_width so App::input_move_vertical can use the same geometry.
+    app.input_inner_width = inner_width;
+
+    // Keep cursor visible: adjust scroll so the cursor row stays in the viewport.
+    if app.input_mode {
+        let (cursor_row, _) =
+            crate::input::cursor_visual_pos(&app.input_buffer, app.input_cursor, inner_width);
+        let visible = area.height.saturating_sub(2) as u16;
+        if cursor_row < app.input_scroll {
+            app.input_scroll = cursor_row;
+        }
+        if visible > 0 && cursor_row >= app.input_scroll + visible {
+            app.input_scroll = cursor_row - visible + 1;
+        }
+    } else {
+        app.input_scroll = 0;
+    }
+
     let (border_style, title) = if app.input_mode {
         (Style::default().fg(Color::Cyan), " Send Message ")
     } else {
@@ -143,18 +158,18 @@ fn render_input(f: &mut Frame, app: &App, area: Rect) {
         .border_style(border_style)
         .title(title);
 
-    let text = if app.input_mode {
-        let before = &app.input_buffer[..app.input_cursor];
-        let after = &app.input_buffer[app.input_cursor..];
-        // Show a block cursor character at the insertion point.
-        format!("> {before}\u{2588}{after}")
-    } else if app.input_buffer.is_empty() {
-        String::new()
+    // White-block cursor is embedded as a styled span; no terminal cursor needed.
+    let cursor_byte = if app.input_mode { Some(app.input_cursor) } else { None };
+    let lines = if app.input_mode || !app.input_buffer.is_empty() {
+        crate::input::build_input_display_lines(&app.input_buffer, cursor_byte, inner_width)
     } else {
-        format!("> {}", app.input_buffer)
+        vec![]
     };
 
-    let para = Paragraph::new(text).block(block);
+    let para = Paragraph::new(lines)
+        .block(block)
+        .scroll((app.input_scroll, 0));
+
     f.render_widget(para, area);
 }
 
@@ -184,11 +199,6 @@ fn display_rows(lines: &[Line<'_>], width: usize) -> u16 {
 
 fn dim(s: &str) -> Span<'static> {
     Span::styled(s.to_string(), Style::default().fg(Color::DarkGray))
-}
-
-/// Number of visible columns the cursor is offset from the start of the input text.
-fn visible_cursor_col(app: &App) -> u16 {
-    app.input_buffer[..app.input_cursor].chars().count() as u16
 }
 
 fn build_lines(app: &App, _width: usize) -> Vec<Line<'static>> {

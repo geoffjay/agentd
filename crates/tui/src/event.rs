@@ -6,6 +6,7 @@ use tokio::time;
 
 pub enum Event {
     Key(KeyEvent),
+    Paste(String),
     Tick,
 }
 
@@ -27,6 +28,7 @@ impl EventHandler {
             event = self.reader.next() => {
                 match event {
                     Some(Ok(CrosstermEvent::Key(key))) => Ok(Event::Key(key)),
+                    Some(Ok(CrosstermEvent::Paste(text))) => Ok(Event::Paste(text)),
                     Some(Ok(_)) => Ok(Event::Tick),
                     Some(Err(e)) => Err(e.into()),
                     None => Err(anyhow::anyhow!("event stream closed")),

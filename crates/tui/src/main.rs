@@ -1,6 +1,7 @@
 mod app;
 mod config;
 mod event;
+mod input;
 mod stream;
 mod ui;
 mod views;
@@ -8,6 +9,7 @@ mod views;
 use anyhow::Result;
 use app::App;
 use crossterm::{
+    event::{DisableBracketedPaste, EnableBracketedPaste},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -21,7 +23,7 @@ async fn main() -> Result<()> {
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -29,7 +31,7 @@ async fn main() -> Result<()> {
     let result = run(&mut terminal, app).await;
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableBracketedPaste)?;
     terminal.show_cursor()?;
 
     result
@@ -51,6 +53,9 @@ async fn run<B: ratatui::backend::Backend>(
                 if app.handle_key(key).await {
                     break;
                 }
+            }
+            Event::Paste(text) => {
+                app.handle_paste(text).await;
             }
             Event::Tick => {
                 app.tick().await;

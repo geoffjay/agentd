@@ -98,7 +98,9 @@ pub struct App {
     // Prompt input (agent detail view)
     pub input_mode: bool,
     pub input_buffer: String,
-    pub input_cursor: usize, // byte offset into input_buffer
+    pub input_cursor: usize,      // byte offset into input_buffer
+    pub input_scroll: u16,        // visual row offset for the input box
+    pub input_inner_width: usize, // set by render_input each frame for geometry calculations
 
     pub loading: bool,
     pub error: Option<String>,
@@ -129,6 +131,8 @@ impl App {
             input_mode: false,
             input_buffer: String::new(),
             input_cursor: 0,
+            input_scroll: 0,
+            input_inner_width: 0,
             loading: false,
             error: None,
             active_tab: 0,
@@ -304,6 +308,7 @@ impl App {
                 self.input_mode = false;
                 self.input_buffer.clear();
                 self.input_cursor = 0;
+                self.input_scroll = 0;
                 self.view = View::AgentList;
                 self.selected_agent = None;
             }
@@ -329,6 +334,31 @@ impl App {
     fn input_insert(&mut self, ch: char) {
         self.input_buffer.insert(self.input_cursor, ch);
         self.input_cursor += ch.len_utf8();
+    }
+
+    fn input_insert_str(&mut self, s: &str) {
+        self.input_buffer.insert_str(self.input_cursor, s);
+        self.input_cursor += s.len();
+    }
+
+    fn input_move_up(&mut self) {
+        if self.input_inner_width == 0 { return; }
+        self.input_cursor = crate::input::cursor_move_vertical(
+            &self.input_buffer,
+            self.input_cursor,
+            -1,
+            self.input_inner_width,
+        );
+    }
+
+    fn input_move_down(&mut self) {
+        if self.input_inner_width == 0 { return; }
+        self.input_cursor = crate::input::cursor_move_vertical(
+            &self.input_buffer,
+            self.input_cursor,
+            1,
+            self.input_inner_width,
+        );
     }
 
     fn input_delete_before(&mut self) {
@@ -370,6 +400,24 @@ impl App {
             .unwrap_or(0);
     }
 
+    pub async fn handle_paste(&mut self, text: String) {
+        if !self.input_mode { return; }
+
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let lines: Vec<&str> = text.split('\n').collect();
+        let line_count = lines.len();
+
+        let content = if line_count <= 4 {
+            text.clone()
+        } else {
+            let extra = line_count - 4;
+            let noun = if extra == 1 { "line" } else { "lines" };
+            format!("{}\n[pasted +{} {}]", lines[..4].join("\n"), extra, noun)
+        };
+
+        self.input_insert_str(&content);
+    }
+
     async fn submit_message(&mut self) {
         let text = self.input_buffer.trim().to_string();
         if text.is_empty() { return; }
@@ -403,6 +451,14 @@ impl App {
                 KeyCode::Enter => {
                     self.submit_message().await;
                 }
+                KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.input_insert('\n');
+                }
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.input_buffer.clear();
+                    self.input_cursor = 0;
+                    self.input_scroll = 0;
+                }
                 KeyCode::Char(c) => {
                     self.input_insert(c);
                 }
@@ -417,6 +473,12 @@ impl App {
                 }
                 KeyCode::Right => {
                     self.input_move_right();
+                }
+                KeyCode::Up => {
+                    self.input_move_up();
+                }
+                KeyCode::Down => {
+                    self.input_move_down();
                 }
                 KeyCode::Home => {
                     self.input_cursor = 0;
