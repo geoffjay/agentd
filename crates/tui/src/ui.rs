@@ -1,10 +1,10 @@
 use crate::app::{App, View, WorkflowFocus};
 use crate::views;
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph, Tabs},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Tabs},
     Frame,
 };
 
@@ -25,6 +25,10 @@ pub fn render(f: &mut Frame, app: &mut App) {
     render_tabs(f, app, root[1]);
     render_content(f, app, root[2]);
     render_footer(f, app, root[3]);
+
+    if app.quitting {
+        render_quit_dialog(f, area);
+    }
 }
 
 fn render_header(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
@@ -89,6 +93,34 @@ fn render_content(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         View::WorkflowList => views::workflows::render(f, app, area),
         View::WorkflowDetail => views::workflow_detail::render(f, app, area),
     }
+}
+
+fn render_quit_dialog(f: &mut Frame, area: Rect) {
+    const W: u16 = 36;
+    const H: u16 = 5;
+    let x = area.x + area.width.saturating_sub(W) / 2;
+    let y = area.y + area.height.saturating_sub(H) / 2;
+    let dialog = Rect { x, y, width: W.min(area.width), height: H.min(area.height) };
+
+    f.render_widget(Clear, dialog);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(" Quit? ");
+
+    let text = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Y", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::raw(" confirm    "),
+            Span::styled("any key", Style::default().fg(Color::DarkGray)),
+            Span::raw(" cancel"),
+        ]),
+    ];
+
+    f.render_widget(Paragraph::new(text).block(block), dialog);
 }
 
 fn render_footer(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {

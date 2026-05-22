@@ -113,6 +113,7 @@ pub struct App {
     pub input_scroll: u16,        // visual row offset for the input box
     pub input_inner_width: usize, // set by render_input each frame for geometry calculations
 
+    pub quitting: bool,
     pub loading: bool,
     pub error: Option<String>,
     pub active_tab: usize,
@@ -148,6 +149,7 @@ impl App {
             input_cursor: 0,
             input_scroll: 0,
             input_inner_width: 0,
+            quitting: false,
             loading: false,
             error: None,
             active_tab: 0,
@@ -472,6 +474,14 @@ impl App {
 
     /// Returns `true` if the application should exit.
     pub async fn handle_key(&mut self, key: KeyEvent) -> bool {
+        // Quit-confirmation dialog takes priority over everything else.
+        if self.quitting {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Enter => return true,
+                _ => { self.quitting = false; return false; }
+            }
+        }
+
         if self.input_mode {
             match key.code {
                 KeyCode::Esc => {
@@ -521,7 +531,7 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Char('q') => return true,
+            KeyCode::Char('q') => { self.quitting = true; }
             KeyCode::Tab => self.switch_tab(true),
             KeyCode::BackTab => self.switch_tab(false),
             KeyCode::Down | KeyCode::Char('j') => match self.view {
