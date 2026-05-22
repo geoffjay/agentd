@@ -1,4 +1,4 @@
-use crate::app::{App, View};
+use crate::app::{App, View, WorkflowFocus};
 use crate::views;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
@@ -100,7 +100,11 @@ fn render_footer(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                 " ↑/k up  ↓/j down  Enter detail  Tab/S-Tab switch  r refresh  q quit"
             }
             View::AgentDetail => " i input  ↑/k scroll up  ↓/j scroll down  Esc back  q quit",
-            View::WorkflowDetail => " Esc back  q quit",
+            View::WorkflowDetail => match app.workflow_focus {
+                WorkflowFocus::Template => " ↑/↓ scroll template  t unfocus  q quit",
+                WorkflowFocus::Dispatches => " ↑/↓ scroll history  d unfocus  q quit",
+                WorkflowFocus::None => " t template  d dispatches  Esc back  q quit",
+            },
         }
     };
 

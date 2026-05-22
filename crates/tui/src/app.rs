@@ -2,7 +2,7 @@ use crate::config::TuiConfig;
 use crate::stream;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use orchestrator::client::OrchestratorClient;
-use orchestrator::scheduler::types::WorkflowResponse;
+use orchestrator::scheduler::types::{DispatchResponse, WorkflowResponse};
 use orchestrator::types::{AgentResponse, ConversationHistoryQuery};
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
@@ -72,6 +72,13 @@ impl From<serde_json::Value> for ConversationEntry {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum WorkflowFocus {
+    None,
+    Template,
+    Dispatches,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum View {
     AgentList,
     AgentDetail,
@@ -89,6 +96,10 @@ pub struct App {
     pub workflows: Vec<WorkflowResponse>,
     pub workflow_table_state: TableState,
     pub selected_workflow: Option<WorkflowResponse>,
+    pub workflow_dispatches: Vec<DispatchResponse>,
+    pub workflow_template_scroll: u16,
+    pub workflow_dispatch_scroll: u16,
+    pub workflow_focus: WorkflowFocus,
 
     // Conversation pane (agent detail view)
     pub conversation: Vec<ConversationEntry>,
@@ -125,6 +136,10 @@ impl App {
             workflows: Vec::new(),
             workflow_table_state: TableState::default(),
             selected_workflow: None,
+            workflow_dispatches: Vec::new(),
+            workflow_template_scroll: 0,
+            workflow_dispatch_scroll: 0,
+            workflow_focus: WorkflowFocus::None,
             conversation: Vec::new(),
             conversation_scroll: 0,
             conversation_follow: true,
@@ -167,6 +182,12 @@ impl App {
 
         if let Some(ref sel) = self.selected_agent.clone() {
             self.selected_agent = self.agents.iter().find(|a| a.id == sel.id).cloned();
+        }
+
+        if let Some(ref wf) = self.selected_workflow.clone() {
+            if let Ok(resp) = self.client.dispatch_history(&wf.id).await {
+                self.workflow_dispatches = resp.items;
+            }
         }
 
         self.loading = false;
@@ -268,9 +289,19 @@ impl App {
         self.stream_abort = Some(abort);
     }
 
-    fn enter_workflow_detail(&mut self, wf: WorkflowResponse) {
+    async fn enter_workflow_detail(&mut self, wf: WorkflowResponse) {
+        self.workflow_dispatches.clear();
+        self.workflow_template_scroll = 0;
+        self.workflow_dispatch_scroll = 0;
+        self.workflow_focus = WorkflowFocus::None;
+
+        let id = wf.id;
         self.selected_workflow = Some(wf);
         self.view = View::WorkflowDetail;
+
+        if let Ok(resp) = self.client.dispatch_history(&id).await {
+            self.workflow_dispatches = resp.items;
+        }
     }
 
     pub async fn enter_detail(&mut self) {
@@ -285,7 +316,7 @@ impl App {
             View::WorkflowList => {
                 if let Some(idx) = self.workflow_table_state.selected() {
                     if let Some(wf) = self.workflows.get(idx).cloned() {
-                        self.enter_workflow_detail(wf);
+                        self.enter_workflow_detail(wf).await;
                     }
                 }
             }
@@ -315,6 +346,10 @@ impl App {
             View::WorkflowDetail => {
                 self.view = View::WorkflowList;
                 self.selected_workflow = None;
+                self.workflow_dispatches.clear();
+                self.workflow_template_scroll = 0;
+                self.workflow_dispatch_scroll = 0;
+                self.workflow_focus = WorkflowFocus::None;
             }
             _ => {}
         }
@@ -489,27 +524,61 @@ impl App {
             KeyCode::Char('q') => return true,
             KeyCode::Tab => self.switch_tab(true),
             KeyCode::BackTab => self.switch_tab(false),
-            KeyCode::Down | KeyCode::Char('j') => {
-                if self.view == View::AgentDetail {
-                    self.scroll_conversation_down(u16::MAX);
-                } else {
-                    self.select_next();
-                }
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.view == View::AgentDetail {
-                    self.scroll_conversation_up();
-                } else {
-                    self.select_prev();
-                }
-            }
+            KeyCode::Down | KeyCode::Char('j') => match self.view {
+                View::AgentDetail => self.scroll_conversation_down(u16::MAX),
+                View::WorkflowDetail => match self.workflow_focus {
+                    WorkflowFocus::Template => {
+                        self.workflow_template_scroll =
+                            self.workflow_template_scroll.saturating_add(1);
+                    }
+                    _ => {
+                        self.workflow_dispatch_scroll =
+                            self.workflow_dispatch_scroll.saturating_add(1);
+                    }
+                },
+                _ => self.select_next(),
+            },
+            KeyCode::Up | KeyCode::Char('k') => match self.view {
+                View::AgentDetail => self.scroll_conversation_up(),
+                View::WorkflowDetail => match self.workflow_focus {
+                    WorkflowFocus::Template => {
+                        self.workflow_template_scroll =
+                            self.workflow_template_scroll.saturating_sub(1);
+                    }
+                    _ => {
+                        self.workflow_dispatch_scroll =
+                            self.workflow_dispatch_scroll.saturating_sub(1);
+                    }
+                },
+                _ => self.select_prev(),
+            },
             KeyCode::Enter => {
                 self.enter_detail().await;
             }
-            KeyCode::Esc => self.go_back(),
+            KeyCode::Esc => {
+                if self.view == View::WorkflowDetail
+                    && self.workflow_focus != WorkflowFocus::None
+                {
+                    self.workflow_focus = WorkflowFocus::None;
+                } else {
+                    self.go_back();
+                }
+            }
             KeyCode::Char('r') => self.refresh().await,
             KeyCode::Char('i') if self.view == View::AgentDetail => {
                 self.input_mode = true;
+            }
+            KeyCode::Char('t') if self.view == View::WorkflowDetail => {
+                self.workflow_focus = match self.workflow_focus {
+                    WorkflowFocus::Template => WorkflowFocus::None,
+                    _ => WorkflowFocus::Template,
+                };
+            }
+            KeyCode::Char('d') if self.view == View::WorkflowDetail => {
+                self.workflow_focus = match self.workflow_focus {
+                    WorkflowFocus::Dispatches => WorkflowFocus::None,
+                    _ => WorkflowFocus::Dispatches,
+                };
             }
             _ => {}
         }
