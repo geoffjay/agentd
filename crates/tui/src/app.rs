@@ -437,12 +437,6 @@ impl App {
 
     /// Returns `true` if the application should exit.
     pub async fn handle_key(&mut self, key: KeyEvent) -> bool {
-        // Global quit bindings — always active.
-        match key.code {
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return true,
-            _ => {}
-        }
-
         if self.input_mode {
             match key.code {
                 KeyCode::Esc => {
