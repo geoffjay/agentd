@@ -14,6 +14,7 @@ members = [
     "crates/notify",
     "crates/orchestrator",
     "crates/ollama",
+    "crates/tui",
     "crates/ui",
     "crates/wrap",
     "crates/xtask",
