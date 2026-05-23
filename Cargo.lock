@@ -91,6 +91,7 @@ dependencies = [
  "chrono",
  "crossterm",
  "futures-util",
+ "memory",
  "orchestrator",
  "ratatui",
  "serde",

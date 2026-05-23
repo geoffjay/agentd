@@ -434,7 +434,8 @@ impl IndexConfig {
     ///
     /// | Variable                           | Default                             |
     /// |------------------------------------|-------------------------------------|
-    /// | `AGENTD_PORT`                      | `17012`                             |
+    /// | `AGENTD_INDEX_PORT`                | `17012`                             |
+    /// | `AGENTD_PORT`                      | (legacy fallback)                   |
     /// | `AGENTD_INDEX_LANGUAGES`           | `rust,python,javascript,typescript` |
     /// | `AGENTD_INDEX_IGNORE_PATTERNS`     | `.git,target,node_modules,dist`     |
     /// | `AGENTD_INDEX_SUMMARY_ENABLED`     | `false`                             |
@@ -445,8 +446,11 @@ impl IndexConfig {
         });
         let base = shared.services.index;
 
-        let port =
-            env::var("AGENTD_PORT").ok().and_then(|v| v.parse::<u16>().ok()).unwrap_or(base.port);
+        let port = env::var("AGENTD_INDEX_PORT")
+            .or_else(|_| env::var("AGENTD_PORT"))
+            .ok()
+            .and_then(|v| v.parse::<u16>().ok())
+            .unwrap_or(base.port);
 
         let languages = env::var("AGENTD_INDEX_LANGUAGES")
             .map(|v| parse_csv(&v))

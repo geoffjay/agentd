@@ -8,7 +8,8 @@
 //! | Variable                       | Default                   | Description                          |
 //! |--------------------------------|---------------------------|--------------------------------------|
 //! | `AGENTD_HOST`                  | `127.0.0.1`               | HTTP bind host                       |
-//! | `AGENTD_PORT`                  | `17006`                   | HTTP listen port                     |
+//! | `AGENTD_ORCHESTRATOR_PORT`     | `17006`                   | HTTP listen port                     |
+//! | `AGENTD_PORT`                  | —                         | Fallback port (legacy)               |
 //! | `AGENTD_BACKEND`               | `tmux`                    | Execution backend                    |
 //! | `AGENTD_DOCKER_IMAGE`          | (docker default)          | Docker image for agent containers    |
 //! | `AGENTD_COMMUNICATE_SERVICE_URL`| `http://localhost:17010` | Communicate service URL              |
@@ -49,8 +50,11 @@ impl OrchestratorConfig {
         let base = shared.services.orchestrator;
 
         let host = env::var("AGENTD_HOST").unwrap_or(shared.general.host);
-        let port =
-            env::var("AGENTD_PORT").ok().and_then(|v| v.parse::<u16>().ok()).unwrap_or(base.port);
+        let port = env::var("AGENTD_ORCHESTRATOR_PORT")
+            .or_else(|_| env::var("AGENTD_PORT"))
+            .ok()
+            .and_then(|v| v.parse::<u16>().ok())
+            .unwrap_or(base.port);
         let docker_image = env::var("AGENTD_DOCKER_IMAGE").ok();
         let communicate_url =
             env::var("AGENTD_COMMUNICATE_SERVICE_URL").unwrap_or(base.communicate_url);
@@ -135,6 +139,26 @@ mod tests {
         env::remove_var("AGENTD_RECONCILE_INTERVAL_SECS");
         assert_eq!(config.port, 9006);
         assert_eq!(config.reconcile_interval_secs, 60);
+    }
+
+    #[test]
+    fn test_service_specific_port_override() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_ORCHESTRATOR_PORT", "7006");
+        let config = OrchestratorConfig::load();
+        env::remove_var("AGENTD_ORCHESTRATOR_PORT");
+        assert_eq!(config.port, 7006);
+    }
+
+    #[test]
+    fn test_service_specific_port_takes_priority_over_generic() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_ORCHESTRATOR_PORT", "7006");
+        env::set_var("AGENTD_PORT", "9006");
+        let config = OrchestratorConfig::load();
+        env::remove_var("AGENTD_ORCHESTRATOR_PORT");
+        env::remove_var("AGENTD_PORT");
+        assert_eq!(config.port, 7006);
     }
 
     #[test]

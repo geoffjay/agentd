@@ -48,7 +48,11 @@ impl MonitorConfig {
         let base = shared.services.monitor;
 
         Self {
-            port: env::var("AGENTD_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(base.port),
+            port: env::var("AGENTD_MONITOR_PORT")
+                .or_else(|_| env::var("AGENTD_PORT"))
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(base.port),
             collection_interval_secs: env::var("AGENTD_COLLECTION_INTERVAL_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())

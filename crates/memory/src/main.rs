@@ -15,7 +15,7 @@
 //! | Variable                             | Default                        | Description                     |
 //! |--------------------------------------|--------------------------------|---------------------------------|
 //! | `RUST_LOG`                           | `info`                         | Log level                       |
-//! | `AGENTD_PORT`                        | `17008`                        | Listen port                     |
+//! | `AGENTD_MEMORY_PORT`                 | `17008`                        | Listen port                     |
 //! | `AGENTD_MEMORY_EMBEDDING_PROVIDER`   | `none`                         | `openai` or `none`              |
 //! | `AGENTD_MEMORY_EMBEDDING_MODEL`      | `text-embedding-3-small`       | Model name                      |
 //! | `AGENTD_MEMORY_EMBEDDING_API_KEY`    | —                              | API key for remote providers    |

@@ -8,7 +8,8 @@
 //! | Variable                  | Default                    | Description               |
 //! |---------------------------|----------------------------|---------------------------|
 //! | `AGENTD_HOST`             | `0.0.0.0`                  | HTTP bind host            |
-//! | `AGENTD_PORT`             | `17001`                    | HTTP listen port          |
+//! | `AGENTD_ASK_PORT`         | `17001`                    | HTTP listen port          |
+//! | `AGENTD_PORT`             | —                          | Fallback port (legacy)    |
 //! | `AGENTD_ORCHESTRATOR_URL` | `http://localhost:17006`   | Orchestrator callback URL |
 
 use agentd_common::config::ValidateConfig;
@@ -40,8 +41,11 @@ impl AskConfig {
 
         // ask historically defaulted to 0.0.0.0 (accept from any interface)
         let host = env::var("AGENTD_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-        let port =
-            env::var("AGENTD_PORT").ok().and_then(|v| v.parse::<u16>().ok()).unwrap_or(base.port);
+        let port = env::var("AGENTD_ASK_PORT")
+            .or_else(|_| env::var("AGENTD_PORT"))
+            .ok()
+            .and_then(|v| v.parse::<u16>().ok())
+            .unwrap_or(base.port);
         let orchestrator_url = env::var("AGENTD_ORCHESTRATOR_URL").unwrap_or(base.orchestrator_url);
 
         Self { host, port, orchestrator_url }
@@ -109,6 +113,26 @@ mod tests {
         env::remove_var("AGENTD_ORCHESTRATOR_URL");
         assert_eq!(config.port, 9001);
         assert_eq!(config.orchestrator_url, "http://10.0.0.1:17006");
+    }
+
+    #[test]
+    fn test_service_specific_port_override() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_ASK_PORT", "7001");
+        let config = AskConfig::load();
+        env::remove_var("AGENTD_ASK_PORT");
+        assert_eq!(config.port, 7001);
+    }
+
+    #[test]
+    fn test_service_specific_port_takes_priority_over_generic() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_ASK_PORT", "7001");
+        env::set_var("AGENTD_PORT", "9001");
+        let config = AskConfig::load();
+        env::remove_var("AGENTD_ASK_PORT");
+        env::remove_var("AGENTD_PORT");
+        assert_eq!(config.port, 7001);
     }
 
     #[test]

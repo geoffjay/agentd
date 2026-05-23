@@ -61,10 +61,10 @@
 //! # Service URLs
 //!
 //! The CLI connects to services running on localhost (default dev ports):
-//! - Notification service: `http://localhost:7004` (override with `AGENTD_NOTIFY_SERVICE_URL`)
-//! - Ask service: `http://localhost:7001` (override with `AGENTD_ASK_SERVICE_URL`)
-//! - Wrap service: `http://localhost:7005` (override with `AGENTD_WRAP_SERVICE_URL`)
-//! - Orchestrator service: `http://localhost:7006` (override with `AGENTD_ORCHESTRATOR_SERVICE_URL`)
+//! - Notification service: `http://localhost:17004` (override with `AGENTD_NOTIFY_SERVICE_URL`)
+//! - Ask service: `http://localhost:17001` (override with `AGENTD_ASK_SERVICE_URL`)
+//! - Wrap service: `http://localhost:17005` (override with `AGENTD_WRAP_SERVICE_URL`)
+//! - Orchestrator service: `http://localhost:17006` (override with `AGENTD_ORCHESTRATOR_SERVICE_URL`)
 //!
 //! # Architecture
 //!
@@ -124,7 +124,7 @@ enum Commands {
     ///
     /// Manage notifications from various sources including agent hooks, ask service,
     /// monitor service, and system notifications. The notification service runs on
-    /// port 7004 by default.
+    /// port 17004 by default.
     Notify {
         #[command(subcommand)]
         command: NotifyCommand,
@@ -132,7 +132,7 @@ enum Commands {
     /// Interact with the ask service
     ///
     /// Trigger periodic checks and answer questions from the ask service. The ask
-    /// service runs on port 7001 by default and can create notifications when checks
+    /// service runs on port 17001 by default and can create notifications when checks
     /// require user attention.
     Ask {
         #[command(subcommand)]
@@ -141,7 +141,7 @@ enum Commands {
     /// Interact with the wrap service
     ///
     /// Launch and manage agents in tmux sessions. The wrap service runs on
-    /// port 7005 by default and handles agent lifecycle management including
+    /// port 17005 by default and handles agent lifecycle management including
     /// launching agents with proper configuration and monitoring their health.
     Wrap {
         #[command(subcommand)]
@@ -150,7 +150,7 @@ enum Commands {
     /// Interact with the orchestrator service
     ///
     /// Manage AI agents and autonomous workflows. The orchestrator service
-    /// runs on port 7006 by default and handles agent lifecycle management,
+    /// runs on port 17006 by default and handles agent lifecycle management,
     /// workflow scheduling, and task dispatch.
     Orchestrator {
         #[command(subcommand)]
@@ -232,7 +232,7 @@ enum Commands {
     ///
     /// The hook daemon monitors shell and git hook events, recording them and
     /// creating notifications when user intervention may be required.
-    /// Default port: 17002 (dev) / 7002 (production).
+    /// Default port: 17002.
     Hook,
     /// Start the monitor daemon
     ///
@@ -242,7 +242,7 @@ enum Commands {
     /// Interact with the memory service
     ///
     /// Store, retrieve, and semantically search agent memory records. The memory
-    /// service runs on port 7008 by default and uses LanceDB for vector storage
+    /// service runs on port 17008 by default and uses LanceDB for vector storage
     /// with SQLite for metadata.
     Memory {
         #[command(subcommand)]
@@ -413,10 +413,10 @@ enum Commands {
 ///
 /// # Service Connections
 ///
-/// - Notify commands connect to `http://localhost:7004`
-/// - Ask commands connect to `http://localhost:7001`
-/// - Wrap commands connect to `http://localhost:7005`
-/// - Orchestrator commands connect to `http://localhost:7006`
+/// - Notify commands connect to `http://localhost:17004`
+/// - Ask commands connect to `http://localhost:17001`
+/// - Wrap commands connect to `http://localhost:17005`
+/// - Orchestrator commands connect to `http://localhost:17006`
 ///
 /// # Error Handling
 ///
@@ -430,34 +430,34 @@ async fn main() -> Result<()> {
         Commands::Notify { command } => {
             // Use AGENTD_NOTIFY_SERVICE_URL env var, default to production port
             let url = env::var("AGENTD_NOTIFY_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7004".to_string());
+                .unwrap_or_else(|_| "http://localhost:17004".to_string());
             let client = NotifyClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Ask { command } => {
             // Use AGENTD_ASK_SERVICE_URL env var, default to production port
             let url = env::var("AGENTD_ASK_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7001".to_string());
+                .unwrap_or_else(|_| "http://localhost:17001".to_string());
             let client = AskClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Wrap { command } => {
             // Use AGENTD_WRAP_SERVICE_URL env var, default to production port
             let url = env::var("AGENTD_WRAP_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7005".to_string());
+                .unwrap_or_else(|_| "http://localhost:17005".to_string());
             let client = WrapClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Orchestrator { command } => {
             // Use AGENTD_ORCHESTRATOR_SERVICE_URL env var, default to production port
             let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+                .unwrap_or_else(|_| "http://localhost:17006".to_string());
             let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::Apply { path, dry_run, wait_timeout } => {
             let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+                .unwrap_or_else(|_| "http://localhost:17006".to_string());
             let client = OrchestratorClient::new(url);
             if path.is_dir() {
                 commands::apply::apply_directory(&client, &path, dry_run, wait_timeout, cli.json)
@@ -480,7 +480,7 @@ async fn main() -> Result<()> {
         }
         Commands::Teardown { path, dry_run } => {
             let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+                .unwrap_or_else(|_| "http://localhost:17006".to_string());
             let client = OrchestratorClient::new(url);
             commands::apply::teardown_directory(&client, &path, dry_run, cli.json).await?;
         }
@@ -503,7 +503,7 @@ async fn main() -> Result<()> {
         Commands::Memory { command } => {
             // Use AGENTD_MEMORY_SERVICE_URL env var, default to production port
             let url = env::var("AGENTD_MEMORY_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7008".to_string());
+                .unwrap_or_else(|_| "http://localhost:17008".to_string());
             let client = MemoryClient::new(url);
             command.execute(&client, cli.json).await?;
         }
@@ -516,7 +516,7 @@ async fn main() -> Result<()> {
         }
         Commands::Prompt { command } => {
             let orch_url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+                .unwrap_or_else(|_| "http://localhost:17006".to_string());
             let comm_url = env::var("AGENTD_COMMUNICATE_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:17010".to_string());
             let orch_client = OrchestratorClient::new(orch_url);
@@ -541,13 +541,13 @@ async fn main() -> Result<()> {
         }
         Commands::Project { command } => {
             let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+                .unwrap_or_else(|_| "http://localhost:17006".to_string());
             let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
         }
         Commands::SystemAgents { command } => {
             let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7006".to_string());
+                .unwrap_or_else(|_| "http://localhost:17006".to_string());
             let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
         }
@@ -566,37 +566,37 @@ const SERVICES: &[ServiceDef] = &[
     ServiceDef {
         name: "orchestrator",
         env_var: "AGENTD_ORCHESTRATOR_SERVICE_URL",
-        default_url: "http://localhost:7006",
+        default_url: "http://localhost:17006",
     },
     ServiceDef {
         name: "notify",
         env_var: "AGENTD_NOTIFY_SERVICE_URL",
-        default_url: "http://localhost:7004",
+        default_url: "http://localhost:17004",
     },
     ServiceDef {
         name: "ask",
         env_var: "AGENTD_ASK_SERVICE_URL",
-        default_url: "http://localhost:7001",
+        default_url: "http://localhost:17001",
     },
     ServiceDef {
         name: "wrap",
         env_var: "AGENTD_WRAP_SERVICE_URL",
-        default_url: "http://localhost:7005",
+        default_url: "http://localhost:17005",
     },
     ServiceDef {
         name: "hook",
         env_var: "AGENTD_HOOK_SERVICE_URL",
-        default_url: "http://localhost:7002",
+        default_url: "http://localhost:17002",
     },
     ServiceDef {
         name: "monitor",
         env_var: "AGENTD_MONITOR_SERVICE_URL",
-        default_url: "http://localhost:7003",
+        default_url: "http://localhost:17003",
     },
     ServiceDef {
         name: "memory",
         env_var: "AGENTD_MEMORY_SERVICE_URL",
-        default_url: "http://localhost:7008",
+        default_url: "http://localhost:17008",
     },
     ServiceDef {
         name: "core",

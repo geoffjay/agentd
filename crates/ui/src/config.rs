@@ -38,17 +38,18 @@ impl UiConfig {
         let base = shared.services.ui;
 
         Self {
-            port: std::env::var("AGENTD_PORT")
+            port: std::env::var("AGENTD_UI_PORT")
+                .or_else(|_| std::env::var("AGENTD_PORT"))
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(base.port),
             ui_dir: std::env::var("AGENTD_UI_DIR").unwrap_or(base.ui_dir),
             ask_service_url: std::env::var("AGENTD_ASK_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7001".to_string()),
+                .unwrap_or_else(|_| "http://localhost:17001".to_string()),
             notify_service_url: std::env::var("AGENTD_NOTIFY_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7004".to_string()),
+                .unwrap_or_else(|_| "http://localhost:17004".to_string()),
             orchestrator_service_url: std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:7006".to_string()),
+                .unwrap_or_else(|_| "http://localhost:17006".to_string()),
             index_service_url: std::env::var("AGENTD_INDEX_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:17012".to_string()),
         }

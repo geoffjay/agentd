@@ -24,3 +24,4 @@ chrono = { workspace = true }
 uuid = { version = "1.11", features = ["serde"] }
 agentd-common = { path = "../common" }
 orchestrator = { path = "../orchestrator" }
+memory = { path = "../memory" }

@@ -342,7 +342,7 @@ impl LinuxPlatform {
 /// units, `default.target` for user units.
 pub fn generate_unit_file(service: &ServiceInfo, bin_path: &Path, system: bool) -> String {
     let mut env_lines =
-        format!("Environment=RUST_LOG=info\nEnvironment=AGENTD_PORT={}", service.port);
+        format!("Environment=RUST_LOG=info\nEnvironment={}={}", service.port_env, service.port);
 
     for (key, value) in service.extra_env {
         env_lines.push_str(&format!("\nEnvironment={}={}", key, value));
@@ -462,14 +462,19 @@ mod tests {
 
     #[test]
     fn test_generate_unit_file_basic() {
-        let info =
-            ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, extra_env: &[] };
+        let info = ServiceInfo {
+            name: "notify",
+            binary: "agentd-notify",
+            port: 7004,
+            port_env: "AGENTD_NOTIFY_PORT",
+            extra_env: &[],
+        };
         let bin_path = Path::new("/home/user/.local/bin/agentd-notify");
         let unit = generate_unit_file(&info, bin_path, false);
 
         assert!(unit.contains("Description=agentd-notify service"));
         assert!(unit.contains("ExecStart=/home/user/.local/bin/agentd-notify"));
-        assert!(unit.contains("Environment=AGENTD_PORT=7004"));
+        assert!(unit.contains("Environment=AGENTD_NOTIFY_PORT=7004"));
         assert!(unit.contains("Environment=RUST_LOG=info"));
         assert!(unit.contains("Restart=on-failure"));
         assert!(unit.contains("WantedBy=default.target"));
@@ -480,8 +485,13 @@ mod tests {
 
     #[test]
     fn test_generate_unit_file_system_mode() {
-        let info =
-            ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, extra_env: &[] };
+        let info = ServiceInfo {
+            name: "notify",
+            binary: "agentd-notify",
+            port: 7004,
+            port_env: "AGENTD_NOTIFY_PORT",
+            extra_env: &[],
+        };
         let bin_path = Path::new("/usr/local/bin/agentd-notify");
         let unit = generate_unit_file(&info, bin_path, true);
 
@@ -495,13 +505,14 @@ mod tests {
             name: "ask",
             binary: "agentd-ask",
             port: 7001,
+            port_env: "AGENTD_ASK_PORT",
             extra_env: &[("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004")],
         };
         let bin_path = Path::new("/usr/local/bin/agentd-ask");
         let unit = generate_unit_file(&info, bin_path, true);
 
         assert!(unit.contains("Description=agentd-ask service"));
-        assert!(unit.contains("Environment=AGENTD_PORT=7001"));
+        assert!(unit.contains("Environment=AGENTD_ASK_PORT=7001"));
         assert!(unit.contains("Environment=AGENTD_NOTIFY_SERVICE_URL=http://localhost:7004"));
     }
 
@@ -513,7 +524,7 @@ mod tests {
 
             assert!(unit.contains(&format!("Description=agentd-{} service", service.name)));
             assert!(unit.contains(&format!("ExecStart=/usr/local/bin/{}", service.binary)));
-            assert!(unit.contains(&format!("Environment=AGENTD_PORT={}", service.port)));
+            assert!(unit.contains(&format!("Environment={}={}", service.port_env, service.port)));
         }
     }
 }

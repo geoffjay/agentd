@@ -209,11 +209,10 @@ impl Platform for MacOSPlatform {
 }
 
 /// Generate a LaunchAgent plist XML string for a service.
-#[allow(dead_code)]
 pub fn generate_plist(service: &ServiceInfo, bin_path: &Path, log_dir: &Path) -> String {
     let mut env_entries = format!(
-        "        <key>RUST_LOG</key>\n        <string>info</string>\n        <key>AGENTD_PORT</key>\n        <string>{}</string>",
-        service.port
+        "        <key>RUST_LOG</key>\n        <string>info</string>\n        <key>{}</key>\n        <string>{}</string>",
+        service.port_env, service.port
     );
 
     for (key, value) in service.extra_env {
@@ -388,19 +387,16 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
 fn install_plists(plist_dir: &Path) -> Result<()> {
     println!("{}", "Installing service plists...".blue());
 
-    let plist_src_dir = Path::new("contrib/plists");
+    let bin_dir = PathBuf::from("/Applications/Agent.app/Contents/MacOS");
+    let log_dir = PathBuf::from("/usr/local/var/log");
 
     for service in SERVICES {
         let plist_name = format!("com.geoffjay.agentd-{}.plist", service.name);
-        let src = plist_src_dir.join(&plist_name);
         let dest = plist_dir.join(&plist_name);
-
-        if src.exists() {
-            fs::copy(src, dest).context(format!("Failed to install {plist_name}"))?;
-            println!("  {} {}", "✓".green(), plist_name);
-        } else {
-            println!("  {} {} (not found)", "⚠".yellow(), plist_name);
-        }
+        let bin_path = bin_dir.join(service.binary);
+        let content = generate_plist(service, &bin_path, &log_dir);
+        fs::write(&dest, content).context(format!("Failed to write {plist_name}"))?;
+        println!("  {} {}", "✓".green(), plist_name);
     }
 
     Ok(())
@@ -507,14 +503,20 @@ mod tests {
 
     #[test]
     fn test_generate_plist_basic() {
-        let info =
-            ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, extra_env: &[] };
+        let info = ServiceInfo {
+            name: "notify",
+            binary: "agentd-notify",
+            port: 7004,
+            port_env: "AGENTD_NOTIFY_PORT",
+            extra_env: &[],
+        };
         let bin_path = Path::new("/Applications/Agent.app/Contents/MacOS/agentd-notify");
         let log_dir = Path::new("/usr/local/var/log");
         let plist = generate_plist(&info, bin_path, log_dir);
 
         assert!(plist.contains("com.geoffjay.agentd-notify"));
         assert!(plist.contains("/Applications/Agent.app/Contents/MacOS/agentd-notify"));
+        assert!(plist.contains("AGENTD_NOTIFY_PORT"));
         assert!(plist.contains("<string>7004</string>"));
         assert!(plist.contains("RUST_LOG"));
         assert!(plist.contains("<true/>")); // RunAtLoad
@@ -528,6 +530,7 @@ mod tests {
             name: "ask",
             binary: "agentd-ask",
             port: 7001,
+            port_env: "AGENTD_ASK_PORT",
             extra_env: &[("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004")],
         };
         let bin_path = Path::new("/Applications/Agent.app/Contents/MacOS/agentd-ask");
@@ -535,6 +538,7 @@ mod tests {
         let plist = generate_plist(&info, bin_path, log_dir);
 
         assert!(plist.contains("com.geoffjay.agentd-ask"));
+        assert!(plist.contains("AGENTD_ASK_PORT"));
         assert!(plist.contains("<string>7001</string>"));
         assert!(plist.contains("AGENTD_NOTIFY_SERVICE_URL"));
         assert!(plist.contains("http://localhost:7004"));

@@ -29,7 +29,7 @@
     <dict>
         <key>RUST_LOG</key>
         <string>info</string>
-        <key>AGENTD_PORT</key>
+        <key>AGENTD_UI_PORT</key>
         <string>7009</string>
         <key>AGENTD_UI_DIR</key>
         <string>/Applications/Agent.app/Contents/Resources/ui</string>

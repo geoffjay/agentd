@@ -8,7 +8,8 @@
 //! | Variable        | Default       | Description      |
 //! |-----------------|---------------|------------------|
 //! | `AGENTD_HOST`   | `127.0.0.1`   | HTTP bind host   |
-//! | `AGENTD_PORT`   | `17010`       | HTTP listen port |
+//! | `AGENTD_COMMUNICATE_PORT` | `17010` | HTTP listen port |
+//! | `AGENTD_PORT`   | —             | Fallback port (legacy) |
 
 use agentd_common::config::ValidateConfig;
 use anyhow::{bail, Result};
@@ -36,7 +37,8 @@ impl CommunicateConfig {
         });
 
         let host = env::var("AGENTD_HOST").unwrap_or(shared.general.host);
-        let port = env::var("AGENTD_PORT")
+        let port = env::var("AGENTD_COMMUNICATE_PORT")
+            .or_else(|_| env::var("AGENTD_PORT"))
             .ok()
             .and_then(|v| v.parse::<u16>().ok())
             .unwrap_or(shared.services.communicate.port);
@@ -89,6 +91,26 @@ mod tests {
         let config = CommunicateConfig::load();
         env::remove_var("AGENTD_PORT");
         assert_eq!(config.port, 9010);
+    }
+
+    #[test]
+    fn test_service_specific_port_override() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_COMMUNICATE_PORT", "7010");
+        let config = CommunicateConfig::load();
+        env::remove_var("AGENTD_COMMUNICATE_PORT");
+        assert_eq!(config.port, 7010);
+    }
+
+    #[test]
+    fn test_service_specific_port_takes_priority_over_generic() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_COMMUNICATE_PORT", "7010");
+        env::set_var("AGENTD_PORT", "9010");
+        let config = CommunicateConfig::load();
+        env::remove_var("AGENTD_COMMUNICATE_PORT");
+        env::remove_var("AGENTD_PORT");
+        assert_eq!(config.port, 7010);
     }
 
     #[test]

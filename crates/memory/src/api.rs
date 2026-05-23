@@ -35,20 +35,20 @@
 //!
 //! ```bash
 //! # Health check
-//! curl http://localhost:7008/health
+//! curl http://localhost:17008/health
 //!
 //! # Create a memory
-//! curl -X POST http://localhost:7008/memories \
+//! curl -X POST http://localhost:17008/memories \
 //!   -H "Content-Type: application/json" \
 //!   -d '{"content": "Paris is the capital of France.", "created_by": "agent-1"}'
 //!
 //! # Semantic search
-//! curl -X POST http://localhost:7008/memories/search \
+//! curl -X POST http://localhost:17008/memories/search \
 //!   -H "Content-Type: application/json" \
 //!   -d '{"query": "capital of France", "limit": 5}'
 //!
 //! # Update visibility
-//! curl -X PUT http://localhost:7008/memories/mem_123_abc/visibility \
+//! curl -X PUT http://localhost:17008/memories/mem_123_abc/visibility \
 //!   -H "Content-Type: application/json" \
 //!   -d '{"visibility": "shared", "shared_with": ["agent-2"]}'
 //! ```

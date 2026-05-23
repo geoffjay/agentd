@@ -29,6 +29,10 @@ pub fn render(f: &mut Frame, app: &mut App) {
     if app.quitting {
         render_quit_dialog(f, area);
     }
+
+    if app.memory_dialog.is_open() {
+        views::memories::render_dialog(f, app, area);
+    }
 }
 
 fn render_header(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
@@ -71,6 +75,7 @@ fn render_tabs(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let tab_titles = vec![
         Line::from(format!(" Agents ({}) ", app.agents.len())),
         Line::from(format!(" Workflows ({}) ", app.workflows.len())),
+        Line::from(format!(" Memories ({}) ", app.memories.len())),
     ];
 
     let tabs = Tabs::new(tab_titles)
@@ -92,6 +97,7 @@ fn render_content(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         View::AgentDetail => views::agent_detail::render(f, app, area),
         View::WorkflowList => views::workflows::render(f, app, area),
         View::WorkflowDetail => views::workflow_detail::render(f, app, area),
+        View::MemoryList | View::MemoryDetail => views::memories::render(f, app, area),
     }
 }
 
@@ -124,7 +130,7 @@ fn render_quit_dialog(f: &mut Frame, area: Rect) {
 }
 
 fn render_footer(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let hints = if app.input_mode {
+    let hints: &str = if app.input_mode {
         " Enter send  Esc cancel  ←/→ move cursor"
     } else {
         match app.view {
@@ -137,6 +143,15 @@ fn render_footer(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                 WorkflowFocus::Dispatches => " ↑/↓ scroll history  d unfocus  q quit",
                 WorkflowFocus::None => " t template  d dispatches  Esc back  q quit",
             },
+            View::MemoryList => {
+                let has_filter = app.memory_search.is_some() || !app.memory_tag_filter.is_empty();
+                if has_filter {
+                    " s search  t tags  Esc clear  ↑/k up  ↓/j down  Enter detail  r refresh  q quit"
+                } else {
+                    " s search  t tags  ↑/k up  ↓/j down  Enter detail  Tab/S-Tab switch  r refresh  q quit"
+                }
+            }
+            View::MemoryDetail => " ↑/k scroll up  ↓/j scroll down  Esc back  q quit",
         }
     };
 

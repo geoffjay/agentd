@@ -11,7 +11,7 @@
 //! use memory::types::*;
 //!
 //! # async fn example() -> anyhow::Result<()> {
-//! let client = MemoryClient::new("http://localhost:7008");
+//! let client = MemoryClient::new("http://localhost:17008");
 //!
 //! // Create a memory
 //! let request = CreateMemoryRequest {
@@ -51,7 +51,7 @@ use agentd_common::types::PaginatedResponse;
 /// ```
 /// use memory::client::MemoryClient;
 ///
-/// let client = MemoryClient::new("http://localhost:7008");
+/// let client = MemoryClient::new("http://localhost:17008");
 /// ```
 #[derive(Clone)]
 pub struct MemoryClient {
@@ -64,7 +64,7 @@ impl MemoryClient {
     ///
     /// # Arguments
     ///
-    /// * `base_url` - The base URL for the memory service (e.g., `"http://localhost:7008"`)
+    /// * `base_url` - The base URL for the memory service (e.g., `"http://localhost:17008"`)
     pub fn new(base_url: impl Into<String>) -> Self {
         Self { client: reqwest::Client::new(), base_url: base_url.into() }
     }
@@ -234,20 +234,20 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = MemoryClient::new("http://localhost:7008");
-        assert_eq!(client.base_url, "http://localhost:7008");
+        let client = MemoryClient::new("http://localhost:17008");
+        assert_eq!(client.base_url, "http://localhost:17008");
     }
 
     #[test]
     fn test_client_creation_with_string() {
-        let url = String::from("http://localhost:7008");
+        let url = String::from("http://localhost:17008");
         let client = MemoryClient::new(url);
-        assert_eq!(client.base_url, "http://localhost:7008");
+        assert_eq!(client.base_url, "http://localhost:17008");
     }
 
     #[test]
     fn test_client_clone() {
-        let client1 = MemoryClient::new("http://localhost:7008");
+        let client1 = MemoryClient::new("http://localhost:17008");
         let client2 = client1.clone();
         assert_eq!(client1.base_url, client2.base_url);
     }

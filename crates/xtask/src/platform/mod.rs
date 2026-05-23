@@ -19,7 +19,9 @@ pub struct ServiceInfo {
     pub binary: &'static str,
     /// Production port number.
     pub port: u16,
-    /// Additional environment variables beyond RUST_LOG and AGENTD_PORT.
+    /// Environment variable name used to override the port (e.g. "AGENTD_NOTIFY_PORT").
+    pub port_env: &'static str,
+    /// Additional environment variables beyond RUST_LOG and the port var.
     pub extra_env: &'static [(&'static str, &'static str)],
 }
 
@@ -29,22 +31,78 @@ pub const SERVICES: &[ServiceInfo] = &[
         name: "ask",
         binary: "agentd-ask",
         port: 7001,
+        port_env: "AGENTD_ASK_PORT",
         extra_env: &[("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004")],
     },
-    ServiceInfo { name: "hook", binary: "agentd-hook", port: 7002, extra_env: &[] },
-    ServiceInfo { name: "monitor", binary: "agentd-monitor", port: 7003, extra_env: &[] },
-    ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, extra_env: &[] },
-    ServiceInfo { name: "wrap", binary: "agentd-wrap", port: 7005, extra_env: &[] },
-    ServiceInfo { name: "orchestrator", binary: "agentd-orchestrator", port: 7006, extra_env: &[] },
-    ServiceInfo { name: "memory", binary: "agentd-memory", port: 7008, extra_env: &[] },
-    ServiceInfo { name: "communicate", binary: "agentd-communicate", port: 7010, extra_env: &[] },
+    ServiceInfo {
+        name: "hook",
+        binary: "agentd-hook",
+        port: 7002,
+        port_env: "AGENTD_HOOK_PORT",
+        extra_env: &[],
+    },
+    ServiceInfo {
+        name: "monitor",
+        binary: "agentd-monitor",
+        port: 7003,
+        port_env: "AGENTD_MONITOR_PORT",
+        extra_env: &[],
+    },
+    ServiceInfo {
+        name: "notify",
+        binary: "agentd-notify",
+        port: 7004,
+        port_env: "AGENTD_NOTIFY_PORT",
+        extra_env: &[],
+    },
+    ServiceInfo {
+        name: "wrap",
+        binary: "agentd-wrap",
+        port: 7005,
+        port_env: "AGENTD_WRAP_PORT",
+        extra_env: &[],
+    },
+    ServiceInfo {
+        name: "orchestrator",
+        binary: "agentd-orchestrator",
+        port: 7006,
+        port_env: "AGENTD_ORCHESTRATOR_PORT",
+        extra_env: &[("AGENTD_ORCHESTRATOR_COMMUNICATE_URL", "http://localhost:7010")],
+    },
+    ServiceInfo {
+        name: "memory",
+        binary: "agentd-memory",
+        port: 7008,
+        port_env: "AGENTD_MEMORY_PORT",
+        extra_env: &[],
+    },
+    ServiceInfo {
+        name: "communicate",
+        binary: "agentd-communicate",
+        port: 7010,
+        port_env: "AGENTD_COMMUNICATE_PORT",
+        extra_env: &[],
+    },
     #[cfg(feature = "index-service")]
-    ServiceInfo { name: "index", binary: "agentd-index", port: 17012, extra_env: &[] },
-    ServiceInfo { name: "core", binary: "agentd-core", port: 7000, extra_env: &[] },
+    ServiceInfo {
+        name: "index",
+        binary: "agentd-index",
+        port: 17012,
+        port_env: "AGENTD_INDEX_PORT",
+        extra_env: &[],
+    },
+    ServiceInfo {
+        name: "core",
+        binary: "agentd-core",
+        port: 7000,
+        port_env: "AGENTD_CORE_PORT",
+        extra_env: &[],
+    },
     ServiceInfo {
         name: "ui",
         binary: "agentd-ui",
         port: 7009,
+        port_env: "AGENTD_UI_PORT",
         extra_env: &[
             ("AGENTD_ASK_SERVICE_URL", "http://localhost:7001"),
             ("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004"),
@@ -152,6 +210,7 @@ mod tests {
         let info = get_service_info("notify").unwrap();
         assert_eq!(info.binary, "agentd-notify");
         assert_eq!(info.port, 7004);
+        assert_eq!(info.port_env, "AGENTD_NOTIFY_PORT");
     }
 
     #[test]
@@ -164,6 +223,7 @@ mod tests {
         let info = get_service_info("ask").unwrap();
         assert_eq!(info.extra_env.len(), 1);
         assert_eq!(info.extra_env[0].0, "AGENTD_NOTIFY_SERVICE_URL");
+        assert_eq!(info.extra_env[0].1, "http://localhost:7004");
     }
 
     #[test]

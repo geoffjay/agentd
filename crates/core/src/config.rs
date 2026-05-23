@@ -8,7 +8,8 @@
 //! | Variable        | Default       | Description          |
 //! |-----------------|---------------|----------------------|
 //! | `AGENTD_HOST`   | `127.0.0.1`   | HTTP bind host       |
-//! | `AGENTD_PORT`   | `17000`       | HTTP listen port     |
+//! | `AGENTD_CORE_PORT` | `17000`     | HTTP listen port     |
+//! | `AGENTD_PORT`   | —             | Fallback port (legacy) |
 
 use agentd_common::config::ValidateConfig;
 use anyhow::{bail, Result};
@@ -36,7 +37,8 @@ impl CoreConfig {
         });
 
         let host = env::var("AGENTD_HOST").unwrap_or(shared.general.host);
-        let port = env::var("AGENTD_PORT")
+        let port = env::var("AGENTD_CORE_PORT")
+            .or_else(|_| env::var("AGENTD_PORT"))
             .ok()
             .and_then(|v| v.parse::<u16>().ok())
             .unwrap_or(shared.services.core.port);
@@ -89,6 +91,26 @@ mod tests {
         let config = CoreConfig::load();
         env::remove_var("AGENTD_PORT");
         assert_eq!(config.port, 9000);
+    }
+
+    #[test]
+    fn test_service_specific_port_override() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_CORE_PORT", "7000");
+        let config = CoreConfig::load();
+        env::remove_var("AGENTD_CORE_PORT");
+        assert_eq!(config.port, 7000);
+    }
+
+    #[test]
+    fn test_service_specific_port_takes_priority_over_generic() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_CORE_PORT", "7000");
+        env::set_var("AGENTD_PORT", "9000");
+        let config = CoreConfig::load();
+        env::remove_var("AGENTD_CORE_PORT");
+        env::remove_var("AGENTD_PORT");
+        assert_eq!(config.port, 7000);
     }
 
     #[test]

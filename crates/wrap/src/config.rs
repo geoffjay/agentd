@@ -8,7 +8,8 @@
 //! | Variable                      | Default    | Description                              |
 //! |-------------------------------|------------|------------------------------------------|
 //! | `AGENTD_HOST`                 | `127.0.0.1`| HTTP bind host                           |
-//! | `AGENTD_PORT`                 | `17005`    | HTTP listen port                         |
+//! | `AGENTD_WRAP_PORT`            | `17005`    | HTTP listen port                         |
+//! | `AGENTD_PORT`                 | —          | Fallback port (legacy)                   |
 //! | `AGENTD_BACKEND`              | `tmux`     | Execution backend                        |
 //! | `AGENTD_WRAP_HISTORY_BYTES`   | `524288`   | PTY ring-buffer size in bytes (512 KiB)  |
 //! | `AGENTD_WRAP_CHANNEL_CAPACITY`| `256`      | PTY broadcast channel capacity           |
@@ -47,8 +48,11 @@ impl WrapConfig {
         let base = shared.services.wrap;
 
         let host = env::var("AGENTD_HOST").unwrap_or(shared.general.host);
-        let port =
-            env::var("AGENTD_PORT").ok().and_then(|v| v.parse::<u16>().ok()).unwrap_or(base.port);
+        let port = env::var("AGENTD_WRAP_PORT")
+            .or_else(|_| env::var("AGENTD_PORT"))
+            .ok()
+            .and_then(|v| v.parse::<u16>().ok())
+            .unwrap_or(base.port);
         let backend = env::var("AGENTD_BACKEND").unwrap_or(base.backend);
 
         // TODO: use base.history_bytes once WrapConfig schema gains this field (#1201)

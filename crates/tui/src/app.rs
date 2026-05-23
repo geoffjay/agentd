@@ -1,6 +1,8 @@
 use crate::config::TuiConfig;
 use crate::stream;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use memory::client::MemoryClient;
+use memory::types::{Memory, SearchRequest};
 use orchestrator::client::OrchestratorClient;
 use orchestrator::scheduler::types::{DispatchResponse, WorkflowResponse};
 use orchestrator::types::{AgentResponse, ConversationHistoryQuery};
@@ -84,6 +86,25 @@ pub enum View {
     AgentDetail,
     WorkflowList,
     WorkflowDetail,
+    MemoryList,
+    MemoryDetail,
+}
+
+/// State for memory-related dialogs that float over the memory list.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MemoryDialog {
+    None,
+    /// Search dialog; holds the current input text.
+    Search(String),
+    /// Tag filter dialog; `cursor` is the highlighted row, `draft` is the
+    /// working selection before the user confirms with Enter.
+    TagFilter { cursor: usize, draft: Vec<String> },
+}
+
+impl MemoryDialog {
+    pub fn is_open(&self) -> bool {
+        !matches!(self, MemoryDialog::None)
+    }
 }
 
 pub struct App {
@@ -113,12 +134,23 @@ pub struct App {
     pub input_scroll: u16,        // visual row offset for the input box
     pub input_inner_width: usize, // set by render_input each frame for geometry calculations
 
+    // Memory view
+    pub memories: Vec<Memory>,
+    pub memory_table_state: TableState,
+    pub selected_memory: Option<Memory>,
+    pub memory_scroll: u16,
+    pub memory_search: Option<String>,
+    pub memory_tag_filter: Vec<String>,
+    pub memory_available_tags: Vec<String>,
+    pub memory_dialog: MemoryDialog,
+
     pub quitting: bool,
     pub loading: bool,
     pub error: Option<String>,
     pub active_tab: usize,
 
     client: OrchestratorClient,
+    memory_client: MemoryClient,
     orchestrator_url: String,
     last_refresh: Instant,
     refresh_interval: Duration,
@@ -149,12 +181,21 @@ impl App {
             input_cursor: 0,
             input_scroll: 0,
             input_inner_width: 0,
+            memories: Vec::new(),
+            memory_table_state: TableState::default(),
+            selected_memory: None,
+            memory_scroll: 0,
+            memory_search: None,
+            memory_tag_filter: Vec::new(),
+            memory_available_tags: Vec::new(),
+            memory_dialog: MemoryDialog::None,
             quitting: false,
             loading: false,
             error: None,
             active_tab: 0,
             orchestrator_url: config.orchestrator_url.clone(),
             client: OrchestratorClient::new(config.orchestrator_url),
+            memory_client: MemoryClient::new(config.memory_url),
             last_refresh: Instant::now() - Duration::from_secs(3600),
             refresh_interval: Duration::from_secs(config.refresh_interval_secs),
             stream_rx: None,
@@ -196,6 +237,58 @@ impl App {
         self.last_refresh = Instant::now();
     }
 
+    pub async fn refresh_memories(&mut self) {
+        self.loading = true;
+        self.error = None;
+
+        if let Some(ref query) = self.memory_search.clone() {
+            let req = SearchRequest {
+                query: query.clone(),
+                tags: self.memory_tag_filter.clone(),
+                limit: 100,
+                ..Default::default()
+            };
+            match self.memory_client.search_memories(&req).await {
+                Ok(resp) => self.memories = resp.memories,
+                Err(e) => self.error = Some(format!("memory search: {e}")),
+            }
+        } else {
+            let tag_param = if self.memory_tag_filter.is_empty() {
+                None
+            } else {
+                Some(self.memory_tag_filter.join(","))
+            };
+            match self
+                .memory_client
+                .list_memories(None, tag_param.as_deref(), None, None, Some(200), None)
+                .await
+            {
+                Ok(resp) => self.memories = resp.items,
+                Err(e) => self.error = Some(format!("memories: {e}")),
+            }
+        }
+
+        // Collect unique sorted tags from the loaded memories
+        let mut tag_set: std::collections::HashSet<String> = self
+            .memories
+            .iter()
+            .flat_map(|m| m.tags.iter().cloned())
+            .collect();
+        let mut sorted: Vec<String> = tag_set.drain().collect();
+        sorted.sort();
+        self.memory_available_tags = sorted;
+
+        // Keep selection in bounds
+        let len = self.memories.len();
+        if len == 0 {
+            self.memory_table_state.select(None);
+        } else if self.memory_table_state.selected().map_or(true, |i| i >= len) {
+            self.memory_table_state.select(Some(0));
+        }
+
+        self.loading = false;
+    }
+
     pub async fn tick(&mut self) {
         self.drain_stream();
         if self.last_refresh.elapsed() >= self.refresh_interval {
@@ -222,8 +315,16 @@ impl App {
             View::WorkflowList => {
                 let len = self.workflows.len();
                 if len == 0 { return; }
-                let next = self.workflow_table_state.selected().map_or(0, |i| (i + 1).min(len - 1));
+                let next =
+                    self.workflow_table_state.selected().map_or(0, |i| (i + 1).min(len - 1));
                 self.workflow_table_state.select(Some(next));
+            }
+            View::MemoryList => {
+                let len = self.memories.len();
+                if len == 0 { return; }
+                let next =
+                    self.memory_table_state.selected().map_or(0, |i| (i + 1).min(len - 1));
+                self.memory_table_state.select(Some(next));
             }
             _ => {}
         }
@@ -238,8 +339,15 @@ impl App {
             }
             View::WorkflowList => {
                 if self.workflows.is_empty() { return; }
-                let prev = self.workflow_table_state.selected().map_or(0, |i| i.saturating_sub(1));
+                let prev =
+                    self.workflow_table_state.selected().map_or(0, |i| i.saturating_sub(1));
                 self.workflow_table_state.select(Some(prev));
+            }
+            View::MemoryList => {
+                if self.memories.is_empty() { return; }
+                let prev =
+                    self.memory_table_state.selected().map_or(0, |i| i.saturating_sub(1));
+                self.memory_table_state.select(Some(prev));
             }
             _ => {}
         }
@@ -322,6 +430,15 @@ impl App {
                     }
                 }
             }
+            View::MemoryList => {
+                if let Some(idx) = self.memory_table_state.selected() {
+                    if let Some(m) = self.memories.get(idx).cloned() {
+                        self.selected_memory = Some(m);
+                        self.memory_scroll = 0;
+                        self.view = View::MemoryDetail;
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -353,17 +470,26 @@ impl App {
                 self.workflow_dispatch_scroll = 0;
                 self.workflow_focus = WorkflowFocus::None;
             }
+            View::MemoryDetail => {
+                self.memory_scroll = 0;
+                self.view = View::MemoryList;
+            }
             _ => {}
         }
     }
 
     fn switch_tab(&mut self, forward: bool) {
+        const N: usize = 3;
         if forward {
-            self.active_tab = (self.active_tab + 1) % 2;
+            self.active_tab = (self.active_tab + 1) % N;
         } else {
-            self.active_tab = self.active_tab.checked_sub(1).unwrap_or(1);
+            self.active_tab = (self.active_tab + N - 1) % N;
         }
-        self.view = if self.active_tab == 0 { View::AgentList } else { View::WorkflowList };
+        self.view = match self.active_tab {
+            0 => View::AgentList,
+            1 => View::WorkflowList,
+            _ => View::MemoryList,
+        };
     }
 
     // -- Input buffer helpers --
@@ -472,6 +598,88 @@ impl App {
         }
     }
 
+    // -- Memory dialog key handlers --
+
+    async fn handle_search_dialog_key(&mut self, key: KeyEvent) {
+        let input = match &self.memory_dialog {
+            MemoryDialog::Search(s) => s.clone(),
+            _ => return,
+        };
+        let mut input = input;
+
+        match key.code {
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                input.push(c);
+                self.memory_dialog = MemoryDialog::Search(input);
+            }
+            KeyCode::Backspace => {
+                input.pop();
+                self.memory_dialog = MemoryDialog::Search(input);
+            }
+            KeyCode::Enter => {
+                let query = input.trim().to_string();
+                self.memory_dialog = MemoryDialog::None;
+                self.memory_search = if query.is_empty() { None } else { Some(query) };
+                self.refresh_memories().await;
+            }
+            KeyCode::Esc => {
+                self.memory_dialog = MemoryDialog::None;
+            }
+            _ => {}
+        }
+    }
+
+    async fn handle_tag_dialog_key(&mut self, key: KeyEvent) {
+        let (cursor, draft) = match &self.memory_dialog {
+            MemoryDialog::TagFilter { cursor, draft } => (*cursor, draft.clone()),
+            _ => return,
+        };
+        let tags = self.memory_available_tags.clone();
+        let n = tags.len();
+
+        let mut cursor = cursor;
+        let mut draft = draft;
+
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                cursor = cursor.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if cursor + 1 < n {
+                    cursor += 1;
+                }
+            }
+            KeyCode::Char(' ') => {
+                if let Some(tag) = tags.get(cursor) {
+                    if draft.contains(tag) {
+                        draft.retain(|t| t != tag);
+                    } else {
+                        draft.push(tag.clone());
+                    }
+                }
+            }
+            KeyCode::Char('a') => {
+                draft = tags.clone();
+            }
+            KeyCode::Char('c') => {
+                draft.clear();
+            }
+            KeyCode::Enter => {
+                self.memory_tag_filter = draft;
+                self.memory_dialog = MemoryDialog::None;
+                self.refresh_memories().await;
+                return;
+            }
+            KeyCode::Esc => {
+                self.memory_dialog = MemoryDialog::None;
+                return;
+            }
+            _ => {}
+        }
+
+        self.memory_dialog = MemoryDialog::TagFilter { cursor, draft };
+    }
+
     /// Returns `true` if the application should exit.
     pub async fn handle_key(&mut self, key: KeyEvent) -> bool {
         // Quit-confirmation dialog takes priority over everything else.
@@ -480,6 +688,16 @@ impl App {
                 KeyCode::Char('y') | KeyCode::Enter => return true,
                 _ => { self.quitting = false; return false; }
             }
+        }
+
+        // Memory dialogs take priority over normal view keys.
+        if self.memory_dialog.is_open() {
+            match &self.memory_dialog {
+                MemoryDialog::Search(_) => self.handle_search_dialog_key(key).await,
+                MemoryDialog::TagFilter { .. } => self.handle_tag_dialog_key(key).await,
+                MemoryDialog::None => {}
+            }
+            return false;
         }
 
         if self.input_mode {
@@ -532,10 +750,25 @@ impl App {
 
         match key.code {
             KeyCode::Char('q') => { self.quitting = true; }
-            KeyCode::Tab => self.switch_tab(true),
-            KeyCode::BackTab => self.switch_tab(false),
+            KeyCode::Tab => {
+                let prev = self.active_tab;
+                self.switch_tab(true);
+                if self.active_tab == 2 && prev != 2 && self.memories.is_empty() {
+                    self.refresh_memories().await;
+                }
+            }
+            KeyCode::BackTab => {
+                let prev = self.active_tab;
+                self.switch_tab(false);
+                if self.active_tab == 2 && prev != 2 && self.memories.is_empty() {
+                    self.refresh_memories().await;
+                }
+            }
             KeyCode::Down | KeyCode::Char('j') => match self.view {
                 View::AgentDetail => self.scroll_conversation_down(u16::MAX),
+                View::MemoryDetail => {
+                    self.memory_scroll = self.memory_scroll.saturating_add(1);
+                }
                 View::WorkflowDetail => match self.workflow_focus {
                     WorkflowFocus::Template => {
                         self.workflow_template_scroll =
@@ -550,6 +783,9 @@ impl App {
             },
             KeyCode::Up | KeyCode::Char('k') => match self.view {
                 View::AgentDetail => self.scroll_conversation_up(),
+                View::MemoryDetail => {
+                    self.memory_scroll = self.memory_scroll.saturating_sub(1);
+                }
                 View::WorkflowDetail => match self.workflow_focus {
                     WorkflowFocus::Template => {
                         self.workflow_template_scroll =
@@ -570,11 +806,24 @@ impl App {
                     && self.workflow_focus != WorkflowFocus::None
                 {
                     self.workflow_focus = WorkflowFocus::None;
+                } else if matches!(self.view, View::MemoryList)
+                    && (self.memory_search.is_some() || !self.memory_tag_filter.is_empty())
+                {
+                    // Clear active search/filter and reload
+                    self.memory_search = None;
+                    self.memory_tag_filter.clear();
+                    self.refresh_memories().await;
                 } else {
                     self.go_back();
                 }
             }
-            KeyCode::Char('r') => self.refresh().await,
+            KeyCode::Char('r') => {
+                if matches!(self.view, View::MemoryList | View::MemoryDetail) {
+                    self.refresh_memories().await;
+                } else {
+                    self.refresh().await;
+                }
+            }
             KeyCode::Char('i') if self.view == View::AgentDetail => {
                 self.input_mode = true;
             }
@@ -589,6 +838,16 @@ impl App {
                     WorkflowFocus::Dispatches => WorkflowFocus::None,
                     _ => WorkflowFocus::Dispatches,
                 };
+            }
+            // Memory: open search dialog
+            KeyCode::Char('s') if self.view == View::MemoryList => {
+                let current = self.memory_search.clone().unwrap_or_default();
+                self.memory_dialog = MemoryDialog::Search(current);
+            }
+            // Memory: open tag filter dialog
+            KeyCode::Char('t') if self.view == View::MemoryList => {
+                let draft = self.memory_tag_filter.clone();
+                self.memory_dialog = MemoryDialog::TagFilter { cursor: 0, draft };
             }
             _ => {}
         }

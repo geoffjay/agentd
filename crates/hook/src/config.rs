@@ -59,7 +59,11 @@ impl HookConfig {
             .or(base.notify_service_url);
 
         Self {
-            port: env::var("AGENTD_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(base.port),
+            port: env::var("AGENTD_HOOK_PORT")
+                .or_else(|_| env::var("AGENTD_PORT"))
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(base.port),
             history_size: env::var("AGENTD_HISTORY_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())
