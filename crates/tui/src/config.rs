@@ -10,8 +10,10 @@ pub struct TuiConfig {
 impl TuiConfig {
     pub fn from_agentd_config(cfg: AgentdConfig) -> Self {
         let host = &cfg.general.host;
-        let orchestrator_url = format!("http://{}:{}", host, cfg.services.orchestrator.port);
-        let memory_url = format!("http://{}:{}", host, cfg.services.memory.port);
+        let orchestrator_url = std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
+            .unwrap_or_else(|_| format!("http://{}:{}", host, cfg.services.orchestrator.port));
+        let memory_url = std::env::var("AGENTD_MEMORY_SERVICE_URL")
+            .unwrap_or_else(|_| format!("http://{}:{}", host, cfg.services.memory.port));
         Self {
             orchestrator_url,
             refresh_interval_secs: 5,
