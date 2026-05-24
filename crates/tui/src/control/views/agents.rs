@@ -27,8 +27,17 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
         let backend = agent.backend_type.as_deref().unwrap_or("-");
         let working_dir = truncate(&agent.config.working_dir, 35);
 
+        let name_cell = if agent.built_in {
+            Cell::from(Line::from(vec![
+                Span::styled("[sys] ", Style::default().fg(Color::DarkGray)),
+                Span::raw(agent.name.clone()),
+            ]))
+        } else {
+            Cell::from(agent.name.clone())
+        };
+
         Row::new(vec![
-            Cell::from(agent.name.clone()),
+            name_cell,
             status_cell,
             Cell::from(Line::from(activity)),
             Cell::from(backend),

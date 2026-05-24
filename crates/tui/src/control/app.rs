@@ -216,7 +216,7 @@ impl App {
         self.loading = true;
         self.error = None;
 
-        match self.client.list_agents(None).await {
+        match self.client.list_agents_filtered(None, true).await {
             Ok(resp) => self.agents = resp.items,
             Err(e) => self.error = Some(format!("agents: {e}")),
         }

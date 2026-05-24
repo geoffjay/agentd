@@ -76,7 +76,11 @@ fn render_info(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(format!(" {} ", agent.name));
+        .title(if agent.built_in {
+            format!(" {} [system] ", agent.name)
+        } else {
+            format!(" {} ", agent.name)
+        });
 
     let para = Paragraph::new(lines).block(block);
     f.render_widget(para, area);
