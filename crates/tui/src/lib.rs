@@ -18,7 +18,8 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 pub async fn run() -> Result<()> {
-    let config = config::TuiConfig::from_env();
+    let agentd_cfg = agentd_common::config::load().unwrap_or_default();
+    let config = config::TuiConfig::from_agentd_config(agentd_cfg);
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();

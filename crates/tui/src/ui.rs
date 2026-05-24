@@ -98,6 +98,7 @@ fn render_content(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         View::WorkflowList => views::workflows::render(f, app, area),
         View::WorkflowDetail => views::workflow_detail::render(f, app, area),
         View::MemoryList | View::MemoryDetail => views::memories::render(f, app, area),
+        View::Config => views::config::render(f, app, area),
     }
 }
 
@@ -152,6 +153,7 @@ fn render_footer(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                 }
             }
             View::MemoryDetail => " ↑/k scroll up  ↓/j scroll down  Esc back  q quit",
+            View::Config => " ↑/k scroll up  ↓/j scroll down  c/Esc close  q quit",
         }
     };
 

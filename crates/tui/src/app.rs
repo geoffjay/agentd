@@ -1,3 +1,4 @@
+use agentd_common::config::AgentdConfig;
 use crate::config::TuiConfig;
 use crate::stream;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -88,6 +89,7 @@ pub enum View {
     WorkflowDetail,
     MemoryList,
     MemoryDetail,
+    Config,
 }
 
 /// State for memory-related dialogs that float over the memory list.
@@ -144,6 +146,9 @@ pub struct App {
     pub memory_available_tags: Vec<String>,
     pub memory_dialog: MemoryDialog,
 
+    pub agentd_config: AgentdConfig,
+    pub config_scroll: u16,
+
     pub quitting: bool,
     pub loading: bool,
     pub error: Option<String>,
@@ -157,6 +162,7 @@ pub struct App {
 
     stream_rx: Option<mpsc::UnboundedReceiver<serde_json::Value>>,
     stream_abort: Option<tokio::task::AbortHandle>,
+    pre_config_view: Option<View>,
 }
 
 impl App {
@@ -189,6 +195,8 @@ impl App {
             memory_tag_filter: Vec::new(),
             memory_available_tags: Vec::new(),
             memory_dialog: MemoryDialog::None,
+            agentd_config: config.agentd_config,
+            config_scroll: 0,
             quitting: false,
             loading: false,
             error: None,
@@ -200,6 +208,7 @@ impl App {
             refresh_interval: Duration::from_secs(config.refresh_interval_secs),
             stream_rx: None,
             stream_abort: None,
+            pre_config_view: None,
         }
     }
 
@@ -476,6 +485,16 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    fn enter_config(&mut self) {
+        self.pre_config_view = Some(self.view.clone());
+        self.view = View::Config;
+        self.config_scroll = 0;
+    }
+
+    fn exit_config(&mut self) {
+        self.view = self.pre_config_view.take().unwrap_or(View::AgentList);
     }
 
     fn switch_tab(&mut self, forward: bool) {
@@ -769,6 +788,9 @@ impl App {
                 View::MemoryDetail => {
                     self.memory_scroll = self.memory_scroll.saturating_add(1);
                 }
+                View::Config => {
+                    self.config_scroll = self.config_scroll.saturating_add(1);
+                }
                 View::WorkflowDetail => match self.workflow_focus {
                     WorkflowFocus::Template => {
                         self.workflow_template_scroll =
@@ -786,6 +808,9 @@ impl App {
                 View::MemoryDetail => {
                     self.memory_scroll = self.memory_scroll.saturating_sub(1);
                 }
+                View::Config => {
+                    self.config_scroll = self.config_scroll.saturating_sub(1);
+                }
                 View::WorkflowDetail => match self.workflow_focus {
                     WorkflowFocus::Template => {
                         self.workflow_template_scroll =
@@ -801,8 +826,17 @@ impl App {
             KeyCode::Enter => {
                 self.enter_detail().await;
             }
+            KeyCode::Char('c') => {
+                if self.view == View::Config {
+                    self.exit_config();
+                } else {
+                    self.enter_config();
+                }
+            }
             KeyCode::Esc => {
-                if self.view == View::WorkflowDetail
+                if self.view == View::Config {
+                    self.exit_config();
+                } else if self.view == View::WorkflowDetail
                     && self.workflow_focus != WorkflowFocus::None
                 {
                     self.workflow_focus = WorkflowFocus::None;
