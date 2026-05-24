@@ -29,8 +29,6 @@
     <dict>
         <key>RUST_LOG</key>
         <string>info</string>
-        <key>AGENTD_HOOK_PORT</key>
-        <string>7002</string>
     </dict>
 
     <key>WorkingDirectory</key>

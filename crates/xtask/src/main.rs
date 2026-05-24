@@ -15,6 +15,7 @@
 //! - `migrate [--service <name>]` — Apply pending SeaORM migrations
 //! - `migrate-status [--service <name>]` — Show migration status for all databases
 
+mod install_config;
 mod platform;
 
 use anyhow::{Context, Result};

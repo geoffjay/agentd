@@ -21,6 +21,12 @@ impl Platform for MacOSPlatform {
         fs::create_dir_all(&plist_dir).context("Failed to create LaunchAgents directory")?;
         install_plists(&plist_dir)?;
 
+        // Write service configuration (ports, backends) to agentd/config.toml.
+        // This replaces the env vars that were previously baked into the plists.
+        println!();
+        println!("{}", "Writing service configuration...".blue());
+        crate::install_config::write_install_config(SERVICES)?;
+
         // Setup log directory
         setup_log_directory()?;
 
@@ -209,16 +215,14 @@ impl Platform for MacOSPlatform {
 }
 
 /// Generate a LaunchAgent plist XML string for a service.
+///
+/// Only `RUST_LOG` is written to `EnvironmentVariables`. All service
+/// configuration (ports, backends, inter-service URLs) is written to
+/// `agentd/config.toml` by [`crate::install_config::write_install_config`]
+/// so that the agentd config-file layer owns it and user overrides are
+/// respected.
 pub fn generate_plist(service: &ServiceInfo, bin_path: &Path, log_dir: &Path) -> String {
-    let mut env_entries = format!(
-        "        <key>RUST_LOG</key>\n        <string>info</string>\n        <key>{}</key>\n        <string>{}</string>",
-        service.port_env, service.port
-    );
-
-    for (key, value) in service.extra_env {
-        env_entries
-            .push_str(&format!("\n        <key>{}</key>\n        <string>{}</string>", key, value));
-    }
+    let env_entries = "        <key>RUST_LOG</key>\n        <string>info</string>";
 
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -508,7 +512,6 @@ mod tests {
             binary: "agentd-notify",
             port: 7004,
             port_env: "AGENTD_NOTIFY_PORT",
-            extra_env: &[],
         };
         let bin_path = Path::new("/Applications/Agent.app/Contents/MacOS/agentd-notify");
         let log_dir = Path::new("/usr/local/var/log");
@@ -516,31 +519,33 @@ mod tests {
 
         assert!(plist.contains("com.geoffjay.agentd-notify"));
         assert!(plist.contains("/Applications/Agent.app/Contents/MacOS/agentd-notify"));
-        assert!(plist.contains("AGENTD_NOTIFY_PORT"));
-        assert!(plist.contains("<string>7004</string>"));
         assert!(plist.contains("RUST_LOG"));
         assert!(plist.contains("<true/>")); // RunAtLoad
         assert!(plist.contains("agentd-notify.log"));
         assert!(plist.contains("agentd-notify.err"));
+        // ports and service URLs are written to agentd/config.toml, not the plist
+        assert!(!plist.contains("AGENTD_NOTIFY_PORT"));
+        assert!(!plist.contains("7004"));
     }
 
     #[test]
-    fn test_generate_plist_with_extra_env() {
+    fn test_generate_plist_no_service_env_vars() {
+        // Verify that no service-configuration env vars bleed into the plist
+        // regardless of which service is being installed.
         let info = ServiceInfo {
             name: "ask",
             binary: "agentd-ask",
             port: 7001,
             port_env: "AGENTD_ASK_PORT",
-            extra_env: &[("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004")],
         };
         let bin_path = Path::new("/Applications/Agent.app/Contents/MacOS/agentd-ask");
         let log_dir = Path::new("/usr/local/var/log");
         let plist = generate_plist(&info, bin_path, log_dir);
 
-        assert!(plist.contains("com.geoffjay.agentd-ask"));
-        assert!(plist.contains("AGENTD_ASK_PORT"));
-        assert!(plist.contains("<string>7001</string>"));
-        assert!(plist.contains("AGENTD_NOTIFY_SERVICE_URL"));
-        assert!(plist.contains("http://localhost:7004"));
+        assert!(!plist.contains("AGENTD_ASK_PORT"));
+        assert!(!plist.contains("AGENTD_NOTIFY_SERVICE_URL"));
+        assert!(!plist.contains("AGENTD_ORCHESTRATOR_COMMUNICATE_URL"));
+        // Only RUST_LOG should appear in EnvironmentVariables
+        assert!(plist.contains("RUST_LOG"));
     }
 }

@@ -9018,6 +9018,7 @@ dependencies = [
  "notify 0.2.0",
  "orchestrator",
  "tokio",
+ "toml",
 ]
 
 [[package]]

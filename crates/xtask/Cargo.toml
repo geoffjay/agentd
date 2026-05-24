@@ -7,6 +7,7 @@ publish = false
 [dependencies]
 anyhow = "1.0"
 colored = "2.1"
+toml = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 memory = { path = "../memory" }
 notify = { path = "../notify" }

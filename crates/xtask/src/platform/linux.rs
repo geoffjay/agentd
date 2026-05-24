@@ -93,6 +93,12 @@ impl Platform for LinuxPlatform {
             eprintln!("{}", "Warning: Failed to reload systemd daemon".yellow());
         }
 
+        // Write service configuration (ports, backends) to agentd/config.toml.
+        // This replaces the env vars that were previously baked into the unit files.
+        println!();
+        println!("{}", "Writing service configuration...".blue());
+        crate::install_config::write_install_config(SERVICES)?;
+
         // Setup log directory
         self.setup_log_directory()?;
 
@@ -340,13 +346,13 @@ impl LinuxPlatform {
 ///
 /// `system` controls the `WantedBy=` target: `multi-user.target` for system
 /// units, `default.target` for user units.
+///
+/// Only `RUST_LOG` is written to the unit file. All service configuration
+/// (ports, backends, inter-service URLs) is written to `agentd/config.toml`
+/// by [`crate::install_config::write_install_config`] so that the agentd
+/// config-file layer owns it and user overrides are respected.
 pub fn generate_unit_file(service: &ServiceInfo, bin_path: &Path, system: bool) -> String {
-    let mut env_lines =
-        format!("Environment=RUST_LOG=info\nEnvironment={}={}", service.port_env, service.port);
-
-    for (key, value) in service.extra_env {
-        env_lines.push_str(&format!("\nEnvironment={}={}", key, value));
-    }
+    let env_lines = "Environment=RUST_LOG=info";
 
     let wanted_by = if system { "multi-user.target" } else { "default.target" };
 
@@ -467,20 +473,21 @@ mod tests {
             binary: "agentd-notify",
             port: 7004,
             port_env: "AGENTD_NOTIFY_PORT",
-            extra_env: &[],
         };
         let bin_path = Path::new("/home/user/.local/bin/agentd-notify");
         let unit = generate_unit_file(&info, bin_path, false);
 
         assert!(unit.contains("Description=agentd-notify service"));
         assert!(unit.contains("ExecStart=/home/user/.local/bin/agentd-notify"));
-        assert!(unit.contains("Environment=AGENTD_NOTIFY_PORT=7004"));
         assert!(unit.contains("Environment=RUST_LOG=info"));
         assert!(unit.contains("Restart=on-failure"));
         assert!(unit.contains("WantedBy=default.target"));
         assert!(unit.contains("[Unit]"));
         assert!(unit.contains("[Service]"));
         assert!(unit.contains("[Install]"));
+        // ports and service URLs are written to agentd/config.toml, not the unit file
+        assert!(!unit.contains("AGENTD_NOTIFY_PORT"));
+        assert!(!unit.contains("7004"));
     }
 
     #[test]
@@ -490,7 +497,6 @@ mod tests {
             binary: "agentd-notify",
             port: 7004,
             port_env: "AGENTD_NOTIFY_PORT",
-            extra_env: &[],
         };
         let bin_path = Path::new("/usr/local/bin/agentd-notify");
         let unit = generate_unit_file(&info, bin_path, true);
@@ -500,20 +506,21 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_unit_file_with_extra_env() {
+    fn test_generate_unit_file_no_service_env_vars() {
+        // Verify no service-configuration env vars appear regardless of service.
         let info = ServiceInfo {
             name: "ask",
             binary: "agentd-ask",
             port: 7001,
             port_env: "AGENTD_ASK_PORT",
-            extra_env: &[("AGENTD_NOTIFY_SERVICE_URL", "http://localhost:7004")],
         };
         let bin_path = Path::new("/usr/local/bin/agentd-ask");
         let unit = generate_unit_file(&info, bin_path, true);
 
-        assert!(unit.contains("Description=agentd-ask service"));
-        assert!(unit.contains("Environment=AGENTD_ASK_PORT=7001"));
-        assert!(unit.contains("Environment=AGENTD_NOTIFY_SERVICE_URL=http://localhost:7004"));
+        assert!(!unit.contains("AGENTD_ASK_PORT"));
+        assert!(!unit.contains("AGENTD_NOTIFY_SERVICE_URL"));
+        assert!(!unit.contains("AGENTD_ORCHESTRATOR_COMMUNICATE_URL"));
+        assert!(unit.contains("Environment=RUST_LOG=info"));
     }
 
     #[test]
@@ -524,7 +531,8 @@ mod tests {
 
             assert!(unit.contains(&format!("Description=agentd-{} service", service.name)));
             assert!(unit.contains(&format!("ExecStart=/usr/local/bin/{}", service.binary)));
-            assert!(unit.contains(&format!("Environment={}={}", service.port_env, service.port)));
+            assert!(unit.contains("Environment=RUST_LOG=info"));
+            assert!(!unit.contains(service.port_env));
         }
     }
 }
