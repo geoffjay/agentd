@@ -1,8 +1,16 @@
 use crate::config::TuiConfig;
+use crate::manager::queries::{self, PREDEFINED_QUERIES};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::widgets::TableState;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone, Default)]
+pub struct QueryPickerState {
+    pub cursor: usize,
+    pub filter: String,
+    pub filter_active: bool,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ManagerView {
@@ -66,6 +74,7 @@ pub struct ManagerApp {
     pub metric_input_active: bool,
     pub metric_results: Vec<MetricSample>,
     pub metric_error: Option<String>,
+    pub query_picker: Option<QueryPickerState>,
 
     pub quitting: bool,
     pub error: Option<String>,
@@ -96,6 +105,7 @@ impl ManagerApp {
             metric_input_active: false,
             metric_results: Vec::new(),
             metric_error: None,
+            query_picker: None,
             quitting: false,
             error: None,
             last_refresh: Instant::now() - Duration::from_secs(3600),
@@ -242,6 +252,57 @@ impl ManagerApp {
         Ok(())
     }
 
+    async fn handle_picker_key(&mut self, key: KeyEvent) -> bool {
+        let Some(picker) = self.query_picker.as_mut() else { return false };
+
+        if picker.filter_active {
+            match key.code {
+                KeyCode::Char(c) => {
+                    picker.filter.push(c);
+                    picker.cursor = 0;
+                }
+                KeyCode::Backspace => {
+                    picker.filter.pop();
+                    picker.cursor = 0;
+                }
+                KeyCode::Enter | KeyCode::Esc => {
+                    picker.filter_active = false;
+                }
+                _ => {}
+            }
+            return false;
+        }
+
+        let filtered = queries::filtered_indices(&picker.filter);
+        match key.code {
+            KeyCode::Down | KeyCode::Char('j') => {
+                if !filtered.is_empty() && picker.cursor + 1 < filtered.len() {
+                    picker.cursor += 1;
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                picker.cursor = picker.cursor.saturating_sub(1);
+            }
+            KeyCode::Char('/') => {
+                picker.filter_active = true;
+            }
+            KeyCode::Enter => {
+                if let Some(&idx) = filtered.get(picker.cursor) {
+                    let q = PREDEFINED_QUERIES[idx].query.to_string();
+                    self.metric_query = q;
+                    self.metric_query_cursor = self.metric_query.len();
+                    self.query_picker = None;
+                    self.execute_metric_query().await;
+                }
+            }
+            KeyCode::Esc => {
+                self.query_picker = None;
+            }
+            _ => {}
+        }
+        false
+    }
+
     pub async fn handle_key(&mut self, key: KeyEvent) -> bool {
         if self.quitting {
             match key.code {
@@ -291,6 +352,11 @@ impl ManagerApp {
                 _ => {}
             }
             return false;
+        }
+
+        // Metrics picker dialog (takes priority over input mode)
+        if self.view == ManagerView::Metrics && self.query_picker.is_some() {
+            return self.handle_picker_key(key).await;
         }
 
         // Metric query input
@@ -387,6 +453,10 @@ impl ManagerApp {
             // Metrics: enter query input
             KeyCode::Char('i') if self.view == ManagerView::Metrics => {
                 self.metric_input_active = true;
+            }
+            // Metrics: open predefined query picker
+            KeyCode::Char('p') if self.view == ManagerView::Metrics => {
+                self.query_picker = Some(QueryPickerState::default());
             }
             _ => {}
         }

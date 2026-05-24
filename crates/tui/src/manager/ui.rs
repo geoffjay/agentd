@@ -130,8 +130,10 @@ fn render_footer(f: &mut Frame, app: &ManagerApp, area: Rect) {
         ManagerView::Metrics => {
             if app.metric_input_active {
                 " Type PromQL  Enter run  Esc cancel"
+            } else if app.query_picker.is_some() {
+                " ↑/k up  ↓/j down  / filter  Enter select  Esc close"
             } else {
-                " i input query  Tab switch  q quit"
+                " i input query  p picker  Tab switch  q quit"
             }
         }
     };
