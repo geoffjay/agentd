@@ -1,6 +1,6 @@
 use agentd_common::config::AgentdConfig;
 use crate::config::TuiConfig;
-use crate::stream;
+use super::stream;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use memory::client::MemoryClient;
 use memory::types::{Memory, SearchRequest};

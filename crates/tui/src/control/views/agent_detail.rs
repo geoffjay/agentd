@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::control::app::App;
 use orchestrator::types::{ActivityState, AgentStatus};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -326,9 +326,9 @@ fn push_multiline(
     }
 }
 
-fn tool_input_preview(entry: &crate::app::ConversationEntry) -> String {
+fn tool_input_preview(entry: &crate::control::app::ConversationEntry) -> String {
     let Some(meta) = &entry.metadata else { return String::new() };
-    let input = meta.get("input");
+    let input: Option<&serde_json::Value> = meta.get("input");
 
     // Bash: show the command string directly.
     if let Some(cmd) = input.and_then(|i| i.get("command")).and_then(|v| v.as_str()) {

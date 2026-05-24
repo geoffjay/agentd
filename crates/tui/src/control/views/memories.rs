@@ -1,4 +1,4 @@
-use crate::app::{App, MemoryDialog, View};
+use crate::control::app::{App, MemoryDialog, View};
 use chrono::{DateTime, Utc};
 use memory::types::MemoryType;
 use ratatui::{

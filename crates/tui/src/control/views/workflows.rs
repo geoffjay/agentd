@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::control::app::App;
 use orchestrator::scheduler::types::TriggerConfig;
 use ratatui::{
     layout::{Constraint, Rect},

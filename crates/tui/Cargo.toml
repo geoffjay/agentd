@@ -22,6 +22,8 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
 uuid = { version = "1.11", features = ["serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+toml = { workspace = true }
 agentd-common = { path = "../common" }
 orchestrator = { path = "../orchestrator" }
 memory = { path = "../memory" }

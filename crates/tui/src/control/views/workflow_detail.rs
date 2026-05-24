@@ -1,4 +1,4 @@
-use crate::app::{App, WorkflowFocus};
+use crate::control::app::{App, WorkflowFocus};
 use orchestrator::scheduler::types::DispatchStatus;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},

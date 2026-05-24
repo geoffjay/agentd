@@ -391,6 +391,12 @@ enum Commands {
     /// memories, and dispatching messages interactively.
     Control,
 
+    /// Launch the terminal UI for service management.
+    ///
+    /// Opens a full-screen TUI for monitoring service health, tailing logs,
+    /// editing configuration, and querying Prometheus metrics.
+    Manager,
+
     /// Interact with built-in system agents.
     ///
     /// System agents are spawned automatically by the orchestrator at startup
@@ -552,7 +558,10 @@ async fn main() -> Result<()> {
             command.execute(&client, cli.json).await?;
         }
         Commands::Control => {
-            agentd_tui::run().await?;
+            agentd_tui::run_control().await?;
+        }
+        Commands::Manager => {
+            agentd_tui::run_manager().await?;
         }
         Commands::SystemAgents { command } => {
             let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")

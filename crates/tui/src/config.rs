@@ -2,8 +2,9 @@ use agentd_common::config::AgentdConfig;
 
 pub struct TuiConfig {
     pub orchestrator_url: String,
-    pub refresh_interval_secs: u64,
     pub memory_url: String,
+    pub prometheus_url: String,
+    pub refresh_interval_secs: u64,
     pub agentd_config: AgentdConfig,
 }
 
@@ -14,10 +15,13 @@ impl TuiConfig {
             .unwrap_or_else(|_| format!("http://{}:{}", host, cfg.services.orchestrator.port));
         let memory_url = std::env::var("AGENTD_MEMORY_SERVICE_URL")
             .unwrap_or_else(|_| format!("http://{}:{}", host, cfg.services.memory.port));
+        let prometheus_url = std::env::var("AGENTD_PROMETHEUS_URL")
+            .unwrap_or_else(|_| "http://localhost:9090".to_string());
         Self {
             orchestrator_url,
-            refresh_interval_secs: 5,
             memory_url,
+            prometheus_url,
+            refresh_interval_secs: 5,
             agentd_config: cfg,
         }
     }

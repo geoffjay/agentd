@@ -1,4 +1,4 @@
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    agentd_tui::run().await
+    agentd_tui::run_control().await
 }

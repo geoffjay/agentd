@@ -1,5 +1,5 @@
-use crate::app::{App, View, WorkflowFocus};
-use crate::views;
+use super::app::{App, View, WorkflowFocus};
+use super::views;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
