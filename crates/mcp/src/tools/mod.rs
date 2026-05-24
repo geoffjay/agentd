@@ -4,23 +4,26 @@
 //!
 //! # Tool Modules
 //!
-//! - `diagnostic` — cross-service diagnostic and connectivity tools (issue #256)
-//!
-//! # Planned Tool Modules
-//!
-//! - `agents`    — list/inspect agents (issue #250)
-//! - `rooms`     — list rooms, send/read messages (issue #251)
-//! - `memory`    — search and store memories (issue #252)
-//! - `notify`    — create and respond to notifications (issue #253)
-//! - `ask`       — trigger and answer approval requests (issue #254)
-//! - `wrap`      — manage wrap configurations (issue #255)
-//! - `workflow`  — dispatch and monitor workflows (issue #256)
+//! - `agents`             — list/inspect agents
+//! - `approvals`          — tool approval requests
+//! - `communicate`        — rooms, participants, messages
+//! - `diagnostic`         — cross-service diagnostics (system, agent, workflow)
+//! - `health`             — service health probes, system metrics, prometheus
+//! - `lifecycle`          — restart/terminate agents, send messages, update policy/model
+//! - `memory`             — search and list stored memories
+//! - `notifications`      — list/create/dismiss notifications
+//! - `orchestrator_debug` — state-mismatch detection, queue inspection, conversation summary, projects
+//! - `remediation`        — self-healing batch operations
+//! - `workflows`          — list workflows and dispatch history
 
 pub mod agents;
 pub mod approvals;
+pub mod communicate;
 pub mod diagnostic;
 pub mod health;
 pub mod lifecycle;
+pub mod memory;
 pub mod notifications;
+pub mod orchestrator_debug;
 pub mod remediation;
 pub mod workflows;

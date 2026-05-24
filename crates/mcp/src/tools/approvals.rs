@@ -75,7 +75,7 @@ pub async fn run_list_pending_approvals(client: &AgentdClient) -> String {
         Ok(resp) => format_approval_list(&resp, "Pending Tool Approval Requests"),
         Err(e) => format!(
             "# Pending Tool Approvals\n\n🔴 Error fetching approvals: {e}\n\
-             → Verify the orchestrator is running: `check_connectivity`"
+             → Verify the orchestrator is running: `check_service_health`"
         ),
     }
 }

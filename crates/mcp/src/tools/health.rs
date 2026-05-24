@@ -269,9 +269,22 @@ pub async fn run_get_system_metrics(client: &AgentdClient) -> String {
 
 /// Fetch and parse key Prometheus metrics from a service.
 pub async fn run_get_prometheus_metrics(client: &AgentdClient, service: Option<&str>) -> String {
-    let (svc_name, base_url) = match service.unwrap_or("orchestrator") {
+    let svc_input = service.unwrap_or("orchestrator").to_lowercase();
+    let (svc_name, base_url): (&str, &str) = match svc_input.as_str() {
+        "orchestrator" => ("orchestrator", client.orchestrator_url()),
         "notify" | "notification" => ("notify", client.notify_url()),
-        _ => ("orchestrator", client.orchestrator_url()),
+        "memory" | "mem" => ("memory", client.memory_url()),
+        "communicate" | "comm" => ("communicate", client.communicate_url()),
+        "monitor" => ("monitor", client.monitor_url()),
+        "ask" => ("ask", client.ask_url()),
+        "wrap" => ("wrap", client.wrap_url()),
+        "hook" => ("hook", client.hook_url()),
+        other => {
+            return format!(
+                "🔴 Unknown service `{other}`.\n\
+                 Valid: orchestrator, notify, memory, communicate, monitor, ask, wrap, hook"
+            );
+        }
     };
 
     let url = format!("{base_url}/metrics");
@@ -318,15 +331,34 @@ fn render_prometheus_report(svc: &str, metrics: &BTreeMap<String, f64>) -> Strin
         // Orchestrator
         "agents_created_total",
         "agents_active",
+        "agents_terminated_total",
+        "agents_restarted_total",
         "agent_dispatches_total",
+        "agent_messages_sent_total",
         "websocket_connections_active",
         "websocket_connections_total",
-        "tool_approvals_pending",
-        "tool_approvals_total",
+        "approvals_pending",
+        "approvals_resolved_total",
+        "context_clears_total",
+        "workflows_active",
         // Notify
         "notifications_created_total",
         "notifications_pending",
         "notifications_responded_total",
+        "notifications_dismissed_total",
+        // Memory
+        "memories_created_total",
+        "memories_searched_total",
+        "memories_deleted_total",
+        // Communicate
+        "rooms_created_total",
+        "rooms_active",
+        "messages_sent_total",
+        // Monitor
+        "system_cpu_usage_percent",
+        "system_memory_used_bytes",
+        "system_memory_total_bytes",
+        "collections_total",
         // General
         "http_requests_total",
         "service_info",

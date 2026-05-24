@@ -99,9 +99,11 @@ localhost ports used by `agentd` services.
 | Tool | Description |
 |------|-------------|
 | `diagnose_system` | Full system overview: services, failed agents, alerts, backlogs |
-| `diagnose_agent` | Deep dive on a single agent: status, activity, approvals, usage |
-| `diagnose_workflow` | Workflow health: agent state, dispatch success rate, failures |
-| `check_connectivity` | Probe `/health` on all agentd services |
+| `diagnose_agent` | Deep dive on a single agent: status, activity, approvals, usage, backend-specific health (docker/subprocess/pty/tmux) |
+| `diagnose_workflow` | Workflow health: agent state, dispatch success rate, trigger-type-specific notes (cron, webhook, agent_lifecycle, dispatch_result, agent_idle, etc.) |
+| `diagnose_state_mismatches` | Detect orphan WebSocket connections, agents running-but-disconnected, and connected-but-not-running. Highest-value tool for catching subtle stuckness. |
+| `inspect_queue` | Stats and peek for a named orchestrator queue (pending, processing, failed, dead) |
+| `get_conversation_summary` | Per-event-type counts and time range for an agent's history — cheap productivity check |
 
 ### Agent Inspection
 | Tool | Description |
@@ -117,6 +119,27 @@ localhost ports used by `agentd` services.
 | `get_workflow` | Full workflow config including prompt template and source config |
 | `list_dispatches` | Dispatch history for a workflow, with optional status filter |
 | `get_failed_dispatches` | Failed dispatches across all workflows |
+
+### Communicate: Rooms & Messages
+| Tool | Description |
+|------|-------------|
+| `list_rooms` | List rooms with optional filters for type (direct/group/broadcast) and project_id |
+| `get_room` | Room metadata plus full participant list |
+| `list_messages` | Recent messages in a room with sender, status, and content preview |
+| `send_room_message` | Post a message to a room (for diagnostic and remediation flows) |
+
+### Memory
+| Tool | Description |
+|------|-------------|
+| `search_memories` | Semantic search across stored memories with optional tag and type filters |
+| `list_memories` | List memories with filters for type, tag, creator, and visibility |
+| `get_memory` | Fetch a single memory's full content and metadata |
+
+### Projects
+| Tool | Description |
+|------|-------------|
+| `list_projects` | List projects grouping agents and workflows |
+| `get_project` | Project detail including agent and workflow counts |
 
 ### Notification Management
 | Tool | Description |
@@ -159,7 +182,7 @@ localhost ports used by `agentd` services.
 | `check_service_health` | Concurrent health check of all 8 agentd services |
 | `check_single_service` | Health check for one named service |
 | `get_system_metrics` | CPU, memory, disk, load from the monitor service |
-| `get_prometheus_metrics` | Parse key Prometheus counters from orchestrator or notify |
+| `get_prometheus_metrics` | Parse key Prometheus counters from any service (orchestrator, notify, memory, communicate, monitor, ask, wrap, hook) |
 
 ## Troubleshooting Workflows
 
@@ -168,11 +191,12 @@ localhost ports used by `agentd` services.
 ```
 1. check_service_health          → verify orchestrator is reachable
 2. list_agents status=running    → confirm agent is registered
-3. diagnose_agent {id}           → identify root cause (approvals? usage?)
-4. get_agent_approvals {id}      → check for pending approval blocks
-5. approve_tool_request {id}     → unblock if approval-gated
+3. diagnose_agent {id}           → identify root cause (approvals? backend session dead?)
+4. diagnose_state_mismatches     → check for running-but-disconnected agents
+5. get_agent_approvals {id}      → check for pending approval blocks
+6. approve_tool_request {id}     → unblock if approval-gated
    — or —
-6. restart_agent {id}            → restart if crashed/failed
+7. restart_agent {id}            → restart if crashed/failed
 ```
 
 ### Workflow Not Dispatching

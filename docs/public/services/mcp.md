@@ -134,7 +134,7 @@ Run a full system diagnostic: check all agentd services, identify failed agents,
 
 #### `diagnose_agent`
 
-Deep dive on a single agent: status, activity state, WebSocket connection, pending approval backlog, and session usage. Returns a structured report with severity-tagged issues and actionable remediation steps.
+Deep dive on a single agent: status, activity, pending approval backlog, session usage, and **backend-specific health**. For each agent, branches on `backend_type` (docker, subprocess, pty, tmux) and cross-checks the wrap service to detect mismatches between orchestrator state and the actual backend session.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -144,7 +144,7 @@ Deep dive on a single agent: status, activity state, WebSocket connection, pendi
 
 #### `diagnose_workflow`
 
-Workflow health analysis: verify the associated agent is running, analyze dispatch success rate over the last 20 dispatches, and identify consecutive failure patterns.
+Workflow health analysis with **trigger-type-specific notes**. Verifies the associated agent is running, analyzes dispatch success rate, and adds guidance based on the workflow trigger (cron, webhook, agent_lifecycle, agent_idle, dispatch_result, delay, manual, github_issues, github_pull_requests, linear_issues).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -152,11 +152,142 @@ Workflow health analysis: verify the associated agent is running, analyze dispat
 
 ---
 
-#### `check_connectivity`
+#### `diagnose_state_mismatches`
 
-Test connectivity between the MCP server and all agentd services. Returns a table showing which services are reachable and which are not.
+Detect orchestrator state mismatches: agents that are running but have no WebSocket, agents connected but not running, and orphan WebSocket connections with no database record. Highest-value tool for catching subtle agent stuckness.
 
 **Parameters:** None
+
+---
+
+#### `inspect_queue`
+
+Inspect a named orchestrator queue. Returns counts (pending, processing, completed, failed, dead) and peeks at the next N pending tasks with retry counts. Use to diagnose queue backpressure or stuck workflow triggers.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `queue_name` | String | Yes | Queue name (e.g. `agent-tasks`, `workflow-dispatch`) |
+| `peek_limit` | Integer | No | Number of pending tasks to peek (default 10, max 100) |
+
+---
+
+#### `get_conversation_summary`
+
+Per-event-type counts, session count, and first/last event timestamps for an agent's conversation. Cheap productivity check without loading full transcripts.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `agent_id` | String | Yes | The agent ID (UUID) |
+
+---
+
+### Communicate: Rooms & Messages
+
+#### `list_rooms`
+
+List rooms in the communicate service.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `room_type` | String | No | Filter: `direct`, `group`, `broadcast` |
+| `project_id` | String | No | Filter by project ID |
+| `limit` | Integer | No | Max rooms (default 50, max 200) |
+
+---
+
+#### `get_room`
+
+Get a room's metadata plus its full participant list.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `room_id` | String | Yes | The room ID (UUID) |
+
+---
+
+#### `list_messages`
+
+Recent messages in a room with sender, status, and content preview.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `room_id` | String | Yes | The room ID (UUID) |
+| `limit` | Integer | No | Max messages (default 20, max 200) |
+
+---
+
+#### `send_room_message`
+
+Post a message to a room. The sender must be a participant. Useful for remediation flows where the system or an admin agent posts a coordination update.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `room_id` | String | Yes | The room ID (UUID) |
+| `sender_id` | String | Yes | Sender identifier (agent ID or human username) |
+| `sender_name` | String | Yes | Display name |
+| `sender_kind` | String | Yes | `agent` or `human` |
+| `content` | String | Yes | Message content |
+
+---
+
+### Memory
+
+#### `search_memories`
+
+Semantic search across stored agent memories.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `query` | String | Yes | Search query |
+| `tags` | String[] | No | Filter to memories with all of these tags |
+| `memory_type` | String | No | `information`, `question`, `request` |
+| `limit` | Integer | No | Max results (default 10, max 100) |
+
+---
+
+#### `list_memories`
+
+List memories with metadata filters.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `memory_type` | String | No | `information`, `question`, `request` |
+| `tag` | String | No | Single tag filter |
+| `created_by` | String | No | Filter by creator identifier |
+| `visibility` | String | No | `public`, `private`, `shared` |
+| `limit` | Integer | No | Max results (default 50, max 200) |
+
+---
+
+#### `get_memory`
+
+Fetch a single memory's full content and metadata.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `memory_id` | String | Yes | The memory ID (e.g. `mem_1718000000000_a1b2c3d4`) |
+
+---
+
+### Projects
+
+#### `list_projects`
+
+List projects grouping agents and workflows.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `limit` | Integer | No | Max projects (default 50, max 200) |
+
+---
+
+#### `get_project`
+
+Project details including counts of associated agents and workflows.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `project_id` | String | Yes | The project ID (UUID) |
 
 ---
 
@@ -464,11 +595,11 @@ Current system metrics from the monitor service: CPU usage, memory, disk usage, 
 
 #### `get_prometheus_metrics`
 
-Fetch and parse key Prometheus counters and gauges from a service. Supports orchestrator (agents, WebSocket, approvals) and notify (notification counts).
+Fetch and parse key Prometheus counters and gauges from any agentd service. Highlights operational metrics specific to each service (agents, approvals, notifications, memories, rooms, system resources, etc.).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `service` | String | No | Service to fetch from: `orchestrator`, `notify` (default: `orchestrator`) |
+| `service` | String | No | Service to fetch from: `orchestrator`, `notify`, `memory`, `communicate`, `monitor`, `ask`, `wrap`, `hook` (default: `orchestrator`) |
 
 ---
 

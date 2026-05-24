@@ -7,7 +7,8 @@
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
 use crate::tools::{
-    agents, approvals, diagnostic, health, lifecycle, notifications, remediation, workflows,
+    agents, approvals, communicate, diagnostic, health, lifecycle, memory, notifications,
+    orchestrator_debug, remediation, workflows,
 };
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
@@ -70,12 +71,67 @@ impl AgentdMcp {
         diagnostic::run_diagnose_system(&self.client).await
     }
 
-    /// Test connectivity to every agentd service by probing its /health endpoint.
+    /// Detect orchestrator state mismatches (running-but-disconnected, etc.).
     #[tool(
-        description = "Test connectivity between the MCP server and all agentd services (orchestrator, communicate, memory, notify, ask, wrap, monitor). Returns a table showing which services are reachable and which are not."
+        description = "Detect orchestrator state mismatches: agents that are running but have no WebSocket connection, agents connected but not in running state, and orphan WebSocket connections with no DB record. Highest-value tool for catching subtle agent stuckness."
     )]
-    async fn check_connectivity(&self) -> String {
-        diagnostic::run_check_connectivity(&self.client).await
+    async fn diagnose_state_mismatches(&self) -> String {
+        orchestrator_debug::run_diagnose_state_mismatches(&self.client).await
+    }
+
+    /// Inspect a queue: stats and a peek at the next pending tasks.
+    #[tool(
+        description = "Inspect a named queue managed by the orchestrator. Returns counts (pending, processing, completed, failed, dead) and peeks at the next N pending tasks with their retry counts. Useful for diagnosing queue backpressure or stuck workflow triggers."
+    )]
+    async fn inspect_queue(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Queue name (e.g. agent-tasks, workflow-dispatch)")]
+        queue_name: String,
+        #[tool(param)]
+        #[schemars(description = "Number of pending tasks to peek (default: 10, max: 100)")]
+        peek_limit: Option<u32>,
+    ) -> String {
+        orchestrator_debug::run_inspect_queue(&self.client, &queue_name, peek_limit).await
+    }
+
+    /// Summarise an agent's conversation history (event counts, sessions, time range).
+    #[tool(
+        description = "Get a summary of an agent's conversation history: total events, per-event-type counts, session count, first/last event timestamps. Cheap way to see whether an agent has actually been productive without loading full transcripts."
+    )]
+    async fn get_conversation_summary(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The agent ID (UUID)")]
+        agent_id: String,
+    ) -> String {
+        orchestrator_debug::run_get_conversation_summary(&self.client, &agent_id).await
+    }
+
+    /// List projects (groupings of agents and workflows).
+    #[tool(
+        description = "List projects defined in the orchestrator. Projects group agents and workflows for organisational purposes."
+    )]
+    async fn list_projects(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Maximum projects to return (default: 50, max: 200)")]
+        limit: Option<u32>,
+    ) -> String {
+        orchestrator_debug::run_list_projects(&self.client, limit).await
+    }
+
+    /// Get a project's details including agent and workflow counts.
+    #[tool(
+        description = "Get a project's details including counts of associated agents and workflows."
+    )]
+    async fn get_project(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The project ID (UUID)")]
+        project_id: String,
+    ) -> String {
+        orchestrator_debug::run_get_project(&self.client, &project_id).await
     }
 
     // ── Agent inspection ────────────────────────────────────────────────
@@ -310,6 +366,165 @@ impl AgentdMcp {
         approvals::run_deny_tool_request(&self.client, &approval_id, reason.as_deref()).await
     }
 
+    // ── Communicate: rooms, participants, messages ──────────────────────
+
+    /// List rooms in the communicate service.
+    #[tool(
+        description = "List rooms in the communicate service. Optionally filter by room_type (direct | group | broadcast) or project_id. Returns a table with type, name, ID, topic, and creation time."
+    )]
+    async fn list_rooms(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Filter by room type: direct | group | broadcast. Omit for all.")]
+        room_type: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Filter by project ID (UUID). Omit for all.")]
+        project_id: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Maximum number of rooms to return (default: 50, max: 200)")]
+        limit: Option<u32>,
+    ) -> String {
+        communicate::run_list_rooms(
+            &self.client,
+            room_type.as_deref(),
+            project_id.as_deref(),
+            limit,
+        )
+        .await
+    }
+
+    /// Get a room's details plus its participant list.
+    #[tool(
+        description = "Get a room's metadata and full participant list. Useful for understanding who's in a room and what its purpose is."
+    )]
+    async fn get_room(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The room ID (UUID) to fetch")]
+        room_id: String,
+    ) -> String {
+        communicate::run_get_room(&self.client, &room_id).await
+    }
+
+    /// List recent messages in a room.
+    #[tool(
+        description = "List the most recent messages in a room. Returns a table with timestamp, sender, status, and content preview. Useful for catching up on conversation activity or diagnosing what an agent has been saying."
+    )]
+    async fn list_messages(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The room ID (UUID) whose messages to list")]
+        room_id: String,
+        #[tool(param)]
+        #[schemars(description = "Maximum number of messages (default: 20, max: 200)")]
+        limit: Option<u32>,
+    ) -> String {
+        communicate::run_list_messages(&self.client, &room_id, limit).await
+    }
+
+    /// Post a message into a room as a given sender.
+    #[tool(
+        description = "Send a message to a room. The sender must be a participant in the room. Useful for remediation flows where the system or an admin agent needs to post a status update or coordinate with other agents."
+    )]
+    async fn send_room_message(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The room ID (UUID) to post into")]
+        room_id: String,
+        #[tool(param)]
+        #[schemars(description = "Sender identifier (agent ID or human username)")]
+        sender_id: String,
+        #[tool(param)]
+        #[schemars(description = "Display name for the sender")]
+        sender_name: String,
+        #[tool(param)]
+        #[schemars(description = "Sender kind: agent | human")]
+        sender_kind: String,
+        #[tool(param)]
+        #[schemars(description = "The message content to send")]
+        content: String,
+    ) -> String {
+        communicate::run_send_room_message(
+            &self.client,
+            &room_id,
+            &sender_id,
+            &sender_name,
+            &sender_kind,
+            &content,
+        )
+        .await
+    }
+
+    // ── Memory: search, list, get ───────────────────────────────────────
+
+    /// Semantic search across stored memories.
+    #[tool(
+        description = "Semantic search across agent memories. Returns matching memories ranked by relevance. Useful for discovering what knowledge agents have stored, finding context for a diagnostic, or surfacing relevant prior decisions."
+    )]
+    async fn search_memories(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Search query (required, non-empty)")]
+        query: String,
+        #[tool(param)]
+        #[schemars(description = "Filter results to memories with all of these tags")]
+        tags: Option<Vec<String>>,
+        #[tool(param)]
+        #[schemars(description = "Filter by memory type: information | question | request")]
+        memory_type: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Maximum results (default: 10, max: 100)")]
+        limit: Option<u32>,
+    ) -> String {
+        memory::run_search_memories(&self.client, &query, tags, memory_type.as_deref(), limit).await
+    }
+
+    /// List memories with optional filters.
+    #[tool(
+        description = "List memories with optional filters for type, tag, creator, and visibility. Use search_memories for content-based discovery and this tool for metadata-based browsing."
+    )]
+    async fn list_memories(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Filter by memory type: information | question | request")]
+        memory_type: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Filter by a tag (single tag)")]
+        tag: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Filter by creator identifier")]
+        created_by: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Filter by visibility: public | private | shared")]
+        visibility: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Maximum results (default: 50, max: 200)")]
+        limit: Option<u32>,
+    ) -> String {
+        memory::run_list_memories(
+            &self.client,
+            memory_type.as_deref(),
+            tag.as_deref(),
+            created_by.as_deref(),
+            visibility.as_deref(),
+            limit,
+        )
+        .await
+    }
+
+    /// Get full details of a single memory by ID.
+    #[tool(
+        description = "Fetch a single memory by its ID, including full content, tags, visibility, references, and sharing list."
+    )]
+    async fn get_memory(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The memory ID (e.g. mem_1718000000000_a1b2c3d4)")]
+        memory_id: String,
+    ) -> String {
+        memory::run_get_memory(&self.client, &memory_id).await
+    }
+
     // ── Agent lifecycle management ──────────────────────────────────────
 
     /// Restart a failed or stopped agent by terminating and recreating it.
@@ -505,13 +720,13 @@ impl AgentdMcp {
 
     /// Fetch and parse key Prometheus metrics from a service.
     #[tool(
-        description = "Fetch raw Prometheus metrics from a service and parse key operational counters and gauges. Supports: orchestrator (agents, WebSocket, approvals), notify (notification counts). Defaults to orchestrator."
+        description = "Fetch raw Prometheus metrics from any agentd service and parse key operational counters/gauges. Supports: orchestrator, notify, memory, communicate, monitor, ask, wrap, hook. Defaults to orchestrator."
     )]
     async fn get_prometheus_metrics(
         &self,
         #[tool(param)]
         #[schemars(
-            description = "Service to fetch metrics from: orchestrator | notify (default: orchestrator)"
+            description = "Service: orchestrator | notify | memory | communicate | monitor | ask | wrap | hook (default: orchestrator)"
         )]
         service: Option<String>,
     ) -> String {
@@ -527,8 +742,9 @@ impl ServerHandler for AgentdMcp {
                 "agentd MCP server — exposes agentd agent management, \
                  messaging, memory, notification, approval, workflow, and \
                  diagnostic services as MCP tools. \
-                 Start with `diagnose_system` or `check_connectivity` for a \
-                 system overview."
+                 Start with `diagnose_system` or `check_service_health` for a \
+                 system overview. Use `diagnose_state_mismatches` to catch \
+                 subtle agent stuckness."
                     .into(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),

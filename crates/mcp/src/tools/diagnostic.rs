@@ -42,7 +42,7 @@ pub async fn run_diagnose_agent(client: &AgentdClient, agent_id: &str) -> String
             writeln!(report, "# Agent Diagnostic: {agent_id}").ok();
             writeln!(report, "\n## 🔴 Error").ok();
             writeln!(report, "- Could not fetch agent. Verify the agent ID and that the orchestrator is running.").ok();
-            writeln!(report, "  → Check connectivity: `check_connectivity`").ok();
+            writeln!(report, "  → Check connectivity: `check_service_health`").ok();
             return report;
         }
     };
@@ -51,11 +51,21 @@ pub async fn run_diagnose_agent(client: &AgentdClient, agent_id: &str) -> String
     let status = str_field(&agent, "status");
     let activity = str_field(&agent, "activity");
     let updated_at = str_field(&agent, "updated_at");
+    let backend_type = str_field(&agent, "backend_type");
+    let session_id = agent["session_id"].as_str();
+    let pid = agent["pid"].as_u64();
 
     writeln!(report, "# Agent Diagnostic: {name}").ok();
     writeln!(report, "- **ID:** `{agent_id}`").ok();
     writeln!(report, "- **Status:** `{status}`").ok();
     writeln!(report, "- **Activity:** `{activity}`").ok();
+    writeln!(report, "- **Backend:** `{backend_type}`").ok();
+    if let Some(sid) = session_id {
+        writeln!(report, "- **Session ID:** `{sid}`").ok();
+    }
+    if let Some(p) = pid {
+        writeln!(report, "- **PID:** {p}").ok();
+    }
     writeln!(report, "- **Last Updated:** {updated_at}").ok();
 
     // ── 2. Status analysis ──────────────────────────────────────────────
@@ -105,7 +115,65 @@ pub async fn run_diagnose_agent(client: &AgentdClient, agent_id: &str) -> String
         );
     }
 
-    // ── 4. Usage / last activity ────────────────────────────────────────
+    // ── 4. Backend-specific health (wrap service cross-check) ───────────
+    if let Some(sid) = session_id {
+        let wrap_url = format!("{}/sessions/{sid}", client.wrap_url());
+        let session_exists = match client.inner.get(&wrap_url).send().await {
+            Ok(r) => Some(r.status().is_success()),
+            Err(_) => None,
+        };
+        match (status, session_exists) {
+            ("Running", Some(false)) => {
+                critical.push(format!(
+                    "Agent status is **Running** but the {backend_type} session `{sid}` does not \
+                     exist in the wrap service. The backend session has died but the orchestrator \
+                     has not noticed.\n  → `restart_agent`"
+                ));
+            }
+            ("Running", Some(true)) => {
+                info.push(format!("{backend_type} session `{sid}` is alive ✓"));
+            }
+            ("Stopped" | "Failed", Some(true)) => {
+                warnings.push(format!(
+                    "Agent is {status} but a backend session `{sid}` still exists. \
+                     Consider `terminate_agent` to clean up the lingering session."
+                ));
+            }
+            (_, None) => {
+                info.push(
+                    "Wrap service unreachable — could not verify backend session existence."
+                        .to_string(),
+                );
+            }
+            _ => {}
+        }
+
+        match backend_type {
+            "docker" => {
+                info.push(
+                    "Backend is **docker** — for deep health (exit code, OOM kills) check the \
+                     container directly with `docker inspect`."
+                        .to_string(),
+                );
+            }
+            "subprocess" => {
+                info.push(
+                    "Backend is **subprocess** — uses stdin/stdout NDJSON. If the agent appears \
+                     hung, the subprocess may have crashed; check its PID."
+                        .to_string(),
+                );
+            }
+            "pty" => {
+                info.push("Backend is **pty** — direct PTY session.".to_string());
+            }
+            "tmux" => {
+                info.push("Backend is **tmux** — session can be attached for inspection.".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    // ── 5. Usage / last activity ────────────────────────────────────────
     let usage_url = format!("{base}/agents/{agent_id}/usage");
     if let Some(usage) = fetch_json(client, &usage_url).await {
         if let Some(current) = usage["current_session"].as_object() {
@@ -117,7 +185,7 @@ pub async fn run_diagnose_agent(client: &AgentdClient, agent_id: &str) -> String
         }
     }
 
-    // ── 5. Render report ────────────────────────────────────────────────
+    // ── 6. Render report ────────────────────────────────────────────────
     if !critical.is_empty() {
         writeln!(report, "\n## 🔴 Critical").ok();
         for item in &critical {
@@ -165,10 +233,15 @@ pub async fn run_diagnose_workflow(client: &AgentdClient, workflow_id: &str) -> 
     let wf_name = str_field(&wf, "name");
     let agent_id = str_field(&wf, "agent_id");
     let enabled = wf["enabled"].as_bool().unwrap_or(false);
+    let trigger_type = wf["trigger_type"]
+        .as_str()
+        .or_else(|| wf["source"]["type"].as_str())
+        .unwrap_or("unknown");
 
     writeln!(report, "# Workflow Diagnostic: {wf_name}").ok();
     writeln!(report, "- **ID:** `{workflow_id}`").ok();
     writeln!(report, "- **Agent:** `{agent_id}`").ok();
+    writeln!(report, "- **Trigger:** `{trigger_type}`").ok();
     writeln!(report, "- **Enabled:** {enabled}").ok();
 
     let mut critical: Vec<String> = Vec::new();
@@ -177,6 +250,68 @@ pub async fn run_diagnose_workflow(client: &AgentdClient, workflow_id: &str) -> 
 
     if !enabled {
         warnings.push("Workflow is **disabled** and will not trigger automatically.".to_string());
+    }
+
+    // Trigger-specific notes
+    match trigger_type {
+        "cron" => {
+            let schedule = wf["source"]["schedule"].as_str().unwrap_or("?");
+            info.push(format!(
+                "Cron schedule: `{schedule}`. If dispatches aren't happening, verify the expression \
+                 parses correctly and the orchestrator's scheduler is running."
+            ));
+        }
+        "delay" => {
+            info.push(
+                "Delay-triggered: fires once after a configured delay. After firing, will not re-trigger \
+                 unless manually reset."
+                    .to_string(),
+            );
+        }
+        "webhook" => {
+            info.push(
+                "Webhook-triggered: fires on inbound POSTs. Check the webhook secret + signature \
+                 validation if expected events are not arriving."
+                    .to_string(),
+            );
+        }
+        "agent_lifecycle" => {
+            let event = wf["source"]["event"].as_str().unwrap_or("?");
+            info.push(format!(
+                "AgentLifecycle-triggered on `{event}`. Fires when the upstream agent emits the event."
+            ));
+        }
+        "agent_idle" => {
+            info.push(
+                "AgentIdle-triggered: fires after the workflow's agent has been idle for a configured \
+                 period. Verify the agent is reaching idle (not stuck in tool approvals)."
+                    .to_string(),
+            );
+        }
+        "dispatch_result" => {
+            let upstream = wf["source"]["upstream_workflow_id"].as_str().unwrap_or("?");
+            info.push(format!(
+                "DispatchResult-triggered: fires on completion of upstream workflow `{upstream}`. \
+                 Diagnose upstream first if downstream isn't firing."
+            ));
+        }
+        "manual" => {
+            info.push(
+                "Manual trigger: only fires when explicitly dispatched via the API.".to_string(),
+            );
+        }
+        "github_issues" | "github_pull_requests" => {
+            info.push(format!(
+                "Polling trigger (`{trigger_type}`). Verify the orchestrator can reach the GitHub \
+                 API and the configured token has access."
+            ));
+        }
+        "linear_issues" => {
+            info.push(
+                "Polling Linear. Verify API key and team filter configuration.".to_string(),
+            );
+        }
+        _ => {}
     }
 
     // ── 2. Check associated agent ───────────────────────────────────────
@@ -196,7 +331,7 @@ pub async fn run_diagnose_workflow(client: &AgentdClient, workflow_id: &str) -> 
         }
     } else {
         critical.push(format!(
-            "Could not reach agent `{agent_id}`. Orchestrator may be down.\n  → `check_connectivity`"
+            "Could not reach agent `{agent_id}`. Orchestrator may be down.\n  → `check_service_health`"
         ));
     }
 
@@ -418,7 +553,7 @@ pub async fn run_diagnose_system(client: &AgentdClient) -> String {
             report,
             "\n---\n\
              *Run `diagnose_agent <id>` or `diagnose_workflow <id>` for deeper analysis. \
-             Use `check_connectivity` if services appear unreachable.*"
+             Use `check_service_health` if services appear unreachable.*"
         )
         .ok();
     }
@@ -426,48 +561,3 @@ pub async fn run_diagnose_system(client: &AgentdClient) -> String {
     report
 }
 
-// ── check_connectivity ─────────────────────────────────────────────────────
-
-/// Test connectivity to all agentd services.
-pub async fn run_check_connectivity(client: &AgentdClient) -> String {
-    let mut report = String::new();
-
-    let services: &[(&str, &str)] = &[
-        ("Orchestrator", client.orchestrator_url()),
-        ("Communicate", client.communicate_url()),
-        ("Memory", client.memory_url()),
-        ("Notify", client.notify_url()),
-        ("Ask", client.ask_url()),
-        ("Wrap", client.wrap_url()),
-        ("Monitor", client.monitor_url()),
-    ];
-
-    writeln!(report, "# Connectivity Report").ok();
-    writeln!(report, "\n| Service | URL | Status |").ok();
-    writeln!(report, "|---------|-----|--------|").ok();
-
-    let mut any_down = false;
-    for (name, base_url) in services {
-        let health_url = format!("{base_url}/health");
-        let reachable = service_reachable(client, &health_url).await;
-        let status = if reachable { "✅ reachable" } else { "❌ unreachable" };
-        if !reachable {
-            any_down = true;
-        }
-        writeln!(report, "| {name} | `{base_url}` | {status} |").ok();
-    }
-
-    if any_down {
-        writeln!(report, "\n## 🔴 Some services are unreachable").ok();
-        writeln!(
-            report,
-            "Ensure all agentd services are started with `cargo run -p agentd-<service>` \
-             or via the deployment configuration."
-        )
-        .ok();
-    } else {
-        writeln!(report, "\n✅ All services reachable.").ok();
-    }
-
-    report
-}
