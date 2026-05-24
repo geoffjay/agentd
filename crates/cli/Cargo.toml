@@ -41,6 +41,7 @@ hook = { path = "../hook" }
 memory = { path = "../memory" }
 communicate = { path = "../communicate" }
 agentd-mcp = { path = "../mcp" }
+agentd-tui = { path = "../tui" }
 
 [features]
 default = []

@@ -385,6 +385,12 @@ enum Commands {
         command: ProjectCommand,
     },
 
+    /// Launch the terminal UI for interactive agent control.
+    ///
+    /// Opens a full-screen TUI dashboard for browsing agents, workflows,
+    /// memories, and dispatching messages interactively.
+    Control,
+
     /// Interact with built-in system agents.
     ///
     /// System agents are spawned automatically by the orchestrator at startup
@@ -544,6 +550,9 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "http://localhost:17006".to_string());
             let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
+        }
+        Commands::Control => {
+            agentd_tui::run().await?;
         }
         Commands::SystemAgents { command } => {
             let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")

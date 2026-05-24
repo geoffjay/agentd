@@ -1088,6 +1088,7 @@ version = "0.2.0"
 dependencies = [
  "agentd-common",
  "agentd-mcp",
+ "agentd-tui",
  "anyhow",
  "ask",
  "bytes",
