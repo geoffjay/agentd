@@ -5,8 +5,8 @@ use crate::scheduler::types::WorkflowResponse;
 use crate::scheduler::Scheduler;
 use crate::types::*;
 use crate::websocket::{
-    ws_handler, ws_stream_agent_handler, ws_stream_all_handler, ws_terminal_handler,
-    ConnectionRegistry, TerminalRelayState,
+    ws_handler, ws_stream_agent_handler, ws_stream_agent_v2_handler, ws_stream_all_handler,
+    ws_terminal_handler, ConnectionRegistry, TerminalRelayState,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -44,9 +44,12 @@ pub fn create_router(state: ApiState) -> Router {
         Router::new().route("/ws/{agent_id}", get(ws_handler)).with_state(state.registry.clone());
 
     // Monitoring streams on a separate path to avoid route conflicts.
+    // v1 (/stream, /stream/{agent_id}) is kept for one release for any
+    // external consumers; first-party clients (Web UI, TUI) use v2.
     let ws_stream_routes = Router::new()
         .route("/stream", get(ws_stream_all_handler))
         .route("/stream/{agent_id}", get(ws_stream_agent_handler))
+        .route("/v2/stream/{agent_id}", get(ws_stream_agent_v2_handler))
         .with_state(state.registry.clone());
 
     // PTY terminal relay WebSocket — binary frames of raw terminal I/O.

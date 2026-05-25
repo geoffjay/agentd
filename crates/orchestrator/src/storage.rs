@@ -590,6 +590,14 @@ impl AgentStorage {
     // -----------------------------------------------------------------------
 
     /// Inserts a conversation event and returns its UUID.
+    ///
+    /// If `event.seq` is `0`, the storage layer auto-assigns the next
+    /// available per-agent seq by reading `MAX(seq) + 1`. Production callers
+    /// always go through [`ConnectionRegistry::record_and_seq`], which
+    /// assigns from the in-memory counter under a mutex; this fallback
+    /// exists for ad-hoc direct inserts (tests, migration utilities) and
+    /// for any backfill path that constructs `ConversationEvent` via its
+    /// `new` constructor.
     // Used by integration tests (conversation_persistence.rs) on stacked branches.
     #[allow(dead_code)]
     pub async fn insert_conversation_event(&self, event: &ConversationEvent) -> Result<Uuid> {
@@ -602,6 +610,12 @@ impl AgentStorage {
             .transpose()
             .map_err(|e| anyhow::anyhow!("Failed to serialize event metadata: {}", e))?;
 
+        let assigned_seq = if event.seq == 0 {
+            self.get_max_conversation_seq(event.agent_id).await.unwrap_or(0) + 1
+        } else {
+            event.seq
+        };
+
         let model = conv_entity::ActiveModel {
             id: Set(event.id.to_string()),
             agent_id: Set(event.agent_id.to_string()),
@@ -610,6 +624,7 @@ impl AgentStorage {
             content: Set(event.content.clone()),
             metadata: Set(metadata_str),
             created_at: Set(event.created_at.to_rfc3339()),
+            seq: Set(assigned_seq),
         };
         conv_entity::Entity::insert(model).exec(&self.db).await?;
         Ok(event.id)
@@ -689,6 +704,57 @@ impl AgentStorage {
             ))
             .await?;
         Ok(row.and_then(|r| r.try_get::<i64>("", "max_session").ok()).unwrap_or(0))
+    }
+
+    /// Returns the highest `seq` stored in `conversation_events` for
+    /// `agent_id`, or `0` if no events exist yet.
+    ///
+    /// Used by [`crate::websocket::ConnectionRegistry`] to lazy-initialise
+    /// the per-agent monotonic sequence counter on first event after restart.
+    pub async fn get_max_conversation_seq(&self, agent_id: Uuid) -> Result<i64> {
+        let row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                self.db.get_database_backend(),
+                r#"SELECT COALESCE(MAX(seq), 0) AS max_seq
+               FROM conversation_events
+               WHERE agent_id = ?"#,
+                [sea_orm::Value::String(Some(Box::new(agent_id.to_string())))],
+            ))
+            .await?;
+        Ok(row.and_then(|r| r.try_get::<i64>("", "max_seq").ok()).unwrap_or(0))
+    }
+
+    /// Returns conversation events for `agent_id` whose `seq` is strictly greater
+    /// than `since_seq` and less than or equal to `max_seq` (inclusive upper
+    /// bound), ordered by `seq ASC`.
+    ///
+    /// `max_seq` is the snapshot cursor recorded at subscribe time; passing it
+    /// in explicitly keeps the snapshot bounded so that live events that arrive
+    /// during the backfill query are not double-counted.
+    #[allow(dead_code)]
+    pub async fn list_conversation_events_since(
+        &self,
+        agent_id: Uuid,
+        since_seq: i64,
+        max_seq: i64,
+        session_number: Option<i64>,
+    ) -> Result<Vec<ConversationEvent>> {
+        let mut condition = Condition::all()
+            .add(conv_entity::Column::AgentId.eq(agent_id.to_string()))
+            .add(conv_entity::Column::Seq.gt(since_seq))
+            .add(conv_entity::Column::Seq.lte(max_seq));
+
+        if let Some(session) = session_number {
+            condition = condition.add(conv_entity::Column::SessionNumber.eq(session));
+        }
+
+        let models = conv_entity::Entity::find()
+            .filter(condition)
+            .order_by(conv_entity::Column::Seq, Order::Asc)
+            .all(&self.db)
+            .await?;
+        models.into_iter().map(model_to_conversation_event).collect()
     }
 
     /// Deletes all conversation events for `agent_id`.
@@ -1060,6 +1126,7 @@ fn model_to_conversation_event(model: conv_entity::Model) -> Result<Conversation
         content: model.content,
         metadata,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
+        seq: model.seq,
     })
 }
 
@@ -2112,6 +2179,7 @@ mod tests {
             content: Some("old".to_string()),
             metadata: None,
             created_at: Utc::now() - chrono::Duration::days(40),
+            seq: 0,
         };
         storage.insert_conversation_event(&old_event).await.unwrap();
 
