@@ -41,9 +41,9 @@ pub fn cursor_visual_pos(buffer: &str, cursor: usize, inner_width: usize) -> (u1
 
     let all_logical: Vec<&str> = buffer.split('\n').collect();
     let mut visual_row = 0u16;
-    for i in 0..logical_idx {
+    for (i, line) in all_logical.iter().enumerate().take(logical_idx) {
         let w = if i == 0 { first_w } else { inner_width.max(1) };
-        let n = all_logical[i].chars().count().max(1);
+        let n = line.chars().count().max(1);
         visual_row = visual_row.saturating_add(n.div_ceil(w) as u16);
     }
 
@@ -51,11 +51,8 @@ pub fn cursor_visual_pos(buffer: &str, cursor: usize, inner_width: usize) -> (u1
     let row_within = (col_in_logical / line_w) as u16;
     visual_row = visual_row.saturating_add(row_within);
     let col_in_row = col_in_logical % line_w;
-    let col = if logical_idx == 0 && row_within == 0 {
-        col_in_row + PREFIX_LEN
-    } else {
-        col_in_row
-    };
+    let col =
+        if logical_idx == 0 && row_within == 0 { col_in_row + PREFIX_LEN } else { col_in_row };
 
     (visual_row, col as u16)
 }
@@ -83,11 +80,8 @@ pub fn visual_pos_to_byte(
             let col_in_logical =
                 col_logical_start + (target_col as usize).saturating_sub(prefix_here);
             let char_idx = col_in_logical.min(char_count);
-            let byte_in_line = lline
-                .char_indices()
-                .nth(char_idx)
-                .map(|(b, _)| b)
-                .unwrap_or(lline.len());
+            let byte_in_line =
+                lline.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(lline.len());
             return byte_start + byte_in_line;
         }
 
@@ -100,12 +94,7 @@ pub fn visual_pos_to_byte(
 
 /// Moves the byte cursor up (`delta < 0`) or down (`delta > 0`) by visual rows.
 /// Returns the new byte offset. If already at the first/last row, returns unchanged.
-pub fn cursor_move_vertical(
-    buffer: &str,
-    cursor: usize,
-    delta: i16,
-    inner_width: usize,
-) -> usize {
+pub fn cursor_move_vertical(buffer: &str, cursor: usize, delta: i16, inner_width: usize) -> usize {
     let (row, col) = cursor_visual_pos(buffer, cursor, inner_width);
     let max_row = compute_input_rows(buffer, inner_width).saturating_sub(1);
     let target_row = ((row as i16 + delta).max(0) as u16).min(max_row);
@@ -135,11 +124,7 @@ pub fn build_input_display_lines(
     let mut display_row = 0u16;
 
     for (li, lline) in buffer.split('\n').enumerate() {
-        let (w, row_prefix) = if li == 0 {
-            (first_w, PREFIX)
-        } else {
-            (inner_width.max(1), "")
-        };
+        let (w, row_prefix) = if li == 0 { (first_w, PREFIX) } else { (inner_width.max(1), "") };
         let chars: Vec<char> = lline.chars().collect();
         let total = chars.len();
         let mut pos = 0usize;
@@ -148,8 +133,7 @@ pub fn build_input_display_lines(
             let end = (pos + w).min(total);
             let chunk: &[char] = &chars[pos..end];
             let prefix_for_row = if pos == 0 { row_prefix } else { "" };
-            let row_str: String =
-                format!("{}{}", prefix_for_row, chunk.iter().collect::<String>());
+            let row_str: String = format!("{}{}", prefix_for_row, chunk.iter().collect::<String>());
 
             let line = match cursor_pos {
                 Some((crow, ccol)) if crow == display_row => {

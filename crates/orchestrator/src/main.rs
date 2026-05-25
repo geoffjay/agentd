@@ -529,6 +529,32 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Reactive restart handler: when an agent is restarted, re-launch any enabled
+    // workflow runners that died because the agent previously failed (e.g., the
+    // startup-time 60-second wait in `resume_workflows` expired before the agent
+    // connected).
+    {
+        let mut restart_rx = event_bus.subscribe();
+        let scheduler_restart = scheduler.clone();
+        tokio::spawn(async move {
+            loop {
+                match restart_rx.recv().await {
+                    Ok(scheduler::events::SystemEvent::AgentRestarted { agent_id }) => {
+                        let sched = Arc::clone(&scheduler_restart);
+                        tokio::spawn(async move {
+                            sched.restart_workflows_for_agent(agent_id).await;
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        warn!("Agent restart handler lagged by {} events", n);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
     // Resume any enabled workflows from the database.
     if let Err(e) = scheduler.resume_workflows().await {
         error!(%e, "Failed to resume workflows");

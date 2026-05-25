@@ -60,11 +60,7 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
     kv(&mut lines, "port", cfg.services.hook.port.to_string());
     kv(&mut lines, "history_size", cfg.services.hook.history_size.to_string());
     kv(&mut lines, "notify_on_failure", cfg.services.hook.notify_on_failure.to_string());
-    kv(
-        &mut lines,
-        "notify_on_long_running",
-        cfg.services.hook.notify_on_long_running.to_string(),
-    );
+    kv(&mut lines, "notify_on_long_running", cfg.services.hook.notify_on_long_running.to_string());
     kv(
         &mut lines,
         "long_running_threshold_ms",

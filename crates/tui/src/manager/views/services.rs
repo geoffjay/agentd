@@ -29,17 +29,11 @@ pub fn render(f: &mut Frame, app: &mut ManagerApp, area: Rect) {
                     } else {
                         reason.clone()
                     };
-                    (
-                        "down",
-                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                        reason,
-                    )
+                    ("down", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD), reason)
                 }
-                ServiceState::Unknown => (
-                    "unknown",
-                    Style::default().fg(Color::DarkGray),
-                    String::new(),
-                ),
+                ServiceState::Unknown => {
+                    ("unknown", Style::default().fg(Color::DarkGray), String::new())
+                }
             };
 
             Row::new(vec![
@@ -62,10 +56,7 @@ pub fn render(f: &mut Frame, app: &mut ManagerApp, area: Rect) {
     )
     .header(header)
     .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .title(" Services "),
+        Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(" Services "),
     )
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 

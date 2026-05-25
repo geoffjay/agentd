@@ -10,10 +10,7 @@ use ratatui::{
 pub fn render(f: &mut Frame, app: &ManagerApp, area: Rect) {
     let source_label = match &app.log_source {
         LogSource::None => Span::styled(" no source set", Style::default().fg(Color::DarkGray)),
-        LogSource::File(p) => Span::styled(
-            format!(" {p}"),
-            Style::default().fg(Color::Cyan),
-        ),
+        LogSource::File(p) => Span::styled(format!(" {p}"), Style::default().fg(Color::Cyan)),
     };
 
     let chunks = Layout::default()
@@ -29,11 +26,7 @@ pub fn render(f: &mut Frame, app: &ManagerApp, area: Rect) {
     );
     f.render_widget(source_block, chunks[0]);
 
-    let lines: Vec<Line> = app
-        .log_lines
-        .iter()
-        .map(|l| Line::from(Span::raw(l.clone())))
-        .collect();
+    let lines: Vec<Line> = app.log_lines.iter().map(|l| Line::from(Span::raw(l.clone()))).collect();
 
     let total = lines.len() as u16;
     let height = chunks[1].height.saturating_sub(2);
@@ -46,10 +39,7 @@ pub fn render(f: &mut Frame, app: &ManagerApp, area: Rect) {
 
     let log_block = Paragraph::new(lines)
         .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .title(" Logs "),
+            Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(" Logs "),
         )
         .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
@@ -91,10 +81,7 @@ fn render_source_input(f: &mut Frame, input: &str, area: Rect) {
         inner[0],
     );
     f.render_widget(
-        Paragraph::new(Span::styled(
-            input,
-            Style::default().fg(Color::White),
-        )),
+        Paragraph::new(Span::styled(input, Style::default().fg(Color::White))),
         inner[1],
     );
 }

@@ -35,6 +35,13 @@ pub enum SystemEvent {
     },
     /// An agent joined a communicate room.
     AgentJoinedRoom { agent_id: Uuid, room_id: Uuid },
+    /// An agent was explicitly restarted via the API, reconciliation, or bootstrap.
+    ///
+    /// Published by [`crate::manager::AgentManager::restart_agent`] after the new
+    /// process is launched and the DB record is updated. The scheduler subscribes
+    /// to this event to re-launch any enabled workflow runners that died when the
+    /// agent previously failed.
+    AgentRestarted { agent_id: Uuid },
     /// A human answered or dismissed an ask service question.
     ///
     /// Published by the orchestrator when it receives a callback from the ask
@@ -164,7 +171,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_publish_all_event_variants() {
-        let bus = EventBus::new(16);
+        let bus = EventBus::new(32);
         let mut rx = bus.subscribe();
 
         let agent_id = Uuid::new_v4();
@@ -173,6 +180,7 @@ mod tests {
 
         bus.publish(SystemEvent::AgentConnected { agent_id });
         bus.publish(SystemEvent::AgentDisconnected { agent_id });
+        bus.publish(SystemEvent::AgentRestarted { agent_id });
         bus.publish(SystemEvent::ContextCleared { agent_id });
         bus.publish(SystemEvent::DispatchCompleted {
             workflow_id,
@@ -181,9 +189,10 @@ mod tests {
             source_id: Some("123".to_string()),
         });
 
-        // Verify all four events arrive in order.
+        // Verify all five events arrive in order.
         assert!(matches!(rx.recv().await.unwrap(), SystemEvent::AgentConnected { .. }));
         assert!(matches!(rx.recv().await.unwrap(), SystemEvent::AgentDisconnected { .. }));
+        assert!(matches!(rx.recv().await.unwrap(), SystemEvent::AgentRestarted { .. }));
         assert!(matches!(rx.recv().await.unwrap(), SystemEvent::ContextCleared { .. }));
 
         match rx.recv().await.unwrap() {
@@ -198,6 +207,20 @@ mod tests {
                 assert_eq!(status, DispatchStatus::Completed);
                 assert_eq!(source_id, Some("123".to_string()));
             }
+            other => panic!("Unexpected event: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_restarted_event() {
+        let bus = EventBus::new(16);
+        let mut rx = bus.subscribe();
+
+        let agent_id = Uuid::new_v4();
+        bus.publish(SystemEvent::AgentRestarted { agent_id });
+
+        match rx.recv().await.unwrap() {
+            SystemEvent::AgentRestarted { agent_id: id } => assert_eq!(id, agent_id),
             other => panic!("Unexpected event: {:?}", other),
         }
     }

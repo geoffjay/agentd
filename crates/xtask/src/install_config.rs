@@ -49,17 +49,11 @@ fn build_install_defaults(services: &[ServiceInfo]) -> toml::Value {
     use toml::map::Map;
     use toml::Value;
 
-    let orchestrator_port = services
-        .iter()
-        .find(|s| s.name == "orchestrator")
-        .map(|s| s.port)
-        .unwrap_or(7006);
+    let orchestrator_port =
+        services.iter().find(|s| s.name == "orchestrator").map(|s| s.port).unwrap_or(7006);
 
-    let communicate_port = services
-        .iter()
-        .find(|s| s.name == "communicate")
-        .map(|s| s.port)
-        .unwrap_or(7010);
+    let communicate_port =
+        services.iter().find(|s| s.name == "communicate").map(|s| s.port).unwrap_or(7010);
 
     let mut services_map = Map::new();
 
@@ -125,9 +119,24 @@ mod tests {
 
     fn test_services() -> Vec<ServiceInfo> {
         vec![
-            ServiceInfo { name: "ask", binary: "agentd-ask", port: 7001, port_env: "AGENTD_ASK_PORT" },
-            ServiceInfo { name: "notify", binary: "agentd-notify", port: 7004, port_env: "AGENTD_NOTIFY_PORT" },
-            ServiceInfo { name: "wrap", binary: "agentd-wrap", port: 7005, port_env: "AGENTD_WRAP_PORT" },
+            ServiceInfo {
+                name: "ask",
+                binary: "agentd-ask",
+                port: 7001,
+                port_env: "AGENTD_ASK_PORT",
+            },
+            ServiceInfo {
+                name: "notify",
+                binary: "agentd-notify",
+                port: 7004,
+                port_env: "AGENTD_NOTIFY_PORT",
+            },
+            ServiceInfo {
+                name: "wrap",
+                binary: "agentd-wrap",
+                port: 7005,
+                port_env: "AGENTD_WRAP_PORT",
+            },
             ServiceInfo {
                 name: "orchestrator",
                 binary: "agentd-orchestrator",
@@ -180,21 +189,21 @@ mod tests {
         let svcs = test_services();
         let defaults = build_install_defaults(&svcs);
         let services = defaults["services"].as_table().unwrap();
-        assert_eq!(
-            services["ask"]["orchestrator_url"].as_str(),
-            Some("http://localhost:7006")
-        );
+        assert_eq!(services["ask"]["orchestrator_url"].as_str(), Some("http://localhost:7006"));
     }
 
     #[test]
     fn test_merge_fills_gaps() {
-        let mut base: toml::Value = toml::from_str(r#"
+        let mut base: toml::Value = toml::from_str(
+            r#"
             [services.wrap]
             backend = "docker"
-        "#)
+        "#,
+        )
         .unwrap();
 
-        let defaults: toml::Value = toml::from_str(r#"
+        let defaults: toml::Value = toml::from_str(
+            r#"
             [services.wrap]
             port = 7005
             backend = "subprocess"
@@ -202,7 +211,8 @@ mod tests {
             [services.orchestrator]
             port = 7006
             backend = "subprocess"
-        "#)
+        "#,
+        )
         .unwrap();
 
         merge_toml_defaults(&mut base, defaults);
@@ -219,14 +229,15 @@ mod tests {
 
     #[test]
     fn test_merge_preserves_unrelated_sections() {
-        let mut base: toml::Value = toml::from_str(r#"
+        let mut base: toml::Value = toml::from_str(
+            r#"
             [linear]
             api_key = "lin_api_secret"
-        "#)
+        "#,
+        )
         .unwrap();
 
-        let defaults: toml::Value =
-            toml::from_str("[services.wrap]\nport = 7005\n").unwrap();
+        let defaults: toml::Value = toml::from_str("[services.wrap]\nport = 7005\n").unwrap();
 
         merge_toml_defaults(&mut base, defaults);
 

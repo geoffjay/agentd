@@ -1,8 +1,8 @@
-pub mod control;
-mod manager;
 pub mod config;
+pub mod control;
 pub mod event;
 pub mod input;
+mod manager;
 
 use anyhow::Result;
 use crossterm::{

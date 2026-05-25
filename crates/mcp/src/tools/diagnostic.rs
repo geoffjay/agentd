@@ -167,7 +167,9 @@ pub async fn run_diagnose_agent(client: &AgentdClient, agent_id: &str) -> String
                 info.push("Backend is **pty** — direct PTY session.".to_string());
             }
             "tmux" => {
-                info.push("Backend is **tmux** — session can be attached for inspection.".to_string());
+                info.push(
+                    "Backend is **tmux** — session can be attached for inspection.".to_string(),
+                );
             }
             _ => {}
         }
@@ -233,10 +235,8 @@ pub async fn run_diagnose_workflow(client: &AgentdClient, workflow_id: &str) -> 
     let wf_name = str_field(&wf, "name");
     let agent_id = str_field(&wf, "agent_id");
     let enabled = wf["enabled"].as_bool().unwrap_or(false);
-    let trigger_type = wf["trigger_type"]
-        .as_str()
-        .or_else(|| wf["source"]["type"].as_str())
-        .unwrap_or("unknown");
+    let trigger_type =
+        wf["trigger_type"].as_str().or_else(|| wf["source"]["type"].as_str()).unwrap_or("unknown");
 
     writeln!(report, "# Workflow Diagnostic: {wf_name}").ok();
     writeln!(report, "- **ID:** `{workflow_id}`").ok();
@@ -307,9 +307,7 @@ pub async fn run_diagnose_workflow(client: &AgentdClient, workflow_id: &str) -> 
             ));
         }
         "linear_issues" => {
-            info.push(
-                "Polling Linear. Verify API key and team filter configuration.".to_string(),
-            );
+            info.push("Polling Linear. Verify API key and team filter configuration.".to_string());
         }
         _ => {}
     }
@@ -560,4 +558,3 @@ pub async fn run_diagnose_system(client: &AgentdClient) -> String {
 
     report
 }
-

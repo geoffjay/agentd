@@ -163,15 +163,16 @@ impl ManagerApp {
     }
 
     pub fn tab_count(&self) -> usize {
-        if self.metrics_available { 4 } else { 3 }
+        if self.metrics_available {
+            4
+        } else {
+            3
+        }
     }
 
     pub fn tab_labels(&self) -> Vec<String> {
-        let mut labels = vec![
-            " Services ".to_string(),
-            " Logs ".to_string(),
-            " Config ".to_string(),
-        ];
+        let mut labels =
+            vec![" Services ".to_string(), " Logs ".to_string(), " Config ".to_string()];
         if self.metrics_available {
             labels.push(" Metrics ".to_string());
         }
@@ -192,7 +193,9 @@ impl ManagerApp {
         match self.view {
             ManagerView::Services => {
                 let len = self.services.len();
-                if len == 0 { return; }
+                if len == 0 {
+                    return;
+                }
                 let next = self.service_table_state.selected().map_or(0, |i| (i + 1).min(len - 1));
                 self.service_table_state.select(Some(next));
             }
@@ -212,7 +215,9 @@ impl ManagerApp {
     fn navigate_up(&mut self) {
         match self.view {
             ManagerView::Services => {
-                if self.services.is_empty() { return; }
+                if self.services.is_empty() {
+                    return;
+                }
                 let prev = self.service_table_state.selected().map_or(0, |i| i.saturating_sub(1));
                 self.service_table_state.select(Some(prev));
             }
@@ -318,14 +323,20 @@ impl ManagerApp {
         if self.view == ManagerView::Config {
             if let Some(ref mut draft) = self.config_edit {
                 match key.code {
-                    KeyCode::Char(c) => { draft.push(c); }
-                    KeyCode::Backspace => { draft.pop(); }
+                    KeyCode::Char(c) => {
+                        draft.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        draft.pop();
+                    }
                     KeyCode::Enter => {
                         let value = draft.clone();
                         self.apply_config_edit(value);
                         self.config_edit = None;
                     }
-                    KeyCode::Esc => { self.config_edit = None; }
+                    KeyCode::Esc => {
+                        self.config_edit = None;
+                    }
                     _ => {}
                 }
                 return false;
@@ -335,8 +346,12 @@ impl ManagerApp {
         // Log source picker
         if let Some(ref mut input) = self.log_source_input {
             match key.code {
-                KeyCode::Char(c) => { input.push(c); }
-                KeyCode::Backspace => { input.pop(); }
+                KeyCode::Char(c) => {
+                    input.push(c);
+                }
+                KeyCode::Backspace => {
+                    input.pop();
+                }
                 KeyCode::Enter => {
                     let path = input.trim().to_string();
                     if path.is_empty() {
@@ -348,7 +363,9 @@ impl ManagerApp {
                     }
                     self.log_source_input = None;
                 }
-                KeyCode::Esc => { self.log_source_input = None; }
+                KeyCode::Esc => {
+                    self.log_source_input = None;
+                }
                 _ => {}
             }
             return false;
@@ -399,14 +416,18 @@ impl ManagerApp {
                     self.execute_metric_query().await;
                     self.metric_input_active = false;
                 }
-                KeyCode::Esc => { self.metric_input_active = false; }
+                KeyCode::Esc => {
+                    self.metric_input_active = false;
+                }
                 _ => {}
             }
             return false;
         }
 
         match key.code {
-            KeyCode::Char('q') => { self.quitting = true; }
+            KeyCode::Char('q') => {
+                self.quitting = true;
+            }
             KeyCode::Tab => self.switch_tab(true),
             KeyCode::BackTab => self.switch_tab(false),
             KeyCode::Char('1') => {
@@ -427,7 +448,9 @@ impl ManagerApp {
             }
             KeyCode::Down | KeyCode::Char('j') => self.navigate_down(),
             KeyCode::Up | KeyCode::Char('k') => self.navigate_up(),
-            KeyCode::Char('r') => { self.refresh().await; }
+            KeyCode::Char('r') => {
+                self.refresh().await;
+            }
             // Config: start editing selected field
             KeyCode::Char('e') if self.view == ManagerView::Config => {
                 if let Some((_, ref val)) = self.config_fields.get(self.config_selected).cloned() {
@@ -464,9 +487,7 @@ impl ManagerApp {
     }
 
     pub fn secs_until_refresh(&self) -> u64 {
-        self.refresh_interval
-            .saturating_sub(self.last_refresh.elapsed())
-            .as_secs()
+        self.refresh_interval.saturating_sub(self.last_refresh.elapsed()).as_secs()
     }
 }
 
@@ -489,10 +510,7 @@ fn build_config_fields(config: &TuiConfig) -> Vec<(String, String)> {
 }
 
 async fn check_prometheus(url: &str) -> bool {
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-    {
+    let client = match reqwest::Client::builder().timeout(Duration::from_secs(2)).build() {
         Ok(c) => c,
         Err(_) => return false,
     };
@@ -505,9 +523,7 @@ async fn check_prometheus(url: &str) -> bool {
 }
 
 async fn query_prometheus(url: &str, query: &str) -> anyhow::Result<Vec<MetricSample>> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()?;
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(5)).build()?;
     let resp = client.get(url).query(&[("query", query)]).send().await?;
     let json: serde_json::Value = resp.json().await?;
 
@@ -518,9 +534,7 @@ async fn query_prometheus(url: &str, query: &str) -> anyhow::Result<Vec<MetricSa
             let metric_labels: Vec<String> = r["metric"]
                 .as_object()
                 .map(|m| {
-                    m.iter()
-                        .map(|(k, v)| format!("{k}={}", v.as_str().unwrap_or("")))
-                        .collect()
+                    m.iter().map(|(k, v)| format!("{k}={}", v.as_str().unwrap_or(""))).collect()
                 })
                 .unwrap_or_default();
             let metric = if metric_labels.is_empty() {
@@ -545,14 +559,14 @@ async fn query_prometheus(url: &str, query: &str) -> anyhow::Result<Vec<MetricSa
 
 const SERVICE_DEFS: &[(&str, &str, &str)] = &[
     ("orchestrator", "AGENTD_ORCHESTRATOR_SERVICE_URL", "http://localhost:17006"),
-    ("notify",       "AGENTD_NOTIFY_SERVICE_URL",       "http://localhost:17004"),
-    ("ask",          "AGENTD_ASK_SERVICE_URL",           "http://localhost:17001"),
-    ("wrap",         "AGENTD_WRAP_SERVICE_URL",          "http://localhost:17005"),
-    ("hook",         "AGENTD_HOOK_SERVICE_URL",          "http://localhost:17002"),
-    ("monitor",      "AGENTD_MONITOR_SERVICE_URL",       "http://localhost:17003"),
-    ("memory",       "AGENTD_MEMORY_SERVICE_URL",        "http://localhost:17008"),
-    ("core",         "AGENTD_CORE_SERVICE_URL",          "http://localhost:17000"),
-    ("communicate",  "AGENTD_COMMUNICATE_SERVICE_URL",   "http://localhost:17010"),
+    ("notify", "AGENTD_NOTIFY_SERVICE_URL", "http://localhost:17004"),
+    ("ask", "AGENTD_ASK_SERVICE_URL", "http://localhost:17001"),
+    ("wrap", "AGENTD_WRAP_SERVICE_URL", "http://localhost:17005"),
+    ("hook", "AGENTD_HOOK_SERVICE_URL", "http://localhost:17002"),
+    ("monitor", "AGENTD_MONITOR_SERVICE_URL", "http://localhost:17003"),
+    ("memory", "AGENTD_MEMORY_SERVICE_URL", "http://localhost:17008"),
+    ("core", "AGENTD_CORE_SERVICE_URL", "http://localhost:17000"),
+    ("communicate", "AGENTD_COMMUNICATE_SERVICE_URL", "http://localhost:17010"),
 ];
 
 async fn probe_services(config: &TuiConfig) -> Vec<ServiceStatus> {
@@ -579,10 +593,7 @@ async fn probe_services(config: &TuiConfig) -> Vec<ServiceStatus> {
         })
         .collect();
 
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-    {
+    let client = match reqwest::Client::builder().timeout(Duration::from_secs(2)).build() {
         Ok(c) => c,
         Err(_) => {
             return urls

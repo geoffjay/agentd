@@ -61,10 +61,7 @@ fn render_info(f: &mut Frame, app: &App, area: Rect) {
             dim("  backend: "),
             Span::raw(backend),
         ]),
-        Line::from(vec![
-            dim("session: "),
-            Span::raw(session),
-        ]),
+        Line::from(vec![dim("session: "), Span::raw(session)]),
         Line::from(vec![
             dim("dir: "),
             Span::raw(agent.config.working_dir.clone()),
@@ -73,14 +70,13 @@ fn render_info(f: &mut Frame, app: &App, area: Rect) {
         ]),
     ];
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .title(if agent.built_in {
+    let block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(
+        if agent.built_in {
             format!(" {} [system] ", agent.name)
         } else {
             format!(" {} ", agent.name)
-        });
+        },
+    );
 
     let para = Paragraph::new(lines).block(block);
     f.render_widget(para, area);
@@ -98,11 +94,8 @@ fn render_conversation(f: &mut Frame, app: &mut App, area: Rect) {
     let visible = area.height.saturating_sub(2);
     let max_scroll = total_rows.saturating_sub(visible);
 
-    let scroll = if app.conversation_follow {
-        max_scroll
-    } else {
-        app.conversation_scroll.min(max_scroll)
-    };
+    let scroll =
+        if app.conversation_follow { max_scroll } else { app.conversation_scroll.min(max_scroll) };
     app.conversation_scroll = scroll;
 
     if app.conversation_follow {
@@ -110,21 +103,13 @@ fn render_conversation(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let count = app.conversation.len();
-    let title = if count == 0 {
-        " Conversation ".to_string()
-    } else {
-        format!(" Conversation ({count}) ")
-    };
+    let title =
+        if count == 0 { " Conversation ".to_string() } else { format!(" Conversation ({count}) ") };
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .title(title);
+    let block =
+        Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(title);
 
-    let para = Paragraph::new(lines)
-        .block(block)
-        .wrap(Wrap { trim: false })
-        .scroll((scroll, 0));
+    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: false }).scroll((scroll, 0));
 
     f.render_widget(para, area);
 }
@@ -139,7 +124,7 @@ fn render_input(f: &mut Frame, app: &mut App, area: Rect) {
     if app.input_mode {
         let (cursor_row, _) =
             crate::input::cursor_visual_pos(&app.input_buffer, app.input_cursor, inner_width);
-        let visible = area.height.saturating_sub(2) as u16;
+        let visible = area.height.saturating_sub(2);
         if cursor_row < app.input_scroll {
             app.input_scroll = cursor_row;
         }
@@ -170,9 +155,7 @@ fn render_input(f: &mut Frame, app: &mut App, area: Rect) {
         vec![]
     };
 
-    let para = Paragraph::new(lines)
-        .block(block)
-        .scroll((app.input_scroll, 0));
+    let para = Paragraph::new(lines).block(block).scroll((app.input_scroll, 0));
 
     f.render_widget(para, area);
 }
@@ -226,13 +209,7 @@ fn build_lines(app: &App, _width: usize) -> Vec<Line<'static>> {
                 if text.trim().is_empty() {
                     lines.push(Line::default());
                 } else {
-                    push_multiline(
-                        &mut lines,
-                        "     ",
-                        Style::default(),
-                        text,
-                        Style::default(),
-                    );
+                    push_multiline(&mut lines, "     ", Style::default(), text, Style::default());
                 }
             }
             "agent:tool_use" => {

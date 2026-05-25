@@ -1,6 +1,6 @@
-use agentd_common::config::AgentdConfig;
-use crate::config::TuiConfig;
 use super::stream;
+use crate::config::TuiConfig;
+use agentd_common::config::AgentdConfig;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use memory::client::MemoryClient;
 use memory::types::{Memory, SearchRequest};
@@ -55,7 +55,7 @@ impl From<serde_json::Value> for ConversationEntry {
         // Stream events store content in different fields depending on type.
         let line = v["line"]
             .as_str()
-            .or_else(|| v["text"].as_str())    // agent:thinking uses "text"
+            .or_else(|| v["text"].as_str()) // agent:thinking uses "text"
             .or_else(|| v["summary"].as_str()) // agent:tool_use has "summary"
             .map(|s| s.to_string());
 
@@ -100,7 +100,10 @@ pub enum MemoryDialog {
     Search(String),
     /// Tag filter dialog; `cursor` is the highlighted row, `draft` is the
     /// working selection before the user confirms with Enter.
-    TagFilter { cursor: usize, draft: Vec<String> },
+    TagFilter {
+        cursor: usize,
+        draft: Vec<String>,
+    },
 }
 
 impl MemoryDialog {
@@ -278,11 +281,8 @@ impl App {
         }
 
         // Collect unique sorted tags from the loaded memories
-        let mut tag_set: std::collections::HashSet<String> = self
-            .memories
-            .iter()
-            .flat_map(|m| m.tags.iter().cloned())
-            .collect();
+        let mut tag_set: std::collections::HashSet<String> =
+            self.memories.iter().flat_map(|m| m.tags.iter().cloned()).collect();
         let mut sorted: Vec<String> = tag_set.drain().collect();
         sorted.sort();
         self.memory_available_tags = sorted;
@@ -291,7 +291,7 @@ impl App {
         let len = self.memories.len();
         if len == 0 {
             self.memory_table_state.select(None);
-        } else if self.memory_table_state.selected().map_or(true, |i| i >= len) {
+        } else if self.memory_table_state.selected().is_none_or(|i| i >= len) {
             self.memory_table_state.select(Some(0));
         }
 
@@ -317,22 +317,26 @@ impl App {
         match self.view {
             View::AgentList => {
                 let len = self.agents.len();
-                if len == 0 { return; }
+                if len == 0 {
+                    return;
+                }
                 let next = self.agent_table_state.selected().map_or(0, |i| (i + 1).min(len - 1));
                 self.agent_table_state.select(Some(next));
             }
             View::WorkflowList => {
                 let len = self.workflows.len();
-                if len == 0 { return; }
-                let next =
-                    self.workflow_table_state.selected().map_or(0, |i| (i + 1).min(len - 1));
+                if len == 0 {
+                    return;
+                }
+                let next = self.workflow_table_state.selected().map_or(0, |i| (i + 1).min(len - 1));
                 self.workflow_table_state.select(Some(next));
             }
             View::MemoryList => {
                 let len = self.memories.len();
-                if len == 0 { return; }
-                let next =
-                    self.memory_table_state.selected().map_or(0, |i| (i + 1).min(len - 1));
+                if len == 0 {
+                    return;
+                }
+                let next = self.memory_table_state.selected().map_or(0, |i| (i + 1).min(len - 1));
                 self.memory_table_state.select(Some(next));
             }
             _ => {}
@@ -342,20 +346,24 @@ impl App {
     pub fn select_prev(&mut self) {
         match self.view {
             View::AgentList => {
-                if self.agents.is_empty() { return; }
+                if self.agents.is_empty() {
+                    return;
+                }
                 let prev = self.agent_table_state.selected().map_or(0, |i| i.saturating_sub(1));
                 self.agent_table_state.select(Some(prev));
             }
             View::WorkflowList => {
-                if self.workflows.is_empty() { return; }
-                let prev =
-                    self.workflow_table_state.selected().map_or(0, |i| i.saturating_sub(1));
+                if self.workflows.is_empty() {
+                    return;
+                }
+                let prev = self.workflow_table_state.selected().map_or(0, |i| i.saturating_sub(1));
                 self.workflow_table_state.select(Some(prev));
             }
             View::MemoryList => {
-                if self.memories.is_empty() { return; }
-                let prev =
-                    self.memory_table_state.selected().map_or(0, |i| i.saturating_sub(1));
+                if self.memories.is_empty() {
+                    return;
+                }
+                let prev = self.memory_table_state.selected().map_or(0, |i| i.saturating_sub(1));
                 self.memory_table_state.select(Some(prev));
             }
             _ => {}
@@ -524,7 +532,9 @@ impl App {
     }
 
     fn input_move_up(&mut self) {
-        if self.input_inner_width == 0 { return; }
+        if self.input_inner_width == 0 {
+            return;
+        }
         self.input_cursor = crate::input::cursor_move_vertical(
             &self.input_buffer,
             self.input_cursor,
@@ -534,7 +544,9 @@ impl App {
     }
 
     fn input_move_down(&mut self) {
-        if self.input_inner_width == 0 { return; }
+        if self.input_inner_width == 0 {
+            return;
+        }
         self.input_cursor = crate::input::cursor_move_vertical(
             &self.input_buffer,
             self.input_cursor,
@@ -544,7 +556,9 @@ impl App {
     }
 
     fn input_delete_before(&mut self) {
-        if self.input_cursor == 0 { return; }
+        if self.input_cursor == 0 {
+            return;
+        }
         let ch_start = self.input_buffer[..self.input_cursor]
             .char_indices()
             .next_back()
@@ -555,7 +569,9 @@ impl App {
     }
 
     fn input_delete_after(&mut self) {
-        if self.input_cursor >= self.input_buffer.len() { return; }
+        if self.input_cursor >= self.input_buffer.len() {
+            return;
+        }
         let ch_end = self.input_buffer[self.input_cursor..]
             .char_indices()
             .nth(1)
@@ -565,7 +581,9 @@ impl App {
     }
 
     fn input_move_left(&mut self) {
-        if self.input_cursor == 0 { return; }
+        if self.input_cursor == 0 {
+            return;
+        }
         self.input_cursor = self.input_buffer[..self.input_cursor]
             .char_indices()
             .next_back()
@@ -574,7 +592,9 @@ impl App {
     }
 
     fn input_move_right(&mut self) {
-        if self.input_cursor >= self.input_buffer.len() { return; }
+        if self.input_cursor >= self.input_buffer.len() {
+            return;
+        }
         self.input_cursor += self.input_buffer[self.input_cursor..]
             .chars()
             .next()
@@ -583,7 +603,9 @@ impl App {
     }
 
     pub async fn handle_paste(&mut self, text: String) {
-        if !self.input_mode { return; }
+        if !self.input_mode {
+            return;
+        }
 
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
         let lines: Vec<&str> = text.split('\n').collect();
@@ -602,7 +624,9 @@ impl App {
 
     async fn submit_message(&mut self) {
         let text = self.input_buffer.trim().to_string();
-        if text.is_empty() { return; }
+        if text.is_empty() {
+            return;
+        }
 
         let Some(ref agent) = self.selected_agent.clone() else { return };
         let id: Uuid = agent.id;
@@ -705,7 +729,10 @@ impl App {
         if self.quitting {
             match key.code {
                 KeyCode::Char('y') | KeyCode::Enter => return true,
-                _ => { self.quitting = false; return false; }
+                _ => {
+                    self.quitting = false;
+                    return false;
+                }
             }
         }
 
@@ -768,7 +795,9 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Char('q') => { self.quitting = true; }
+            KeyCode::Char('q') => {
+                self.quitting = true;
+            }
             KeyCode::Tab => {
                 let prev = self.active_tab;
                 self.switch_tab(true);
@@ -889,8 +918,6 @@ impl App {
     }
 
     pub fn secs_until_refresh(&self) -> u64 {
-        self.refresh_interval
-            .saturating_sub(self.last_refresh.elapsed())
-            .as_secs()
+        self.refresh_interval.saturating_sub(self.last_refresh.elapsed()).as_secs()
     }
 }

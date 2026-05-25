@@ -26,11 +26,7 @@ pub fn render(f: &mut Frame, app: &ManagerApp, area: Rect) {
         })
         .collect();
 
-    let table = Table::new(
-        rows,
-        [Constraint::Length(24), Constraint::Min(20)],
-    )
-    .block(
+    let table = Table::new(rows, [Constraint::Length(24), Constraint::Min(20)]).block(
         Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)

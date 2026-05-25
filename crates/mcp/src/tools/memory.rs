@@ -133,8 +133,11 @@ pub async fn run_search_memories(
         return format!("No memories found matching `{query}`.");
     }
 
-    let mut out =
-        format!("## Memory search: `{query}` — {} results (total {})\n\n", result.memories.len(), result.total);
+    let mut out = format!(
+        "## Memory search: `{query}` — {} results (total {})\n\n",
+        result.memories.len(),
+        result.total
+    );
     out.push_str("| Type | Visibility | ID | Created by | Tags | Content |\n");
     out.push_str("|------|------------|-----|-----------|------|---------|\n");
     for m in &result.memories {
@@ -214,7 +217,11 @@ pub async fn run_get_memory(client: &AgentdClient, memory_id: &str) -> String {
     let tags = if m.tags.is_empty() { "-".to_string() } else { m.tags.join(", ") };
     let mut out = format!("## Memory `{}`\n\n", m.id);
     out.push_str(&format!("- **Type**: {} {}\n", type_icon(&m.mem_type), m.mem_type));
-    out.push_str(&format!("- **Visibility**: {} {}\n", visibility_icon(&m.visibility), m.visibility));
+    out.push_str(&format!(
+        "- **Visibility**: {} {}\n",
+        visibility_icon(&m.visibility),
+        m.visibility
+    ));
     out.push_str(&format!("- **Created by**: {}\n", m.created_by));
     if let Some(ref o) = m.owner {
         out.push_str(&format!("- **Owner**: {o}\n"));

@@ -1923,8 +1923,7 @@ fn format_stream_message(text: &str, verbose: bool) {
                 if let Some(usage) = msg.get("usage") {
                     let input = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
                     let output = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let cost =
-                        usage.get("total_cost_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let cost = usage.get("total_cost_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
                     println!(
                         "{} {}",
                         prefix,

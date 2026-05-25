@@ -940,6 +940,11 @@ impl AgentManager {
             self.wire_subprocess_io(agent.id, &session_name).await?;
         }
 
+        // Publish AgentRestarted so the scheduler can re-launch dead workflow runners.
+        if let Some(bus) = self.registry.event_bus() {
+            bus.publish(SystemEvent::AgentRestarted { agent_id: agent.id });
+        }
+
         info!(
             agent_id = %agent.id,
             session = %session_name,

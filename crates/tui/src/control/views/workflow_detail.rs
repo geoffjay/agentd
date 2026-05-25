@@ -46,28 +46,16 @@ fn render_info(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let lbl = |s: &str| -> Span<'static> {
-        Span::styled(
-            format!("{s:<16}"),
-            Style::default().fg(Color::DarkGray),
-        )
+        Span::styled(format!("{s:<16}"), Style::default().fg(Color::DarkGray))
     };
 
     let lines = vec![
         Line::from(vec![lbl("name"), Span::raw(wf.name.clone())]),
         Line::from(vec![lbl("id"), Span::raw(wf.id.to_string())]),
         Line::from(vec![lbl("agent"), Span::raw(agent_name)]),
-        Line::from(vec![
-            lbl("trigger"),
-            Span::raw(wf.trigger_config.trigger_type()),
-        ]),
-        Line::from(vec![
-            lbl("poll interval"),
-            Span::raw(format!("{}s", wf.poll_interval_secs)),
-        ]),
-        Line::from(vec![
-            lbl("enabled"),
-            Span::styled(enabled_text, enabled_style),
-        ]),
+        Line::from(vec![lbl("trigger"), Span::raw(wf.trigger_config.trigger_type())]),
+        Line::from(vec![lbl("poll interval"), Span::raw(format!("{}s", wf.poll_interval_secs))]),
+        Line::from(vec![lbl("enabled"), Span::styled(enabled_text, enabled_style)]),
         Line::from(vec![
             lbl("created"),
             Span::raw(wf.created_at.format("%Y-%m-%d %H:%M UTC").to_string()),
@@ -100,15 +88,9 @@ fn render_template(f: &mut Frame, app: &mut App, area: Rect) {
     app.workflow_template_scroll = app.workflow_template_scroll.min(max_scroll);
 
     let (border_style, title) = if focused {
-        (
-            Style::default().fg(Color::Cyan),
-            " Prompt Template (↑/↓ scroll  t unfocus) ",
-        )
+        (Style::default().fg(Color::Cyan), " Prompt Template (↑/↓ scroll  t unfocus) ")
     } else {
-        (
-            Style::default(),
-            " Prompt Template (t to focus) ",
-        )
+        (Style::default(), " Prompt Template (t to focus) ")
     };
 
     let block = Block::default()
@@ -129,15 +111,9 @@ fn render_dispatches(f: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.workflow_focus == WorkflowFocus::Dispatches;
 
     let (border_style, title) = if focused {
-        (
-            Style::default().fg(Color::Cyan),
-            " Dispatch History (↑/↓ scroll  d unfocus) ",
-        )
+        (Style::default().fg(Color::Cyan), " Dispatch History (↑/↓ scroll  d unfocus) ")
     } else {
-        (
-            Style::default(),
-            " Dispatch History (d to focus) ",
-        )
+        (Style::default(), " Dispatch History (d to focus) ")
     };
 
     let block = Block::default()
@@ -165,9 +141,10 @@ fn render_dispatches(f: &mut Frame, app: &mut App, area: Rect) {
     app.workflow_dispatch_scroll = (app.workflow_dispatch_scroll as usize).min(max_scroll) as u16;
     let offset = app.workflow_dispatch_scroll as usize;
 
-    let header = Row::new(["Source", "Status", "Dispatched", "Duration"].map(|h| {
-        Cell::from(h).style(Style::default().add_modifier(Modifier::BOLD))
-    }))
+    let header = Row::new(
+        ["Source", "Status", "Dispatched", "Duration"]
+            .map(|h| Cell::from(h).style(Style::default().add_modifier(Modifier::BOLD))),
+    )
     .height(1)
     .bottom_margin(1);
 
