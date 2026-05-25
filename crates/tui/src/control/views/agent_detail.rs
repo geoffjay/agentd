@@ -124,7 +124,7 @@ fn render_input(f: &mut Frame, app: &mut App, area: Rect) {
     if app.input_mode {
         let (cursor_row, _) =
             crate::input::cursor_visual_pos(&app.input_buffer, app.input_cursor, inner_width);
-        let visible = area.height.saturating_sub(2) as u16;
+        let visible = area.height.saturating_sub(2);
         if cursor_row < app.input_scroll {
             app.input_scroll = cursor_row;
         }

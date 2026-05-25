@@ -41,9 +41,9 @@ pub fn cursor_visual_pos(buffer: &str, cursor: usize, inner_width: usize) -> (u1
 
     let all_logical: Vec<&str> = buffer.split('\n').collect();
     let mut visual_row = 0u16;
-    for i in 0..logical_idx {
+    for (i, line) in all_logical.iter().enumerate().take(logical_idx) {
         let w = if i == 0 { first_w } else { inner_width.max(1) };
-        let n = all_logical[i].chars().count().max(1);
+        let n = line.chars().count().max(1);
         visual_row = visual_row.saturating_add(n.div_ceil(w) as u16);
     }
 

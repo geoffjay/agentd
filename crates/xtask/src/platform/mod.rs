@@ -20,6 +20,7 @@ pub struct ServiceInfo {
     /// Production port number.
     pub port: u16,
     /// Environment variable name used to override the port (e.g. "AGENTD_NOTIFY_PORT").
+    #[allow(dead_code)]
     pub port_env: &'static str,
 }
 

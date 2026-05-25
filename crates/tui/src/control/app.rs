@@ -291,7 +291,7 @@ impl App {
         let len = self.memories.len();
         if len == 0 {
             self.memory_table_state.select(None);
-        } else if self.memory_table_state.selected().map_or(true, |i| i >= len) {
+        } else if self.memory_table_state.selected().is_none_or(|i| i >= len) {
             self.memory_table_state.select(Some(0));
         }
 
