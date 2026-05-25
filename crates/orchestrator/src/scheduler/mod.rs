@@ -404,6 +404,58 @@ impl Scheduler {
         Ok(record)
     }
 
+    /// Re-launch any enabled workflow runners for `agent_id` that are not currently active.
+    ///
+    /// Called reactively when an agent is restarted — via the API, reconciliation, or
+    /// bootstrap — to restore the agent to a fully functional state. Any workflow runner
+    /// that died because the agent previously failed (e.g., exceeded the startup timeout
+    /// in [`Self::resume_workflows`]) is restarted here.
+    ///
+    /// Workflows that already have an active runner are skipped (idempotent). Disabled
+    /// workflows are never started.
+    pub async fn restart_workflows_for_agent(self: &Arc<Self>, agent_id: Uuid) {
+        let workflows = match self.storage.list_workflows(None).await {
+            Ok(wfs) => wfs,
+            Err(e) => {
+                error!(%agent_id, %e, "Failed to list workflows for restarted agent");
+                return;
+            }
+        };
+
+        for workflow in workflows {
+            if workflow.agent_id != agent_id || !workflow.enabled {
+                continue;
+            }
+
+            // Skip workflows that already have an active runner.
+            {
+                let runners = self.runners.read().await;
+                if runners.contains_key(&workflow.id) {
+                    info!(
+                        workflow_id = %workflow.id,
+                        %agent_id,
+                        "Workflow runner already active, skipping restart"
+                    );
+                    continue;
+                }
+            }
+
+            info!(
+                workflow_id = %workflow.id,
+                %agent_id,
+                "Re-launching workflow runner for restarted agent"
+            );
+
+            if let Err(e) = self.start_workflow(workflow).await {
+                error!(
+                    %agent_id,
+                    %e,
+                    "Failed to re-launch workflow runner for restarted agent"
+                );
+            }
+        }
+    }
+
     /// Shutdown all running workflows gracefully.
     pub async fn shutdown_all(&self) {
         let mut runners = self.runners.write().await;

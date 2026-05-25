@@ -68,10 +68,18 @@ impl OrchestratorConfig {
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(base.reconcile_interval_secs);
-        let subprocess_path = env::var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH")
-            .unwrap_or(base.subprocess_path);
+        let subprocess_path =
+            env::var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH").unwrap_or(base.subprocess_path);
 
-        Self { host, port, docker_image, backend, communicate_url, reconcile_interval_secs, subprocess_path }
+        Self {
+            host,
+            port,
+            docker_image,
+            backend,
+            communicate_url,
+            reconcile_interval_secs,
+            subprocess_path,
+        }
     }
 }
 
@@ -122,11 +130,21 @@ mod tests {
 
         let config = OrchestratorConfig::load();
 
-        if let Some(v) = saved_host { env::set_var("AGENTD_HOST", v); }
-        if let Some(v) = saved_port { env::set_var("AGENTD_PORT", v); }
-        if let Some(v) = saved_comm { env::set_var("AGENTD_COMMUNICATE_SERVICE_URL", v); }
-        if let Some(v) = saved_reconcile { env::set_var("AGENTD_RECONCILE_INTERVAL_SECS", v); }
-        if let Some(v) = saved_subpath { env::set_var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH", v); }
+        if let Some(v) = saved_host {
+            env::set_var("AGENTD_HOST", v);
+        }
+        if let Some(v) = saved_port {
+            env::set_var("AGENTD_PORT", v);
+        }
+        if let Some(v) = saved_comm {
+            env::set_var("AGENTD_COMMUNICATE_SERVICE_URL", v);
+        }
+        if let Some(v) = saved_reconcile {
+            env::set_var("AGENTD_RECONCILE_INTERVAL_SECS", v);
+        }
+        if let Some(v) = saved_subpath {
+            env::set_var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH", v);
+        }
         match saved_cfg {
             Some(v) => env::set_var("AGENTD_CONFIG", v),
             None => env::remove_var("AGENTD_CONFIG"),
@@ -215,6 +233,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 17006,
             docker_image: None,
+            backend: "tmux".to_string(),
             communicate_url: "localhost:17010".to_string(),
             reconcile_interval_secs: 30,
             subprocess_path: String::new(),
@@ -228,6 +247,7 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 17006,
             docker_image: None,
+            backend: "tmux".to_string(),
             communicate_url: "http://localhost:17010".to_string(),
             reconcile_interval_secs: 0,
             subprocess_path: String::new(),
