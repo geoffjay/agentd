@@ -413,7 +413,7 @@ impl Scheduler {
     ///
     /// Workflows that already have an active runner are skipped (idempotent). Disabled
     /// workflows are never started.
-    pub async fn restart_workflows_for_agent(self: &Arc<Self>, agent_id: Uuid) {
+    pub async fn restart_workflows_for_agent(&self, agent_id: Uuid) {
         let workflows = match self.storage.list_workflows(None).await {
             Ok(wfs) => wfs,
             Err(e) => {
@@ -447,10 +447,15 @@ impl Scheduler {
             );
 
             if let Err(e) = self.start_workflow(workflow).await {
-                error!(
+                // Use warn! rather than error! here: if a concurrent task (e.g. a
+                // lingering resume_workflows background waiter) already started this
+                // runner between our contains_key check and start_workflow, we get
+                // "Workflow X is already running" — a benign race, not a real error.
+                warn!(
                     %agent_id,
                     %e,
-                    "Failed to re-launch workflow runner for restarted agent"
+                    "Failed to re-launch workflow runner for restarted agent \
+                     (may be a benign race with concurrent resume)"
                 );
             }
         }
