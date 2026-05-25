@@ -71,9 +71,18 @@ async fn main() -> anyhow::Result<()> {
     let port_num: u16 = cfg.port;
     let ws_base_url = format!("ws://127.0.0.1:{}", cfg.port);
 
-    // Execution backend — selected via AGENTD_BACKEND env var.
-    // Valid values: "tmux" (default), "docker", "pty".
-    // Unrecognised values cause an immediate startup failure.
+    // Propagate config-file values into the env vars that the backend
+    // constructors read, but only when the env var is not already set so that
+    // an explicit override still takes precedence.
+    if std::env::var("AGENTD_BACKEND").is_err() {
+        std::env::set_var("AGENTD_BACKEND", &cfg.backend);
+    }
+    if !cfg.subprocess_path.is_empty() && std::env::var("AGENTD_SUBPROCESS_PATH").is_err() {
+        std::env::set_var("AGENTD_SUBPROCESS_PATH", &cfg.subprocess_path);
+    }
+
+    // Execution backend — selected via AGENTD_BACKEND (set above if not
+    // already present in the environment).
     let backend_type = BackendType::from_env_strict()?;
     info!("Using execution backend: {}", backend_type);
     let backend: Arc<dyn ExecutionBackend> = match &backend_type {

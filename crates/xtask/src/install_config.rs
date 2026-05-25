@@ -69,13 +69,18 @@ fn build_install_defaults(services: &[ServiceInfo]) -> toml::Value {
         services_map.insert(svc.name.to_string(), Value::Table(svc_table));
     }
 
-    // orchestrator: backend + communicate_url
+    // orchestrator: backend + communicate_url + subprocess_path
     if let Some(Value::Table(t)) = services_map.get_mut("orchestrator") {
         t.insert("backend".to_string(), Value::String("subprocess".to_string()));
         t.insert(
             "communicate_url".to_string(),
             Value::String(format!("http://localhost:{communicate_port}")),
         );
+        // Capture the installer's PATH so the orchestrator can inject it into
+        // spawned subprocesses at runtime (LaunchAgent/systemd units start with
+        // a bare system PATH that lacks tools like `claude`).
+        let path = std::env::var("PATH").unwrap_or_default();
+        t.insert("subprocess_path".to_string(), Value::String(path));
     }
 
     // wrap: backend

@@ -7,13 +7,14 @@
 //!
 //! | Variable                       | Default                   | Description                          |
 //! |--------------------------------|---------------------------|--------------------------------------|
-//! | `AGENTD_HOST`                  | `127.0.0.1`               | HTTP bind host                       |
-//! | `AGENTD_ORCHESTRATOR_PORT`     | `17006`                   | HTTP listen port                     |
-//! | `AGENTD_PORT`                  | —                         | Fallback port (legacy)               |
-//! | `AGENTD_BACKEND`               | `tmux`                    | Execution backend                    |
-//! | `AGENTD_DOCKER_IMAGE`          | (docker default)          | Docker image for agent containers    |
-//! | `AGENTD_COMMUNICATE_SERVICE_URL`| `http://localhost:17010` | Communicate service URL              |
-//! | `AGENTD_RECONCILE_INTERVAL_SECS`| `30`                     | Agent reconciliation interval (secs) |
+//! | `AGENTD_HOST`                        | `127.0.0.1`               | HTTP bind host                       |
+//! | `AGENTD_ORCHESTRATOR_PORT`           | `17006`                   | HTTP listen port                     |
+//! | `AGENTD_PORT`                        | —                         | Fallback port (legacy)               |
+//! | `AGENTD_BACKEND`                     | `tmux`                    | Execution backend (overrides config) |
+//! | `AGENTD_DOCKER_IMAGE`                | (docker default)          | Docker image for agent containers    |
+//! | `AGENTD_COMMUNICATE_SERVICE_URL`     | `http://localhost:17010`  | Communicate service URL              |
+//! | `AGENTD_RECONCILE_INTERVAL_SECS`     | `30`                      | Agent reconciliation interval (secs) |
+//! | `AGENTD_ORCHESTRATOR_SUBPROCESS_PATH`| `""`                      | PATH injected into spawned subprocesses |
 
 use agentd_common::config::ValidateConfig;
 use anyhow::{bail, Result};
@@ -31,10 +32,14 @@ pub struct OrchestratorConfig {
     pub port: u16,
     /// Docker image for agent containers (no default — uses wrap crate default)
     pub docker_image: Option<String>,
+    /// Execution backend: `"tmux"`, `"docker"`, `"pty"`, or `"subprocess"` (default: `"tmux"`)
+    pub backend: String,
     /// Communicate service URL for the message bridge (default: `http://localhost:17010`)
     pub communicate_url: String,
     /// Agent reconciliation interval in seconds (default: `30`)
     pub reconcile_interval_secs: u64,
+    /// PATH to inject into spawned subprocesses (empty = inherit orchestrator PATH)
+    pub subprocess_path: String,
 }
 
 impl OrchestratorConfig {
@@ -56,14 +61,17 @@ impl OrchestratorConfig {
             .and_then(|v| v.parse::<u16>().ok())
             .unwrap_or(base.port);
         let docker_image = env::var("AGENTD_DOCKER_IMAGE").ok();
+        let backend = env::var("AGENTD_BACKEND").unwrap_or(base.backend);
         let communicate_url =
             env::var("AGENTD_COMMUNICATE_SERVICE_URL").unwrap_or(base.communicate_url);
         let reconcile_interval_secs = env::var("AGENTD_RECONCILE_INTERVAL_SECS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(base.reconcile_interval_secs);
+        let subprocess_path = env::var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH")
+            .unwrap_or(base.subprocess_path);
 
-        Self { host, port, docker_image, communicate_url, reconcile_interval_secs }
+        Self { host, port, docker_image, backend, communicate_url, reconcile_interval_secs, subprocess_path }
     }
 }
 
@@ -101,25 +109,27 @@ mod tests {
         let saved_port = env::var("AGENTD_PORT").ok();
         let saved_comm = env::var("AGENTD_COMMUNICATE_SERVICE_URL").ok();
         let saved_reconcile = env::var("AGENTD_RECONCILE_INTERVAL_SECS").ok();
+        let saved_subpath = env::var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH").ok();
+        let saved_cfg = env::var("AGENTD_CONFIG").ok();
         env::remove_var("AGENTD_HOST");
         env::remove_var("AGENTD_PORT");
         env::remove_var("AGENTD_DOCKER_IMAGE");
         env::remove_var("AGENTD_COMMUNICATE_SERVICE_URL");
         env::remove_var("AGENTD_RECONCILE_INTERVAL_SECS");
+        env::remove_var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH");
+        // Point away from the real config file so compiled defaults are used.
+        env::set_var("AGENTD_CONFIG", "/tmp/agentd-test-nonexistent-defaults.toml");
 
         let config = OrchestratorConfig::load();
 
-        if let Some(v) = saved_host {
-            env::set_var("AGENTD_HOST", v);
-        }
-        if let Some(v) = saved_port {
-            env::set_var("AGENTD_PORT", v);
-        }
-        if let Some(v) = saved_comm {
-            env::set_var("AGENTD_COMMUNICATE_SERVICE_URL", v);
-        }
-        if let Some(v) = saved_reconcile {
-            env::set_var("AGENTD_RECONCILE_INTERVAL_SECS", v);
+        if let Some(v) = saved_host { env::set_var("AGENTD_HOST", v); }
+        if let Some(v) = saved_port { env::set_var("AGENTD_PORT", v); }
+        if let Some(v) = saved_comm { env::set_var("AGENTD_COMMUNICATE_SERVICE_URL", v); }
+        if let Some(v) = saved_reconcile { env::set_var("AGENTD_RECONCILE_INTERVAL_SECS", v); }
+        if let Some(v) = saved_subpath { env::set_var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH", v); }
+        match saved_cfg {
+            Some(v) => env::set_var("AGENTD_CONFIG", v),
+            None => env::remove_var("AGENTD_CONFIG"),
         }
 
         assert_eq!(config.host, "127.0.0.1");
@@ -127,6 +137,16 @@ mod tests {
         assert!(config.docker_image.is_none());
         assert_eq!(config.communicate_url, "http://localhost:17010");
         assert_eq!(config.reconcile_interval_secs, 30);
+        assert_eq!(config.subprocess_path, "");
+    }
+
+    #[test]
+    fn test_subprocess_path_env_override() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::set_var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH", "/usr/local/bin:/usr/bin");
+        let config = OrchestratorConfig::load();
+        env::remove_var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH");
+        assert_eq!(config.subprocess_path, "/usr/local/bin:/usr/bin");
     }
 
     #[test]
@@ -167,8 +187,10 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 17006,
             docker_image: None,
+            backend: "tmux".to_string(),
             communicate_url: "http://localhost:17010".to_string(),
             reconcile_interval_secs: 30,
+            subprocess_path: String::new(),
         };
         assert!(config.validate().is_ok());
     }
@@ -179,8 +201,10 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 0,
             docker_image: None,
+            backend: "tmux".to_string(),
             communicate_url: "http://localhost:17010".to_string(),
             reconcile_interval_secs: 30,
+            subprocess_path: String::new(),
         };
         assert!(config.validate().is_err());
     }
@@ -193,6 +217,7 @@ mod tests {
             docker_image: None,
             communicate_url: "localhost:17010".to_string(),
             reconcile_interval_secs: 30,
+            subprocess_path: String::new(),
         };
         assert!(config.validate().is_err());
     }
@@ -205,6 +230,7 @@ mod tests {
             docker_image: None,
             communicate_url: "http://localhost:17010".to_string(),
             reconcile_interval_secs: 0,
+            subprocess_path: String::new(),
         };
         assert!(config.validate().is_err());
     }

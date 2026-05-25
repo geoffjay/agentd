@@ -195,6 +195,15 @@ pub struct OrchestratorConfig {
     pub communicate_url: String,
     /// Agent reconciliation interval in seconds. Defaults to `30`.
     pub reconcile_interval_secs: u64,
+    /// `PATH` injected into spawned subprocesses when using the subprocess
+    /// backend.  Empty string means inherit the orchestrator process's own
+    /// PATH.  Set this to the user's full PATH (e.g. including
+    /// `~/.cargo/bin`, asdf shims, nodenv shims) so that `claude` and other
+    /// tools are locatable when the service runs as a LaunchAgent/systemd
+    /// unit with a bare system PATH.
+    ///
+    /// Defaults to `""` (inherit).
+    pub subprocess_path: String,
 }
 
 impl Default for OrchestratorConfig {
@@ -204,6 +213,7 @@ impl Default for OrchestratorConfig {
             backend: "tmux".to_string(),
             communicate_url: "http://localhost:17010".to_string(),
             reconcile_interval_secs: 30,
+            subprocess_path: String::new(),
         }
     }
 }
@@ -392,35 +402,35 @@ impl Default for CoreConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct McpConfig {
-    /// Orchestrator service URL. Defaults to `"http://127.0.0.1:17006"`.
+    /// Orchestrator service URL. Defaults to `"http://localhost:17006"`.
     pub orchestrator_url: String,
-    /// Notify service URL. Defaults to `"http://127.0.0.1:17004"`.
+    /// Notify service URL. Defaults to `"http://localhost:17004"`.
     pub notify_url: String,
-    /// Ask service URL. Defaults to `"http://127.0.0.1:17001"`.
+    /// Ask service URL. Defaults to `"http://localhost:17001"`.
     pub ask_url: String,
-    /// Memory service URL. Defaults to `"http://127.0.0.1:17008"`.
+    /// Memory service URL. Defaults to `"http://localhost:17008"`.
     pub memory_url: String,
-    /// Communicate service URL. Defaults to `"http://127.0.0.1:17010"`.
+    /// Communicate service URL. Defaults to `"http://localhost:17010"`.
     pub communicate_url: String,
-    /// Wrap service URL. Defaults to `"http://127.0.0.1:17005"`.
+    /// Wrap service URL. Defaults to `"http://localhost:17005"`.
     pub wrap_url: String,
-    /// Monitor service URL. Defaults to `"http://127.0.0.1:17003"`.
+    /// Monitor service URL. Defaults to `"http://localhost:17003"`.
     pub monitor_url: String,
-    /// Hook service URL. Defaults to `"http://127.0.0.1:17002"`.
+    /// Hook service URL. Defaults to `"http://localhost:17002"`.
     pub hook_url: String,
 }
 
 impl Default for McpConfig {
     fn default() -> Self {
         Self {
-            orchestrator_url: "http://127.0.0.1:17006".to_string(),
-            notify_url: "http://127.0.0.1:17004".to_string(),
-            ask_url: "http://127.0.0.1:17001".to_string(),
-            memory_url: "http://127.0.0.1:17008".to_string(),
-            communicate_url: "http://127.0.0.1:17010".to_string(),
-            wrap_url: "http://127.0.0.1:17005".to_string(),
-            monitor_url: "http://127.0.0.1:17003".to_string(),
-            hook_url: "http://127.0.0.1:17002".to_string(),
+            orchestrator_url: "http://localhost:17006".to_string(),
+            notify_url: "http://localhost:17004".to_string(),
+            ask_url: "http://localhost:17001".to_string(),
+            memory_url: "http://localhost:17008".to_string(),
+            communicate_url: "http://localhost:17010".to_string(),
+            wrap_url: "http://localhost:17005".to_string(),
+            monitor_url: "http://localhost:17003".to_string(),
+            hook_url: "http://localhost:17002".to_string(),
         }
     }
 }
@@ -814,6 +824,11 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     file.services.orchestrator.reconcile_interval_secs,
                     d.services.orchestrator.reconcile_interval_secs,
                 ),
+                subprocess_path: pick(
+                    &base.services.orchestrator.subprocess_path,
+                    &file.services.orchestrator.subprocess_path,
+                    &d.services.orchestrator.subprocess_path,
+                ),
             },
             wrap: WrapConfig {
                 port: pick_u16(
@@ -1077,6 +1092,9 @@ fn apply_env_overrides(cfg: &mut AgentdConfig) {
     }
     if let Some(s) = parse_u64("AGENTD_RECONCILE_INTERVAL_SECS") {
         cfg.services.orchestrator.reconcile_interval_secs = s;
+    }
+    if let Ok(v) = env::var("AGENTD_ORCHESTRATOR_SUBPROCESS_PATH") {
+        cfg.services.orchestrator.subprocess_path = v;
     }
 
     // ── Wrap ──────────────────────────────────────────────────────────────
@@ -1398,8 +1416,8 @@ mod tests {
     #[test]
     fn test_default_mcp_urls() {
         let cfg = AgentdConfig::default();
-        assert_eq!(cfg.services.mcp.orchestrator_url, "http://127.0.0.1:17006");
-        assert_eq!(cfg.services.mcp.notify_url, "http://127.0.0.1:17004");
+        assert_eq!(cfg.services.mcp.orchestrator_url, "http://localhost:17006");
+        assert_eq!(cfg.services.mcp.notify_url, "http://localhost:17004");
     }
 
     // ── TOML round-trip ────────────────────────────────────────────────────
@@ -1824,7 +1842,7 @@ notify_url = "http://ntf:7004"
         assert_eq!(cfg.services.mcp.orchestrator_url, "http://orch:7006");
         assert_eq!(cfg.services.mcp.notify_url, "http://ntf:7004");
         // Unset MCP URLs keep defaults
-        assert_eq!(cfg.services.mcp.ask_url, "http://127.0.0.1:17001");
+        assert_eq!(cfg.services.mcp.ask_url, "http://localhost:17001");
     }
 
     #[test]
