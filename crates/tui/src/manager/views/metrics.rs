@@ -24,15 +24,9 @@ pub fn render(f: &mut Frame, app: &ManagerApp, area: Rect) {
 
 fn render_query_bar(f: &mut Frame, app: &ManagerApp, area: Rect) {
     let (query_style, border_style) = if app.metric_input_active {
-        (
-            Style::default().fg(Color::White),
-            Style::default().fg(Color::Yellow),
-        )
+        (Style::default().fg(Color::White), Style::default().fg(Color::Yellow))
     } else {
-        (
-            Style::default().fg(Color::DarkGray),
-            Style::default().fg(Color::DarkGray),
-        )
+        (Style::default().fg(Color::DarkGray), Style::default().fg(Color::DarkGray))
     };
 
     let mut spans = vec![
@@ -99,25 +93,20 @@ fn render_results(f: &mut Frame, app: &ManagerApp, area: Rect) {
                     s.value.clone(),
                     Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
                 )),
-                Cell::from(Span::styled(
-                    s.timestamp.clone(),
-                    Style::default().fg(Color::DarkGray),
-                )),
+                Cell::from(Span::styled(s.timestamp.clone(), Style::default().fg(Color::DarkGray))),
             ])
         })
         .collect();
 
-    let table = Table::new(
-        rows,
-        [Constraint::Min(30), Constraint::Length(16), Constraint::Length(14)],
-    )
-    .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .title(format!(" Results ({}) ", app.metric_results.len())),
-    );
+    let table =
+        Table::new(rows, [Constraint::Min(30), Constraint::Length(16), Constraint::Length(14)])
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .title(format!(" Results ({}) ", app.metric_results.len())),
+            );
 
     f.render_widget(table, area);
 }
@@ -155,21 +144,17 @@ fn render_query_picker(f: &mut Frame, app: &ManagerApp, area: Rect) {
 
     // Filter row
     let filter_prefix = if picker.filter_active {
-        Span::styled(
-            "Filter: ",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-        )
+        Span::styled("Filter: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
     } else {
         Span::styled("Filter: ", Style::default().fg(Color::DarkGray))
     };
-    let mut filter_spans = vec![filter_prefix, Span::styled(&picker.filter, Style::default().fg(Color::White))];
+    let mut filter_spans =
+        vec![filter_prefix, Span::styled(&picker.filter, Style::default().fg(Color::White))];
     if picker.filter_active {
         filter_spans.push(Span::styled("█", Style::default().fg(Color::Yellow)));
     } else if picker.filter.is_empty() {
-        filter_spans.push(Span::styled(
-            "(press / to filter)",
-            Style::default().fg(Color::DarkGray),
-        ));
+        filter_spans
+            .push(Span::styled("(press / to filter)", Style::default().fg(Color::DarkGray)));
     }
     f.render_widget(Paragraph::new(Line::from(filter_spans)), inner[0]);
 
@@ -202,14 +187,8 @@ fn render_query_picker(f: &mut Frame, app: &ManagerApp, area: Rect) {
         })
         .collect();
 
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(14),
-            Constraint::Length(32),
-            Constraint::Min(20),
-        ],
-    );
+    let table =
+        Table::new(rows, [Constraint::Length(14), Constraint::Length(32), Constraint::Min(20)]);
     f.render_widget(table, inner[1]);
 
     // Hint row

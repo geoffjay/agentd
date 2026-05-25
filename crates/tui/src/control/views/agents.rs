@@ -18,9 +18,7 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
         let status_cell = Cell::from(agent.status.to_string()).style(status_color(&agent.status));
 
         let activity = match agent.activity {
-            ActivityState::Busy => {
-                Span::styled("busy", Style::default().fg(Color::Yellow))
-            }
+            ActivityState::Busy => Span::styled("busy", Style::default().fg(Color::Yellow)),
             ActivityState::Idle => Span::styled("idle", Style::default().fg(Color::DarkGray)),
         };
 
@@ -54,10 +52,8 @@ pub fn render(f: &mut Frame, app: &mut App, area: Rect) {
         Constraint::Min(10),
     ];
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .title(" Agents ");
+    let block =
+        Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(" Agents ");
 
     let table = Table::new(rows, widths)
         .header(header)

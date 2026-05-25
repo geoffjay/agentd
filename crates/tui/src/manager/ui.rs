@@ -48,10 +48,7 @@ fn render_header(f: &mut Frame, app: &ManagerApp, area: Rect) {
         Span::styled(format!(" {text}  "), Style::default().fg(Color::Red))
     } else {
         let secs = app.secs_until_refresh();
-        Span::styled(
-            format!(" refresh in {secs}s  "),
-            Style::default().fg(Color::DarkGray),
-        )
+        Span::styled(format!(" refresh in {secs}s  "), Style::default().fg(Color::DarkGray))
     };
 
     f.render_widget(Paragraph::new(right).alignment(Alignment::Right), cols[1]);
@@ -61,11 +58,7 @@ fn render_tabs(f: &mut Frame, app: &ManagerApp, area: Rect) {
     let labels: Vec<Line> = app.tab_labels().into_iter().map(Line::from).collect();
 
     let tabs = Tabs::new(labels)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded),
-        )
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded))
         .select(app.active_tab)
         .style(Style::default().fg(Color::DarkGray))
         .highlight_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD));

@@ -152,7 +152,10 @@ pub async fn run_diagnose_state_mismatches(client: &AgentdClient) -> String {
         out.push_str("These agents have status=running but no live WebSocket. They likely cannot receive messages and may need a restart.\n\n");
         for id in &s.running_but_disconnected {
             if let Some(a) = dbg.agents.iter().find(|a| &a.id == id) {
-                out.push_str(&format!("- `{}` **{}** (session: {:?})\n", a.id, a.name, a.session_id));
+                out.push_str(&format!(
+                    "- `{}` **{}** (session: {:?})\n",
+                    a.id, a.name, a.session_id
+                ));
             } else {
                 out.push_str(&format!("- `{id}`\n"));
             }
@@ -201,19 +204,15 @@ pub async fn run_inspect_queue(
     let base = client.orchestrator_url();
     let peek_n = peek_limit.unwrap_or(10).clamp(1, 100);
 
-    let stats: QueueStats = match client
-        .inner
-        .get(format!("{base}/queues/{queue_name}/stats"))
-        .send()
-        .await
-    {
-        Ok(r) if r.status().is_success() => match r.json().await {
-            Ok(v) => v,
-            Err(e) => return format!("Error parsing queue stats: {e}"),
-        },
-        Ok(r) => return format!("Error: HTTP {} fetching queue stats", r.status()),
-        Err(e) => return format!("Error: orchestrator unreachable at {base}: {e}"),
-    };
+    let stats: QueueStats =
+        match client.inner.get(format!("{base}/queues/{queue_name}/stats")).send().await {
+            Ok(r) if r.status().is_success() => match r.json().await {
+                Ok(v) => v,
+                Err(e) => return format!("Error parsing queue stats: {e}"),
+            },
+            Ok(r) => return format!("Error: HTTP {} fetching queue stats", r.status()),
+            Err(e) => return format!("Error: orchestrator unreachable at {base}: {e}"),
+        };
 
     let tasks: Vec<QueueTask> = match client
         .inner
@@ -291,12 +290,9 @@ pub async fn run_get_conversation_summary(client: &AgentdClient, agent_id: &str)
         out.push_str("### Event counts by type\n\n");
         out.push_str("| Event type | Count |\n");
         out.push_str("|-----------|-------|\n");
-        let mut entries: Vec<(&String, u64)> = sum
-            .event_counts
-            .iter()
-            .map(|(k, v)| (k, v.as_u64().unwrap_or(0)))
-            .collect();
-        entries.sort_by(|a, b| b.1.cmp(&a.1));
+        let mut entries: Vec<(&String, u64)> =
+            sum.event_counts.iter().map(|(k, v)| (k, v.as_u64().unwrap_or(0))).collect();
+        entries.sort_by_key(|b| std::cmp::Reverse(b.1));
         for (k, v) in entries {
             out.push_str(&format!("| `{k}` | {v} |\n"));
         }

@@ -51,19 +51,14 @@ fn render_header(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         Span::styled(" loading...  ", Style::default().fg(Color::Yellow))
     } else {
         let secs = app.secs_until_refresh();
-        Span::styled(
-            format!(" refresh in {secs}s  "),
-            Style::default().fg(Color::DarkGray),
-        )
+        Span::styled(format!(" refresh in {secs}s  "), Style::default().fg(Color::DarkGray))
     };
 
     if let Some(ref err) = app.error {
         let err_text = if err.len() > 18 { format!("{}...", &err[..15]) } else { err.clone() };
-        let error_line = Paragraph::new(Span::styled(
-            format!(" {err_text}"),
-            Style::default().fg(Color::Red),
-        ))
-        .alignment(Alignment::Right);
+        let error_line =
+            Paragraph::new(Span::styled(format!(" {err_text}"), Style::default().fg(Color::Red)))
+                .alignment(Alignment::Right);
         f.render_widget(error_line, cols[1]);
     } else {
         let p = Paragraph::new(status).alignment(Alignment::Right);
@@ -79,11 +74,7 @@ fn render_tabs(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     ];
 
     let tabs = Tabs::new(tab_titles)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded),
-        )
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded))
         .select(app.active_tab)
         .style(Style::default().fg(Color::DarkGray))
         .highlight_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD));

@@ -201,11 +201,7 @@ pub async fn run_get_room(client: &AgentdClient, room_id: &str) -> String {
     out
 }
 
-pub async fn run_list_messages(
-    client: &AgentdClient,
-    room_id: &str,
-    limit: Option<u32>,
-) -> String {
+pub async fn run_list_messages(client: &AgentdClient, room_id: &str, limit: Option<u32>) -> String {
     let base = client.communicate_url();
     let limit_val = limit.unwrap_or(20).clamp(1, 200);
     let url = format!("{base}/rooms/{room_id}/messages?limit={limit_val}");

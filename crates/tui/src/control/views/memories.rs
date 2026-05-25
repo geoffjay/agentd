@@ -44,10 +44,8 @@ fn render_list(f: &mut Frame, app: &mut App, area: Rect) {
         } else {
             "No memories found.  r refresh  s search  t filter by tags"
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .title(title);
+        let block =
+            Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(title);
         f.render_widget(
             Paragraph::new(Span::styled(msg, Style::default().fg(Color::DarkGray))).block(block),
             area,
@@ -63,11 +61,8 @@ fn render_list(f: &mut Frame, app: &mut App, area: Rect) {
     let rows = app.memories.iter().map(|m| {
         let (badge, badge_style) = type_badge_style(&m.memory_type);
 
-        let tags = if m.tags.is_empty() {
-            "-".to_string()
-        } else {
-            truncate(&m.tags.join(", "), 26)
-        };
+        let tags =
+            if m.tags.is_empty() { "-".to_string() } else { truncate(&m.tags.join(", "), 26) };
 
         let created_by = truncate(&m.created_by, 16);
         let date = format_date_short(m.created_at);
@@ -91,10 +86,8 @@ fn render_list(f: &mut Frame, app: &mut App, area: Rect) {
         Constraint::Min(20),
     ];
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .title(title);
+    let block =
+        Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(title);
 
     let table = Table::new(rows, widths)
         .header(header)
@@ -189,10 +182,7 @@ fn render_search_dialog(f: &mut Frame, app: &App, area: Rect) {
 
     let lines = vec![
         Line::from(""),
-        Line::from(Span::styled(
-            format!("  > {}_", input),
-            Style::default().fg(Color::White),
-        )),
+        Line::from(Span::styled(format!("  > {}_", input), Style::default().fg(Color::White))),
         Line::from(""),
         Line::from(vec![
             Span::raw("  "),

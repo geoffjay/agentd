@@ -15,9 +15,7 @@ pub fn spawn(
 ) -> (mpsc::UnboundedReceiver<serde_json::Value>, tokio::task::AbortHandle) {
     let (tx, rx) = mpsc::unbounded_channel();
 
-    let ws_url = base_url
-        .replacen("https://", "wss://", 1)
-        .replacen("http://", "ws://", 1);
+    let ws_url = base_url.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1);
     let url = format!("{ws_url}/stream/{agent_id}");
 
     let handle = tokio::spawn(async move {
