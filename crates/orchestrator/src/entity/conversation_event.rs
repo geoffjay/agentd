@@ -18,6 +18,8 @@ pub struct Model {
     pub content: Option<String>,
     pub metadata: Option<String>,
     pub created_at: String,
+    #[sea_orm(default_value = 0)]
+    pub seq: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -83,24 +83,8 @@ fn render_info(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_conversation(f: &mut Frame, app: &mut App, area: Rect) {
-    let inner_width = area.width.saturating_sub(2) as usize;
-    let lines = build_lines(app, inner_width);
-
-    // Compute the total height in *terminal rows* rather than logical line
-    // count.  ratatui's Paragraph::scroll() offset is in terminal rows, so
-    // using lines.len() underestimates when long lines wrap and causes the
-    // last entries to stay hidden below the visible area.
-    let total_rows = display_rows(&lines, inner_width);
-    let visible = area.height.saturating_sub(2);
-    let max_scroll = total_rows.saturating_sub(visible);
-
-    let scroll =
-        if app.conversation_follow { max_scroll } else { app.conversation_scroll.min(max_scroll) };
-    app.conversation_scroll = scroll;
-
-    if app.conversation_follow {
-        app.conversation_scroll = max_scroll;
-    }
+    let inner_width = area.width.saturating_sub(2);
+    let lines = build_lines(app, inner_width as usize);
 
     let count = app.conversation.len();
     let title =
@@ -109,8 +93,23 @@ fn render_conversation(f: &mut Frame, app: &mut App, area: Rect) {
     let block =
         Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title(title);
 
-    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: false }).scroll((scroll, 0));
+    // Build the paragraph once and ask ratatui itself for the wrapped row
+    // count. The previous hand-rolled `display_rows` undercounted because it
+    // estimated wrapping as `chars / width`, ignoring word-wrap behaviour
+    // (long lines with no spaces, multi-byte/wide characters, etc.). On a
+    // long conversation the undercount made `max_scroll` smaller than the
+    // true tail, so follow mode silently stopped scrolling before the last
+    // events and the visible bottom row was an older event.
+    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    let total_rows: u16 = para.line_count(inner_width).try_into().unwrap_or(u16::MAX);
+    let visible = area.height.saturating_sub(2);
+    let max_scroll = total_rows.saturating_sub(visible);
 
+    let scroll =
+        if app.conversation_follow { max_scroll } else { app.conversation_scroll.min(max_scroll) };
+    app.conversation_scroll = scroll;
+
+    let para = para.scroll((scroll, 0));
     f.render_widget(para, area);
 }
 
@@ -161,28 +160,6 @@ fn render_input(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/// Estimate the total number of terminal rows the lines will occupy when
-/// rendered with word-wrap inside a pane of `width` columns.
-///
-/// ratatui's `Paragraph::scroll()` offset is in terminal rows, not logical
-/// line count.  Using `lines.len()` as the total underestimates when any
-/// line is wider than the pane and wraps to multiple rows, causing the scroll
-/// math to leave the last entries below the visible area.
-fn display_rows(lines: &[Line<'_>], width: usize) -> u16 {
-    if width == 0 {
-        return lines.len() as u16;
-    }
-    lines
-        .iter()
-        .map(|line| {
-            let cols: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
-            // A zero-width line still occupies one row (blank line).
-            let rows = cols.max(1).div_ceil(width);
-            rows as u16
-        })
-        .fold(0u16, |acc, r| acc.saturating_add(r))
-}
 
 fn dim(s: &str) -> Span<'static> {
     Span::styled(s.to_string(), Style::default().fg(Color::DarkGray))

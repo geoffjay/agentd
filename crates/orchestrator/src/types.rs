@@ -2048,10 +2048,24 @@ pub struct ConversationEvent {
     pub metadata: Option<serde_json::Value>,
     /// When the event was recorded (UTC).
     pub created_at: DateTime<Utc>,
+    /// Strictly monotonic per-agent sequence number.
+    ///
+    /// Independent of [`session_number`] (which resets on context clear),
+    /// `seq` only ever increases for a given `agent_id`. Used by the
+    /// snapshot+live streaming protocol to dedupe events across the
+    /// history → live boundary and resume mid-conversation.
+    ///
+    /// `0` on a newly constructed event means "not yet assigned"; the
+    /// real value is set by the connection registry at insert time.
+    #[serde(default)]
+    pub seq: i64,
 }
 
 impl ConversationEvent {
     /// Create a new event with a generated UUID and the current timestamp.
+    ///
+    /// `seq` is `0` until the connection registry assigns the next
+    /// per-agent sequence number at persistence time.
     // Used by integration tests (conversation_persistence.rs) on stacked branches.
     #[allow(dead_code)]
     pub fn new(
@@ -2069,6 +2083,7 @@ impl ConversationEvent {
             content,
             metadata,
             created_at: Utc::now(),
+            seq: 0,
         }
     }
 }
@@ -2116,6 +2131,9 @@ pub struct ConversationEventResponse {
     pub metadata: Option<serde_json::Value>,
     pub timestamp: DateTime<Utc>,
     pub session_number: i64,
+    /// Strictly monotonic per-agent sequence number; see [`ConversationEvent::seq`].
+    #[serde(default)]
+    pub seq: i64,
 }
 
 impl From<ConversationEvent> for ConversationEventResponse {
@@ -2128,6 +2146,7 @@ impl From<ConversationEvent> for ConversationEventResponse {
             metadata: ev.metadata,
             timestamp: ev.created_at,
             session_number: ev.session_number,
+            seq: ev.seq,
         }
     }
 }

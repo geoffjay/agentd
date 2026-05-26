@@ -6,7 +6,7 @@ use memory::client::MemoryClient;
 use memory::types::{Memory, SearchRequest};
 use orchestrator::client::OrchestratorClient;
 use orchestrator::scheduler::types::{DispatchResponse, WorkflowResponse};
-use orchestrator::types::{AgentResponse, ConversationHistoryQuery};
+use orchestrator::types::AgentResponse;
 use ratatui::widgets::TableState;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -57,6 +57,7 @@ impl From<serde_json::Value> for ConversationEntry {
             .as_str()
             .or_else(|| v["text"].as_str()) // agent:thinking uses "text"
             .or_else(|| v["summary"].as_str()) // agent:tool_use has "summary"
+            .or_else(|| v["result_text"].as_str()) // agent:result uses "result_text"
             .map(|s| s.to_string());
 
         // Normalise tool_use metadata so the renderer can use the same path
@@ -131,6 +132,12 @@ pub struct App {
     pub conversation: Vec<ConversationEntry>,
     pub conversation_scroll: u16,
     pub conversation_follow: bool,
+    /// True between `snapshot_begin` and `snapshot_end` on the v2 stream —
+    /// surfaces a loading indicator while history backfills.
+    pub conversation_loading: bool,
+    /// Highest `seq` observed for the currently-selected agent. Used to resume
+    /// a stream after reconnect by passing `since_seq` to the orchestrator.
+    pub conversation_last_seq: i64,
 
     // Prompt input (agent detail view)
     pub input_mode: bool,
@@ -185,6 +192,8 @@ impl App {
             conversation: Vec::new(),
             conversation_scroll: 0,
             conversation_follow: true,
+            conversation_loading: false,
+            conversation_last_seq: 0,
             input_mode: false,
             input_buffer: String::new(),
             input_cursor: 0,
@@ -305,11 +314,56 @@ impl App {
         }
     }
 
-    /// Pull any pending stream events into the conversation buffer.
+    /// Pull any pending v2 stream frames and update the conversation buffer.
+    ///
+    /// Frame semantics:
+    /// - `snapshot_begin` flips `conversation_loading = true`.
+    /// - `event` appends to `conversation` and advances `conversation_last_seq`.
+    /// - `snapshot_end` flips `conversation_loading = false`.
+    /// - `gap` and `error` surface via `self.error`.
     pub fn drain_stream(&mut self) {
         let Some(ref mut rx) = self.stream_rx else { return };
+        let mut pending = Vec::new();
         while let Ok(value) = rx.try_recv() {
-            self.conversation.push(ConversationEntry::from(value));
+            pending.push(value);
+        }
+        for value in pending {
+            match value.get("frame").and_then(|v| v.as_str()) {
+                Some("snapshot_begin") => {
+                    self.conversation_loading = true;
+                }
+                Some("snapshot_end") => {
+                    self.conversation_loading = false;
+                    if let Some(seq) = value.get("seq").and_then(|v| v.as_i64()) {
+                        self.conversation_last_seq = self.conversation_last_seq.max(seq);
+                    }
+                }
+                Some("event") => {
+                    if let Some(seq) = value.get("seq").and_then(|v| v.as_i64()) {
+                        self.conversation_last_seq = self.conversation_last_seq.max(seq);
+                    }
+                    self.conversation.push(ConversationEntry::from(value));
+                }
+                Some("gap") => {
+                    let skipped = value.get("skipped").and_then(|v| v.as_i64()).unwrap_or(0);
+                    self.error =
+                        Some(format!("stream gap: skipped {skipped} events (broadcast lag)"));
+                }
+                Some("error") => {
+                    let msg = value
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown stream error")
+                        .to_string();
+                    self.error = Some(format!("stream error: {msg}"));
+                }
+                _ => {
+                    // Unknown frame: keep the legacy v1-style behavior of
+                    // treating the value itself as an event payload, in case a
+                    // non-v2 stream is ever wired up here by mistake.
+                    self.conversation.push(ConversationEntry::from(value));
+                }
+            }
         }
     }
 
@@ -388,30 +442,18 @@ impl App {
         self.conversation.clear();
         self.conversation_scroll = 0;
         self.conversation_follow = true;
+        self.conversation_loading = false;
+        self.conversation_last_seq = 0;
 
         let id = agent.id;
         self.selected_agent = Some(agent);
         self.view = View::AgentDetail;
 
-        // Load history. The API returns events oldest-first (no offset
-        // support), so we fetch up to 500 events. The live stream fills in
-        // anything that arrives after we load. The scroll fix in the renderer
-        // (display_rows) ensures the view starts at the bottom regardless of
-        // how many lines are present.
-        let query = ConversationHistoryQuery {
-            limit: Some(500),
-            event_type: Some("output,prompt_sent,tool_use,result".to_string()),
-            ..Default::default()
-        };
-        match self.client.list_conversation_events(&id, &query).await {
-            Ok(resp) => {
-                self.conversation = resp.events.into_iter().map(ConversationEntry::from).collect()
-            }
-            Err(e) => self.error = Some(format!("conversation history: {e}")),
-        }
-
-        // Start the live stream.
-        let (rx, abort) = stream::spawn(&self.orchestrator_url, id);
+        // The v2 stream delivers history (snapshot phase) + live updates over
+        // a single WebSocket. since_seq=0 requests the full history; the
+        // renderer's display_rows ensures the view starts at the bottom
+        // regardless of how many lines arrive.
+        let (rx, abort) = stream::spawn(&self.orchestrator_url, id, self.conversation_last_seq);
         self.stream_rx = Some(rx);
         self.stream_abort = Some(abort);
     }

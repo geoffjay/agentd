@@ -1,14 +1,24 @@
 /**
  * useAgentStream — WebSocket hook for real-time agent log streaming.
  *
- * Connects to ws://<host>/stream/<agentId> via WebSocketManager, which
- * handles auto-reconnect (exponential backoff), heartbeat detection,
- * and message buffering.
+ * Connects to ws://<host>/v2/stream/<agentId>. The v2 protocol delivers a
+ * deterministic snapshot-then-live ordering of every conversation event for
+ * the agent in a single connection:
  *
- * Returns a capped circular buffer of up to MAX_LINES log lines plus
- * a connection status indicator. Log history is persisted to sessionStorage
- * so it survives component remounts within the same browser tab. A separator
- * line is injected when history is rehydrated to mark any gap in output.
+ *   { frame: "snapshot_begin", cursor: N, agent_id: ... }
+ *   { frame: "event", seq: K, type: "agent:output", ... }
+ *   { frame: "event", seq: K+1, type: "agent:tool_use", ... }
+ *   ...
+ *   { frame: "snapshot_end", seq: N }
+ *   { frame: "event", seq: N+1, ... }   // live phase
+ *
+ * `since_seq` is tracked in memory only — every fresh mount requests the
+ * full snapshot (since_seq = 0). This matches the TUI's behaviour, gives
+ * users a predictable "show me the current conversation" experience, and
+ * avoids the failure mode where a stale persisted seq makes the next page
+ * load show no content. The in-memory cursor is still used so that the
+ * underlying WebSocketManager's auto-reconnects resume from the right
+ * point without a duplicate replay.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -43,7 +53,7 @@ export interface LogLine {
 	};
 	/** When true, this line is a thinking/reasoning block */
 	isThinking?: boolean;
-	/** When true, this line is a reconnection gap separator */
+	/** When true, this line is a reconnection gap marker (broadcast lag) */
 	isSeparator?: boolean;
 }
 
@@ -63,6 +73,8 @@ export interface UseAgentStreamOptions {
 export interface UseAgentStreamResult {
 	lines: LogLine[];
 	status: StreamStatus;
+	/** True between snapshot_begin and snapshot_end — UIs may show a spinner. */
+	historyLoading: boolean;
 	/** Clear all buffered log lines (does not disconnect the stream) */
 	clear: () => void;
 }
@@ -72,65 +84,6 @@ export interface UseAgentStreamResult {
 // ---------------------------------------------------------------------------
 
 const MAX_LINES = 5_000;
-const MAX_STORED_LINES = 1_000;
-
-// ---------------------------------------------------------------------------
-// sessionStorage helpers
-// ---------------------------------------------------------------------------
-
-const LOG_STORAGE_KEY = (agentId: string) => `agentd:log-history:${agentId}`;
-
-interface StoredLogHistory {
-	lines: LogLine[];
-	lastTimestamp: string;
-}
-
-/** Deduplicate lines by id, keeping the first occurrence. */
-function deduplicateLines(lines: LogLine[]): LogLine[] {
-	const seen = new Set<number>();
-	return lines.filter((l) => {
-		if (seen.has(l.id)) return false;
-		seen.add(l.id);
-		return true;
-	});
-}
-
-function loadLogHistory(agentId: string): StoredLogHistory | null {
-	try {
-		const raw = sessionStorage.getItem(LOG_STORAGE_KEY(agentId));
-		if (!raw) return null;
-		const history = JSON.parse(raw) as StoredLogHistory;
-		// Guard against corrupt storage with duplicate IDs
-		history.lines = deduplicateLines(history.lines);
-		return history;
-	} catch {
-		return null;
-	}
-}
-
-function saveLogHistory(
-	agentId: string,
-	lines: LogLine[],
-	lastTimestamp: string,
-): void {
-	try {
-		const stored: StoredLogHistory = {
-			lines: deduplicateLines(lines),
-			lastTimestamp,
-		};
-		sessionStorage.setItem(LOG_STORAGE_KEY(agentId), JSON.stringify(stored));
-	} catch {
-		// sessionStorage may be full or unavailable — silently ignore
-	}
-}
-
-function clearLogHistory(agentId: string): void {
-	try {
-		sessionStorage.removeItem(LOG_STORAGE_KEY(agentId));
-	} catch {
-		// ignore
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -138,11 +91,11 @@ function clearLogHistory(agentId: string): void {
 
 let globalLineId = 0;
 
-function makeLogLine(text: string): LogLine {
+function makeLogLine(text: string, timestamp: string): LogLine {
 	return {
 		id: ++globalLineId,
 		text,
-		timestamp: new Date().toISOString(),
+		timestamp,
 	};
 }
 
@@ -169,18 +122,11 @@ function makeThinkingLine(text: string, timestamp: string): LogLine {
 	};
 }
 
-function makeSeparatorLine(fromTs: string, toTs: string): LogLine {
-	const fmt = (ts: string) =>
-		new Date(ts).toLocaleTimeString([], {
-			hour: "2-digit",
-			minute: "2-digit",
-			second: "2-digit",
-			hour12: false,
-		});
+function makeGapLine(skipped: number, timestamp: string): LogLine {
 	return {
 		id: ++globalLineId,
-		text: `─── Reconnected · missed output from ${fmt(fromTs)} to ${fmt(toTs)} ───`,
-		timestamp: toTs,
+		text: `─── Stream gap · ${skipped} events missed (broadcast lag) ───`,
+		timestamp,
 		isSeparator: true,
 	};
 }
@@ -193,12 +139,19 @@ function capLines(prev: LogLine[], incoming: LogLine[]): LogLine[] {
 
 function agentStreamUrl(agentId: string): string {
 	const wsBase = serviceConfig.orchestratorServiceUrl.replace(/^http/, "ws");
-	return `${wsBase}/stream/${agentId}`;
+	return `${wsBase}/v2/stream/${agentId}`;
 }
 
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
+
+interface V2Frame {
+	frame?: string;
+	seq?: number;
+	type?: string;
+	[key: string]: unknown;
+}
 
 export function useAgentStream(
 	agentId: string,
@@ -206,13 +159,10 @@ export function useAgentStream(
 ): UseAgentStreamResult {
 	const [lines, setLines] = useState<LogLine[]>([]);
 	const [status, setStatus] = useState<StreamStatus>("connecting");
+	const [historyLoading, setHistoryLoading] = useState(false);
 
-	// linesRef stays in sync with lines state for use in cleanup
 	const linesRef = useRef<LogLine[]>([]);
-
-	// Stores the last stored timestamp when history is rehydrated; cleared
-	// after the first new message arrives (so we can insert a separator)
-	const pendingSeparatorRef = useRef<string | null>(null);
+	const lastSeqRef = useRef<number>(0);
 
 	// Store callbacks in refs so the WebSocket effect doesn't re-run when
 	// callbacks change.
@@ -224,142 +174,139 @@ export function useAgentStream(
 	const managerRef = useRef<WebSocketManager | null>(null);
 
 	useEffect(() => {
-		// Rehydrate persisted log history on mount
-		const stored = loadLogHistory(agentId);
-		if (stored && stored.lines.length > 0) {
-			// Advance globalLineId past any rehydrated IDs so new lines never
-			// collide with stored ones (globalLineId resets to 0 on page reload).
-			const maxStoredId = stored.lines.reduce(
-				(max, l) => Math.max(max, l.id),
-				0,
-			);
-			if (maxStoredId >= globalLineId) {
-				globalLineId = maxStoredId;
-			}
-			setLines((prev) => {
-				const next = capLines(prev, stored.lines);
-				linesRef.current = next;
-				return next;
-			});
-			pendingSeparatorRef.current = stored.lastTimestamp;
-		}
+		// Every fresh mount starts with since_seq=0 so the user sees the full
+		// conversation snapshot. The in-memory ref still advances on each
+		// event so reconnects inside this mount lifecycle resume from the
+		// right cursor without a duplicate replay.
+		lastSeqRef.current = 0;
+		linesRef.current = [];
+		setLines([]);
 
 		const manager = new WebSocketManager(agentStreamUrl(agentId), {
-			// Disable heartbeat — agent output arrives irregularly; a ping
-			// would be noise in the log stream
 			heartbeatInterval: 0,
 		});
 		managerRef.current = manager;
+
+		const sendSubscribe = () => {
+			manager.send(
+				JSON.stringify({
+					frame: "subscribe",
+					since_seq: lastSeqRef.current,
+				}),
+			);
+		};
 
 		const unsubState = manager.onStateChange((state) => {
 			switch (state) {
 				case "Connected":
 					setStatus("connected");
+					// (Re)send the subscribe frame with the latest seq cursor.
+					sendSubscribe();
 					break;
 				case "Disconnected":
 					setStatus("disconnected");
 					break;
 				default:
-					// Connecting | Reconnecting → show as 'connecting'
 					setStatus("connecting");
 			}
 		});
 
-		const unsubMsg = manager.onMessage((event: MessageEvent) => {
-			const rawText = String(event.data);
-
-			// Try to parse as JSON event first
-			let parsed: AgentEvent | null = null;
-			try {
-				parsed = JSON.parse(rawText) as AgentEvent;
-			} catch {
-				// Not JSON — treat as plain log output
+		const handleEventFrame = (frame: V2Frame) => {
+			if (typeof frame.seq === "number" && frame.seq > lastSeqRef.current) {
+				lastSeqRef.current = frame.seq;
 			}
 
-			if (parsed) {
-				// Emit to the global event bus so other hooks can react
-				agentEventBus.emit(parsed);
+			// The frame is a v2 envelope plus the v1 event payload. The
+			// inner shape matches AgentEvent (the live broadcast shape), so
+			// we can re-emit it through the bus and dispatch on `type` as
+			// before.
+			const parsed = frame as unknown as AgentEvent;
+			agentEventBus.emit(parsed);
 
-				if (parsed.type === "agent:usage_update") {
-					onUsageUpdateRef.current?.(parsed);
-					return;
-				}
-
-				if (parsed.type === "agent:context_cleared") {
-					onContextClearedRef.current?.(parsed);
-					return;
-				}
-
-				// For agent:output events, extract the line text
-				if (parsed.type === "agent:output") {
-					const newLine = makeLogLine(parsed.line);
-					const separator = pendingSeparatorRef.current;
-					pendingSeparatorRef.current = null;
-					setLines((prev) => {
-						const incoming = separator
-							? [makeSeparatorLine(separator, newLine.timestamp), newLine]
-							: [newLine];
-						const next = capLines(prev, incoming);
-						linesRef.current = next;
-						return next;
-					});
-					return;
-				}
-
-				// For agent:tool_use events, add a structured tool call line
-				if (parsed.type === "agent:tool_use") {
-					const newLine = makeToolUseLine(parsed);
-					const separator = pendingSeparatorRef.current;
-					pendingSeparatorRef.current = null;
-					setLines((prev) => {
-						const incoming = separator
-							? [makeSeparatorLine(separator, newLine.timestamp), newLine]
-							: [newLine];
-						const next = capLines(prev, incoming);
-						linesRef.current = next;
-						return next;
-					});
-					return;
-				}
-
-				// For agent:thinking events, add a thinking log line
-				if (parsed.type === "agent:thinking") {
-					const thinkingEvent = parsed as AgentThinkingEvent;
-					const newLine = makeThinkingLine(
-						thinkingEvent.text,
-						thinkingEvent.timestamp,
-					);
-					const separator = pendingSeparatorRef.current;
-					pendingSeparatorRef.current = null;
-					setLines((prev) => {
-						const incoming = separator
-							? [makeSeparatorLine(separator, newLine.timestamp), newLine]
-							: [newLine];
-						const next = capLines(prev, incoming);
-						linesRef.current = next;
-						return next;
-					});
-					return;
-				}
-
-				// Other structured events are emitted to the bus but not added
-				// to the log buffer.
+			if (parsed.type === "agent:usage_update") {
+				onUsageUpdateRef.current?.(parsed);
+				return;
+			}
+			if (parsed.type === "agent:context_cleared") {
+				onContextClearedRef.current?.(parsed);
 				return;
 			}
 
-			// Plain text fallback
-			const separator = pendingSeparatorRef.current;
-			pendingSeparatorRef.current = null;
-			setLines((prev) => {
-				const newLines = rawText.split("\n").filter(Boolean).map(makeLogLine);
-				const incoming =
-					separator && newLines.length > 0
-						? [makeSeparatorLine(separator, newLines[0].timestamp), ...newLines]
-						: newLines;
-				const next = capLines(prev, incoming);
-				linesRef.current = next;
-				return next;
-			});
+			let line: LogLine | null = null;
+			if (parsed.type === "agent:output") {
+				line = makeLogLine(parsed.line, parsed.timestamp);
+			} else if (parsed.type === "agent:tool_use") {
+				line = makeToolUseLine(parsed);
+			} else if (parsed.type === "agent:thinking") {
+				const thinking = parsed as AgentThinkingEvent;
+				line = makeThinkingLine(thinking.text, thinking.timestamp);
+			}
+
+			if (line) {
+				const newLine = line;
+				setLines((prev) => {
+					const next = capLines(prev, [newLine]);
+					linesRef.current = next;
+					return next;
+				});
+			}
+		};
+
+		const unsubMsg = manager.onMessage((event: MessageEvent) => {
+			let frame: V2Frame | null = null;
+			try {
+				frame = JSON.parse(String(event.data)) as V2Frame;
+			} catch {
+				return;
+			}
+
+			switch (frame.frame) {
+				case "snapshot_begin":
+					setHistoryLoading(true);
+					return;
+				case "snapshot_end":
+					setHistoryLoading(false);
+					if (typeof frame.seq === "number") {
+						lastSeqRef.current = Math.max(lastSeqRef.current, frame.seq);
+					}
+					return;
+				case "event":
+					handleEventFrame(frame);
+					return;
+				case "gap": {
+					const skipped =
+						typeof frame.skipped === "number" ? frame.skipped : 0;
+					const gap = makeGapLine(skipped, new Date().toISOString());
+					setLines((prev) => {
+						const next = capLines(prev, [gap]);
+						linesRef.current = next;
+						return next;
+					});
+					return;
+				}
+				case "error":
+					// Surface as a separator-style line so the user sees it
+					// without spamming console-only logs.
+					setLines((prev) => {
+						const msg =
+							typeof frame?.message === "string"
+								? frame.message
+								: "unknown stream error";
+						const errLine: LogLine = {
+							id: ++globalLineId,
+							text: `─── Stream error · ${msg} ───`,
+							timestamp: new Date().toISOString(),
+							isSeparator: true,
+						};
+						const next = capLines(prev, [errLine]);
+						linesRef.current = next;
+						return next;
+					});
+					return;
+				default:
+					// Unknown frame — ignore.
+					return;
+			}
 		});
 
 		manager.connect();
@@ -369,23 +316,14 @@ export function useAgentStream(
 			unsubMsg();
 			manager.disconnect();
 			managerRef.current = null;
-
-			// Persist log history (excluding separator lines) on unmount
-			const currentLines = linesRef.current.filter((l) => !l.isSeparator);
-			const trimmed = currentLines.slice(-MAX_STORED_LINES);
-			if (trimmed.length > 0) {
-				const lastTimestamp = trimmed[trimmed.length - 1].timestamp;
-				saveLogHistory(agentId, trimmed, lastTimestamp);
-			}
 		};
 	}, [agentId]);
 
 	const clear = useCallback(() => {
 		linesRef.current = [];
-		pendingSeparatorRef.current = null;
 		setLines([]);
-		clearLogHistory(agentId);
-	}, [agentId]);
+		lastSeqRef.current = 0;
+	}, []);
 
-	return { lines, status, clear };
+	return { lines, status, historyLoading, clear };
 }

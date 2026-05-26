@@ -54,6 +54,14 @@ pub struct ConnectionRegistry {
     storage: Option<AgentStorage>,
     /// Per-agent session counter — incremented on every context clear.
     session_numbers: Arc<RwLock<HashMap<Uuid, i64>>>,
+    /// Per-agent strictly monotonic event sequence number.
+    ///
+    /// Independent of [`session_numbers`] (which resets on context clear),
+    /// `seq` only ever increases for a given agent. It is the dedupe key for
+    /// the snapshot+live streaming protocol on `/v2/stream/{agent_id}`.
+    /// Backed by a `std::sync::Mutex` because increments are non-blocking
+    /// and we want to call [`next_seq`] from sync code paths.
+    seq_counters: Arc<std::sync::Mutex<HashMap<Uuid, i64>>>,
 }
 
 impl Default for ConnectionRegistry {
@@ -64,7 +72,10 @@ impl Default for ConnectionRegistry {
 
 impl ConnectionRegistry {
     pub fn new() -> Self {
-        let (stream_tx, _) = broadcast::channel(256);
+        // Capacity 1024 leaves headroom for the v2 stream's brief snapshot
+        // buffer; v1 clients see no behavioural change beyond unknown
+        // `"seq"` fields they already ignore.
+        let (stream_tx, _) = broadcast::channel(1024);
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             result_callbacks: Arc::new(RwLock::new(Vec::new())),
@@ -76,6 +87,7 @@ impl ConnectionRegistry {
             event_bus: None,
             storage: None,
             session_numbers: Arc::new(RwLock::new(HashMap::new())),
+            seq_counters: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
     }
 
@@ -91,24 +103,47 @@ impl ConnectionRegistry {
         self
     }
 
-    /// Spawn a fire-and-forget task that persists `event` to storage.
+    /// Assign and return the next per-agent monotonic sequence number.
     ///
-    /// If no storage is configured, this is a no-op. Storage errors are logged
-    /// at `warn` level but never propagate to the caller.
-    fn persist_event(&self, event: ConversationEvent) {
+    /// Cheap, non-async — held under a brief `std::sync::Mutex`. The counter
+    /// is seeded from storage in [`register`] so that values stay
+    /// strictly increasing across orchestrator restarts.
+    pub(crate) fn next_seq(&self, agent_id: Uuid) -> i64 {
+        let mut counters = self.seq_counters.lock().expect("seq counter mutex poisoned");
+        let entry = counters.entry(agent_id).or_insert(0);
+        *entry += 1;
+        *entry
+    }
+
+    /// Assign the next per-agent `seq` to `event`, persist it synchronously,
+    /// and return the assigned seq. Callers thread the returned seq into the
+    /// live broadcast frame so v2 stream consumers can dedupe across the
+    /// snapshot → live boundary.
+    ///
+    /// `await`ing the persist before returning is what guarantees the
+    /// snapshot+live protocol's correctness: a client subscribing the
+    /// instant the caller broadcasts must, in its subsequent
+    /// `MAX(seq)` query, see the persisted row. If persist were
+    /// fire-and-forget, the broadcast would arrive on live channels that
+    /// were subscribed *after* the broadcast, and the snapshot would miss
+    /// the row — producing a gap.
+    ///
+    /// If no storage backend is configured this still returns a valid seq;
+    /// the event simply isn't persisted (and will not appear in any snapshot).
+    pub async fn record_and_seq(&self, mut event: ConversationEvent) -> i64 {
+        event.seq = self.next_seq(event.agent_id);
+        let seq = event.seq;
         if let Some(ref storage) = self.storage {
-            let storage = storage.clone();
-            tokio::spawn(async move {
-                if let Err(e) = storage.insert_conversation_event(&event).await {
-                    warn!(
-                        agent_id = %event.agent_id,
-                        event_type = %event.event_type,
-                        error = %e,
-                        "Failed to persist conversation event"
-                    );
-                }
-            });
+            if let Err(e) = storage.insert_conversation_event(&event).await {
+                warn!(
+                    agent_id = %event.agent_id,
+                    event_type = %event.event_type,
+                    error = %e,
+                    "Failed to persist conversation event"
+                );
+            }
         }
+        seq
     }
 
     /// Return the current in-memory session number for an agent (default 0).
@@ -131,12 +166,13 @@ impl ConnectionRegistry {
             None,
             None,
         );
-        self.persist_event(event);
+        let seq = self.record_and_seq(event).await;
 
         // Broadcast the context-cleared event on the multiplexed stream so
         // live UI subscribers are notified immediately.
         let stream_event = serde_json::json!({
             "type": "agent:context_cleared",
+            "seq": seq,
             "agent_id": agent_id.to_string(),
             "agentId": agent_id.to_string(),
             "session_number": new_session_number,
@@ -150,6 +186,15 @@ impl ConnectionRegistry {
         self.event_bus.as_ref()
     }
 
+    /// Return a clone of the configured storage backend, if any.
+    ///
+    /// `AgentStorage` is internally `Arc`-backed so the clone is cheap; the
+    /// v2 stream handler uses this to query historical events without
+    /// borrowing the registry across `await` points.
+    pub fn storage(&self) -> Option<AgentStorage> {
+        self.storage.clone()
+    }
+
     /// Broadcast a raw JSON string to all /stream subscribers.
     pub fn broadcast(&self, msg: String) {
         let _ = self.stream_tx.send(msg);
@@ -161,6 +206,21 @@ impl ConnectionRegistry {
     }
 
     pub async fn register(&self, agent_id: Uuid, conn: AgentConnection) {
+        // Seed the seq counter from storage BEFORE the connection accepts
+        // events. The unique `(agent_id, seq)` index would reject any
+        // collision, so we must know the previous high-water mark up front.
+        // This is awaited synchronously (single SQL query) — unlike the
+        // session_number lazy-init which is fire-and-forget.
+        let max_seq = if let Some(ref storage) = self.storage {
+            storage.get_max_conversation_seq(agent_id).await.unwrap_or_else(|e| {
+                warn!(%agent_id, error = %e, "Failed to seed seq counter from storage; starting at 0");
+                0
+            })
+        } else {
+            0
+        };
+        self.seq_counters.lock().expect("seq counter mutex poisoned").insert(agent_id, max_seq);
+
         self.connections.write().await.insert(agent_id, conn);
         self.activity_states.write().await.insert(agent_id, ActivityState::Idle);
         self.connect_notify.notify_waiters();
@@ -234,6 +294,7 @@ impl ConnectionRegistry {
         self.policies.write().await.remove(agent_id);
         self.activity_states.write().await.remove(agent_id);
         self.session_numbers.write().await.remove(agent_id);
+        self.seq_counters.lock().expect("seq counter mutex poisoned").remove(agent_id);
         if let Some(bus) = &self.event_bus {
             bus.publish(SystemEvent::AgentDisconnected { agent_id: *agent_id });
         }
@@ -309,33 +370,50 @@ impl ConnectionRegistry {
 
         drop(connections);
 
-        // Transition to Busy and broadcast activity change.
+        // Transition to Busy. Assign seq numbers for both events first so that
+        // the broadcast frames carry the same seq the snapshot replay will see.
         self.activity_states.write().await.insert(*agent_id, ActivityState::Busy);
+        let session = self.get_session_number(agent_id).await;
+
+        let prompt_seq = self
+            .record_and_seq(ConversationEvent::new(
+                *agent_id,
+                ConversationEventType::PromptSent,
+                session,
+                Some(content.to_string()),
+                None,
+            ))
+            .await;
+        let prompt_event = serde_json::json!({
+            "type": "agent:prompt_sent",
+            "seq": prompt_seq,
+            "agent_id": agent_id.to_string(),
+            "agentId": agent_id.to_string(),
+            "line": content,
+            "session_number": session,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        let _ = self.stream_tx.send(prompt_event.to_string());
+
+        let activity_seq = self
+            .record_and_seq(ConversationEvent::new(
+                *agent_id,
+                ConversationEventType::ActivityChanged,
+                session,
+                Some("busy".to_string()),
+                None,
+            ))
+            .await;
         let activity_event = serde_json::json!({
             "type": "agent:activity_changed",
+            "seq": activity_seq,
             "agent_id": agent_id.to_string(),
             "agentId": agent_id.to_string(),
             "activity": "busy",
+            "session_number": session,
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
         let _ = self.stream_tx.send(activity_event.to_string());
-
-        // Persist prompt_sent + activity_changed(busy) events.
-        let session = self.get_session_number(agent_id).await;
-        self.persist_event(ConversationEvent::new(
-            *agent_id,
-            ConversationEventType::PromptSent,
-            session,
-            Some(content.to_string()),
-            None,
-        ));
-        self.persist_event(ConversationEvent::new(
-            *agent_id,
-            ConversationEventType::ActivityChanged,
-            session,
-            Some("busy".to_string()),
-            None,
-        ));
 
         Ok(())
     }
@@ -577,19 +655,38 @@ fn extract_assistant_content(message: &Value) -> (Vec<String>, Vec<Value>, Vec<S
     (lines, tool_uses, thinking_lines)
 }
 
-/// Broadcast a single `agent:output` event on the multiplexed stream.
-fn broadcast_output(agent_id: &Uuid, text: &str, registry: &ConnectionRegistry) {
+/// Record and broadcast one `agent:output` event per non-empty line in `text`.
+///
+/// Each line is assigned its own per-agent `seq`, persisted, and broadcast
+/// with that seq in the live frame so v2 stream consumers can dedupe.
+async fn broadcast_output(
+    agent_id: &Uuid,
+    text: &str,
+    session: i64,
+    registry: &ConnectionRegistry,
+) {
     for line in text.lines() {
         if line.is_empty() {
             continue;
         }
+        let seq = registry
+            .record_and_seq(ConversationEvent::new(
+                *agent_id,
+                ConversationEventType::Output,
+                session,
+                Some(line.to_string()),
+                None,
+            ))
+            .await;
         let event = serde_json::json!({
             "type": "agent:output",
+            "seq": seq,
             // snake_case for the /stream/{agent_id} filter
             "agent_id": agent_id.to_string(),
             // camelCase for the frontend AgentEvent type
             "agentId": agent_id.to_string(),
             "line": line,
+            "session_number": session,
             "timestamp": Utc::now().to_rfc3339(),
         });
         let _ = registry.stream_tx.send(event.to_string());
@@ -630,61 +727,59 @@ pub(crate) async fn handle_incoming_message(
             }
             "assistant" => {
                 debug!(%agent_id, "Assistant response received");
-                // Extract text content, tool use blocks, and thinking lines; broadcast all.
+                // Extract text content, tool use blocks, and thinking lines.
+                // For each, assign a seq via record_and_seq (which persists)
+                // and use that same seq in the live broadcast frame so v2
+                // clients can dedupe across the snapshot/live boundary.
                 if let Some(message) = msg.get("message") {
                     let (texts, tool_uses, thinking_lines) = extract_assistant_content(message);
                     for text in &texts {
-                        broadcast_output(agent_id, text, registry);
-                        // Persist one Output event per non-empty line.
-                        for line in text.lines() {
-                            if line.is_empty() {
-                                continue;
-                            }
-                            registry.persist_event(ConversationEvent::new(
-                                *agent_id,
-                                ConversationEventType::Output,
-                                session,
-                                Some(line.to_string()),
-                                None,
-                            ));
-                        }
+                        broadcast_output(agent_id, text, session, registry).await;
                     }
                     for tool_use in &tool_uses {
+                        let seq = registry
+                            .record_and_seq(ConversationEvent::new(
+                                *agent_id,
+                                ConversationEventType::ToolUse,
+                                session,
+                                tool_use["summary"].as_str().map(|s| s.to_string()),
+                                Some(tool_use.clone()),
+                            ))
+                            .await;
                         let stream_event = serde_json::json!({
                             "type": "agent:tool_use",
+                            "seq": seq,
                             "agent_id": agent_id.to_string(),
                             "agentId": agent_id.to_string(),
                             "tool_name": tool_use["tool_name"],
                             "tool_id": tool_use["tool_id"],
                             "tool_input": tool_use["tool_input"],
                             "summary": tool_use["summary"],
+                            "session_number": session,
                             "timestamp": Utc::now().to_rfc3339(),
                         });
                         let _ = registry.stream_tx.send(stream_event.to_string());
-                        registry.persist_event(ConversationEvent::new(
-                            *agent_id,
-                            ConversationEventType::ToolUse,
-                            session,
-                            tool_use["summary"].as_str().map(|s| s.to_string()),
-                            Some(tool_use.clone()),
-                        ));
                     }
                     for thinking in &thinking_lines {
+                        let seq = registry
+                            .record_and_seq(ConversationEvent::new(
+                                *agent_id,
+                                ConversationEventType::Thinking,
+                                session,
+                                Some(thinking.clone()),
+                                None,
+                            ))
+                            .await;
                         let stream_event = serde_json::json!({
                             "type": "agent:thinking",
+                            "seq": seq,
                             "agent_id": agent_id.to_string(),
                             "agentId": agent_id.to_string(),
                             "text": thinking,
+                            "session_number": session,
                             "timestamp": Utc::now().to_rfc3339(),
                         });
                         let _ = registry.stream_tx.send(stream_event.to_string());
-                        registry.persist_event(ConversationEvent::new(
-                            *agent_id,
-                            ConversationEventType::Thinking,
-                            session,
-                            Some(thinking.clone()),
-                            None,
-                        ));
                     }
                 }
             }
@@ -696,56 +791,39 @@ pub(crate) async fn handle_incoming_message(
                     info!(%agent_id, "Agent query completed successfully");
                 }
 
-                // Transition to Idle and broadcast activity change.
+                // Transition to Idle. Record and broadcast the activity_changed
+                // event together so the broadcast frame carries the seq the
+                // snapshot will replay.
                 registry.activity_states.write().await.insert(*agent_id, ActivityState::Idle);
+                let activity_seq = registry
+                    .record_and_seq(ConversationEvent::new(
+                        *agent_id,
+                        ConversationEventType::ActivityChanged,
+                        session,
+                        Some("idle".to_string()),
+                        None,
+                    ))
+                    .await;
                 let activity_event = serde_json::json!({
                     "type": "agent:activity_changed",
+                    "seq": activity_seq,
                     "agent_id": agent_id.to_string(),
                     "agentId": agent_id.to_string(),
                     "activity": "idle",
+                    "session_number": session,
                     "timestamp": Utc::now().to_rfc3339(),
                 });
                 let _ = registry.stream_tx.send(activity_event.to_string());
-
-                // Broadcast result text as agent:output
-                if let Some(result_text) = msg.get("result").and_then(|v| v.as_str()) {
-                    if !result_text.is_empty() {
-                        let label = if is_error { "Error" } else { "Result" };
-                        broadcast_output(
-                            agent_id,
-                            &format!("[{}] {}", label, result_text),
-                            registry,
-                        );
-                    }
-                }
 
                 let usage = extract_usage(&msg);
                 let result_text =
                     msg.get("result").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
-                // Broadcast agent:usage_update event for UI consumers
-                if let Some(ref usage_snap) = usage {
-                    let usage_event = serde_json::json!({
-                        "type": "agent:usage_update",
-                        "agent_id": agent_id.to_string(),
-                        "agentId": agent_id.to_string(),
-                        "usage": {
-                            "input_tokens": usage_snap.input_tokens,
-                            "output_tokens": usage_snap.output_tokens,
-                            "cache_read_input_tokens": usage_snap.cache_read_input_tokens,
-                            "cache_creation_input_tokens": usage_snap.cache_creation_input_tokens,
-                            "total_cost_usd": usage_snap.total_cost_usd,
-                            "num_turns": usage_snap.num_turns,
-                            "duration_ms": usage_snap.duration_ms,
-                            "duration_api_ms": usage_snap.duration_api_ms,
-                        },
-                        "session_number": session,
-                        "timestamp": Utc::now().to_rfc3339(),
-                    });
-                    let _ = registry.stream_tx.send(usage_event.to_string());
-                }
-
-                // Persist result event with usage metadata.
+                // Record + broadcast the Result event. The result text is the
+                // canonical record — we no longer emit a duplicate
+                // `[Result] …` agent:output frame, which used to appear only
+                // on the live stream and never in history (one of the sources
+                // of the Web/TUI divergence).
                 let usage_meta = usage.as_ref().map(|u| {
                     serde_json::json!({
                         "is_error": is_error,
@@ -757,21 +835,60 @@ pub(crate) async fn handle_incoming_message(
                         "duration_ms": u.duration_ms,
                     })
                 });
-                registry.persist_event(ConversationEvent::new(
-                    *agent_id,
-                    ConversationEventType::Result,
-                    session,
-                    if result_text.is_empty() { None } else { Some(result_text.clone()) },
-                    usage_meta,
-                ));
-                // Persist activity_changed(idle) event.
-                registry.persist_event(ConversationEvent::new(
-                    *agent_id,
-                    ConversationEventType::ActivityChanged,
-                    session,
-                    Some("idle".to_string()),
-                    None,
-                ));
+                let result_seq = registry
+                    .record_and_seq(ConversationEvent::new(
+                        *agent_id,
+                        ConversationEventType::Result,
+                        session,
+                        if result_text.is_empty() { None } else { Some(result_text.clone()) },
+                        usage_meta.clone(),
+                    ))
+                    .await;
+                let result_event = serde_json::json!({
+                    "type": "agent:result",
+                    "seq": result_seq,
+                    "agent_id": agent_id.to_string(),
+                    "agentId": agent_id.to_string(),
+                    "is_error": is_error,
+                    "result_text": result_text,
+                    "metadata": usage_meta,
+                    "session_number": session,
+                    "timestamp": Utc::now().to_rfc3339(),
+                });
+                let _ = registry.stream_tx.send(result_event.to_string());
+
+                // Record + broadcast agent:usage_update for UI consumers.
+                if let Some(ref usage_snap) = usage {
+                    let usage_payload = serde_json::json!({
+                        "input_tokens": usage_snap.input_tokens,
+                        "output_tokens": usage_snap.output_tokens,
+                        "cache_read_input_tokens": usage_snap.cache_read_input_tokens,
+                        "cache_creation_input_tokens": usage_snap.cache_creation_input_tokens,
+                        "total_cost_usd": usage_snap.total_cost_usd,
+                        "num_turns": usage_snap.num_turns,
+                        "duration_ms": usage_snap.duration_ms,
+                        "duration_api_ms": usage_snap.duration_api_ms,
+                    });
+                    let usage_seq = registry
+                        .record_and_seq(ConversationEvent::new(
+                            *agent_id,
+                            ConversationEventType::UsageUpdate,
+                            session,
+                            None,
+                            Some(usage_payload.clone()),
+                        ))
+                        .await;
+                    let usage_event = serde_json::json!({
+                        "type": "agent:usage_update",
+                        "seq": usage_seq,
+                        "agent_id": agent_id.to_string(),
+                        "agentId": agent_id.to_string(),
+                        "usage": usage_payload,
+                        "session_number": session,
+                        "timestamp": Utc::now().to_rfc3339(),
+                    });
+                    let _ = registry.stream_tx.send(usage_event.to_string());
+                }
 
                 registry
                     .notify_result(ResultInfo { agent_id: *agent_id, is_error, usage, result_text })
@@ -1063,6 +1180,325 @@ async fn handle_stream_socket(
 
     send_task.abort();
     info!(filter = %label, "Stream WebSocket connection ended");
+}
+
+// ---------------------------------------------------------------------------
+// v2 stream: snapshot + live with per-agent monotonic seq.
+// ---------------------------------------------------------------------------
+
+/// Axum handler for `GET /v2/stream/{agent_id}`.
+///
+/// Delivers a deterministic snapshot-then-live ordering of every conversation
+/// event for the given agent. See [`handle_stream_socket_v2`] for the wire
+/// protocol.
+pub async fn ws_stream_agent_v2_handler(
+    Path(agent_id): Path<Uuid>,
+    ws: WebSocketUpgrade,
+    State(registry): State<ConnectionRegistry>,
+) -> impl IntoResponse {
+    info!(%agent_id, "v2 stream WebSocket upgrade request");
+    ws.on_upgrade(move |socket| handle_stream_socket_v2(socket, registry, agent_id))
+}
+
+/// Client → server subscribe frame for the v2 stream.
+#[derive(Debug, Deserialize)]
+struct V2Subscribe {
+    /// Re-send only events with `seq` strictly greater than this value.
+    #[serde(default)]
+    since_seq: i64,
+    /// Optional session filter; when set, only events from this session are
+    /// included in both snapshot and live phases.
+    #[serde(default)]
+    session_number: Option<i64>,
+}
+
+/// Convert a persisted `ConversationEvent` into a v2 event frame.
+///
+/// The shape mirrors the live broadcast frame so clients render snapshot and
+/// live events identically. Only one extra key — `"frame": "event"` — is
+/// added on top of the live shape.
+fn conversation_event_to_v2_frame(ev: &ConversationEvent) -> Value {
+    let mut frame = serde_json::json!({
+        "frame": "event",
+        "seq": ev.seq,
+        "type": format!("agent:{}", ev.event_type),
+        "agent_id": ev.agent_id.to_string(),
+        "agentId": ev.agent_id.to_string(),
+        "session_number": ev.session_number,
+        "timestamp": ev.created_at.to_rfc3339(),
+    });
+
+    let obj = frame
+        .as_object_mut()
+        .expect("conversation_event_to_v2_frame: json! always produces an object");
+
+    match ev.event_type {
+        ConversationEventType::Output | ConversationEventType::PromptSent => {
+            if let Some(c) = ev.content.clone() {
+                obj.insert("line".into(), Value::String(c));
+            }
+        }
+        ConversationEventType::Thinking => {
+            if let Some(c) = ev.content.clone() {
+                obj.insert("text".into(), Value::String(c));
+            }
+        }
+        ConversationEventType::ActivityChanged => {
+            if let Some(c) = ev.content.clone() {
+                obj.insert("activity".into(), Value::String(c));
+            }
+        }
+        ConversationEventType::ToolUse => {
+            // Tool metadata is stored as a flat object {tool_name, tool_id,
+            // tool_input, summary} — spread it onto the frame to match the
+            // live broadcast shape.
+            if let Some(Value::Object(map)) = &ev.metadata {
+                for (k, v) in map {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+        }
+        ConversationEventType::Result => {
+            if let Some(Value::Object(map)) = &ev.metadata {
+                if let Some(v) = map.get("is_error") {
+                    obj.insert("is_error".into(), v.clone());
+                }
+                if let Some(v) = map.get("result_text") {
+                    obj.insert("result_text".into(), v.clone());
+                }
+            }
+            if let Some(m) = ev.metadata.clone() {
+                obj.insert("metadata".into(), m);
+            }
+        }
+        ConversationEventType::UsageUpdate => {
+            if let Some(m) = ev.metadata.clone() {
+                obj.insert("usage".into(), m);
+            }
+        }
+        ConversationEventType::ContextCleared => {}
+    }
+
+    frame
+}
+
+/// Wrap a live broadcast frame (a v1-shape JSON string) into a v2 event frame.
+///
+/// Returns `None` when the frame is not a conversation event for `agent_id`,
+/// when it lacks a `seq` (e.g. `pending_approval` notifications), when its
+/// `seq` has already been replayed in the snapshot, or when the optional
+/// session filter rejects it. On success returns `(seq, frame_json_string)`.
+fn live_broadcast_to_v2_frame(
+    raw: &str,
+    filter_agent: Uuid,
+    last_replayed: i64,
+    session_filter: Option<i64>,
+) -> Option<(i64, String)> {
+    let parsed: Value = serde_json::from_str(raw).ok()?;
+
+    let event_agent =
+        parsed.get("agent_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok())?;
+    if event_agent != filter_agent {
+        return None;
+    }
+
+    let seq = parsed.get("seq").and_then(|v| v.as_i64())?;
+    if seq <= last_replayed {
+        return None;
+    }
+
+    if let Some(sf) = session_filter {
+        let sn = parsed.get("session_number").and_then(|v| v.as_i64()).unwrap_or(0);
+        if sn != sf {
+            return None;
+        }
+    }
+
+    let mut obj = parsed.as_object()?.clone();
+    obj.insert("frame".to_string(), Value::String("event".to_string()));
+    Some((seq, Value::Object(obj).to_string()))
+}
+
+/// v2 stream wire protocol — snapshot then live, deterministic and dedupable.
+///
+/// Sequence after WebSocket upgrade:
+/// 1. Subscribe to the broadcast channel first so any live event broadcast
+///    during the snapshot query is queued in the receiver.
+/// 2. Read the client `{"frame":"subscribe","since_seq":N,"session_number":S?}`
+///    frame.
+/// 3. Read the snapshot cursor (`MAX(seq)` for this agent) and send
+///    `{"frame":"snapshot_begin","cursor":N,"agent_id":...}`.
+/// 4. Query the DB for `since_seq < seq <= cursor` and emit each row as a
+///    `{"frame":"event", ...}` frame.
+/// 5. Send `{"frame":"snapshot_end","seq":<last_replayed_seq>}`.
+/// 6. Forward live events from the broadcast channel; drop any with
+///    `seq <= last_replayed` (the dedupe boundary). On `Lagged(n)` emit a
+///    `{"frame":"gap", ...}` frame and continue.
+async fn handle_stream_socket_v2(socket: WebSocket, registry: ConnectionRegistry, agent_id: Uuid) {
+    let (mut ws_sender, mut ws_receiver) = socket.split();
+
+    // Step 1: subscribe to broadcast BEFORE the snapshot query so that any
+    // event broadcast during the await window is queued in the receiver.
+    let mut live_rx = registry.subscribe_stream();
+
+    // Step 2: read the client's subscribe frame.
+    let subscribe = loop {
+        match ws_receiver.next().await {
+            Some(Ok(Message::Text(text))) => match serde_json::from_str::<V2Subscribe>(&text) {
+                Ok(parsed) => break parsed,
+                Err(e) => {
+                    let err = serde_json::json!({
+                        "frame": "error",
+                        "code": "bad_subscribe",
+                        "message": e.to_string(),
+                    });
+                    let _ = ws_sender.send(Message::Text(err.to_string().into())).await;
+                    return;
+                }
+            },
+            Some(Ok(Message::Ping(_))) => continue,
+            Some(Ok(Message::Close(_))) | None => return,
+            _ => continue,
+        }
+    };
+
+    let since_seq = subscribe.since_seq.max(0);
+    let session_filter = subscribe.session_number;
+
+    // Step 3: storage is required for the snapshot phase.
+    let storage = match registry.storage() {
+        Some(s) => s,
+        None => {
+            let err = serde_json::json!({
+                "frame": "error",
+                "code": "no_storage",
+                "message": "orchestrator started without conversation storage",
+            });
+            let _ = ws_sender.send(Message::Text(err.to_string().into())).await;
+            return;
+        }
+    };
+
+    let cursor = match storage.get_max_conversation_seq(agent_id).await {
+        Ok(n) => n,
+        Err(e) => {
+            warn!(%agent_id, error = %e, "v2 stream: failed to read snapshot cursor");
+            let err = serde_json::json!({
+                "frame": "error",
+                "code": "snapshot_failed",
+                "message": e.to_string(),
+            });
+            let _ = ws_sender.send(Message::Text(err.to_string().into())).await;
+            return;
+        }
+    };
+
+    let begin = serde_json::json!({
+        "frame": "snapshot_begin",
+        "cursor": cursor,
+        "agent_id": agent_id.to_string(),
+    });
+    if ws_sender.send(Message::Text(begin.to_string().into())).await.is_err() {
+        return;
+    }
+
+    // Step 4: backfill — only events strictly greater than since_seq and
+    // bounded by cursor. The bound is critical: events with seq > cursor
+    // are reserved for the live phase to avoid double-delivery.
+    let events = match storage
+        .list_conversation_events_since(agent_id, since_seq, cursor, session_filter)
+        .await
+    {
+        Ok(list) => list,
+        Err(e) => {
+            warn!(%agent_id, error = %e, "v2 stream: failed to list snapshot events");
+            let err = serde_json::json!({
+                "frame": "error",
+                "code": "snapshot_failed",
+                "message": e.to_string(),
+            });
+            let _ = ws_sender.send(Message::Text(err.to_string().into())).await;
+            return;
+        }
+    };
+
+    let mut last_replayed = since_seq;
+    for ev in events {
+        let seq = ev.seq;
+        let frame = conversation_event_to_v2_frame(&ev);
+        if ws_sender.send(Message::Text(frame.to_string().into())).await.is_err() {
+            return;
+        }
+        last_replayed = last_replayed.max(seq);
+    }
+    // No events past since_seq in the snapshot — surface the cursor anyway so
+    // the client knows "you're caught up through cursor" and can dedupe live
+    // events arriving with seq <= cursor that were queued during the await.
+    last_replayed = last_replayed.max(cursor);
+
+    let end = serde_json::json!({
+        "frame": "snapshot_end",
+        "seq": last_replayed,
+    });
+    if ws_sender.send(Message::Text(end.to_string().into())).await.is_err() {
+        return;
+    }
+
+    info!(%agent_id, %since_seq, %cursor, "v2 stream snapshot complete");
+
+    // Step 5: forward live frames. The receiver already buffered everything
+    // that arrived between subscribe and now; recv() will drain those first,
+    // then block on new events.
+    //
+    // Two concurrent tasks: a forwarder (broadcast → ws) and a drain (ws →
+    // close detection). They share a cancellation token so either side
+    // can tear down the connection cleanly.
+    let cancel = Arc::new(tokio::sync::Notify::new());
+
+    let cancel_send = cancel.clone();
+    let send_task = tokio::spawn(async move {
+        let mut last_seen = last_replayed;
+        loop {
+            tokio::select! {
+                _ = cancel_send.notified() => break,
+                msg = live_rx.recv() => match msg {
+                    Ok(raw) => {
+                        if let Some((seq, frame)) =
+                            live_broadcast_to_v2_frame(&raw, agent_id, last_seen, session_filter)
+                        {
+                            if ws_sender.send(Message::Text(frame.into())).await.is_err() {
+                                break;
+                            }
+                            last_seen = last_seen.max(seq);
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        warn!(%agent_id, skipped = n, "v2 stream lagged");
+                        let gap = serde_json::json!({
+                            "frame": "gap",
+                            "skipped": n,
+                            "reason": "broadcast_lagged",
+                            "since_seq": last_seen,
+                        });
+                        if ws_sender.send(Message::Text(gap.to_string().into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                },
+            }
+        }
+    });
+
+    while let Some(Ok(msg)) = ws_receiver.next().await {
+        if matches!(msg, Message::Close(_)) {
+            break;
+        }
+    }
+
+    cancel.notify_waiters();
+    send_task.abort();
+    info!(%agent_id, "v2 stream WebSocket connection ended");
 }
 
 // ---------------------------------------------------------------------------
