@@ -8,10 +8,11 @@ agentd is a Rust workspace containing multiple services. See `README.md` for the
 
 ## Branch Strategy
 
-All feature work branches off `feature/autonomous-pipeline` and PRs back into it — **never directly to `main`**.
+All feature work branches off of a feature branch prefixed by `feature/` with the scope appended as
+a related name. All PRs should be merged back into it — **never directly to `main`**.
 
 ```bash
-git checkout feature/autonomous-pipeline
+git checkout feature/scope-of-work
 git checkout -b issue-<number>
 # ... implement changes ...
 git-spice branch submit
