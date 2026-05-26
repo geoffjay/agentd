@@ -12,10 +12,13 @@
  *   { frame: "snapshot_end", seq: N }
  *   { frame: "event", seq: N+1, ... }   // live phase
  *
- * Reconnects pass `since_seq` so only the delta replays. The last observed
- * seq is persisted to sessionStorage so a fresh tab open within the same
- * session resumes cleanly. Buffered log history itself is NOT cached
- * locally — the server snapshot is the source of truth.
+ * `since_seq` is tracked in memory only — every fresh mount requests the
+ * full snapshot (since_seq = 0). This matches the TUI's behaviour, gives
+ * users a predictable "show me the current conversation" experience, and
+ * avoids the failure mode where a stale persisted seq makes the next page
+ * load show no content. The in-memory cursor is still used so that the
+ * underlying WebSocketManager's auto-reconnects resume from the right
+ * point without a duplicate replay.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -81,39 +84,6 @@ export interface UseAgentStreamResult {
 // ---------------------------------------------------------------------------
 
 const MAX_LINES = 5_000;
-
-// ---------------------------------------------------------------------------
-// sessionStorage — last-seq resume cursor only
-// ---------------------------------------------------------------------------
-
-const SEQ_STORAGE_KEY = (agentId: string) => `agentd:last-seq:${agentId}`;
-
-function loadLastSeq(agentId: string): number {
-	try {
-		const raw = sessionStorage.getItem(SEQ_STORAGE_KEY(agentId));
-		if (!raw) return 0;
-		const n = Number.parseInt(raw, 10);
-		return Number.isFinite(n) && n > 0 ? n : 0;
-	} catch {
-		return 0;
-	}
-}
-
-function saveLastSeq(agentId: string, seq: number): void {
-	try {
-		sessionStorage.setItem(SEQ_STORAGE_KEY(agentId), String(seq));
-	} catch {
-		// sessionStorage unavailable — silently ignore
-	}
-}
-
-function clearLastSeq(agentId: string): void {
-	try {
-		sessionStorage.removeItem(SEQ_STORAGE_KEY(agentId));
-	} catch {
-		// ignore
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -204,11 +174,11 @@ export function useAgentStream(
 	const managerRef = useRef<WebSocketManager | null>(null);
 
 	useEffect(() => {
-		// Resume from the last seq we recorded for this agent in this tab. The
-		// server replays only events with seq > since_seq, so the new
-		// connection lands on the same canonical event ordering the previous
-		// session saw.
-		lastSeqRef.current = loadLastSeq(agentId);
+		// Every fresh mount starts with since_seq=0 so the user sees the full
+		// conversation snapshot. The in-memory ref still advances on each
+		// event so reconnects inside this mount lifecycle resume from the
+		// right cursor without a duplicate replay.
+		lastSeqRef.current = 0;
 		linesRef.current = [];
 		setLines([]);
 
@@ -244,7 +214,6 @@ export function useAgentStream(
 		const handleEventFrame = (frame: V2Frame) => {
 			if (typeof frame.seq === "number" && frame.seq > lastSeqRef.current) {
 				lastSeqRef.current = frame.seq;
-				saveLastSeq(agentId, frame.seq);
 			}
 
 			// The frame is a v2 envelope plus the v1 event payload. The
@@ -299,7 +268,6 @@ export function useAgentStream(
 					setHistoryLoading(false);
 					if (typeof frame.seq === "number") {
 						lastSeqRef.current = Math.max(lastSeqRef.current, frame.seq);
-						saveLastSeq(agentId, lastSeqRef.current);
 					}
 					return;
 				case "event":
@@ -355,8 +323,7 @@ export function useAgentStream(
 		linesRef.current = [];
 		setLines([]);
 		lastSeqRef.current = 0;
-		clearLastSeq(agentId);
-	}, [agentId]);
+	}, []);
 
 	return { lines, status, historyLoading, clear };
 }
