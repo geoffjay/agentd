@@ -59,17 +59,23 @@ describe("applyTheme", () => {
 
 	it("sets data-theme attribute for a dark theme", () => {
 		applyTheme("agentd-dark");
-		expect(document.documentElement.getAttribute("data-theme")).toBe("agentd-dark");
+		expect(document.documentElement.getAttribute("data-theme")).toBe(
+			"agentd-dark",
+		);
 	});
 
 	it("sets data-theme attribute for a light theme", () => {
 		applyTheme("agentd-light");
-		expect(document.documentElement.getAttribute("data-theme")).toBe("agentd-light");
+		expect(document.documentElement.getAttribute("data-theme")).toBe(
+			"agentd-light",
+		);
 	});
 
 	it("sets data-theme for named themes", () => {
 		applyTheme("tokyo-night");
-		expect(document.documentElement.getAttribute("data-theme")).toBe("tokyo-night");
+		expect(document.documentElement.getAttribute("data-theme")).toBe(
+			"tokyo-night",
+		);
 	});
 
 	it("sets color-scheme to dark for dark themes", () => {
@@ -85,12 +91,16 @@ describe("applyTheme", () => {
 	it("resolves system preference to concrete theme", () => {
 		mockMatchMedia(true);
 		applyTheme("system");
-		expect(document.documentElement.getAttribute("data-theme")).toBe("agentd-dark");
+		expect(document.documentElement.getAttribute("data-theme")).toBe(
+			"agentd-dark",
+		);
 	});
 
 	it("sets CSS custom properties on root", () => {
 		applyTheme("tokyo-night");
-		expect(document.documentElement.style.getPropertyValue("--th-page")).toBe("#1a1b26");
+		expect(document.documentElement.style.getPropertyValue("--th-page")).toBe(
+			"#1a1b26",
+		);
 	});
 });
 

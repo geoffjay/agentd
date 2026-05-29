@@ -142,9 +142,7 @@ export function DispatchHistory({
 		<div className="space-y-3">
 			{/* Filter bar */}
 			<div className="flex items-center gap-2">
-				<span className="text-xs text-th-text-muted">
-					Filter:
-				</span>
+				<span className="text-xs text-th-text-muted">Filter:</span>
 				<div className="flex gap-1">
 					{STATUS_OPTIONS.map((opt) => (
 						<button
@@ -192,10 +190,7 @@ export function DispatchHistory({
 					<tbody>
 						{loading ? (
 							Array.from({ length: 3 }).map((_, i) => (
-								<tr
-									key={i}
-									className="border-t border-th-border-subtle"
-								>
+								<tr key={i} className="border-t border-th-border-subtle">
 									<td colSpan={5} className="p-2">
 										<ListItemSkeleton />
 									</td>

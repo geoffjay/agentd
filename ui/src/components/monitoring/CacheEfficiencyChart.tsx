@@ -137,9 +137,7 @@ export function CacheEfficiencyChart({
 			aria-label="Cache efficiency donut chart"
 		>
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-sm font-semibold text-th-text">
-					Cache Efficiency
-				</h3>
+				<h3 className="text-sm font-semibold text-th-text">Cache Efficiency</h3>
 
 				{/* Agent dropdown */}
 				{entries.length > 0 && (
@@ -217,9 +215,7 @@ export function CacheEfficiencyChart({
 								<div className="text-2xl font-bold text-th-text">
 									{pct(hitRatio)}
 								</div>
-								<div className="text-xs text-th-text-muted">
-									Cache Hit
-								</div>
+								<div className="text-xs text-th-text-muted">Cache Hit</div>
 							</div>
 						</div>
 					</div>

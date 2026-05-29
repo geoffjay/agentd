@@ -207,7 +207,9 @@ export function CreateMemoryDialog({
 								className={fieldClass(errors.content)}
 							/>
 							{errors.content && (
-								<p className="mt-1 text-xs text-th-status-error-text">{errors.content}</p>
+								<p className="mt-1 text-xs text-th-status-error-text">
+									{errors.content}
+								</p>
 							)}
 						</div>
 
@@ -224,7 +226,9 @@ export function CreateMemoryDialog({
 								className={fieldClass(errors.created_by)}
 							/>
 							{errors.created_by && (
-								<p className="mt-1 text-xs text-th-status-error-text">{errors.created_by}</p>
+								<p className="mt-1 text-xs text-th-status-error-text">
+									{errors.created_by}
+								</p>
 							)}
 						</div>
 
@@ -287,7 +291,8 @@ export function CreateMemoryDialog({
 						{/* Tags */}
 						<div>
 							<label className="block text-sm font-medium text-th-text-secondary mb-1">
-								Tags <span className="text-th-text-muted">(comma-separated)</span>
+								Tags{" "}
+								<span className="text-th-text-muted">(comma-separated)</span>
 							</label>
 							<input
 								type="text"
@@ -352,9 +357,7 @@ function fieldClass(error?: string, extra = ""): string {
 		"text-th-text",
 		"focus:outline-none focus:ring-2 focus:ring-th-focus-ring",
 		"disabled:cursor-not-allowed disabled:opacity-50",
-		error
-			? "border-th-status-error-border"
-			: "border-th-border-input",
+		error ? "border-th-status-error-border" : "border-th-border-input",
 		extra,
 	]
 		.filter(Boolean)

@@ -27,13 +27,19 @@ function mockScrollGeometry(
 		clientHeight,
 	}: { scrollHeight: number; scrollTop: number; clientHeight: number },
 ) {
-	Object.defineProperty(el, "scrollHeight", { value: scrollHeight, configurable: true });
+	Object.defineProperty(el, "scrollHeight", {
+		value: scrollHeight,
+		configurable: true,
+	});
 	Object.defineProperty(el, "scrollTop", {
 		value: scrollTop,
 		writable: true,
 		configurable: true,
 	});
-	Object.defineProperty(el, "clientHeight", { value: clientHeight, configurable: true });
+	Object.defineProperty(el, "clientHeight", {
+		value: clientHeight,
+		configurable: true,
+	});
 }
 
 const noop = () => {};
@@ -441,7 +447,9 @@ describe("ChatMessageView", () => {
 				roomId="room-1"
 			/>,
 		);
-		expect(screen.getByRole("button", { name: /new message/i })).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /new message/i }),
+		).toBeInTheDocument();
 
 		// Switch to room-2 — all scroll state should reset
 		rerender(
@@ -558,7 +566,9 @@ describe("ChatMessageView", () => {
 			/>,
 		);
 
-		expect(screen.getByText("Alpha and Beta are thinking…")).toBeInTheDocument();
+		expect(
+			screen.getByText("Alpha and Beta are thinking…"),
+		).toBeInTheDocument();
 	});
 
 	it("shows generic label when three or more agents are busy", () => {

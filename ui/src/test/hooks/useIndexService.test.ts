@@ -31,7 +31,11 @@ describe("useIndexService", () => {
 		it("sets reachable true on success", async () => {
 			server.use(
 				http.get(`${BASE}/health`, () =>
-					HttpResponse.json({ service: "index", version: "0.2.0", status: "ok" }),
+					HttpResponse.json({
+						service: "index",
+						version: "0.2.0",
+						status: "ok",
+					}),
 				),
 				http.get(`${BASE}/repositories`, () => HttpResponse.json([])),
 			);
@@ -58,7 +62,11 @@ describe("useIndexService", () => {
 		it("recheckHealth re-runs the health check", async () => {
 			server.use(
 				http.get(`${BASE}/health`, () =>
-					HttpResponse.json({ service: "index", version: "0.2.0", status: "ok" }),
+					HttpResponse.json({
+						service: "index",
+						version: "0.2.0",
+						status: "ok",
+					}),
 				),
 				http.get(`${BASE}/repositories`, () => HttpResponse.json([])),
 			);
@@ -69,11 +77,17 @@ describe("useIndexService", () => {
 
 			server.use(
 				http.get(`${BASE}/health`, () =>
-					HttpResponse.json({ service: "index", version: "0.3.0", status: "ok" }),
+					HttpResponse.json({
+						service: "index",
+						version: "0.3.0",
+						status: "ok",
+					}),
 				),
 			);
 
-			await act(async () => { result.current.recheckHealth(); });
+			await act(async () => {
+				result.current.recheckHealth();
+			});
 			await waitFor(() => expect(result.current.health.version).toBe("0.3.0"));
 		});
 	});
@@ -170,8 +184,9 @@ describe("useIndexService", () => {
 					HttpResponse.json({ service: "index", status: "ok" }),
 				),
 				http.get(`${BASE}/repositories`, () => HttpResponse.json([repo])),
-				http.delete(`${BASE}/repositories/repo-del`, () =>
-					new HttpResponse(null, { status: 204 }),
+				http.delete(
+					`${BASE}/repositories/repo-del`,
+					() => new HttpResponse(null, { status: 204 }),
 				),
 			);
 
@@ -229,7 +244,10 @@ describe("useIndexService", () => {
 			await waitFor(() => expect(result.current.reposLoading).toBe(false));
 
 			await act(async () => {
-				await result.current.runSearch({ query: "fn main", search_mode: "hybrid" });
+				await result.current.runSearch({
+					query: "fn main",
+					search_mode: "hybrid",
+				});
 			});
 
 			expect(result.current.searchResults).toHaveLength(resp.results.length);
@@ -251,7 +269,10 @@ describe("useIndexService", () => {
 			await waitFor(() => expect(result.current.reposLoading).toBe(false));
 
 			await act(async () => {
-				await result.current.runSearch({ query: "fn main", search_mode: "vector" });
+				await result.current.runSearch({
+					query: "fn main",
+					search_mode: "vector",
+				});
 			});
 
 			expect(result.current.searchError).toBeDefined();
@@ -272,7 +293,10 @@ describe("useIndexService", () => {
 			await waitFor(() => expect(result.current.reposLoading).toBe(false));
 
 			await act(async () => {
-				await result.current.runSearch({ query: "test", search_mode: "keyword" });
+				await result.current.runSearch({
+					query: "test",
+					search_mode: "keyword",
+				});
 			});
 			expect(result.current.searchResults.length).toBeGreaterThan(0);
 

@@ -93,9 +93,7 @@ export function AgentActivityChart({
 			aria-label="Agent activity charts"
 		>
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-sm font-semibold text-th-text">
-					Agent Activity
-				</h3>
+				<h3 className="text-sm font-semibold text-th-text">Agent Activity</h3>
 				<div
 					className="flex items-center rounded-md border border-th-border overflow-hidden"
 					role="group"

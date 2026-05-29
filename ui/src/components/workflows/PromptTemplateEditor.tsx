@@ -101,14 +101,10 @@ export function PromptTemplateEditor({
 					"placeholder:text-th-text-faint",
 					"focus:outline-none focus:ring-2 focus:ring-th-focus-ring",
 					"disabled:cursor-not-allowed disabled:opacity-50",
-					error
-						? "border-th-status-error-border"
-						: "border-th-border-input",
+					error ? "border-th-status-error-border" : "border-th-border-input",
 				].join(" ")}
 			/>
-			{error && (
-				<p className="text-xs text-th-status-error-text">{error}</p>
-			)}
+			{error && <p className="text-xs text-th-status-error-text">{error}</p>}
 
 			{/* Available variables */}
 			<div className="rounded-md border border-th-border overflow-hidden">
@@ -143,10 +139,7 @@ export function PromptTemplateEditor({
 						<table className="mt-2 w-full text-xs">
 							<tbody>
 								{TEMPLATE_VARS.map((v) => (
-									<tr
-										key={v.name}
-										className="border-t border-th-border-subtle"
-									>
+									<tr key={v.name} className="border-t border-th-border-subtle">
 										<td className="py-1 pr-3 font-mono text-th-text-link whitespace-nowrap">
 											{v.name}
 										</td>

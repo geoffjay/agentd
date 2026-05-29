@@ -116,17 +116,13 @@ export function PlaceholderChart({
 			{/* Header */}
 			<div className="px-4 pt-4 pb-2">
 				<div className="flex items-center justify-between">
-					<h3 className="text-sm font-semibold text-th-text">
-						{title}
-					</h3>
+					<h3 className="text-sm font-semibold text-th-text">{title}</h3>
 					<span className="rounded-full bg-th-status-warning-bg px-2 py-0.5 text-xs font-medium text-th-status-warning-text">
 						Coming Soon
 					</span>
 				</div>
 				{description && (
-					<p className="mt-0.5 text-xs text-th-text-faint">
-						{description}
-					</p>
+					<p className="mt-0.5 text-xs text-th-text-faint">{description}</p>
 				)}
 			</div>
 

@@ -58,7 +58,9 @@ describe("AgentPolicyEditor", () => {
 
 	it("calls onSave with correct AllowAll policy", async () => {
 		const onSave = vi.fn().mockResolvedValue(undefined);
-		render(<AgentPolicyEditor policy={{ mode: "allow_all" }} onSave={onSave} />);
+		render(
+			<AgentPolicyEditor policy={{ mode: "allow_all" }} onSave={onSave} />,
+		);
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() =>
 			expect(onSave).toHaveBeenCalledWith({ mode: "allow_all" }),
@@ -88,7 +90,9 @@ describe("AgentPolicyEditor", () => {
 
 	it("shows error when onSave throws", async () => {
 		const onSave = vi.fn().mockRejectedValue(new Error("Save failed"));
-		render(<AgentPolicyEditor policy={{ mode: "allow_all" }} onSave={onSave} />);
+		render(
+			<AgentPolicyEditor policy={{ mode: "allow_all" }} onSave={onSave} />,
+		);
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() =>
 			expect(screen.getByRole("alert")).toHaveTextContent("Save failed"),

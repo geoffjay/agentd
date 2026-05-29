@@ -11,11 +11,7 @@
  * - Clicking a row navigates to the agent detail page (same as user agents)
  */
 
-import {
-	AlertCircle,
-	Bot,
-	RefreshCw,
-} from "lucide-react";
+import { AlertCircle, Bot, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AgentStatusBadge } from "@/components/agents/AgentStatusBadge";
 import { ListItemSkeleton } from "@/components/common/LoadingSkeleton";
@@ -35,9 +31,7 @@ export function SystemAgentList() {
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold text-th-text">
-						System Agents
-					</h1>
+					<h1 className="text-2xl font-semibold text-th-text">System Agents</h1>
 					<p className="mt-1 text-sm text-th-text-muted">
 						Built-in agents managed by the orchestrator.
 					</p>
@@ -119,9 +113,7 @@ export function SystemAgentList() {
 									<SystemAgentRow
 										key={agent.id}
 										agent={agent}
-										onClick={() =>
-											navigate(`/agents/${agent.id}`)
-										}
+										onClick={() => navigate(`/agents/${agent.id}`)}
 									/>
 								))
 							)}
@@ -154,9 +146,7 @@ function SystemAgentRow({ agent, onClick }: SystemAgentRowProps) {
 			<td className="px-4 py-3">
 				<div className="flex items-center gap-2">
 					<Bot className="h-3.5 w-3.5 flex-shrink-0 text-th-text-muted" />
-					<span className="text-sm font-medium text-th-text">
-						{agent.name}
-					</span>
+					<span className="text-sm font-medium text-th-text">{agent.name}</span>
 					<span className="rounded-full bg-th-accent/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-th-accent">
 						system
 					</span>

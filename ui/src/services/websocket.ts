@@ -74,10 +74,7 @@ export class WebSocketManager {
 
 	private readonly url: string;
 
-	constructor(
-		url: string,
-		options: WebSocketManagerOptions = {},
-	) {
+	constructor(url: string, options: WebSocketManagerOptions = {}) {
 		this.url = url;
 		this.minDelay = options.minReconnectDelay ?? DEFAULT_MIN_DELAY;
 		this.maxDelay = options.maxReconnectDelay ?? DEFAULT_MAX_DELAY;

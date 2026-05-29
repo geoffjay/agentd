@@ -77,9 +77,7 @@ export function PolicyDisplay({ policy }: PolicyDisplayProps) {
 						<dt className="text-xs font-medium text-th-text-muted w-24 shrink-0">
 							Tools
 						</dt>
-						<dd className="text-th-text-faint italic">
-							None configured
-						</dd>
+						<dd className="text-th-text-faint italic">None configured</dd>
 					</div>
 				)}
 
@@ -96,9 +94,7 @@ export function PolicyDisplay({ policy }: PolicyDisplayProps) {
 							aria-expanded={bypassExpanded}
 						>
 							<ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-							<span className="text-xs font-medium">
-								Sandbox bypass
-							</span>
+							<span className="text-xs font-medium">Sandbox bypass</span>
 							<span className="ml-1 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
 								{sandboxBypass.length}
 							</span>

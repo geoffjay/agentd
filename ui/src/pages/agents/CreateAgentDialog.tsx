@@ -331,7 +331,9 @@ export function CreateAgentDialog({
 								placeholder="my-agent"
 								className={[
 									inputCls,
-									errors.name ? "border-th-status-error-border focus:ring-th-status-error-border" : "",
+									errors.name
+										? "border-th-status-error-border focus:ring-th-status-error-border"
+										: "",
 								].join(" ")}
 							/>
 							<FieldError msg={errors.name} />
@@ -352,7 +354,9 @@ export function CreateAgentDialog({
 								placeholder="/home/user/project"
 								className={[
 									inputCls,
-									errors.working_dir ? "border-th-status-error-border focus:ring-th-status-error-border" : "",
+									errors.working_dir
+										? "border-th-status-error-border focus:ring-th-status-error-border"
+										: "",
 								].join(" ")}
 							/>
 							<FieldError msg={errors.working_dir} />
@@ -407,9 +411,7 @@ export function CreateAgentDialog({
 							/>
 							{form.system_prompt.trim().length > 0 && (
 								<div className="mt-2">
-									<p className="mb-1 text-xs text-th-text-muted">
-										Preview
-									</p>
+									<p className="mb-1 text-xs text-th-text-muted">Preview</p>
 									<HighlightedCode
 										code={form.system_prompt}
 										language="markdown"

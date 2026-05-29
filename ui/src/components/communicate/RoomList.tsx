@@ -49,7 +49,9 @@ function RoomTypeIcon({ type }: { type: RoomType }) {
 		case "direct":
 			return <Lock size={14} className="shrink-0 text-th-text-muted" />;
 		case "broadcast":
-			return <Radio size={14} className="shrink-0 text-th-status-warning-text" />;
+			return (
+				<Radio size={14} className="shrink-0 text-th-status-warning-text" />
+			);
 		default:
 			return <Hash size={14} className="shrink-0 text-th-text-muted" />;
 	}

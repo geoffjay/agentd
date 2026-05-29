@@ -174,8 +174,8 @@ function SdkModeBanner({ onDismiss }: { onDismiss: () => void }) {
 			<Info size={12} aria-hidden="true" className="shrink-0" />
 			<span className="flex-1">
 				SDK mode — This terminal shows raw protocol output. Use the{" "}
-				<strong className="text-th-status-info-text">Logs</strong> tab for structured
-				output.
+				<strong className="text-th-status-info-text">Logs</strong> tab for
+				structured output.
 			</span>
 			<button
 				type="button"
@@ -196,7 +196,11 @@ function SdkModeBanner({ onDismiss }: { onDismiss: () => void }) {
 function UnavailableFallback({ onRetry }: { onRetry: () => void }) {
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-			<TerminalSquare size={32} className="text-th-text-muted" aria-hidden="true" />
+			<TerminalSquare
+				size={32}
+				className="text-th-text-muted"
+				aria-hidden="true"
+			/>
 			<div>
 				<p className="text-sm font-medium text-th-text-muted">
 					PTY streaming not available

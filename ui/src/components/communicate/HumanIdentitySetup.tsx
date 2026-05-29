@@ -129,7 +129,8 @@ export function HumanIdentitySetup({
 					<div className="px-6 py-5 space-y-4" onKeyDown={handleKeyDown}>
 						<div>
 							<label className="block text-sm font-medium text-th-text-secondary mb-1">
-								Display name <span className="text-th-status-error-text">*</span>
+								Display name{" "}
+								<span className="text-th-status-error-text">*</span>
 							</label>
 							<input
 								ref={nameRef}
@@ -158,7 +159,9 @@ export function HumanIdentitySetup({
 								className={inputClass(errors.identifier)}
 							/>
 							{errors.identifier ? (
-								<p className="mt-1 text-xs text-th-status-error-text">{errors.identifier}</p>
+								<p className="mt-1 text-xs text-th-status-error-text">
+									{errors.identifier}
+								</p>
 							) : (
 								<p className="mt-1 text-xs text-th-text-muted">
 									Unique ID used by agents to address you. Lowercase letters,

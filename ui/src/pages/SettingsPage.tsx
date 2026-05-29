@@ -65,9 +65,7 @@ export function SettingsPage() {
 	return (
 		<div className="space-y-8">
 			<div>
-				<h1 className="text-2xl font-semibold text-th-text">
-					Settings
-				</h1>
+				<h1 className="text-2xl font-semibold text-th-text">Settings</h1>
 				<p className="mt-1 text-sm text-th-text-muted">
 					Manage service connections, UI preferences, and application data.
 				</p>
@@ -91,9 +89,7 @@ export function SettingsPage() {
 
 			{/* About */}
 			<section className="rounded-lg border border-th-border bg-th-surface p-6 shadow-sm">
-				<h2 className="mb-4 text-lg font-semibold text-th-text">
-					About
-				</h2>
+				<h2 className="mb-4 text-lg font-semibold text-th-text">About</h2>
 				<AboutSection />
 			</section>
 

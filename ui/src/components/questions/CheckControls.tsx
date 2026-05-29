@@ -139,15 +139,16 @@ export function CheckControls({
 
 					{/* Notifications sent */}
 					<div className="flex items-start gap-2">
-						<Bell size={13} className="mt-0.5 text-th-text-muted flex-shrink-0" />
+						<Bell
+							size={13}
+							className="mt-0.5 text-th-text-muted flex-shrink-0"
+						/>
 						<div>
 							<p className="text-xs font-medium text-th-text-muted">
 								Notifications sent
 							</p>
 							{lastTriggerResult.notifications_sent.length === 0 ? (
-								<p className="mt-0.5 text-xs text-th-text-faint">
-									None
-								</p>
+								<p className="mt-0.5 text-xs text-th-text-faint">None</p>
 							) : (
 								<ul className="mt-1 space-y-0.5">
 									{lastTriggerResult.notifications_sent.map((id) => (
@@ -173,7 +174,9 @@ export function CheckControls({
 								<span
 									className={[
 										"h-2 w-2 rounded-full flex-shrink-0",
-										tmux.running ? "bg-th-status-success-dot" : "bg-th-status-error-dot",
+										tmux.running
+											? "bg-th-status-success-dot"
+											: "bg-th-status-error-dot",
 									].join(" ")}
 								/>
 								<span className="text-xs text-th-text-secondary">
@@ -203,10 +206,7 @@ export function CheckControls({
 						className="flex items-center gap-2 text-sm text-th-text-secondary hover:text-th-text transition-colors"
 					>
 						{autoTrigger ? (
-							<ToggleRight
-								size={20}
-								className="text-th-text-link"
-							/>
+							<ToggleRight size={20} className="text-th-text-link" />
 						) : (
 							<ToggleLeft size={20} className="text-th-text-muted" />
 						)}

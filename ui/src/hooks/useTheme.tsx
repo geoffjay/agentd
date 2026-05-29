@@ -12,12 +12,12 @@
 
 import type { ReactNode } from "react";
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
 } from "react";
 import { loadSettings, saveSettings } from "@/stores/settingsStore";
 import type { ThemeTokens } from "@/styles/theme-tokens";
@@ -28,14 +28,14 @@ import { applyTheme, getTheme, resolveThemeId } from "@/stores/themeStore";
 // ---------------------------------------------------------------------------
 
 export interface ThemeContextValue {
-  /** Stored theme preference (may be "system") */
-  themeId: string;
-  /** Resolved concrete theme ID -- never "system" */
-  resolvedThemeId: string;
-  /** Full token set for the resolved theme */
-  theme: ThemeTokens;
-  /** Update the theme preference */
-  setTheme: (id: string) => void;
+	/** Stored theme preference (may be "system") */
+	themeId: string;
+	/** Resolved concrete theme ID -- never "system" */
+	resolvedThemeId: string;
+	/** Full token set for the resolved theme */
+	theme: ThemeTokens;
+	/** Update the theme preference */
+	setTheme: (id: string) => void;
 }
 
 export const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -45,54 +45,54 @@ export const ThemeContext = createContext<ThemeContextValue | null>(null);
 // ---------------------------------------------------------------------------
 
 interface ThemeProviderProps {
-  children: ReactNode;
+	children: ReactNode;
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  const [themeId, setThemeIdState] = useState<string>(() => {
-    const settings = loadSettings();
-    return settings.ui.theme;
-  });
+	const [themeId, setThemeIdState] = useState<string>(() => {
+		const settings = loadSettings();
+		return settings.ui.theme;
+	});
 
-  const resolved = resolveThemeId(themeId);
-  const theme = useMemo(() => getTheme(resolved), [resolved]);
+	const resolved = resolveThemeId(themeId);
+	const theme = useMemo(() => getTheme(resolved), [resolved]);
 
-  // Apply theme to DOM on every theme change
-  useEffect(() => {
-    applyTheme(themeId);
-  }, [themeId]);
+	// Apply theme to DOM on every theme change
+	useEffect(() => {
+		applyTheme(themeId);
+	}, [themeId]);
 
-  // Watch for OS preference changes when using "system" mode
-  useEffect(() => {
-    if (themeId !== "system") return;
+	// Watch for OS preference changes when using "system" mode
+	useEffect(() => {
+		if (themeId !== "system") return;
 
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+		const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-    function handleChange() {
-      applyTheme("system");
-      // Force re-render so resolvedThemeId updates
-      setThemeIdState("system");
-    }
+		function handleChange() {
+			applyTheme("system");
+			// Force re-render so resolvedThemeId updates
+			setThemeIdState("system");
+		}
 
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, [themeId]);
+		mediaQuery.addEventListener("change", handleChange);
+		return () => mediaQuery.removeEventListener("change", handleChange);
+	}, [themeId]);
 
-  const setTheme = useCallback((id: string) => {
-    const current = loadSettings();
-    saveSettings({ ...current, ui: { ...current.ui, theme: id } });
-    applyTheme(id);
-    setThemeIdState(id);
-  }, []);
+	const setTheme = useCallback((id: string) => {
+		const current = loadSettings();
+		saveSettings({ ...current, ui: { ...current.ui, theme: id } });
+		applyTheme(id);
+		setThemeIdState(id);
+	}, []);
 
-  const value = useMemo<ThemeContextValue>(
-    () => ({ themeId, resolvedThemeId: resolved, theme, setTheme }),
-    [themeId, resolved, theme, setTheme],
-  );
+	const value = useMemo<ThemeContextValue>(
+		() => ({ themeId, resolvedThemeId: resolved, theme, setTheme }),
+		[themeId, resolved, theme, setTheme],
+	);
 
-  return (
-    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
-  );
+	return (
+		<ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -101,9 +101,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
 /** Consume the theme context -- must be used within <ThemeProvider>. */
 export function useTheme(): ThemeContextValue {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) {
-    throw new Error("useTheme must be used within a ThemeProvider");
-  }
-  return ctx;
+	const ctx = useContext(ThemeContext);
+	if (!ctx) {
+		throw new Error("useTheme must be used within a ThemeProvider");
+	}
+	return ctx;
 }

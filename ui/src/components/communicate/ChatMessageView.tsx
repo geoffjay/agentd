@@ -15,7 +15,11 @@
 
 import { ArrowDown, Bot, CornerUpLeft, Loader2, User } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChatMessage, Participant, ParticipantKind } from "@/types/communicate";
+import type {
+	ChatMessage,
+	Participant,
+	ParticipantKind,
+} from "@/types/communicate";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -276,7 +280,8 @@ export function ChatMessageView({
 
 		// Detect whether the user has scrolled away from the bottom.
 		const atBottom =
-			container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+			container.scrollHeight - container.scrollTop - container.clientHeight <
+			120;
 		setScrollLocked(!atBottom);
 
 		// Trigger infinite scroll when near the top.

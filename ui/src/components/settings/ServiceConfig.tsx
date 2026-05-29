@@ -101,10 +101,7 @@ export function ServiceConfig({ services, onSave }: ServiceConfigProps) {
 									✓
 								</span>
 							) : status === "error" ? (
-								<span
-									className="text-th-status-error-text"
-									aria-hidden="true"
-								>
+								<span className="text-th-status-error-text" aria-hidden="true">
 									✗
 								</span>
 							) : null}

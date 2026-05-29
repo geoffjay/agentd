@@ -99,7 +99,8 @@ export function MemoryCard({
 					<span
 						className={[
 							"shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-							TYPE_STYLES[memory.type] ?? "bg-th-surface-raised text-th-text-secondary",
+							TYPE_STYLES[memory.type] ??
+								"bg-th-surface-raised text-th-text-secondary",
 						].join(" ")}
 					>
 						{TYPE_LABELS[memory.type] ?? memory.type}

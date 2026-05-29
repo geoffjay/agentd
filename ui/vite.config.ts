@@ -17,14 +17,14 @@ export default defineConfig(({ mode }) => {
 
 	return {
 		plugins: [
-            react(),
-            tailwindcss(),
-            codecovVitePlugin({
-                enableBundleAnalysis: process.env.CODECOV_TOKEN !== undefined,
-                bundleName: "agentd",
-                uploadToken: process.env.CODECOV_TOKEN,
-            }),
-        ],
+			react(),
+			tailwindcss(),
+			codecovVitePlugin({
+				enableBundleAnalysis: process.env.CODECOV_TOKEN !== undefined,
+				bundleName: "agentd",
+				uploadToken: process.env.CODECOV_TOKEN,
+			}),
+		],
 		resolve: {
 			alias: {
 				"@": path.resolve(__dirname, "./src"),

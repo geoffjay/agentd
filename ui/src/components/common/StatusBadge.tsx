@@ -8,7 +8,11 @@ import type { QuestionStatus } from "@/types/ask";
 
 export type ServiceStatus = "healthy" | "degraded" | "down" | "unknown";
 
-type KnownStatus = AgentStatus | NotificationStatus | ServiceStatus | QuestionStatus;
+type KnownStatus =
+	| AgentStatus
+	| NotificationStatus
+	| ServiceStatus
+	| QuestionStatus;
 
 interface StatusBadgeProps {
 	status: KnownStatus;

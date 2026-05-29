@@ -140,8 +140,13 @@ function analyseClusterHealth(points: EmbeddingSamplePoint[]): ClusterHealth {
 	const spread = Math.min(avgDist / 0.9, 1);
 
 	if (spread >= 0.6) return { level: "good", label: "Good spread", spread };
-	if (spread >= 0.3) return { level: "moderate", label: "Moderate clustering", spread };
-	return { level: "poor", label: "High clustering — may affect search quality", spread };
+	if (spread >= 0.3)
+		return { level: "moderate", label: "Moderate clustering", spread };
+	return {
+		level: "poor",
+		label: "High clustering — may affect search quality",
+		spread,
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +191,10 @@ function buildSeries(
 	const byKey = new Map<string, ChartSeries>();
 
 	for (const p of points) {
-		const key = colorBy === "language" ? p.language || "unknown" : p.chunk_type || "unknown";
+		const key =
+			colorBy === "language"
+				? p.language || "unknown"
+				: p.chunk_type || "unknown";
 		if (!byKey.has(key)) {
 			byKey.set(key, {
 				id: key,
@@ -216,15 +224,18 @@ function HealthBadge({ health }: { health: ClusterHealth }) {
 	const cfg = {
 		good: {
 			icon: <CheckCircle size={12} />,
-			className: "text-th-status-success-text bg-th-status-success-bg border-th-status-success-border",
+			className:
+				"text-th-status-success-text bg-th-status-success-bg border-th-status-success-border",
 		},
 		moderate: {
 			icon: <Activity size={12} />,
-			className: "text-th-status-warning-text bg-th-status-warning-bg border-th-status-warning-border",
+			className:
+				"text-th-status-warning-text bg-th-status-warning-bg border-th-status-warning-border",
 		},
 		poor: {
 			icon: <AlertTriangle size={12} />,
-			className: "text-th-status-error-text bg-th-status-error-bg border-th-status-error-border",
+			className:
+				"text-th-status-error-text bg-th-status-error-bg border-th-status-error-border",
 		},
 	}[health.level];
 
@@ -447,26 +458,28 @@ export function ClusterDensityMap({
 					)}
 
 					{/* Empty state */}
-					{!embeddingLoading && !embeddingError && embeddingPoints.length === 0 && (
-						<div className="flex flex-col items-center justify-center py-12 text-center">
-							<MapIcon
-								size={32}
-								className="text-th-text-muted opacity-30 mb-3"
-								aria-hidden="true"
-							/>
-							<p className="text-sm text-th-text-muted">No embedding data</p>
-							<p className="mt-1 text-xs text-th-text-muted opacity-70">
-								Index some code to see the embedding distribution.
-							</p>
-							<button
-								type="button"
-								onClick={refetch}
-								className="mt-3 text-xs text-th-text-link underline underline-offset-2 hover:opacity-80 transition-opacity"
-							>
-								Retry
-							</button>
-						</div>
-					)}
+					{!embeddingLoading &&
+						!embeddingError &&
+						embeddingPoints.length === 0 && (
+							<div className="flex flex-col items-center justify-center py-12 text-center">
+								<MapIcon
+									size={32}
+									className="text-th-text-muted opacity-30 mb-3"
+									aria-hidden="true"
+								/>
+								<p className="text-sm text-th-text-muted">No embedding data</p>
+								<p className="mt-1 text-xs text-th-text-muted opacity-70">
+									Index some code to see the embedding distribution.
+								</p>
+								<button
+									type="button"
+									onClick={refetch}
+									className="mt-3 text-xs text-th-text-link underline underline-offset-2 hover:opacity-80 transition-opacity"
+								>
+									Retry
+								</button>
+							</div>
+						)}
 				</div>
 			)}
 		</div>

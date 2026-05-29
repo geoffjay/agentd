@@ -205,7 +205,9 @@ export function NotificationCard({
 					{/* Response (if already responded) */}
 					{notification.status === "responded" && notification.response && (
 						<div className="mt-2 rounded bg-th-surface-sunken p-2 text-xs text-th-text-muted">
-							<span className="font-semibold text-th-text-secondary">Response:</span>{" "}
+							<span className="font-semibold text-th-text-secondary">
+								Response:
+							</span>{" "}
 							{notification.response}
 						</div>
 					)}

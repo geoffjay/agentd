@@ -79,9 +79,7 @@ export function MonitoringDashboard() {
 			{/* Page header */}
 			<div className="flex items-start justify-between gap-4 flex-wrap">
 				<div>
-					<h1 className="text-2xl font-semibold text-th-text">
-						Monitoring
-					</h1>
+					<h1 className="text-2xl font-semibold text-th-text">Monitoring</h1>
 					<p className="mt-1 text-sm text-th-text-muted">
 						Real-time agent and service metrics.
 					</p>

@@ -127,7 +127,9 @@ export function useChatMessages({
 			setHasMore(result.items.length >= pageSize);
 			setOldestId(result.items[0]?.id ?? oldestId);
 		} catch (err) {
-			toastRef.current.error("Failed to load older messages", { message: mapApiError(err) });
+			toastRef.current.error("Failed to load older messages", {
+				message: mapApiError(err),
+			});
 		} finally {
 			setLoadingOlder(false);
 		}

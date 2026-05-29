@@ -52,12 +52,18 @@ function ScorePill({ score }: { score: number }) {
 // Inner table (needs drawer context)
 // ---------------------------------------------------------------------------
 
-function SearchResultsTableInner({ results, loading }: SearchResultsTableProps) {
+function SearchResultsTableInner({
+	results,
+	loading,
+}: SearchResultsTableProps) {
 	const { openDrawer } = useDrawer();
 
 	const handleRowClick = useCallback(
 		(result: CodeSearchResultItem) => {
-			const title = result.symbol_name ?? result.file_path.split("/").pop() ?? result.file_path;
+			const title =
+				result.symbol_name ??
+				result.file_path.split("/").pop() ??
+				result.file_path;
 			openDrawer(title, <CodePreviewDrawer result={result} />);
 		},
 		[openDrawer],
@@ -75,7 +81,9 @@ function SearchResultsTableInner({ results, loading }: SearchResultsTableProps) 
 			header: "Symbol",
 			render: (r) =>
 				r.symbol_name ? (
-					<span className="text-sm font-mono text-th-text">{r.symbol_name}</span>
+					<span className="text-sm font-mono text-th-text">
+						{r.symbol_name}
+					</span>
 				) : (
 					<span className="text-xs text-th-text-muted">—</span>
 				),
@@ -89,9 +97,7 @@ function SearchResultsTableInner({ results, loading }: SearchResultsTableProps) 
 				const dir = parts.join("/");
 				return (
 					<span className="text-sm font-mono">
-						{dir && (
-							<span className="text-th-text-muted">{dir}/</span>
-						)}
+						{dir && <span className="text-th-text-muted">{dir}/</span>}
 						<span className="text-th-text">{file}</span>
 					</span>
 				);

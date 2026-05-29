@@ -77,11 +77,17 @@ export function CodePreviewDrawer({ result }: CodePreviewDrawerProps) {
 		<div className="space-y-5">
 			{/* Metadata table */}
 			<div className="rounded-md border border-th-border bg-th-surface-sunken px-4 py-1">
-				<MetaRow label="File" value={<span className="font-mono">{result.file_path}</span>} />
+				<MetaRow
+					label="File"
+					value={<span className="font-mono">{result.file_path}</span>}
+				/>
 				<MetaRow label="Language" value={result.language} />
 				<MetaRow label="Chunk type" value={result.chunk_type} />
 				{result.symbol_name && (
-					<MetaRow label="Symbol" value={<span className="font-mono">{result.symbol_name}</span>} />
+					<MetaRow
+						label="Symbol"
+						value={<span className="font-mono">{result.symbol_name}</span>}
+					/>
 				)}
 				<MetaRow
 					label="Lines"
@@ -100,7 +106,10 @@ export function CodePreviewDrawer({ result }: CodePreviewDrawerProps) {
 						</span>
 					}
 				/>
-				<MetaRow label="Repository" value={<span className="font-mono">{result.repo_id}</span>} />
+				<MetaRow
+					label="Repository"
+					value={<span className="font-mono">{result.repo_id}</span>}
+				/>
 			</div>
 
 			{/* Summary */}

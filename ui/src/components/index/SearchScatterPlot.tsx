@@ -148,7 +148,9 @@ function makeNodeSizeFn(results: CodeSearchResultItem[]) {
 	const maxS = Math.max(...sizes);
 	const range = maxS - minS || 1;
 
-	return (node: Omit<ScatterPlotNodeData<ChartDatum>, "size" | "color">): number => {
+	return (
+		node: Omit<ScatterPlotNodeData<ChartDatum>, "size" | "color">,
+	): number => {
 		const lines = node.data.lines;
 		const t = (lines - minS) / range;
 		return Math.round(NODE_MIN + t * (NODE_MAX - NODE_MIN));
@@ -214,16 +216,13 @@ export function SearchScatterPlot({ results }: SearchScatterPlotProps) {
 
 			{visible && (
 				<div id="scatter-plot-body" className="px-5 pb-5 space-y-3">
-					<div
-						style={{ height: 260 }}
-						aria-label="Search results scatter plot"
-					>
+					<div style={{ height: 260 }} aria-label="Search results scatter plot">
 						<ResponsiveScatterPlot<ChartDatum>
 							data={series}
 							theme={nivoTheme}
 							colors={({ serieId }: { serieId: string | number }) =>
-							langColor(String(serieId))
-						}
+								langColor(String(serieId))
+							}
 							xScale={{ type: "linear", min: 0, max: results.length + 1 }}
 							yScale={{ type: "linear", min: 0, max: 1 }}
 							nodeSize={nodeSizeFn}
@@ -244,7 +243,7 @@ export function SearchScatterPlot({ results }: SearchScatterPlotProps) {
 								legendPosition: "middle",
 								tickValues: 5,
 								format: (v: number | string) =>
-								`${(Number(v) * 100).toFixed(0)}%`,
+									`${(Number(v) * 100).toFixed(0)}%`,
 							}}
 							enableGridX={false}
 							useMesh={false}

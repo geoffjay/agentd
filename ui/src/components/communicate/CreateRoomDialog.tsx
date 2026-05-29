@@ -164,7 +164,9 @@ export function CreateRoomDialog({
 								className={fieldClass(nameError)}
 							/>
 							{nameError && (
-								<p className="mt-1 text-xs text-th-status-error-text">{nameError}</p>
+								<p className="mt-1 text-xs text-th-status-error-text">
+									{nameError}
+								</p>
 							)}
 						</div>
 
@@ -199,7 +201,9 @@ export function CreateRoomDialog({
 						<div>
 							<label className="block text-sm font-medium text-th-text-secondary mb-1">
 								Topic{" "}
-								<span className="text-th-text-muted font-normal">(optional)</span>
+								<span className="text-th-text-muted font-normal">
+									(optional)
+								</span>
 							</label>
 							<input
 								type="text"
@@ -214,7 +218,9 @@ export function CreateRoomDialog({
 						<div>
 							<label className="block text-sm font-medium text-th-text-secondary mb-1">
 								Description{" "}
-								<span className="text-th-text-muted font-normal">(optional)</span>
+								<span className="text-th-text-muted font-normal">
+									(optional)
+								</span>
 							</label>
 							<textarea
 								value={description}

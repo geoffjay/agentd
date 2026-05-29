@@ -32,7 +32,9 @@ function renderCard(props: Parameters<typeof QuestionCard>[0]) {
 describe("QuestionCard", () => {
 	it("renders the question text", () => {
 		renderCard({ question: makeQuestion(), onAnswer: vi.fn() });
-		expect(screen.getByText("Should we proceed with the rollout?")).toBeTruthy();
+		expect(
+			screen.getByText("Should we proceed with the rollout?"),
+		).toBeTruthy();
 	});
 
 	it("renders the category", () => {

@@ -84,9 +84,7 @@ export function ServiceMetricsCard({
 		<div
 			className={[
 				"rounded-lg border bg-th-surface p-5 space-y-4",
-				reachable
-					? "border-th-border"
-					: "border-th-status-error-border",
+				reachable ? "border-th-border" : "border-th-status-error-border",
 			].join(" ")}
 		>
 			{/* Header */}
@@ -95,9 +93,7 @@ export function ServiceMetricsCard({
 					<div
 						className={[
 							"flex h-9 w-9 items-center justify-center rounded-full",
-							reachable
-								? "bg-th-status-success-bg"
-								: "bg-th-status-error-bg",
+							reachable ? "bg-th-status-success-bg" : "bg-th-status-error-bg",
 						].join(" ")}
 					>
 						<Activity
@@ -110,12 +106,8 @@ export function ServiceMetricsCard({
 						/>
 					</div>
 					<div>
-						<p className="font-semibold text-th-text">
-							{name}
-						</p>
-						<p className="text-xs text-th-text-faint">
-							Port {port}
-						</p>
+						<p className="font-semibold text-th-text">{name}</p>
+						<p className="text-xs text-th-text-faint">Port {port}</p>
 					</div>
 				</div>
 

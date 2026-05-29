@@ -152,9 +152,7 @@ export function AgentApprovals({
 	return (
 		<section aria-label="Pending approvals">
 			<div className="mb-3 flex items-center gap-2">
-				<h3 className="text-sm font-medium text-th-text">
-					Pending Approvals
-				</h3>
+				<h3 className="text-sm font-medium text-th-text">Pending Approvals</h3>
 				{approvals.length > 0 && (
 					<span className="rounded-full bg-th-status-warning-bg px-2 py-0.5 text-xs font-medium text-th-status-warning-text">
 						{approvals.length}
@@ -169,9 +167,7 @@ export function AgentApprovals({
 					{error}
 				</p>
 			) : approvals.length === 0 ? (
-				<p className="text-sm text-th-text-muted">
-					No pending approvals.
-				</p>
+				<p className="text-sm text-th-text-muted">No pending approvals.</p>
 			) : (
 				<ul className="flex flex-col gap-2" aria-label="Approval requests">
 					{approvals.map((a) => (

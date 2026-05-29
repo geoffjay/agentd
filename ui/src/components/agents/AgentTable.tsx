@@ -96,9 +96,7 @@ function EmptyState() {
 	return (
 		<tr>
 			<td colSpan={10} className="py-12 text-center">
-				<p className="text-sm text-th-text-muted">
-					No agents found.
-				</p>
+				<p className="text-sm text-th-text-muted">No agents found.</p>
 				<p className="mt-1 text-xs text-th-text-faint">
 					Create your first agent using the button above.
 				</p>
@@ -234,10 +232,7 @@ function AgentRow({
 			</td>
 
 			{/* Working Directory */}
-			<td
-				className="px-4 py-3 text-sm text-th-text-muted"
-				title={workingDir}
-			>
+			<td className="px-4 py-3 text-sm text-th-text-muted" title={workingDir}>
 				<span className="font-mono text-xs">{displayDir}</span>
 			</td>
 
@@ -375,7 +370,10 @@ export function AgentTable({
 									className="h-4 w-4 rounded border-th-border-input text-th-accent focus:ring-th-focus-ring bg-th-input"
 								/>
 							</th>
-							<th className="px-4 py-3 text-left text-xs text-th-text-muted" aria-sort={getAriaSort("name", sortBy, sortDir)}>
+							<th
+								className="px-4 py-3 text-left text-xs text-th-text-muted"
+								aria-sort={getAriaSort("name", sortBy, sortDir)}
+							>
 								<SortHeader
 									field="name"
 									label="Name"
@@ -384,7 +382,10 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="px-4 py-3 text-left text-xs text-th-text-muted" aria-sort={getAriaSort("status", sortBy, sortDir)}>
+							<th
+								className="px-4 py-3 text-left text-xs text-th-text-muted"
+								aria-sort={getAriaSort("status", sortBy, sortDir)}
+							>
 								<SortHeader
 									field="status"
 									label="Status"
@@ -396,7 +397,10 @@ export function AgentTable({
 							<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
 								Model
 							</th>
-							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell" aria-sort={getAriaSort("cost", sortBy, sortDir)}>
+							<th
+								className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell"
+								aria-sort={getAriaSort("cost", sortBy, sortDir)}
+							>
 								<SortHeader
 									field="cost"
 									label="Cost"
@@ -405,7 +409,10 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell" aria-sort={getAriaSort("tokens", sortBy, sortDir)}>
+							<th
+								className="hidden px-4 py-3 text-left text-xs text-th-text-muted lg:table-cell"
+								aria-sort={getAriaSort("tokens", sortBy, sortDir)}
+							>
 								<SortHeader
 									field="tokens"
 									label="Tokens"
@@ -414,7 +421,10 @@ export function AgentTable({
 									onSort={onSort}
 								/>
 							</th>
-							<th className="hidden px-4 py-3 text-left text-xs text-th-text-muted xl:table-cell" aria-sort={getAriaSort("cache", sortBy, sortDir)}>
+							<th
+								className="hidden px-4 py-3 text-left text-xs text-th-text-muted xl:table-cell"
+								aria-sort={getAriaSort("cache", sortBy, sortDir)}
+							>
 								<SortHeader
 									field="cache"
 									label="Cache Hit"
@@ -426,7 +436,10 @@ export function AgentTable({
 							<th className="px-4 py-3 text-left text-xs font-medium text-th-text-muted">
 								Working Directory
 							</th>
-							<th className="px-4 py-3 text-left text-xs text-th-text-muted" aria-sort={getAriaSort("created_at", sortBy, sortDir)}>
+							<th
+								className="px-4 py-3 text-left text-xs text-th-text-muted"
+								aria-sort={getAriaSort("created_at", sortBy, sortDir)}
+							>
 								<SortHeader
 									field="created_at"
 									label="Created"

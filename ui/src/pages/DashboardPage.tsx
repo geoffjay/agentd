@@ -36,9 +36,7 @@ function ComingSoonCard({ title, icon }: ComingSoonCardProps) {
 			</div>
 			<div>
 				<p className="font-medium text-th-text-secondary">{title}</p>
-				<p className="mt-1 text-sm text-th-text-faint">
-					Coming Soon
-				</p>
+				<p className="mt-1 text-sm text-th-text-faint">Coming Soon</p>
 			</div>
 		</div>
 	);
@@ -84,9 +82,7 @@ export function DashboardPage() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold text-th-text">
-						Dashboard
-					</h1>
+					<h1 className="text-2xl font-semibold text-th-text">Dashboard</h1>
 					<p className="mt-1 text-sm text-th-text-muted">
 						System overview and service health
 					</p>

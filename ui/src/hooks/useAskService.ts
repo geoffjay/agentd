@@ -10,7 +10,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askClient } from "@/services/ask";
-import type { ListQuestionsParams, Question, QuestionStatus } from "@/types/ask";
+import type {
+	ListQuestionsParams,
+	Question,
+	QuestionStatus,
+} from "@/types/ask";
 import type { HealthResponse } from "@/types/common";
 
 // ---------------------------------------------------------------------------
@@ -86,14 +90,14 @@ export function useAskService({
 	const [total, setTotal] = useState(0);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | undefined>();
-	const [filters, setFiltersState] = useState<ListQuestionsParams>(
-		initialParams,
-	);
+	const [filters, setFiltersState] =
+		useState<ListQuestionsParams>(initialParams);
 	const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 	const [actionError, setActionError] = useState<string | undefined>();
 	const [pollingEnabled, setPollingEnabled] = useState(false);
-	const [pollingInterval, setPollingInterval] =
-		useState<PollingInterval>(initialPollingInterval as PollingInterval);
+	const [pollingInterval, setPollingInterval] = useState<PollingInterval>(
+		initialPollingInterval as PollingInterval,
+	);
 
 	const mountedRef = useRef(true);
 	const pollingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -222,7 +226,10 @@ export function useAskService({
 			try {
 				const updated = await askClient.answerQuestion(id, { answer });
 				// Backend returns the updated Question — apply it directly.
-				updateLocal(id, { status: updated.status, answer: updated.answer ?? answer });
+				updateLocal(id, {
+					status: updated.status,
+					answer: updated.answer ?? answer,
+				});
 				return true;
 			} catch (err) {
 				setActionError(

@@ -10,7 +10,11 @@
 
 import { Search, X } from "lucide-react";
 import { useState } from "react";
-import type { CodeSearchMode, CodeSearchRequest, RepoRecord } from "@/types/codeindex";
+import type {
+	CodeSearchMode,
+	CodeSearchRequest,
+	RepoRecord,
+} from "@/types/codeindex";
 
 // ---------------------------------------------------------------------------
 // Constants

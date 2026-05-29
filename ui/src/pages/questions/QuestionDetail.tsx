@@ -140,8 +140,9 @@ export function QuestionDetail() {
 	// -------------------------------------------------------------------------
 
 	const isPending = question?.status === "Pending";
-	const priorityClass =
-		question ? (PRIORITY_CLASSES[question.priority] ?? PRIORITY_CLASSES.Normal) : "";
+	const priorityClass = question
+		? (PRIORITY_CLASSES[question.priority] ?? PRIORITY_CLASSES.Normal)
+		: "";
 
 	return (
 		<div className="space-y-6">
@@ -217,7 +218,9 @@ export function QuestionDetail() {
 										{question.priority}
 									</span>
 								</div>
-								<p className="mt-1 text-sm text-th-text-faint">Question Detail</p>
+								<p className="mt-1 text-sm text-th-text-faint">
+									Question Detail
+								</p>
 							</div>
 						</div>
 						<div className="flex items-center gap-3">
@@ -229,20 +232,27 @@ export function QuestionDetail() {
 								aria-label="Refresh question"
 								className="text-th-text-muted hover:text-th-text disabled:opacity-50 transition-colors"
 							>
-								<RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+								<RefreshCw
+									size={14}
+									className={loading ? "animate-spin" : ""}
+								/>
 							</button>
 						</div>
 					</div>
 
 					{/* Question text */}
 					<div>
-						<h1 className="text-xl font-semibold text-th-text">{question.question}</h1>
+						<h1 className="text-xl font-semibold text-th-text">
+							{question.question}
+						</h1>
 					</div>
 
 					{/* Context */}
 					{question.context && (
 						<div className="rounded-md bg-th-surface-sunken border border-th-border px-4 py-3">
-							<p className="text-xs font-medium text-th-text-faint mb-1.5">Context</p>
+							<p className="text-xs font-medium text-th-text-faint mb-1.5">
+								Context
+							</p>
 							<p className="text-sm text-th-text-secondary whitespace-pre-wrap">
 								{question.context}
 							</p>

@@ -87,7 +87,9 @@ export function ActivityTimeline({
 			</div>
 
 			{/* Error */}
-			{error && <p className="mt-3 text-sm text-th-status-error-text">{error}</p>}
+			{error && (
+				<p className="mt-3 text-sm text-th-status-error-text">{error}</p>
+			)}
 
 			{/* Loading */}
 			{loading && !error && (
@@ -98,9 +100,7 @@ export function ActivityTimeline({
 
 			{/* Empty state */}
 			{!loading && !error && events.length === 0 && (
-				<p className="mt-4 text-sm text-th-text-muted">
-					No recent activity.
-				</p>
+				<p className="mt-4 text-sm text-th-text-muted">No recent activity.</p>
 			)}
 
 			{/* Event list */}

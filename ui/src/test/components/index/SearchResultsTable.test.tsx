@@ -110,13 +110,12 @@ describe("SearchResultsTable", () => {
 		await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
 
 		// Click the backdrop (aria-hidden overlay)
-		const backdrop = document
-			.querySelector('[aria-hidden="true"]') as HTMLElement;
+		const backdrop = document.querySelector(
+			'[aria-hidden="true"]',
+		) as HTMLElement;
 		fireEvent.click(backdrop);
 
-		await waitFor(() =>
-			expect(screen.queryByRole("dialog")).toBeNull(),
-		);
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 	});
 
 	it("uses file name as drawer title when symbol_name is absent", async () => {

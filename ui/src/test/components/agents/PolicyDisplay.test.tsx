@@ -59,20 +59,14 @@ describe("PolicyDisplay", () => {
 
 	it("does not render sandbox bypass section when sandbox_bypass is absent", () => {
 		render(<PolicyDisplay policy={{ mode: "allow_all" }} />);
-		expect(
-			screen.queryByText(/sandbox bypass/i),
-		).not.toBeInTheDocument();
+		expect(screen.queryByText(/sandbox bypass/i)).not.toBeInTheDocument();
 	});
 
 	it("does not render sandbox bypass section when sandbox_bypass is empty", () => {
 		render(
-			<PolicyDisplay
-				policy={{ mode: "allow_all", sandbox_bypass: [] }}
-			/>,
+			<PolicyDisplay policy={{ mode: "allow_all", sandbox_bypass: [] }} />,
 		);
-		expect(
-			screen.queryByText(/sandbox bypass/i),
-		).not.toBeInTheDocument();
+		expect(screen.queryByText(/sandbox bypass/i)).not.toBeInTheDocument();
 	});
 
 	it("renders sandbox bypass toggle when globs are present", () => {
@@ -118,9 +112,7 @@ describe("PolicyDisplay", () => {
 		expect(
 			screen.getByText("Bash(git-spice branch submit *)"),
 		).toBeInTheDocument();
-		expect(
-			screen.getByText("Bash(git-spice repo sync*)"),
-		).toBeInTheDocument();
+		expect(screen.getByText("Bash(git-spice repo sync*)")).toBeInTheDocument();
 	});
 
 	it("collapses sandbox bypass list on second click", async () => {

@@ -70,12 +70,8 @@ function ConfigRow({
 }) {
 	return (
 		<div className="grid grid-cols-3 gap-4 py-3 border-t border-th-border-subtle first:border-t-0">
-			<dt className="text-sm font-medium text-th-text-muted">
-				{label}
-			</dt>
-			<dd className="col-span-2 text-sm text-th-text">
-				{value}
-			</dd>
+			<dt className="text-sm font-medium text-th-text-muted">{label}</dt>
+			<dd className="col-span-2 text-sm text-th-text">{value}</dd>
 		</div>
 	);
 }

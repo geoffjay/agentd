@@ -81,7 +81,9 @@ function NoRoomSelected() {
 		<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
 			<MessageSquare size={40} className="text-th-text-muted" />
 			<div>
-				<p className="text-sm font-medium text-th-text-secondary">No room selected</p>
+				<p className="text-sm font-medium text-th-text-secondary">
+					No room selected
+				</p>
 				<p className="mt-1 text-xs text-th-text-muted">
 					Pick a room from the sidebar to start chatting.
 				</p>

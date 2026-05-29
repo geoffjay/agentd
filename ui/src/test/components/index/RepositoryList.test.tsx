@@ -108,9 +108,7 @@ describe("RepositoryList", () => {
 		expect(screen.getByRole("alertdialog")).toBeTruthy();
 
 		fireEvent.click(screen.getByText("Cancel"));
-		await waitFor(() =>
-			expect(screen.queryByRole("dialog")).toBeNull(),
-		);
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 		expect(onDelete).not.toHaveBeenCalled();
 	});
 

@@ -78,7 +78,11 @@ function DefaultFallback({
 			].join(" ")}
 		>
 			<div className="flex h-16 w-16 items-center justify-center rounded-full bg-th-status-error-bg">
-				<AlertTriangle size={32} className="text-th-status-error-text" aria-hidden="true" />
+				<AlertTriangle
+					size={32}
+					className="text-th-status-error-text"
+					aria-hidden="true"
+				/>
 			</div>
 
 			<div className="max-w-md">

@@ -15,10 +15,10 @@
 import type { ThemeTokens } from "@/styles/theme-tokens";
 import { TOKEN_CSS_MAP, TOKEN_KEYS } from "@/styles/theme-tokens";
 import {
-  DEFAULT_THEME_ID,
-  SYSTEM_DARK_ID,
-  SYSTEM_LIGHT_ID,
-  THEME_REGISTRY,
+	DEFAULT_THEME_ID,
+	SYSTEM_DARK_ID,
+	SYSTEM_LIGHT_ID,
+	THEME_REGISTRY,
 } from "@/styles/themes/index";
 
 /**
@@ -27,17 +27,17 @@ import {
  * Unknown IDs fall back to DEFAULT_THEME_ID.
  */
 export function resolveThemeId(preference: string): string {
-  if (preference === "system") {
-    try {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? SYSTEM_DARK_ID
-        : SYSTEM_LIGHT_ID;
-    } catch {
-      return DEFAULT_THEME_ID;
-    }
-  }
-  if (preference in THEME_REGISTRY) return preference;
-  return DEFAULT_THEME_ID;
+	if (preference === "system") {
+		try {
+			return window.matchMedia("(prefers-color-scheme: dark)").matches
+				? SYSTEM_DARK_ID
+				: SYSTEM_LIGHT_ID;
+		} catch {
+			return DEFAULT_THEME_ID;
+		}
+	}
+	if (preference in THEME_REGISTRY) return preference;
+	return DEFAULT_THEME_ID;
 }
 
 /**
@@ -45,7 +45,7 @@ export function resolveThemeId(preference: string): string {
  * Falls back to DEFAULT_THEME_ID if unknown.
  */
 export function getTheme(id: string): ThemeTokens {
-  return THEME_REGISTRY[id] ?? THEME_REGISTRY[DEFAULT_THEME_ID];
+	return THEME_REGISTRY[id] ?? THEME_REGISTRY[DEFAULT_THEME_ID];
 }
 
 /**
@@ -53,24 +53,24 @@ export function getTheme(id: string): ThemeTokens {
  * Sets CSS custom properties, data-theme, and color-scheme.
  */
 export function applyTheme(preference: string): void {
-  const id = resolveThemeId(preference);
-  const theme = getTheme(id);
-  const root = document.documentElement;
+	const id = resolveThemeId(preference);
+	const theme = getTheme(id);
+	const root = document.documentElement;
 
-  // Set data-theme attribute
-  root.setAttribute("data-theme", id);
+	// Set data-theme attribute
+	root.setAttribute("data-theme", id);
 
-  // Set color-scheme for native element theming (scrollbars, form controls)
-  root.style.colorScheme = theme.family;
+	// Set color-scheme for native element theming (scrollbars, form controls)
+	root.style.colorScheme = theme.family;
 
-  // Apply all token CSS custom properties
-  for (const key of TOKEN_KEYS) {
-    const cssVar = TOKEN_CSS_MAP[key];
-    const value = theme[key as keyof ThemeTokens] as string;
-    if (cssVar && value) {
-      root.style.setProperty(cssVar, value);
-    }
-  }
+	// Apply all token CSS custom properties
+	for (const key of TOKEN_KEYS) {
+		const cssVar = TOKEN_CSS_MAP[key];
+		const value = theme[key as keyof ThemeTokens] as string;
+		if (cssVar && value) {
+			root.style.setProperty(cssVar, value);
+		}
+	}
 }
 
 /**
@@ -79,20 +79,19 @@ export function applyTheme(preference: string): void {
  * Returns "system" if nothing is stored or parsing fails.
  */
 export function readPersistedTheme(): string {
-  try {
-    const raw = localStorage.getItem("agentd:settings");
-    if (!raw) return "system";
-    const parsed = JSON.parse(raw) as { ui?: { theme?: string } };
-    const pref = parsed?.ui?.theme;
-    if (!pref) return "system";
+	try {
+		const raw = localStorage.getItem("agentd:settings");
+		if (!raw) return "system";
+		const parsed = JSON.parse(raw) as { ui?: { theme?: string } };
+		const pref = parsed?.ui?.theme;
+		if (!pref) return "system";
 
-    // Migrate legacy values
-    if (pref === "light") return "agentd-light";
-    if (pref === "dark") return "agentd-dark";
+		// Migrate legacy values
+		if (pref === "light") return "agentd-light";
+		if (pref === "dark") return "agentd-dark";
 
-    return pref;
-  } catch {
-    return "system";
-  }
+		return pref;
+	} catch {
+		return "system";
+	}
 }
-

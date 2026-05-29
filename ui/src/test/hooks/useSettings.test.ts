@@ -5,11 +5,13 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockLoadSettings, mockSaveSettings, mockResetSettings } = vi.hoisted(() => ({
-	mockLoadSettings: vi.fn(),
-	mockSaveSettings: vi.fn(),
-	mockResetSettings: vi.fn(),
-}));
+const { mockLoadSettings, mockSaveSettings, mockResetSettings } = vi.hoisted(
+	() => ({
+		mockLoadSettings: vi.fn(),
+		mockSaveSettings: vi.fn(),
+		mockResetSettings: vi.fn(),
+	}),
+);
 
 vi.mock("@/stores/settingsStore", () => ({
 	loadSettings: mockLoadSettings,
@@ -56,8 +58,12 @@ describe("useSettings", () => {
 		act(() => {
 			result.current.updateServices({ orchestratorUrl: "http://custom:9999" });
 		});
-		expect(result.current.settings.services.orchestratorUrl).toBe("http://custom:9999");
-		expect(result.current.settings.services.notifyUrl).toBe("http://localhost:17004");
+		expect(result.current.settings.services.orchestratorUrl).toBe(
+			"http://custom:9999",
+		);
+		expect(result.current.settings.services.notifyUrl).toBe(
+			"http://localhost:17004",
+		);
 		expect(mockSaveSettings).toHaveBeenCalled();
 	});
 

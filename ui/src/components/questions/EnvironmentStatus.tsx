@@ -65,16 +65,16 @@ export function EnvironmentStatus({
 								<span
 									className={[
 										"h-2.5 w-2.5 rounded-full flex-shrink-0",
-										tmux.running ? "bg-th-status-success-dot" : "bg-th-status-error-dot",
+										tmux.running
+											? "bg-th-status-success-dot"
+											: "bg-th-status-error-dot",
 									].join(" ")}
 									role="status"
 									aria-label={
 										tmux.running ? "tmux running" : "tmux not running"
 									}
 								/>
-								<span className="text-sm font-medium text-th-text">
-									tmux
-								</span>
+								<span className="text-sm font-medium text-th-text">tmux</span>
 							</div>
 							<span
 								className={[

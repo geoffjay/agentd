@@ -133,9 +133,7 @@ describe("DashboardPage — Create Agent button", () => {
 			target: { value: "/home/user/project" },
 		});
 
-		fireEvent.click(
-			screen.getByRole("button", { name: /^create agent$/i }),
-		);
+		fireEvent.click(screen.getByRole("button", { name: /^create agent$/i }));
 
 		await waitFor(() => {
 			expect(mockCreateAgent).toHaveBeenCalledWith(

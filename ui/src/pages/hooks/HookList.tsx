@@ -25,9 +25,7 @@ export function HookList() {
 						<Zap size={22} className="text-th-text-link" />
 					</div>
 					<div>
-						<h1 className="text-2xl font-semibold text-th-text">
-							Hooks
-						</h1>
+						<h1 className="text-2xl font-semibold text-th-text">Hooks</h1>
 						<p className="text-sm text-th-text-muted">
 							Monitor git and system hook events
 						</p>

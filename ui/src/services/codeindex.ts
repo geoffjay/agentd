@@ -51,7 +51,9 @@ export class IndexClient extends ApiClient {
 
 	/** GET /repositories — list all registered repositories. */
 	async listRepositories(): Promise<ListReposResponse> {
-		const raw = await this.get<RepoRecord[] | ListReposResponse>("/repositories");
+		const raw = await this.get<RepoRecord[] | ListReposResponse>(
+			"/repositories",
+		);
 		// Backend returns array directly; normalise to ListReposResponse shape.
 		if (Array.isArray(raw)) {
 			return { repositories: raw, total: raw.length };
@@ -95,10 +97,7 @@ export class IndexClient extends ApiClient {
 	}
 
 	/** GET /repositories/:id/embeddings/hexbin — aggregated hex-bin density map. */
-	getEmbeddingHexbin(
-		id: string,
-		bins = 40,
-	): Promise<EmbeddingHexBinResponse> {
+	getEmbeddingHexbin(id: string, bins = 40): Promise<EmbeddingHexBinResponse> {
 		return this.get<EmbeddingHexBinResponse>(
 			`/repositories/${id}/embeddings/hexbin?bins=${bins}`,
 		);

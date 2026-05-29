@@ -97,7 +97,9 @@ export function AddRepositoryDialog({
 			if (ok) {
 				onClose();
 			} else {
-				setSaveError("Failed to add repository — check the path and try again.");
+				setSaveError(
+					"Failed to add repository — check the path and try again.",
+				);
 			}
 		} catch (err) {
 			setSaveError(

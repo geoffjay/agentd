@@ -99,9 +99,9 @@ describe("WorkflowForm", () => {
 			expect(
 				screen.getByRole("dialog", { name: /create workflow/i }),
 			).toBeInTheDocument();
-			expect(screen.getByPlaceholderText(/dispatch github issues/i)).toHaveValue(
-				"",
-			);
+			expect(
+				screen.getByPlaceholderText(/dispatch github issues/i),
+			).toHaveValue("");
 		});
 	});
 
@@ -109,9 +109,9 @@ describe("WorkflowForm", () => {
 		it("populates the name field", async () => {
 			renderForm(validWorkflow);
 			await waitFor(() => {
-				expect(screen.getByPlaceholderText(/dispatch github issues/i)).toHaveValue(
-					"My Workflow",
-				);
+				expect(
+					screen.getByPlaceholderText(/dispatch github issues/i),
+				).toHaveValue("My Workflow");
 			});
 		});
 
@@ -136,9 +136,9 @@ describe("WorkflowForm", () => {
 		it("populates labels as comma-separated string", async () => {
 			renderForm(validWorkflow);
 			await waitFor(() => {
-				expect(
-					screen.getByPlaceholderText(/bug, enhancement/i),
-				).toHaveValue("bug, enhancement");
+				expect(screen.getByPlaceholderText(/bug, enhancement/i)).toHaveValue(
+					"bug, enhancement",
+				);
 			});
 		});
 	});

@@ -143,9 +143,7 @@ describe("useChatMessages", () => {
 		const latest = [makeMsg(), makeMsg(), makeMsg(), makeMsg(), makeMsg()];
 		const older = [makeMsg(), makeMsg()];
 
-		vi.spyOn(communicateClient, "getLatestMessages").mockResolvedValue(
-			latest,
-		);
+		vi.spyOn(communicateClient, "getLatestMessages").mockResolvedValue(latest);
 		vi.spyOn(communicateClient, "listMessages").mockResolvedValue(
 			paginated(older),
 		);

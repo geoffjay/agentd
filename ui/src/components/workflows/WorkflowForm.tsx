@@ -251,7 +251,9 @@ export function WorkflowForm({
 							className={fieldClass(errors.name)}
 						/>
 						{errors.name && (
-							<p className="mt-1 text-xs text-th-status-error-text">{errors.name}</p>
+							<p className="mt-1 text-xs text-th-status-error-text">
+								{errors.name}
+							</p>
 						)}
 					</div>
 
@@ -278,7 +280,9 @@ export function WorkflowForm({
 							</p>
 						)}
 						{errors.agent_id && (
-							<p className="mt-1 text-xs text-th-status-error-text">{errors.agent_id}</p>
+							<p className="mt-1 text-xs text-th-status-error-text">
+								{errors.agent_id}
+							</p>
 						)}
 					</div>
 
@@ -314,12 +318,15 @@ export function WorkflowForm({
 									className={fieldClass(errors.owner, "text-sm")}
 								/>
 								{errors.owner && (
-									<p className="mt-1 text-xs text-th-status-error-text">{errors.owner}</p>
+									<p className="mt-1 text-xs text-th-status-error-text">
+										{errors.owner}
+									</p>
 								)}
 							</div>
 							<div>
 								<label className="block text-xs font-medium text-th-text-muted mb-1">
-									Repository <span className="text-th-status-error-text">*</span>
+									Repository{" "}
+									<span className="text-th-status-error-text">*</span>
 								</label>
 								<input
 									type="text"
@@ -329,14 +336,17 @@ export function WorkflowForm({
 									className={fieldClass(errors.repo, "text-sm")}
 								/>
 								{errors.repo && (
-									<p className="mt-1 text-xs text-th-status-error-text">{errors.repo}</p>
+									<p className="mt-1 text-xs text-th-status-error-text">
+										{errors.repo}
+									</p>
 								)}
 							</div>
 						</div>
 
 						<div>
 							<label className="block text-xs font-medium text-th-text-muted mb-1">
-								Labels <span className="text-th-text-muted">(comma-separated)</span>
+								Labels{" "}
+								<span className="text-th-text-muted">(comma-separated)</span>
 							</label>
 							<input
 								type="text"
@@ -368,7 +378,8 @@ export function WorkflowForm({
 					{/* Prompt template */}
 					<div>
 						<label className="block text-sm font-medium text-th-text-secondary mb-1">
-							Prompt template <span className="text-th-status-error-text">*</span>
+							Prompt template{" "}
+							<span className="text-th-status-error-text">*</span>
 						</label>
 						<PromptTemplateEditor
 							value={promptTemplate}
@@ -382,7 +393,8 @@ export function WorkflowForm({
 					<div className="grid grid-cols-2 gap-4">
 						<div>
 							<label className="block text-sm font-medium text-th-text-secondary mb-1">
-								Poll interval (minutes) <span className="text-th-status-error-text">*</span>
+								Poll interval (minutes){" "}
+								<span className="text-th-status-error-text">*</span>
 							</label>
 							<input
 								type="number"
@@ -463,9 +475,7 @@ function fieldClass(error?: string, extra = ""): string {
 		"text-th-text",
 		"focus:outline-none focus:ring-2 focus:ring-th-focus-ring",
 		"disabled:cursor-not-allowed disabled:opacity-50",
-		error
-			? "border-th-status-error-border"
-			: "border-th-border-input",
+		error ? "border-th-status-error-border" : "border-th-border-input",
 		extra,
 	]
 		.filter(Boolean)

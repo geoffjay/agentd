@@ -61,13 +61,17 @@ describe("useTheme", () => {
 	it("sets data-theme for a dark theme", () => {
 		setStoredTheme("agentd-dark");
 		renderHook(() => useTheme(), { wrapper });
-		expect(document.documentElement.getAttribute("data-theme")).toBe("agentd-dark");
+		expect(document.documentElement.getAttribute("data-theme")).toBe(
+			"agentd-dark",
+		);
 	});
 
 	it("sets data-theme for a light theme", () => {
 		setStoredTheme("agentd-light");
 		renderHook(() => useTheme(), { wrapper });
-		expect(document.documentElement.getAttribute("data-theme")).toBe("agentd-light");
+		expect(document.documentElement.getAttribute("data-theme")).toBe(
+			"agentd-light",
+		);
 	});
 
 	it("setTheme updates the theme and applies to DOM", () => {
@@ -78,7 +82,9 @@ describe("useTheme", () => {
 		});
 
 		expect(result.current.themeId).toBe("kanagawa");
-		expect(document.documentElement.getAttribute("data-theme")).toBe("kanagawa");
+		expect(document.documentElement.getAttribute("data-theme")).toBe(
+			"kanagawa",
+		);
 	});
 
 	it("setTheme to light theme sets correct data-theme", () => {
@@ -89,7 +95,9 @@ describe("useTheme", () => {
 		});
 
 		expect(result.current.themeId).toBe("agentd-light");
-		expect(document.documentElement.getAttribute("data-theme")).toBe("agentd-light");
+		expect(document.documentElement.getAttribute("data-theme")).toBe(
+			"agentd-light",
+		);
 	});
 
 	it("setTheme persists to localStorage", () => {

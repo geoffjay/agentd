@@ -10,7 +10,12 @@
  * Density is encoded on a blue-to-red colour scale with a legend.
  */
 
-import { ChevronDown, ChevronRight, Loader2, Map as MapIcon } from "lucide-react";
+import {
+	ChevronDown,
+	ChevronRight,
+	Loader2,
+	Map as MapIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EmbeddingHexBinCell } from "@/types/codeindex";
 
@@ -41,11 +46,11 @@ function densityColor(t: number): string {
 
 	// 5-stop colour scale: blue → cyan → green → yellow → red
 	const stops: [number, number, number][] = [
-		[59, 130, 246],   // blue-500
-		[6, 182, 212],    // cyan-500
-		[16, 185, 129],   // emerald-500
-		[234, 179, 8],    // yellow-500
-		[239, 68, 68],    // red-500
+		[59, 130, 246], // blue-500
+		[6, 182, 212], // cyan-500
+		[16, 185, 129], // emerald-500
+		[234, 179, 8], // yellow-500
+		[239, 68, 68], // red-500
 	];
 
 	const segment = v * (stops.length - 1);
@@ -130,8 +135,10 @@ function renderHeatMap(
 	// Hex size in axial coordinates is 2.0 / (sqrt(3) * binsParam) — same as backend.
 	// In pixel space we scale so the bounding box fills the canvas.
 	// First, figure out axial bounding box.
-	let minQ = Infinity, maxQ = -Infinity;
-	let minR = Infinity, maxR = -Infinity;
+	let minQ = Infinity,
+		maxQ = -Infinity;
+	let minR = Infinity,
+		maxR = -Infinity;
 	for (const c of cells) {
 		minQ = Math.min(minQ, c.q);
 		maxQ = Math.max(maxQ, c.q);
@@ -313,8 +320,8 @@ export function EmbeddingHeatMap({
 
 							<p className="text-xs text-th-text-muted opacity-60">
 								Each cell shows how many chunks project into that region of
-								embedding space. High-density clusters may affect search quality.
-								Coordinates are hash-projected — not raw embeddings.
+								embedding space. High-density clusters may affect search
+								quality. Coordinates are hash-projected — not raw embeddings.
 							</p>
 						</>
 					)}

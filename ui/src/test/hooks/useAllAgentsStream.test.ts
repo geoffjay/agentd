@@ -104,9 +104,12 @@ describe("useAllAgentsStream", () => {
 
 	it("emits events to the agentEventBus", async () => {
 		const received: string[] = [];
-		const unsub = agentEventBus.on<AgentStatusChangeEvent>("agent:status_change", (event) => {
-			received.push(event.agentId);
-		});
+		const unsub = agentEventBus.on<AgentStatusChangeEvent>(
+			"agent:status_change",
+			(event) => {
+				received.push(event.agentId);
+			},
+		);
 
 		const { result } = renderHook(() => useAllAgentsStream());
 		await waitFor(() => expect(lastWs).toBeDefined());

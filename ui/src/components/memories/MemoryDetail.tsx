@@ -58,7 +58,8 @@ export function MemoryDetail({
 				<span
 					className={[
 						"inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-						TYPE_STYLES[memory.type] ?? "bg-th-surface-sunken text-th-text-muted",
+						TYPE_STYLES[memory.type] ??
+							"bg-th-surface-sunken text-th-text-muted",
 					].join(" ")}
 				>
 					{TYPE_LABELS[memory.type] ?? memory.type}
@@ -66,7 +67,8 @@ export function MemoryDetail({
 				<span
 					className={[
 						"inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-						VISIBILITY_STYLES[memory.visibility] ?? "bg-th-surface-sunken text-th-text-muted",
+						VISIBILITY_STYLES[memory.visibility] ??
+							"bg-th-surface-sunken text-th-text-muted",
 					].join(" ")}
 				>
 					{VISIBILITY_ICONS[memory.visibility]}
@@ -151,10 +153,7 @@ export function MemoryDetail({
 					</h3>
 					<ul className="mt-2 space-y-1">
 						{memory.references.map((ref) => (
-							<li
-								key={ref}
-								className="text-xs font-mono text-th-text-muted"
-							>
+							<li key={ref} className="text-xs font-mono text-th-text-muted">
 								{ref}
 							</li>
 						))}

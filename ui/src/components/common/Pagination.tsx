@@ -56,17 +56,9 @@ export function Pagination({
 			{/* Item range */}
 			<p className="text-sm text-th-text-muted">
 				Showing{" "}
-				<span className="font-medium text-th-text-secondary">
-					{startItem}
-				</span>
-				–
-				<span className="font-medium text-th-text-secondary">
-					{endItem}
-				</span>{" "}
-				of{" "}
-				<span className="font-medium text-th-text-secondary">
-					{totalItems}
-				</span>
+				<span className="font-medium text-th-text-secondary">{startItem}</span>–
+				<span className="font-medium text-th-text-secondary">{endItem}</span> of{" "}
+				<span className="font-medium text-th-text-secondary">{totalItems}</span>
 			</p>
 
 			{/* Page buttons */}

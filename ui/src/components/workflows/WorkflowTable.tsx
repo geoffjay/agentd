@@ -135,9 +135,7 @@ export function WorkflowTable({
 			key: "name",
 			header: "Workflow",
 			render: (wf) => (
-				<span className="text-sm font-medium text-th-text">
-					{wf.name}
-				</span>
+				<span className="text-sm font-medium text-th-text">{wf.name}</span>
 			),
 		},
 		{
@@ -148,14 +146,10 @@ export function WorkflowTable({
 				return agent ? (
 					<div className="flex items-center gap-2">
 						<AgentStatusBadge status={agent.status} variant="dot" />
-						<span className="text-xs text-th-text-secondary">
-							{agent.name}
-						</span>
+						<span className="text-xs text-th-text-secondary">{agent.name}</span>
 					</div>
 				) : (
-					<span className="text-xs text-th-text-faint">
-						Unknown agent
-					</span>
+					<span className="text-xs text-th-text-faint">Unknown agent</span>
 				);
 			},
 		},
@@ -163,9 +157,7 @@ export function WorkflowTable({
 			key: "source",
 			header: "Source",
 			render: (wf) => (
-				<span className="text-xs text-th-text-muted">
-					{sourceLabel(wf)}
-				</span>
+				<span className="text-xs text-th-text-muted">{sourceLabel(wf)}</span>
 			),
 		},
 		{

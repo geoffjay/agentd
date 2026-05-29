@@ -124,5 +124,13 @@ export function useAgentSummary(): UseAgentSummaryResult {
 		void fetch();
 	}, [fetch]);
 
-	return { counts, recentAgents, total, aggregateUsage, loading, error, refetch: fetch };
+	return {
+		counts,
+		recentAgents,
+		total,
+		aggregateUsage,
+		loading,
+		error,
+		refetch: fetch,
+	};
 }

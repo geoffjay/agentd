@@ -123,10 +123,7 @@ function ChangeModelDialog({
 				</h2>
 
 				{error && (
-					<p
-						role="alert"
-						className="mb-3 text-sm text-th-status-error-text"
-					>
+					<p role="alert" className="mb-3 text-sm text-th-status-error-text">
 						{error}
 					</p>
 				)}
@@ -249,10 +246,7 @@ function ClearContextDialog({
 					Clear context?
 				</h2>
 
-				<p
-					id="clear-context-desc"
-					className="mt-2 text-sm text-th-text-muted"
-				>
+				<p id="clear-context-desc" className="mt-2 text-sm text-th-text-muted">
 					This will clear the agent&apos;s current context and start a new
 					session. Current session usage will be saved.
 				</p>
@@ -264,21 +258,15 @@ function ClearContextDialog({
 							Current session
 						</p>
 						<div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-							<span className="text-th-text-muted">
-								Input tokens
-							</span>
+							<span className="text-th-text-muted">Input tokens</span>
 							<span className="text-right font-medium text-th-text-secondary">
 								{session.input_tokens.toLocaleString()}
 							</span>
-							<span className="text-th-text-muted">
-								Output tokens
-							</span>
+							<span className="text-th-text-muted">Output tokens</span>
 							<span className="text-right font-medium text-th-text-secondary">
 								{session.output_tokens.toLocaleString()}
 							</span>
-							<span className="text-th-text-muted">
-								Cache tokens
-							</span>
+							<span className="text-th-text-muted">Cache tokens</span>
 							<span className="text-right font-medium text-th-text-secondary">
 								{(
 									session.cache_read_input_tokens +
@@ -390,10 +378,7 @@ function AddDirDialog({ open, onConfirm, onClose }: AddDirDialogProps) {
 				</p>
 
 				{error && (
-					<p
-						role="alert"
-						className="mb-3 text-sm text-th-status-error-text"
-					>
+					<p role="alert" className="mb-3 text-sm text-th-status-error-text">
 						{error}
 					</p>
 				)}
@@ -599,7 +584,11 @@ function ActionsDropdown({
 								aria-hidden="true"
 							/>
 						) : (
-							<Eraser size={14} className="text-th-status-warning-text" aria-hidden="true" />
+							<Eraser
+								size={14}
+								className="text-th-status-warning-text"
+								aria-hidden="true"
+							/>
 						)}
 						Clear Context
 					</button>
@@ -620,17 +609,18 @@ function ActionsDropdown({
 									aria-hidden="true"
 								/>
 							) : (
-								<RefreshCw size={14} className="text-th-text-faint" aria-hidden="true" />
+								<RefreshCw
+									size={14}
+									className="text-th-text-faint"
+									aria-hidden="true"
+								/>
 							)}
 							Restart Agent
 						</button>
 					)}
 
 					{/* Divider */}
-					<div
-						role="separator"
-						className="my-1 border-t border-th-border"
-					/>
+					<div role="separator" className="my-1 border-t border-th-border" />
 
 					{/* Terminate (red / danger) */}
 					<button
@@ -639,7 +629,11 @@ function ActionsDropdown({
 						onClick={() => pick(onTerminate)}
 						className={redItem}
 					>
-						<Trash2 size={14} className="text-th-status-error-text" aria-hidden="true" />
+						<Trash2
+							size={14}
+							className="text-th-status-error-text"
+							aria-hidden="true"
+						/>
 						Terminate
 					</button>
 				</div>
@@ -1034,9 +1028,7 @@ export function AgentDetail() {
 						className="rounded-lg border border-th-border bg-th-surface"
 					>
 						<div className="flex items-center justify-between border-b border-th-border px-4 py-3">
-							<h2 className="text-sm font-medium text-th-text">
-								Tool Policy
-							</h2>
+							<h2 className="text-sm font-medium text-th-text">Tool Policy</h2>
 							{!policyEditing && (
 								<button
 									type="button"

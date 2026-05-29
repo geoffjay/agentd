@@ -11,9 +11,7 @@ export function AboutSection() {
 				<span className="text-sm font-medium text-th-text-secondary">
 					Version
 				</span>
-				<span className="text-sm text-th-text-muted">
-					{APP_VERSION}
-				</span>
+				<span className="text-sm text-th-text-muted">{APP_VERSION}</span>
 			</div>
 
 			<div className="flex items-center justify-between">
@@ -32,9 +30,7 @@ export function AboutSection() {
 			</div>
 
 			<div className="flex items-center justify-between">
-				<span className="text-sm font-medium text-th-text-secondary">
-					Docs
-				</span>
+				<span className="text-sm font-medium text-th-text-secondary">Docs</span>
 				<a
 					href="https://github.com/geoffjay/agentd/wiki"
 					target="_blank"

@@ -69,9 +69,7 @@ export function WorkflowList() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold text-th-text">
-						Workflows
-					</h1>
+					<h1 className="text-2xl font-semibold text-th-text">Workflows</h1>
 					<p className="mt-1 text-sm text-th-text-muted">
 						Automated task dispatch — poll external sources and dispatch tasks
 						to agents.
@@ -130,7 +128,9 @@ export function WorkflowList() {
 				loading={loading}
 				onEdit={openEdit}
 				onDelete={deleteWorkflow}
-				onToggleEnabled={async (id, enabled) => { await toggleEnabled(id, enabled); }}
+				onToggleEnabled={async (id, enabled) => {
+					await toggleEnabled(id, enabled);
+				}}
 			/>
 
 			{/* Pagination */}

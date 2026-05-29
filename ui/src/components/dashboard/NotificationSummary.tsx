@@ -68,7 +68,9 @@ export function NotificationSummary({
 			</div>
 
 			{/* Error state */}
-			{error && <p className="mt-3 text-sm text-th-status-error-text">{error}</p>}
+			{error && (
+				<p className="mt-3 text-sm text-th-status-error-text">{error}</p>
+			)}
 
 			{/* Loading */}
 			{loading && !error && (
@@ -84,10 +86,7 @@ export function NotificationSummary({
 					<div className="mt-4 grid grid-cols-2 gap-3">
 						<div className="rounded-md bg-th-status-warning-bg p-3">
 							<div className="flex items-center gap-2">
-								<Bell
-									size={16}
-									className="text-th-status-warning-text"
-								/>
+								<Bell size={16} className="text-th-status-warning-text" />
 								<span className="text-xs text-th-status-warning-text">
 									Pending
 								</span>
@@ -99,9 +98,7 @@ export function NotificationSummary({
 						<div className="rounded-md bg-th-status-info-bg p-3">
 							<div className="flex items-center gap-2">
 								<Bell size={16} className="text-th-status-info-text" />
-								<span className="text-xs text-th-status-info-text">
-									Unread
-								</span>
+								<span className="text-xs text-th-status-info-text">Unread</span>
 							</div>
 							<p className="mt-1 text-2xl font-bold text-th-status-info-text">
 								{unread}

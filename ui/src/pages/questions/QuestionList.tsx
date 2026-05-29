@@ -173,7 +173,10 @@ export function QuestionList() {
 							{pollingEnabled ? (
 								<>
 									<ToggleRight size={18} className="text-th-text-link" />
-									<RefreshCw size={11} className="animate-spin text-th-text-link" />
+									<RefreshCw
+										size={11}
+										className="animate-spin text-th-text-link"
+									/>
 								</>
 							) : (
 								<ToggleLeft size={18} className="text-th-text-muted" />

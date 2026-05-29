@@ -10,7 +10,13 @@
  * - Submitted answer for Answered questions
  */
 
-import { ChevronDown, ChevronRight, Clock, ExternalLink, User } from "lucide-react";
+import {
+	ChevronDown,
+	ChevronRight,
+	Clock,
+	ExternalLink,
+	User,
+} from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -42,7 +48,8 @@ const PRIORITY_CLASSES: Record<string, string> = {
 	Urgent:
 		"bg-th-status-error-bg text-th-status-error-text border border-th-status-error-border",
 	High: "bg-th-status-warning-bg text-th-status-warning-text border border-th-status-warning-border",
-	Normal: "bg-th-status-info-bg text-th-status-info-text border border-th-status-info-border",
+	Normal:
+		"bg-th-status-info-bg text-th-status-info-text border border-th-status-info-border",
 	Low: "bg-th-surface-sunken text-th-text-muted border border-th-border",
 };
 
@@ -50,7 +57,11 @@ const PRIORITY_CLASSES: Record<string, string> = {
 // QuestionCard
 // ---------------------------------------------------------------------------
 
-export function QuestionCard({ question, onAnswer, onDismiss }: QuestionCardProps) {
+export function QuestionCard({
+	question,
+	onAnswer,
+	onDismiss,
+}: QuestionCardProps) {
 	const isPending = question.status === "Pending";
 	const [contextExpanded, setContextExpanded] = useState(false);
 

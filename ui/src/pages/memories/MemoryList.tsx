@@ -51,12 +51,9 @@ type ViewMode = "list" | "search";
 // ---------------------------------------------------------------------------
 
 const TYPE_STYLES: Record<string, string> = {
-	information:
-		"bg-th-status-info-bg text-th-status-info-text",
-	question:
-		"bg-th-status-warning-bg text-th-status-warning-text",
-	request:
-		"bg-th-status-info-bg text-th-status-info-text",
+	information: "bg-th-status-info-bg text-th-status-info-text",
+	question: "bg-th-status-warning-bg text-th-status-warning-text",
+	request: "bg-th-status-info-bg text-th-status-info-text",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -66,10 +63,8 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const VISIBILITY_STYLES: Record<string, string> = {
-	public:
-		"bg-th-status-success-bg text-th-status-success-text",
-	shared:
-		"bg-th-status-warning-bg text-th-status-warning-text",
+	public: "bg-th-status-success-bg text-th-status-success-text",
+	shared: "bg-th-status-warning-bg text-th-status-warning-text",
 	private: "bg-th-status-error-bg text-th-status-error-text",
 };
 
@@ -288,7 +283,8 @@ function MemoryListInner() {
 				<span
 					className={[
 						"inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-						VISIBILITY_STYLES[m.visibility] ?? "bg-th-surface-sunken text-th-text-muted",
+						VISIBILITY_STYLES[m.visibility] ??
+							"bg-th-surface-sunken text-th-text-muted",
 					].join(" ")}
 				>
 					{VISIBILITY_ICONS[m.visibility]}
@@ -324,9 +320,7 @@ function MemoryListInner() {
 			key: "created_by",
 			header: "Creator",
 			render: (m) => (
-				<span className="text-sm text-th-text-muted">
-					{m.created_by}
-				</span>
+				<span className="text-sm text-th-text-muted">{m.created_by}</span>
 			),
 		},
 		{
@@ -346,9 +340,7 @@ function MemoryListInner() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold text-th-text">
-						Memories
-					</h1>
+					<h1 className="text-2xl font-semibold text-th-text">Memories</h1>
 					<p className="mt-1 text-sm text-th-text-muted">
 						Manage stored knowledge and context.
 						{viewMode === "list" && total > 0 && (

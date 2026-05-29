@@ -62,9 +62,7 @@ describe("useApprovals", () => {
 	});
 
 	it("fetches approvals and agents on mount", async () => {
-		const { result } = renderHook(() =>
-			useApprovals({ refreshInterval: 0 }),
-		);
+		const { result } = renderHook(() => useApprovals({ refreshInterval: 0 }));
 
 		await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -76,9 +74,7 @@ describe("useApprovals", () => {
 	it("sets error on fetch failure", async () => {
 		mockListApprovals.mockRejectedValue(new Error("Server error"));
 
-		const { result } = renderHook(() =>
-			useApprovals({ refreshInterval: 0 }),
-		);
+		const { result } = renderHook(() => useApprovals({ refreshInterval: 0 }));
 
 		await waitFor(() => expect(result.current.loading).toBe(false));
 		expect(result.current.error).toBe("Server error");
@@ -97,9 +93,7 @@ describe("useApprovals", () => {
 	});
 
 	it("approve removes the approval from local state", async () => {
-		const { result } = renderHook(() =>
-			useApprovals({ refreshInterval: 0 }),
-		);
+		const { result } = renderHook(() => useApprovals({ refreshInterval: 0 }));
 
 		await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -113,9 +107,7 @@ describe("useApprovals", () => {
 	});
 
 	it("deny removes the approval from local state", async () => {
-		const { result } = renderHook(() =>
-			useApprovals({ refreshInterval: 0 }),
-		);
+		const { result } = renderHook(() => useApprovals({ refreshInterval: 0 }));
 
 		await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -129,9 +121,7 @@ describe("useApprovals", () => {
 	});
 
 	it("bulkApprove removes multiple approvals", async () => {
-		const { result } = renderHook(() =>
-			useApprovals({ refreshInterval: 0 }),
-		);
+		const { result } = renderHook(() => useApprovals({ refreshInterval: 0 }));
 
 		await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -144,9 +134,7 @@ describe("useApprovals", () => {
 	});
 
 	it("bulkDeny removes multiple approvals", async () => {
-		const { result } = renderHook(() =>
-			useApprovals({ refreshInterval: 0 }),
-		);
+		const { result } = renderHook(() => useApprovals({ refreshInterval: 0 }));
 
 		await waitFor(() => expect(result.current.loading).toBe(false));
 

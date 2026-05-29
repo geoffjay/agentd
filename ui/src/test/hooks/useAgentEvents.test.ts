@@ -20,9 +20,12 @@ describe("useAgentEvents", () => {
 		const { result } = renderHook(() => useAgentEvents());
 
 		act(() => {
-			result.current.subscribe<AgentStatusChangeEvent>("agent:status_change", (event) => {
-				received.push(event.agentId);
-			});
+			result.current.subscribe<AgentStatusChangeEvent>(
+				"agent:status_change",
+				(event) => {
+					received.push(event.agentId);
+				},
+			);
 		});
 
 		act(() => {
@@ -67,9 +70,12 @@ describe("useAgentEvents", () => {
 
 		let cleanup: (() => void) | undefined;
 		act(() => {
-			cleanup = result.current.subscribe<AgentStatusChangeEvent>("agent:status_change", (event) => {
-				received.push(event.agentId);
-			});
+			cleanup = result.current.subscribe<AgentStatusChangeEvent>(
+				"agent:status_change",
+				(event) => {
+					received.push(event.agentId);
+				},
+			);
 		});
 
 		// Emit once — should receive

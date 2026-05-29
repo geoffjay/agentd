@@ -56,12 +56,10 @@ function ConfigRow({
 }) {
 	return (
 		<div className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
-			<span className="w-36 flex-shrink-0 text-xs font-medium text-th-text-faint">
+			<span className="w-36 shrink-0 text-xs font-medium text-th-text-faint">
 				{label}
 			</span>
-			<span className="text-sm text-th-text-secondary">
-				{children}
-			</span>
+			<span className="text-sm text-th-text-secondary">{children}</span>
 		</div>
 	);
 }
@@ -143,7 +141,7 @@ function SystemPromptRow({ prompt }: { prompt: string }) {
 
 	return (
 		<div className="flex flex-col gap-0.5 sm:flex-row sm:gap-4">
-			<span className="w-36 flex-shrink-0 text-xs font-medium text-th-text-faint">
+			<span className="w-36 shrink-0 text-xs font-medium text-th-text-faint">
 				System Prompt
 			</span>
 			<div className="flex flex-col gap-1 min-w-0 flex-1">
@@ -240,10 +238,7 @@ function AddDirDialog({
 				</p>
 
 				{error && (
-					<p
-						role="alert"
-						className="mb-3 text-sm text-th-status-error-text"
-					>
+					<p role="alert" className="mb-3 text-sm text-th-status-error-text">
 						{error}
 					</p>
 				)}
@@ -349,7 +344,7 @@ function AdditionalDirsRow({ dirs, onAdd, onRemove }: AdditionalDirsRowProps) {
 	return (
 		<div className="flex flex-col gap-1">
 			<div className="flex items-center gap-2">
-				<span className="w-36 flex-shrink-0 text-xs font-medium text-th-text-faint">
+				<span className="w-36 shrink-0 text-xs font-medium text-th-text-faint">
 					Additional Dirs
 				</span>
 				{canEdit && (
@@ -369,16 +364,14 @@ function AdditionalDirsRow({ dirs, onAdd, onRemove }: AdditionalDirsRowProps) {
 			</div>
 
 			{dirs.length === 0 ? (
-				<span className="pl-0 text-sm text-th-text-faint sm:pl-40">
-					(none)
-				</span>
+				<span className="pl-0 text-sm text-th-text-faint sm:pl-40">(none)</span>
 			) : (
 				<ul className="flex flex-col gap-1 pl-0 sm:pl-40">
 					{dirs.map((dir) => (
 						<li key={dir} className="flex items-center gap-2 group">
 							<FolderOpen
 								size={13}
-								className="flex-shrink-0 text-th-text-faint"
+								className="shrink-0 text-th-text-faint"
 								aria-hidden="true"
 							/>
 							<span className="flex-1 font-mono text-xs text-th-text-secondary break-all">
@@ -467,9 +460,7 @@ export function AgentConfigPanel({
 
 					<ConfigRow label="Interactive">
 						{config.interactive ? (
-							<span className="text-th-status-success-text">
-								Yes (TTY)
-							</span>
+							<span className="text-th-status-success-text">Yes (TTY)</span>
 						) : (
 							<span className="text-th-text-muted">No</span>
 						)}
@@ -531,9 +522,7 @@ export function AgentConfigPanel({
 							{config.append_system_prompt ? (
 								<span className="text-th-status-info-text">Append</span>
 							) : (
-								<span className="text-th-text-muted">
-									Replace
-								</span>
+								<span className="text-th-text-muted">Replace</span>
 							)}
 						</ConfigRow>
 					)}

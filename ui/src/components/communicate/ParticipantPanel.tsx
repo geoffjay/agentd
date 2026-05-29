@@ -26,22 +26,37 @@ function KindIcon({ kind }: { kind: ParticipantKind }) {
 	return kind === "agent" ? (
 		<Bot size={14} className="text-th-text-link" aria-hidden="true" />
 	) : (
-		<User size={14} className="text-th-status-success-text" aria-hidden="true" />
+		<User
+			size={14}
+			className="text-th-status-success-text"
+			aria-hidden="true"
+		/>
 	);
 }
 
 function RoleIcon({ role }: { role: ParticipantRole }) {
 	if (role === "admin")
-		return <Crown size={12} className="text-th-status-warning-text" aria-label="Admin" />;
+		return (
+			<Crown
+				size={12}
+				className="text-th-status-warning-text"
+				aria-label="Admin"
+			/>
+		);
 	if (role === "observer")
-		return <Eye size={12} className="text-th-text-muted" aria-label="Observer" />;
+		return (
+			<Eye size={12} className="text-th-text-muted" aria-label="Observer" />
+		);
 	return null;
 }
 
 function ActivityDot({ state }: { state?: "idle" | "busy" }) {
 	if (!state)
 		return (
-			<span className="h-2 w-2 rounded-full bg-th-text-faint" aria-label="Unknown" />
+			<span
+				className="h-2 w-2 rounded-full bg-th-text-faint"
+				aria-label="Unknown"
+			/>
 		);
 	return (
 		<span
@@ -159,7 +174,9 @@ export function ParticipantPanel({
 
 	if (error) {
 		return (
-			<p className="px-3 py-4 text-xs text-th-status-error-text text-center">{error}</p>
+			<p className="px-3 py-4 text-xs text-th-status-error-text text-center">
+				{error}
+			</p>
 		);
 	}
 

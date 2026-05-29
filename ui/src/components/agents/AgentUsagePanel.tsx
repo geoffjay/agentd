@@ -66,17 +66,9 @@ function StatCard({ label, value, detail, ariaLabel }: StatCardProps) {
 			className="flex flex-col gap-0.5 rounded-md border border-th-border bg-th-surface-sunken px-3 py-2"
 			aria-label={ariaLabel ?? `${label}: ${value}`}
 		>
-			<span className="text-xs font-medium text-th-text-faint">
-				{label}
-			</span>
-			<span className="text-sm font-semibold text-th-text">
-				{value}
-			</span>
-			{detail && (
-				<span className="text-xs text-th-text-faint">
-					{detail}
-				</span>
-			)}
+			<span className="text-xs font-medium text-th-text-faint">{label}</span>
+			<span className="text-sm font-semibold text-th-text">{value}</span>
+			{detail && <span className="text-xs text-th-text-faint">{detail}</span>}
 		</div>
 	);
 }
@@ -225,7 +217,11 @@ export function AgentUsagePanel({
 		>
 			{/* Header */}
 			<div className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-th-text">
-				<BarChart3 size={16} aria-hidden="true" className="text-th-text-muted" />
+				<BarChart3
+					size={16}
+					aria-hidden="true"
+					className="text-th-text-muted"
+				/>
 				<span>Usage</span>
 				{usage.session_count > 0 && (
 					<span className="ml-auto rounded-full bg-th-surface-sunken px-2 py-0.5 text-xs font-medium text-th-text-muted">
@@ -267,9 +263,7 @@ export function AgentUsagePanel({
 						)}
 					</>
 				) : (
-					<p className="text-sm text-th-text-faint">
-						No active session.
-					</p>
+					<p className="text-sm text-th-text-faint">No active session.</p>
 				)}
 
 				{/* ── Auto-clear threshold ─────────────────────────────────────── */}
@@ -360,9 +354,7 @@ function AutoClearProgress({
 			>
 				<div
 					className={`h-full rounded-full transition-all duration-300 ${
-						isNear
-							? "bg-th-status-warning-dot"
-							: "bg-th-status-info-dot"
+						isNear ? "bg-th-status-warning-dot" : "bg-th-status-info-dot"
 					}`}
 					style={{ width: `${progress * 100}%` }}
 				/>

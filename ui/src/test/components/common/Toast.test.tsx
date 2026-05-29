@@ -49,9 +49,7 @@ describe("Toast", () => {
 	});
 
 	it("renders error icon for error type", () => {
-		render(
-			<Toast toast={makeToast({ type: "error" })} onDismiss={vi.fn()} />,
-		);
+		render(<Toast toast={makeToast({ type: "error" })} onDismiss={vi.fn()} />);
 		const alert = screen.getByRole("alert");
 		expect(alert.getAttribute("aria-live")).toBe("assertive");
 	});

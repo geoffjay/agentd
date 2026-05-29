@@ -157,12 +157,8 @@ export function AgentTodosPanel({ agentId }: AgentTodosPanelProps) {
 		>
 			<div className="flex items-center gap-2 border-b border-th-border px-4 py-3">
 				<Clock size={16} aria-hidden="true" className="text-th-text-muted" />
-				<h2 className="text-sm font-medium text-th-text">
-					Todos
-				</h2>
-				<p className="py-2 text-sm text-th-text-faint">
-					No todos.
-				</p>
+				<h2 className="text-sm font-medium text-th-text">Todos</h2>
+				<p className="py-2 text-sm text-th-text-faint">No todos.</p>
 			</div>
 		</section>
 	);
@@ -181,9 +177,7 @@ export function AgentTodosPanel({ agentId }: AgentTodosPanelProps) {
 		>
 			<div className="flex items-center gap-2 border-b border-th-border px-4 py-3">
 				<Clock size={16} aria-hidden="true" className="text-th-text-muted" />
-				<h2 className="text-sm font-medium text-th-text">
-					Todos
-				</h2>
+				<h2 className="text-sm font-medium text-th-text">Todos</h2>
 				{todos.length > 0 && (
 					<span className="ml-auto flex items-center gap-1.5">
 						{inProgress > 0 && (
@@ -207,9 +201,7 @@ export function AgentTodosPanel({ agentId }: AgentTodosPanelProps) {
 			{/* Body */}
 			<div className="px-4 py-2">
 				{todos.length === 0 ? (
-					<p className="py-2 text-sm text-th-text-faint">
-						No todos.
-					</p>
+					<p className="py-2 text-sm text-th-text-faint">No todos.</p>
 				) : (
 					<ul
 						className="divide-y divide-th-border"

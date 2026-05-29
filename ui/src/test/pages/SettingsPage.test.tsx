@@ -40,7 +40,9 @@ vi.mock("@/hooks/useTheme", () => ({
 		theme: {},
 		setTheme: vi.fn(),
 	}),
-	ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+	ThemeProvider: ({ children }: { children: React.ReactNode }) => (
+		<>{children}</>
+	),
 }));
 
 import { SettingsPage } from "@/pages/SettingsPage";

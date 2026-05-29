@@ -107,9 +107,7 @@ export function SystemHealthPanel({
 		<div className="rounded-lg border border-th-border bg-th-surface p-5">
 			<div className="flex items-center gap-2 mb-4">
 				<Activity size={16} className="text-th-text-link" />
-				<h3 className="text-sm font-semibold text-th-text">
-					System Health
-				</h3>
+				<h3 className="text-sm font-semibold text-th-text">System Health</h3>
 			</div>
 
 			{loading ? (
@@ -148,25 +146,17 @@ export function SystemHealthPanel({
 											className="text-th-status-success-text"
 										/>
 									) : (
-										<XCircle
-											size={15}
-											className="text-th-status-error-text"
-										/>
+										<XCircle size={15} className="text-th-status-error-text" />
 									)}
 								</div>
 
 								{/* Port */}
-								<p className="text-xs text-th-text-faint">
-									Port {svc.port}
-								</p>
+								<p className="text-xs text-th-text-faint">Port {svc.port}</p>
 
 								{/* Response time + uptime */}
 								<div className="flex items-center justify-between">
 									<div className="flex items-center gap-1">
-										<Clock
-											size={12}
-											className="text-th-text-faint"
-										/>
+										<Clock size={12} className="text-th-text-faint" />
 										<span
 											className={`text-xs tabular-nums font-medium ${responseClass(stat?.latestMs)}`}
 										>

@@ -242,9 +242,7 @@ function NotificationListInner() {
 			key: "title",
 			header: "Title",
 			render: (n) => (
-				<span className="text-sm font-medium text-th-text">
-					{n.title}
-				</span>
+				<span className="text-sm font-medium text-th-text">{n.title}</span>
 			),
 		},
 		{
@@ -286,9 +284,7 @@ function NotificationListInner() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3">
-					<h1 className="text-2xl font-semibold text-th-text">
-						Notifications
-					</h1>
+					<h1 className="text-2xl font-semibold text-th-text">Notifications</h1>
 					<NotificationBadge count={pendingCount} showZero />
 				</div>
 

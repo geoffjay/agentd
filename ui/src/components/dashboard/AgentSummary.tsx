@@ -182,9 +182,7 @@ export function AgentSummary({
 							/>
 						</div>
 					) : (
-						<p className="mt-4 text-sm text-th-text-muted">
-							No agents yet.
-						</p>
+						<p className="mt-4 text-sm text-th-text-muted">No agents yet.</p>
 					)}
 
 					{/* Status count pills */}

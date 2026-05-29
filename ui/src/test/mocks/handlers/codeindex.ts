@@ -25,9 +25,7 @@ export const codeIndexHandlers = [
 	),
 
 	// List repositories
-	http.get(`${BASE}/repositories`, () =>
-		HttpResponse.json(DEFAULT_REPOS),
-	),
+	http.get(`${BASE}/repositories`, () => HttpResponse.json(DEFAULT_REPOS)),
 
 	// Add repository
 	http.post(`${BASE}/repositories`, async ({ request }) => {
@@ -49,8 +47,9 @@ export const codeIndexHandlers = [
 	}),
 
 	// Delete repository
-	http.delete(`${BASE}/repositories/:id`, () =>
-		new HttpResponse(null, { status: 204 }),
+	http.delete(
+		`${BASE}/repositories/:id`,
+		() => new HttpResponse(null, { status: 204 }),
 	),
 
 	// Repository status

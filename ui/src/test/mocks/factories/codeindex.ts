@@ -54,9 +54,7 @@ export function makeRepoList(
 	return Array.from({ length: count }, () => makeRepoRecord(overrides));
 }
 
-export function makeListReposResponse(
-	repos?: RepoRecord[],
-): ListReposResponse {
+export function makeListReposResponse(repos?: RepoRecord[]): ListReposResponse {
 	const items = repos ?? makeRepoList(3);
 	return { repositories: items, total: items.length };
 }

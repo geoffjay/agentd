@@ -103,7 +103,9 @@ function ToolUseLine({ ts, toolName, summary, toolInput }: ToolUseLineProps) {
 				onClick={() => setExpanded((v) => !v)}
 				className="flex w-full items-start gap-2 rounded px-1 text-left hover:bg-th-surface-hover"
 			>
-				<span className="flex-shrink-0 select-none text-th-text-muted">{ts}</span>
+				<span className="flex-shrink-0 select-none text-th-text-muted">
+					{ts}
+				</span>
 				<span className="flex-shrink-0 text-th-status-info-text">
 					{expanded ? (
 						<ChevronDown size={12} aria-hidden="true" className="mt-0.5" />

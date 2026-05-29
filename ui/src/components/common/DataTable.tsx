@@ -177,9 +177,12 @@ export function DataTable<T>({
 	}
 
 	const BULK_VARIANT_STYLES: Record<string, string> = {
-		default: "bg-th-surface-hover text-th-text hover:opacity-90 focus:ring-th-focus-ring",
-		danger: "bg-th-status-error-dot text-th-accent-text hover:opacity-90 focus:ring-th-focus-ring",
-		success: "bg-th-status-success-dot text-th-accent-text hover:opacity-90 focus:ring-th-focus-ring",
+		default:
+			"bg-th-surface-hover text-th-text hover:opacity-90 focus:ring-th-focus-ring",
+		danger:
+			"bg-th-status-error-dot text-th-accent-text hover:opacity-90 focus:ring-th-focus-ring",
+		success:
+			"bg-th-status-success-dot text-th-accent-text hover:opacity-90 focus:ring-th-focus-ring",
 	};
 
 	return (
@@ -272,9 +275,7 @@ export function DataTable<T>({
 						) : data.length === 0 ? (
 							<tr>
 								<td colSpan={colCount} className="py-12 text-center">
-									<p className="text-sm text-th-text-muted">
-										{emptyTitle}
-									</p>
+									<p className="text-sm text-th-text-muted">{emptyTitle}</p>
 									{emptyDescription && (
 										<p className="mt-1 text-xs text-th-text-muted">
 											{emptyDescription}
@@ -315,8 +316,7 @@ export function DataTable<T>({
 												key={col.key}
 												className={[
 													"px-4 py-3 text-sm",
-													col.cellClassName ??
-														"text-th-text-muted",
+													col.cellClassName ?? "text-th-text-muted",
 												].join(" ")}
 											>
 												{col.render(row)}

@@ -20,14 +20,10 @@ import type { RepoRecord, RepoStatus } from "@/types/codeindex";
 // ---------------------------------------------------------------------------
 
 const STATUS_STYLES: Record<RepoStatus, string> = {
-	pending:
-		"bg-th-status-warning-bg text-th-status-warning-text",
-	indexing:
-		"bg-th-status-info-bg text-th-status-info-text",
-	ready:
-		"bg-th-status-success-bg text-th-status-success-text",
-	error:
-		"bg-th-status-error-bg text-th-status-error-text",
+	pending: "bg-th-status-warning-bg text-th-status-warning-text",
+	indexing: "bg-th-status-info-bg text-th-status-info-text",
+	ready: "bg-th-status-success-bg text-th-status-success-text",
+	error: "bg-th-status-error-bg text-th-status-error-text",
 };
 
 function StatusBadge({ status }: { status: RepoStatus }) {
@@ -36,8 +32,7 @@ function StatusBadge({ status }: { status: RepoStatus }) {
 		<span
 			className={[
 				"inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-				STATUS_STYLES[status] ??
-					"bg-th-surface-sunken text-th-text-muted",
+				STATUS_STYLES[status] ?? "bg-th-surface-sunken text-th-text-muted",
 			].join(" ")}
 		>
 			{label}
@@ -134,10 +129,7 @@ export function RepositoryList({
 							title="Reindex"
 							className="rounded p-1.5 text-th-text-muted hover:text-th-text hover:bg-th-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
-							<RefreshCw
-								size={15}
-								className={busy ? "animate-spin" : ""}
-							/>
+							<RefreshCw size={15} className={busy ? "animate-spin" : ""} />
 						</button>
 						<button
 							type="button"

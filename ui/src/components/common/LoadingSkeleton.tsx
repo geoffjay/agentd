@@ -11,10 +11,7 @@ export function Skeleton({ className = "" }: SkeletonProps) {
 	return (
 		<div
 			aria-hidden="true"
-			className={[
-				"animate-pulse rounded bg-th-border",
-				className,
-			].join(" ")}
+			className={["animate-pulse rounded bg-th-border", className].join(" ")}
 		/>
 	);
 }

@@ -49,18 +49,11 @@ export function ServiceHealthCard({ service }: ServiceHealthCardProps) {
 			<div className="flex items-start justify-between">
 				<div className="flex items-center gap-3">
 					<div className="flex h-10 w-10 items-center justify-center rounded-full bg-th-accent-subtle">
-						<Server
-							size={20}
-							className="text-th-text-link"
-						/>
+						<Server size={20} className="text-th-text-link" />
 					</div>
 					<div>
-						<p className="font-semibold text-th-text">
-							{service.name}
-						</p>
-						<p className="text-xs text-th-text-muted">
-							Port {service.port}
-						</p>
+						<p className="font-semibold text-th-text">{service.name}</p>
+						<p className="text-xs text-th-text-muted">Port {service.port}</p>
 					</div>
 				</div>
 				<StatusBadge status={service.status} />

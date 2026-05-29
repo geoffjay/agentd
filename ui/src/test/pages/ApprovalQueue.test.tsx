@@ -35,16 +35,12 @@ describe("ApprovalBadge", () => {
 
 	it("sets correct aria-label for single approval", () => {
 		render(<ApprovalBadge count={1} />);
-		expect(
-			screen.getByLabelText("1 pending approval"),
-		).toBeInTheDocument();
+		expect(screen.getByLabelText("1 pending approval")).toBeInTheDocument();
 	});
 
 	it("sets correct aria-label for multiple approvals", () => {
 		render(<ApprovalBadge count={3} />);
-		expect(
-			screen.getByLabelText("3 pending approvals"),
-		).toBeInTheDocument();
+		expect(screen.getByLabelText("3 pending approvals")).toBeInTheDocument();
 	});
 
 	it("applies pulse animation when count > 0", () => {
@@ -83,11 +79,7 @@ describe("ApprovalActions", () => {
 	it("calls onDeny with the approval id", () => {
 		const onDeny = vi.fn();
 		render(
-			<ApprovalActions
-				approvalId="ap-1"
-				onApprove={vi.fn()}
-				onDeny={onDeny}
-			/>,
+			<ApprovalActions approvalId="ap-1" onApprove={vi.fn()} onDeny={onDeny} />,
 		);
 		fireEvent.click(screen.getByRole("button", { name: "Deny" }));
 		expect(onDeny).toHaveBeenCalledWith("ap-1");

@@ -87,13 +87,17 @@ export function useIndexService(): UseIndexServiceResult {
 	const [reposError, setReposError] = useState<string | undefined>();
 	const [repoBusyIds, setRepoBusyIds] = useState<Set<string>>(new Set());
 
-	const [searchResults, setSearchResults] = useState<CodeSearchResultItem[]>([]);
+	const [searchResults, setSearchResults] = useState<CodeSearchResultItem[]>(
+		[],
+	);
 	const [searchTotal, setSearchTotal] = useState(0);
 	const [searchLoading, setSearchLoading] = useState(false);
 	const [searchError, setSearchError] = useState<string | undefined>();
 	const [searchQueryMs, setSearchQueryMs] = useState<number | undefined>();
 
-	const [embeddingPoints, setEmbeddingPoints] = useState<EmbeddingSamplePoint[]>([]);
+	const [embeddingPoints, setEmbeddingPoints] = useState<
+		EmbeddingSamplePoint[]
+	>([]);
 	const [embeddingTotal, setEmbeddingTotal] = useState(0);
 	const [embeddingSampled, setEmbeddingSampled] = useState(0);
 	const [embeddingLoading, setEmbeddingLoading] = useState(false);
@@ -219,9 +223,7 @@ export function useIndexService(): UseIndexServiceResult {
 			try {
 				const updated = await indexClient.reindexRepository(id);
 				if (!mountedRef.current) return false;
-				setRepositories((prev) =>
-					prev.map((r) => (r.id === id ? updated : r)),
-				);
+				setRepositories((prev) => prev.map((r) => (r.id === id ? updated : r)));
 				return true;
 			} catch (err) {
 				setReposError(
@@ -239,26 +241,27 @@ export function useIndexService(): UseIndexServiceResult {
 	// Search
 	// -------------------------------------------------------------------------
 
-	const runSearch = useCallback(async (req: CodeSearchRequest): Promise<void> => {
-		setSearchLoading(true);
-		setSearchError(undefined);
-		try {
-			const res = await indexClient.search(req);
-			if (!mountedRef.current) return;
-			setSearchResults(res.results);
-			setSearchTotal(res.total);
-			setSearchQueryMs(res.query_time_ms);
-		} catch (err) {
-			if (!mountedRef.current) return;
-			setSearchError(
-				err instanceof Error ? err.message : "Search failed",
-			);
-			setSearchResults([]);
-			setSearchTotal(0);
-		} finally {
-			if (mountedRef.current) setSearchLoading(false);
-		}
-	}, []);
+	const runSearch = useCallback(
+		async (req: CodeSearchRequest): Promise<void> => {
+			setSearchLoading(true);
+			setSearchError(undefined);
+			try {
+				const res = await indexClient.search(req);
+				if (!mountedRef.current) return;
+				setSearchResults(res.results);
+				setSearchTotal(res.total);
+				setSearchQueryMs(res.query_time_ms);
+			} catch (err) {
+				if (!mountedRef.current) return;
+				setSearchError(err instanceof Error ? err.message : "Search failed");
+				setSearchResults([]);
+				setSearchTotal(0);
+			} finally {
+				if (mountedRef.current) setSearchLoading(false);
+			}
+		},
+		[],
+	);
 
 	const clearSearch = useCallback(() => {
 		setSearchResults([]);
@@ -278,7 +281,8 @@ export function useIndexService(): UseIndexServiceResult {
 			setEmbeddingError(undefined);
 			try {
 				const res = await indexClient.getEmbeddingSample(repoId, limit);
-				if (!mountedRef.current || gen !== embeddingSampleGenRef.current) return;
+				if (!mountedRef.current || gen !== embeddingSampleGenRef.current)
+					return;
 				if (!res || !Array.isArray(res.points)) {
 					setEmbeddingError("Unexpected response from server — try again");
 					return;
@@ -287,9 +291,12 @@ export function useIndexService(): UseIndexServiceResult {
 				setEmbeddingTotal(res.total_chunks ?? 0);
 				setEmbeddingSampled(res.sampled ?? res.points.length);
 			} catch (err) {
-				if (!mountedRef.current || gen !== embeddingSampleGenRef.current) return;
+				if (!mountedRef.current || gen !== embeddingSampleGenRef.current)
+					return;
 				setEmbeddingError(
-					err instanceof Error ? err.message : "Failed to fetch embedding sample",
+					err instanceof Error
+						? err.message
+						: "Failed to fetch embedding sample",
 				);
 				setEmbeddingPoints([]);
 				setEmbeddingTotal(0);
@@ -364,7 +371,9 @@ export function useIndexService(): UseIndexServiceResult {
 		addRepository,
 		deleteRepository,
 		reindexRepository,
-		refetchRepos: () => { void fetchRepos(); },
+		refetchRepos: () => {
+			void fetchRepos();
+		},
 		searchResults,
 		searchTotal,
 		searchLoading,

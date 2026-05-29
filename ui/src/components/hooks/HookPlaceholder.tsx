@@ -49,9 +49,7 @@ function PlannedFeatureCard({
 				</div>
 				<h3 className="font-medium text-th-text">{title}</h3>
 			</div>
-			<p className="text-sm text-th-text-muted mb-3">
-				{description}
-			</p>
+			<p className="text-sm text-th-text-muted mb-3">{description}</p>
 			<ul className="space-y-1">
 				{items.map((item) => (
 					<li
@@ -74,9 +72,7 @@ function ServiceStatusBanner({ port }: { port: number }) {
 				<Activity size={18} className="text-th-text-muted" />
 			</div>
 			<div className="flex-1 min-w-0">
-				<p className="text-sm font-medium text-th-text">
-					Hook Service
-				</p>
+				<p className="text-sm font-medium text-th-text">Hook Service</p>
 				<p className="text-xs text-th-text-muted">Port {port}</p>
 			</div>
 			<StatusBadge status="unknown" />
@@ -129,12 +125,7 @@ export function HookPlaceholder() {
 				</h3>
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					<PlannedFeatureCard
-						icon={
-							<GitBranch
-								size={18}
-								className="text-th-text-link"
-							/>
-						}
+						icon={<GitBranch size={18} className="text-th-text-link" />}
 						title="Git Hooks"
 						description="Monitor git lifecycle events in your repositories."
 						items={[
@@ -146,12 +137,7 @@ export function HookPlaceholder() {
 						]}
 					/>
 					<PlannedFeatureCard
-						icon={
-							<Code2
-								size={18}
-								className="text-th-text-link"
-							/>
-						}
+						icon={<Code2 size={18} className="text-th-text-link" />}
 						title="System Hooks"
 						description="React to system-level and process events."
 						items={[
@@ -163,12 +149,7 @@ export function HookPlaceholder() {
 						]}
 					/>
 					<PlannedFeatureCard
-						icon={
-							<Activity
-								size={18}
-								className="text-th-text-link"
-							/>
-						}
+						icon={<Activity size={18} className="text-th-text-link" />}
 						title="Event Log"
 						description="Full audit trail of every hook execution."
 						items={[
@@ -180,12 +161,7 @@ export function HookPlaceholder() {
 						]}
 					/>
 					<PlannedFeatureCard
-						icon={
-							<Settings
-								size={18}
-								className="text-th-text-link"
-							/>
-						}
+						icon={<Settings size={18} className="text-th-text-link" />}
 						title="Hook Configuration"
 						description="Enable, disable, and tune individual hooks."
 						items={[
@@ -197,12 +173,7 @@ export function HookPlaceholder() {
 						]}
 					/>
 					<PlannedFeatureCard
-						icon={
-							<Bell
-								size={18}
-								className="text-th-text-link"
-							/>
-						}
+						icon={<Bell size={18} className="text-th-text-link" />}
 						title="Notification Triggers"
 						description="Automatically create notifications when hooks fire."
 						items={[

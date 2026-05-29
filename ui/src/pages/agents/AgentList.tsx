@@ -155,9 +155,7 @@ export function AgentList() {
 			{/* Page header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold text-th-text">
-						Agents
-					</h1>
+					<h1 className="text-2xl font-semibold text-th-text">Agents</h1>
 					<p className="mt-1 text-sm text-th-text-muted">
 						Manage and monitor running agents.
 					</p>

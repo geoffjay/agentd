@@ -153,9 +153,7 @@ describe("QuestionDetail", () => {
 			new Error("Network error"),
 		);
 		renderDetail();
-		await waitFor(() =>
-			expect(screen.getByText("Network error")).toBeTruthy(),
-		);
+		await waitFor(() => expect(screen.getByText("Network error")).toBeTruthy());
 	});
 
 	it("shows retry button on error", async () => {

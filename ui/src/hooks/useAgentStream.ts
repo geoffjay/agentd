@@ -274,8 +274,7 @@ export function useAgentStream(
 					handleEventFrame(frame);
 					return;
 				case "gap": {
-					const skipped =
-						typeof frame.skipped === "number" ? frame.skipped : 0;
+					const skipped = typeof frame.skipped === "number" ? frame.skipped : 0;
 					const gap = makeGapLine(skipped, new Date().toISOString());
 					setLines((prev) => {
 						const next = capLines(prev, [gap]);

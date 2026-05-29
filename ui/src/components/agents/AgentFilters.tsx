@@ -92,9 +92,7 @@ export function AgentFilters({
 					{displayCount}
 				</span>{" "}
 				of{" "}
-				<span className="font-medium text-th-text-secondary">
-					{totalCount}
-				</span>{" "}
+				<span className="font-medium text-th-text-secondary">{totalCount}</span>{" "}
 				{totalCount === 1 ? "agent" : "agents"}
 			</p>
 		</div>

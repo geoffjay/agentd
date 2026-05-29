@@ -76,9 +76,7 @@ export function CostOverviewChart({
 			aria-label="Cost overview bar chart"
 		>
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-sm font-semibold text-th-text">
-					Cost per Agent
-				</h3>
+				<h3 className="text-sm font-semibold text-th-text">Cost per Agent</h3>
 				{hasData && (
 					<span className="text-xs text-th-text-muted">
 						Total:{" "}
@@ -132,9 +130,7 @@ export function CostOverviewChart({
 										</div>
 										<div className="space-y-0.5">
 											<div className="flex justify-between gap-4">
-												<span className="text-th-text-muted">
-													Cost:
-												</span>
+												<span className="text-th-text-muted">Cost:</span>
 												<span className="font-medium text-th-text">
 													{formatUsd(row.cost as number)}
 												</span>
@@ -156,9 +152,7 @@ export function CostOverviewChart({
 												</span>
 											</div>
 											<div className="flex justify-between gap-4">
-												<span className="text-th-text-muted">
-													Sessions:
-												</span>
+												<span className="text-th-text-muted">Sessions:</span>
 												<span className="text-th-text-secondary">
 													{row.sessions as number}
 												</span>

@@ -232,11 +232,15 @@ export function RoomSettingsPanel({
 					<dl className="space-y-1 text-xs">
 						<div className="flex gap-2">
 							<dt className="w-20 shrink-0 text-th-text-muted">Type</dt>
-							<dd className="text-th-text-secondary capitalize">{room.room_type}</dd>
+							<dd className="text-th-text-secondary capitalize">
+								{room.room_type}
+							</dd>
 						</div>
 						<div className="flex gap-2">
 							<dt className="w-20 shrink-0 text-th-text-muted">Created by</dt>
-							<dd className="text-th-text-secondary truncate">{room.created_by}</dd>
+							<dd className="text-th-text-secondary truncate">
+								{room.created_by}
+							</dd>
 						</div>
 						<div className="flex gap-2">
 							<dt className="w-20 shrink-0 text-th-text-muted">Created</dt>
@@ -280,7 +284,9 @@ export function RoomSettingsPanel({
 								className="w-full resize-none rounded-md border border-th-border-input bg-th-input px-3 py-1.5 text-xs text-th-text placeholder-th-text-faint focus:outline-none focus:ring-2 focus:ring-th-focus-ring"
 							/>
 						</div>
-						{saveError && <p className="text-xs text-th-status-error-text">{saveError}</p>}
+						{saveError && (
+							<p className="text-xs text-th-status-error-text">{saveError}</p>
+						)}
 						<button
 							type="button"
 							onClick={() => void handleSaveInfo()}
@@ -369,7 +375,9 @@ export function RoomSettingsPanel({
 								<option value="observer">Observer</option>
 							</select>
 						</div>
-						{addError && <p className="text-xs text-th-status-error-text">{addError}</p>}
+						{addError && (
+							<p className="text-xs text-th-status-error-text">{addError}</p>
+						)}
 						<button
 							type="button"
 							onClick={() => void handleAddParticipant()}
