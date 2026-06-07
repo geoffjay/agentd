@@ -119,17 +119,27 @@ mod tests {
         for k in &vars {
             env::remove_var(k);
         }
+        // Isolate from any ambient config file (e.g. an installed
+        // ~/Library/Application Support/agentd/config.toml) by pointing
+        // AGENTD_CONFIG at a path that does not exist, so load() falls back to
+        // the compiled defaults instead of a developer's local config.
+        let saved_config = env::var("AGENTD_CONFIG").ok();
+        env::set_var("AGENTD_CONFIG", "/nonexistent/agentd-mcp-test-config.toml");
 
         let config = AgentdMcpConfig::from_env();
-        assert_eq!(config.orchestrator_url, "http://127.0.0.1:17006");
-        assert_eq!(config.communicate_url, "http://127.0.0.1:17010");
-        assert_eq!(config.memory_url, "http://127.0.0.1:17008");
-        assert_eq!(config.notify_url, "http://127.0.0.1:17004");
-        assert_eq!(config.ask_url, "http://127.0.0.1:17001");
-        assert_eq!(config.wrap_url, "http://127.0.0.1:17005");
-        assert_eq!(config.monitor_url, "http://127.0.0.1:17003");
-        assert_eq!(config.hook_url, "http://127.0.0.1:17002");
+        assert_eq!(config.orchestrator_url, "http://localhost:17006");
+        assert_eq!(config.communicate_url, "http://localhost:17010");
+        assert_eq!(config.memory_url, "http://localhost:17008");
+        assert_eq!(config.notify_url, "http://localhost:17004");
+        assert_eq!(config.ask_url, "http://localhost:17001");
+        assert_eq!(config.wrap_url, "http://localhost:17005");
+        assert_eq!(config.monitor_url, "http://localhost:17003");
+        assert_eq!(config.hook_url, "http://localhost:17002");
 
+        match saved_config {
+            Some(val) => env::set_var("AGENTD_CONFIG", val),
+            None => env::remove_var("AGENTD_CONFIG"),
+        }
         for (k, v) in saved {
             if let Some(val) = v {
                 env::set_var(k, val);

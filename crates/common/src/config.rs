@@ -1487,6 +1487,8 @@ history_size = 1000
 
     #[test]
     fn test_load_missing_file_uses_defaults() {
+        // load_from_path reads env vars, so serialise against env-mutating tests.
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let cfg =
             load_from_path(Some(std::path::Path::new("/tmp/agentd-nonexistent-config-test.toml")))
                 .expect("load should not fail for missing file");
@@ -1498,6 +1500,8 @@ history_size = 1000
 
     #[test]
     fn test_load_none_path_uses_defaults() {
+        // load_from_path reads env vars, so serialise against env-mutating tests.
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let cfg = load_from_path(None).expect("load failed");
         assert_eq!(cfg.services.ask.port, 17001);
     }
@@ -1820,6 +1824,9 @@ port = 13003
     #[test]
     fn test_hook_notify_url_from_file() {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // The ambient environment (e.g. direnv) may set this, and env beats
+        // file — remove it so we actually exercise the file layer.
+        env::remove_var("AGENTD_NOTIFY_SERVICE_URL");
         let mut f = tempfile::NamedTempFile::new().unwrap();
         use std::io::Write;
         writeln!(f, "[services.hook]\nnotify_service_url = \"http://notify:9004\"").unwrap();

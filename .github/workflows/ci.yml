@@ -78,7 +78,9 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: ./cobertura.xml
-          fail_ci_if_error: true
+          # Coverage upload is informational; a Codecov-side uploader/keyserver
+          # issue must not fail CI when tests themselves pass.
+          fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Run tests (macOS)
@@ -108,7 +110,9 @@ jobs:
         with:
           files: ui/coverage/lcov.info
           flags: frontend
-          fail_ci_if_error: true
+          # Coverage upload is informational; a Codecov-side uploader/keyserver
+          # issue must not fail CI when tests themselves pass.
+          fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
   clippy:

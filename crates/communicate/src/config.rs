@@ -68,8 +68,11 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let saved_host = env::var("AGENTD_HOST").ok();
         let saved_port = env::var("AGENTD_PORT").ok();
+        let saved_cfg = env::var("AGENTD_CONFIG").ok();
         env::remove_var("AGENTD_HOST");
         env::remove_var("AGENTD_PORT");
+        // Point away from the real config file so compiled defaults are used.
+        env::set_var("AGENTD_CONFIG", "/tmp/agentd-test-nonexistent-defaults.toml");
 
         let config = CommunicateConfig::load();
 
@@ -78,6 +81,10 @@ mod tests {
         }
         if let Some(v) = saved_port {
             env::set_var("AGENTD_PORT", v);
+        }
+        match saved_cfg {
+            Some(v) => env::set_var("AGENTD_CONFIG", v),
+            None => env::remove_var("AGENTD_CONFIG"),
         }
 
         assert_eq!(config.host, "127.0.0.1");

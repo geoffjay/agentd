@@ -128,11 +128,14 @@ mod tests {
         let saved_host = env::var("AGENTD_HOST").ok();
         let saved_port = env::var("AGENTD_PORT").ok();
         let saved_backend = env::var("AGENTD_BACKEND").ok();
+        let saved_cfg = env::var("AGENTD_CONFIG").ok();
         env::remove_var("AGENTD_HOST");
         env::remove_var("AGENTD_PORT");
         env::remove_var("AGENTD_BACKEND");
         env::remove_var("AGENTD_WRAP_HISTORY_BYTES");
         env::remove_var("AGENTD_WRAP_CHANNEL_CAPACITY");
+        // Point away from the real config file so compiled defaults are used.
+        env::set_var("AGENTD_CONFIG", "/tmp/agentd-test-nonexistent-defaults.toml");
 
         let config = WrapConfig::load();
 
@@ -144,6 +147,10 @@ mod tests {
         }
         if let Some(v) = saved_backend {
             env::set_var("AGENTD_BACKEND", v);
+        }
+        match saved_cfg {
+            Some(v) => env::set_var("AGENTD_CONFIG", v),
+            None => env::remove_var("AGENTD_CONFIG"),
         }
 
         assert_eq!(config.host, "127.0.0.1");

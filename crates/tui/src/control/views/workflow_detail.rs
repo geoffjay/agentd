@@ -134,7 +134,7 @@ fn render_dispatches(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Sort most-recent first.
     let mut dispatches = app.workflow_dispatches.clone();
-    dispatches.sort_by(|a, b| b.dispatched_at.cmp(&a.dispatched_at));
+    dispatches.sort_by_key(|b| std::cmp::Reverse(b.dispatched_at));
 
     let visible_rows = area.height.saturating_sub(4) as usize; // borders + header + margin
     let max_scroll = dispatches.len().saturating_sub(visible_rows);

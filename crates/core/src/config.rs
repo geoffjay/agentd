@@ -70,9 +70,19 @@ mod tests {
         let saved_port = env::var("AGENTD_PORT").ok();
         env::remove_var("AGENTD_HOST");
         env::remove_var("AGENTD_PORT");
+        // Isolate from any ambient config file (e.g. an installed
+        // ~/Library/Application Support/agentd/config.toml) by pointing
+        // AGENTD_CONFIG at a path that does not exist, so load() falls back to
+        // the compiled defaults instead of a developer's local config.
+        let saved_config = env::var("AGENTD_CONFIG").ok();
+        env::set_var("AGENTD_CONFIG", "/nonexistent/agentd-core-test-config.toml");
 
         let config = CoreConfig::load();
 
+        match saved_config {
+            Some(v) => env::set_var("AGENTD_CONFIG", v),
+            None => env::remove_var("AGENTD_CONFIG"),
+        }
         if let Some(v) = saved_host {
             env::set_var("AGENTD_HOST", v);
         }
