@@ -15,7 +15,7 @@ anyhow = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { workspace = true, features = ["json"] }
 colored = "2.1"
 chrono = { workspace = true }
 uuid = { version = "1.11", features = ["serde", "v4"] }
