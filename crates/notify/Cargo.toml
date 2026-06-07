@@ -24,7 +24,7 @@ tower = "0.5"
 tower-http = { workspace = true, features = ["cors"] }
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { workspace = true, features = ["json"] }
 
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
