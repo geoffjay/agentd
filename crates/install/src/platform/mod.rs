@@ -8,8 +8,8 @@
 pub mod linux;
 pub mod macos;
 
+use crate::InstallPaths;
 use anyhow::Result;
-use std::path::Path;
 
 /// Metadata for a managed service.
 pub struct ServiceInfo {
@@ -95,7 +95,7 @@ pub fn get_service_info(name: &str) -> Option<&'static ServiceInfo> {
 /// Platform-specific service management operations.
 pub trait Platform {
     /// Install binaries and service configuration files.
-    fn install(&self, bin_dir: &Path) -> Result<()>;
+    fn install(&self, paths: &InstallPaths) -> Result<()>;
 
     /// Remove all installed components.
     fn uninstall(&self) -> Result<()>;

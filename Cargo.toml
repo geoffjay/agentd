@@ -8,6 +8,7 @@ members = [
     "crates/core",
     "crates/hook",
     "crates/index",
+    "crates/install",
     "crates/mcp",
     "crates/memory",
     "crates/monitor",

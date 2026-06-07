@@ -63,6 +63,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentd-install"
+version = "0.4.1"
+dependencies = [
+ "agentd-common",
+ "anyhow",
+ "colored 2.2.0",
+ "communicate",
+ "memory",
+ "notify 0.4.1",
+ "orchestrator",
+ "tokio",
+ "toml",
+]
+
+[[package]]
 name = "agentd-mcp"
 version = "0.4.1"
 dependencies = [
@@ -1089,6 +1104,7 @@ name = "cli"
 version = "0.4.1"
 dependencies = [
  "agentd-common",
+ "agentd-install",
  "agentd-mcp",
  "agentd-tui",
  "anyhow",
@@ -8868,14 +8884,10 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "agentd-common",
+ "agentd-install",
  "anyhow",
  "colored 2.2.0",
- "communicate",
- "memory",
- "notify 0.4.1",
- "orchestrator",
  "tokio",
- "toml",
 ]
 
 [[package]]

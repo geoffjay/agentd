@@ -1,29 +1,29 @@
-//! agentd xtask — Build and installation automation.
+//! agentd xtask — Build and installation automation (developer-only).
 //!
-//! Provides commands for installing agentd binaries, managing LaunchAgent/systemd
-//! service definitions, generating shell completions, and managing SeaORM migrations
-//! and entity generation.
+//! The reusable install / service-management / migration logic lives in the
+//! `agentd-install` crate so the shipped `agent` binary can run it on
+//! production hosts. This crate is the *developer* front-end: it builds the
+//! binaries and UI from the source tree first, then delegates the platform
+//! setup to `agentd-install`.
 //!
 //! # Commands
 //!
-//! - `install-user` — Build and install all binaries for the current user
-//! - `install-completions` — Generate and install shell completions
+//! - `install-user` / `install` — Build everything and install for the current user
 //! - `uninstall` — Remove all installed components
 //! - `start-services` / `stop-services` / `restart-services` — Service lifecycle
+//! - `start-service` / `stop-service` / `restart-service` <name> — Single-service lifecycle
 //! - `service-status` — Check running state of all services
 //! - `generate-entities [--service <name>]` — Regenerate SeaORM entity files via sea-orm-cli
 //! - `migrate [--service <name>]` — Apply pending SeaORM migrations
 //! - `migrate-status [--service <name>]` — Show migration status for all databases
+//! - `release [--dry-run]` — Tag the current version and prepare a release
 
-mod install_config;
-mod platform;
-
+use agentd_install::{detect_platform, get_prefix, home_dir, validate_service_name, InstallPaths};
 use anyhow::{Context, Result};
 use colored::Colorize;
-use platform::SERVICE_NAMES;
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 fn main() -> Result<()> {
@@ -31,21 +31,26 @@ fn main() -> Result<()> {
     let task = args.get(1).map(|s| s.as_str());
 
     match task {
-        Some("install") => install()?,
-        Some("install-user") => install_user()?,
+        Some("install") | Some("install-user") => install_user()?,
         Some("install-completions") => install_completions()?,
         Some("uninstall") => uninstall()?,
-        Some("start-services") => start_services()?,
-        Some("stop-services") => stop_services()?,
+        Some("start-services") => with_summary("Starting services...", "Services started", || {
+            detect_platform().start_services()
+        })?,
+        Some("stop-services") => with_summary("Stopping services...", "Services stopped", || {
+            detect_platform().stop_services()
+        })?,
         Some("restart-services") => restart_services()?,
         Some("service-status") => service_status()?,
         Some("start-service") => {
             let service = args.get(2).context("Service name required")?;
-            start_service(service)?;
+            validate_service_name(service)?;
+            detect_platform().start_service(service)?;
         }
         Some("stop-service") => {
             let service = args.get(2).context("Service name required")?;
-            stop_service(service)?;
+            validate_service_name(service)?;
+            detect_platform().stop_service(service)?;
         }
         Some("restart-service") => {
             let service = args.get(2).context("Service name required")?;
@@ -61,11 +66,13 @@ fn main() -> Result<()> {
         }
         Some("migrate") => {
             let service = parse_service_flag(&args);
-            tokio::runtime::Runtime::new()?.block_on(migrate(service.as_deref()))?;
+            tokio::runtime::Runtime::new()?
+                .block_on(agentd_install::migrate::migrate(service.as_deref()))?;
         }
         Some("migrate-status") => {
             let service = parse_service_flag(&args);
-            tokio::runtime::Runtime::new()?.block_on(migrate_status(service.as_deref()))?;
+            tokio::runtime::Runtime::new()?
+                .block_on(agentd_install::migrate::migrate_status(service.as_deref()))?;
         }
         _ => print_help(),
     }
@@ -76,8 +83,7 @@ fn print_help() {
     println!("{}", "agentd xtask commands:".blue().bold());
     println!();
     println!("{}", "Installation:".cyan());
-    println!("  {} - Install for current user", "install-user".green());
-    println!("  {} - System-wide install (requires sudo)", "install".green());
+    println!("  {} - Build & install for current user", "install-user".green());
     println!("  {} - Generate & install shell completions", "install-completions".green());
     println!("  {} - Uninstall all components", "uninstall".green());
     println!();
@@ -117,7 +123,7 @@ fn print_help() {
     println!("  {}", "cargo xtask release".yellow());
     println!();
     println!("{}", "Available services:".cyan());
-    println!("  {}", SERVICE_NAMES.join(", "));
+    println!("  {}", agentd_install::SERVICE_NAMES.join(", "));
     println!();
     println!(
         "{}: {}",
@@ -133,10 +139,11 @@ fn print_help() {
 }
 
 // ---------------------------------------------------------------------------
-// Database commands
+// Database: entity generation (dev-only; requires sea-orm-cli)
 // ---------------------------------------------------------------------------
 
-/// Services that have SeaORM-managed SQLite databases.
+/// Services that have SeaORM-managed SQLite databases, with their entity output
+/// directories (used only by `generate-entities`).
 const DB_SERVICES: &[DbService] = &[
     DbService {
         name: "memory",
@@ -165,13 +172,9 @@ const DB_SERVICES: &[DbService] = &[
 ];
 
 struct DbService {
-    /// Short name used in `--service` flag (e.g., `"notify"`)
     name: &'static str,
-    /// XDG project name for database path resolution (e.g., `"agentd-notify"`)
     project: &'static str,
-    /// Database filename (e.g., `"notify.db"`)
     db_file: &'static str,
-    /// Relative path to the entity output directory from the workspace root
     entity_dir: &'static str,
 }
 
@@ -180,11 +183,7 @@ fn parse_service_flag(args: &[String]) -> Option<String> {
     args.windows(2).find(|w| w[0] == "--service").map(|w| w[1].clone())
 }
 
-/// Resolve the target services from an optional `--service` filter.
-///
-/// Returns all `DB_SERVICES` when `service` is `None`, or the single matching
-/// entry when a name is provided.
-fn resolve_services(service: Option<&str>) -> Result<Vec<&'static DbService>> {
+fn resolve_entity_services(service: Option<&str>) -> Result<Vec<&'static DbService>> {
     match service {
         Some(name) => {
             let svc = DB_SERVICES.iter().find(|s| s.name == name).with_context(|| {
@@ -201,22 +200,18 @@ fn resolve_services(service: Option<&str>) -> Result<Vec<&'static DbService>> {
 
 /// `cargo xtask generate-entities [--service <name>]`
 ///
-/// Runs `sea-orm-cli generate entity --database-url sqlite://<path> --output-dir <dir>`
-/// for each (or the specified) service with a SeaORM-managed SQLite database.
-///
-/// Requires `sea-orm-cli` to be installed:
-///   `cargo install sea-orm-cli`
+/// Runs `sea-orm-cli generate entity` for each (or the specified) service with
+/// a SeaORM-managed SQLite database. Requires `sea-orm-cli` to be installed.
 fn generate_entities(service: Option<&str>) -> Result<()> {
     check_in_project_root()?;
 
-    // Verify sea-orm-cli is available
     if Command::new("sea-orm-cli").arg("--version").output().is_err() {
         eprintln!("{}", "sea-orm-cli not found.".red().bold());
         eprintln!("Install it with: {}", "cargo install sea-orm-cli".cyan());
         anyhow::bail!("sea-orm-cli is required for entity generation");
     }
 
-    let services = resolve_services(service)?;
+    let services = resolve_entity_services(service)?;
 
     println!("{}", "Generating SeaORM entities...".blue().bold());
     println!();
@@ -272,114 +267,12 @@ fn generate_entities(service: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// `cargo xtask migrate [--service <name>]`
-///
-/// Applies all pending SeaORM migrations for the specified service (or all
-/// services if `--service` is omitted). Creates the database file if it does
-/// not exist.
-async fn migrate(service: Option<&str>) -> Result<()> {
-    check_in_project_root()?;
-
-    let services = resolve_services(service)?;
-
-    println!("{}", "Applying migrations...".blue().bold());
-    println!();
-
-    for svc in services {
-        let db_path = agentd_common::storage::get_db_path(svc.project, svc.db_file)?;
-        print!("  {} {} … ", "→".cyan(), svc.name.green());
-
-        let result = match svc.name {
-            "memory" => memory::apply_migrations_for_path(&db_path).await,
-            "notify" => notify::apply_migrations_for_path(&db_path).await,
-            "orchestrator" => orchestrator::apply_migrations_for_path(&db_path).await,
-            "communicate" => communicate::apply_migrations_for_path(&db_path).await,
-            _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
-        };
-
-        match result {
-            Ok(()) => println!("{}", "✓ up to date".green()),
-            Err(e) => {
-                println!("{}", "✗ failed".red());
-                eprintln!("    {}", e);
-            }
-        }
-    }
-
-    println!();
-    println!("{}", "Migration complete.".green().bold());
-    Ok(())
-}
-
-/// `cargo xtask migrate-status [--service <name>]`
-///
-/// Prints the current migration status (applied / pending) for each known
-/// migration of the specified service (or all services).
-async fn migrate_status(service: Option<&str>) -> Result<()> {
-    check_in_project_root()?;
-
-    let services = resolve_services(service)?;
-
-    println!("{}", "Migration Status:".blue().bold());
-    println!();
-
-    for svc in services {
-        println!("  {} {}:", "◆".cyan(), svc.name.green().bold());
-
-        let db_path = agentd_common::storage::get_db_path(svc.project, svc.db_file)?;
-
-        if !db_path.exists() {
-            println!("    {} database not found — no migrations applied", "⚠".yellow());
-            println!("    path: {}", db_path.display().to_string().bright_black());
-            continue;
-        }
-
-        let result = match svc.name {
-            "memory" => memory::migration_status_for_path(&db_path).await,
-            "notify" => notify::migration_status_for_path(&db_path).await,
-            "orchestrator" => orchestrator::migration_status_for_path(&db_path).await,
-            "communicate" => communicate::migration_status_for_path(&db_path).await,
-            _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
-        };
-
-        match result {
-            Ok(statuses) => {
-                for (name, applied) in &statuses {
-                    let (icon, label) = if *applied {
-                        ("✓".green(), "applied".green())
-                    } else {
-                        ("○".yellow(), "pending".yellow())
-                    };
-                    println!("    {} {} {}", icon, label, name.bright_black());
-                }
-                let applied_count = statuses.iter().filter(|(_, a)| *a).count();
-                let pending_count = statuses.len() - applied_count;
-                println!(
-                    "    {} applied, {} pending",
-                    applied_count.to_string().green(),
-                    if pending_count > 0 {
-                        pending_count.to_string().yellow()
-                    } else {
-                        pending_count.to_string().green()
-                    }
-                );
-            }
-            Err(e) => {
-                eprintln!("    {} failed to read status: {}", "✗".red(), e);
-            }
-        }
-        println!();
-    }
-
-    Ok(())
-}
-
 // ---------------------------------------------------------------------------
-// Installation commands
+// Installation (dev): build from source, then delegate platform setup
 // ---------------------------------------------------------------------------
 
 fn install_user() -> Result<()> {
-    let mode = if is_root() { "system" } else { "user" };
+    let mode = if agentd_install::is_root() { "system" } else { "user" };
     println!("{}", format!("Installing agentd ({mode} mode)...").blue().bold());
     println!();
 
@@ -398,7 +291,6 @@ fn install_user() -> Result<()> {
     let prefix = get_prefix();
     let bin_dir = prefix.join("bin");
 
-    // Try to create bin directory, give helpful message if it fails
     if let Err(e) = fs::create_dir_all(&bin_dir) {
         eprintln!("{}", format!("Failed to create directory: {}", bin_dir.display()).red());
         eprintln!("{}", "To fix permissions, run:".yellow());
@@ -407,9 +299,14 @@ fn install_user() -> Result<()> {
         return Err(e.into());
     }
 
-    // Delegate to platform-specific installer
-    let plat = platform::detect_platform();
-    plat.install(&bin_dir)?;
+    // Delegate to the shared platform installer, sourcing the freshly-built
+    // binaries from target/release and the UI from ui/dist.
+    let plat = detect_platform();
+    plat.install(&InstallPaths {
+        bin_src: Path::new("target/release"),
+        bin_dir: &bin_dir,
+        ui_src: Some(Path::new("ui/dist")),
+    })?;
 
     // Install shell completions
     println!();
@@ -424,106 +321,56 @@ fn install_user() -> Result<()> {
     println!();
     println!("{}", "Usage:".cyan().bold());
     println!("  {} - List notifications", "agent notify list".cyan());
-    println!(
-        "  {} - Create notification",
-        "agent notify create --title \"Test\" --message \"Hello\"".cyan()
-    );
     println!();
     println!("To start services: {}", "cargo xtask start-services".cyan());
 
     Ok(())
 }
 
-fn install() -> Result<()> {
-    install_user()
-}
-
 fn uninstall() -> Result<()> {
     println!("{}", "Uninstalling agentd...".blue().bold());
-
-    let plat = platform::detect_platform();
-    plat.uninstall()?;
-
+    detect_platform().uninstall()?;
     println!();
     println!("{}", "✓ Uninstallation complete!".green().bold());
-
     Ok(())
 }
 
-fn start_services() -> Result<()> {
-    println!("{}", "Starting services...".blue());
-
-    let plat = platform::detect_platform();
-    plat.start_services()?;
-
+fn with_summary<F>(start_msg: &str, done_msg: &str, f: F) -> Result<()>
+where
+    F: FnOnce() -> Result<()>,
+{
+    println!("{}", start_msg.blue());
+    f()?;
     println!();
-    println!("{}", "✓ Services started".green().bold());
-    Ok(())
-}
-
-fn stop_services() -> Result<()> {
-    println!("{}", "Stopping services...".blue());
-
-    let plat = platform::detect_platform();
-    plat.stop_services()?;
-
-    println!();
-    println!("{}", "✓ Services stopped".green().bold());
-    Ok(())
-}
-
-fn service_status() -> Result<()> {
-    println!("{}", "Service Status:".blue().bold());
-    println!();
-
-    let plat = platform::detect_platform();
-    plat.service_status()?;
-
-    Ok(())
-}
-
-fn start_service(service: &str) -> Result<()> {
-    validate_service_name(service)?;
-
-    let plat = platform::detect_platform();
-    plat.start_service(service)?;
-
-    Ok(())
-}
-
-fn stop_service(service: &str) -> Result<()> {
-    validate_service_name(service)?;
-
-    let plat = platform::detect_platform();
-    plat.stop_service(service)?;
-
+    println!("{}", format!("✓ {done_msg}").green().bold());
     Ok(())
 }
 
 fn restart_services() -> Result<()> {
     println!("{}", "Restarting all services...".blue());
     println!();
-
-    stop_services()?;
+    let plat = detect_platform();
+    plat.stop_services()?;
     println!();
-    start_services()?;
-
+    plat.start_services()?;
     Ok(())
 }
 
 fn restart_service(service: &str) -> Result<()> {
     validate_service_name(service)?;
-
     println!("{}", format!("Restarting agentd-{service}...").blue());
-
-    let plat = platform::detect_platform();
+    let plat = detect_platform();
     plat.stop_service(service)?;
     plat.start_service(service)?;
-
     println!();
     println!("{}", format!("✓ Service agentd-{service} restarted").green().bold());
-
     Ok(())
+}
+
+fn service_status() -> Result<()> {
+    println!("{}", "Service Status:".blue().bold());
+    println!();
+    detect_platform().service_status()
 }
 
 fn install_completions() -> Result<()> {
@@ -533,11 +380,10 @@ fn install_completions() -> Result<()> {
     let bin_dir = get_prefix().join("bin");
     let agent_bin = bin_dir.join("agent");
 
-    // Ensure the agent binary exists (either installed or in target/)
+    // Prefer the installed binary; otherwise fall back to the release build.
     let agent_cmd = if agent_bin.exists() {
         agent_bin.to_string_lossy().to_string()
     } else {
-        // Try the release build
         let release_bin = Path::new("target/release/cli");
         if release_bin.exists() {
             release_bin.to_string_lossy().to_string()
@@ -550,48 +396,25 @@ fn install_completions() -> Result<()> {
 
     let home = home_dir()?;
 
-    // Bash completions
-    let bash_dir = home.join(".local/share/bash-completion/completions");
-    if let Err(e) = fs::create_dir_all(&bash_dir) {
-        eprintln!("  {} bash: {}", "⚠".yellow(), e);
-    } else {
-        let output = Command::new(&agent_cmd)
-            .args(["completions", "bash"])
-            .output()
-            .context("Failed to generate bash completions")?;
-        if output.status.success() {
-            fs::write(bash_dir.join("agent"), &output.stdout)?;
-            println!("  {} bash → {}", "✓".green(), bash_dir.join("agent").display());
-        }
-    }
+    // (shell, target dir, file name)
+    let targets = [
+        ("bash", home.join(".local/share/bash-completion/completions"), "agent"),
+        ("zsh", home.join(".zfunc"), "_agent"),
+        ("fish", home.join(".config/fish/completions"), "agent.fish"),
+    ];
 
-    // Zsh completions
-    let zsh_dir = home.join(".zfunc");
-    if let Err(e) = fs::create_dir_all(&zsh_dir) {
-        eprintln!("  {} zsh: {}", "⚠".yellow(), e);
-    } else {
-        let output = Command::new(&agent_cmd)
-            .args(["completions", "zsh"])
-            .output()
-            .context("Failed to generate zsh completions")?;
-        if output.status.success() {
-            fs::write(zsh_dir.join("_agent"), &output.stdout)?;
-            println!("  {} zsh  → {}", "✓".green(), zsh_dir.join("_agent").display());
+    for (shell, dir, file) in targets {
+        if let Err(e) = fs::create_dir_all(&dir) {
+            eprintln!("  {} {}: {}", "⚠".yellow(), shell, e);
+            continue;
         }
-    }
-
-    // Fish completions
-    let fish_dir = home.join(".config/fish/completions");
-    if let Err(e) = fs::create_dir_all(&fish_dir) {
-        eprintln!("  {} fish: {}", "⚠".yellow(), e);
-    } else {
         let output = Command::new(&agent_cmd)
-            .args(["completions", "fish"])
+            .args(["completions", shell])
             .output()
-            .context("Failed to generate fish completions")?;
+            .with_context(|| format!("Failed to generate {shell} completions"))?;
         if output.status.success() {
-            fs::write(fish_dir.join("agent.fish"), &output.stdout)?;
-            println!("  {} fish → {}", "✓".green(), fish_dir.join("agent.fish").display());
+            fs::write(dir.join(file), &output.stdout)?;
+            println!("  {} {} → {}", "✓".green(), shell, dir.join(file).display());
         }
     }
 
@@ -611,7 +434,7 @@ fn install_completions() -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Release command
+// Release
 // ---------------------------------------------------------------------------
 
 /// `cargo xtask release [--dry-run]`
@@ -621,15 +444,9 @@ fn install_completions() -> Result<()> {
 /// 2. Reads `[workspace.package] version` from the root `Cargo.toml`.
 /// 3. Optionally updates `CHANGELOG.md` via `git-cliff` (if installed).
 /// 4. Creates an annotated git tag `v{version}`.
-///
-/// Pass `--dry-run` to preview the steps without making any changes.
-///
-/// After running, push the tag to trigger the GitHub Actions release workflow:
-///   `git push origin v{version}`
 fn release(dry_run: bool) -> Result<()> {
     check_in_project_root()?;
 
-    // Verify the working tree is clean (skip in dry-run so developers can preview)
     if !dry_run {
         let output = Command::new("git")
             .args(["status", "--porcelain"])
@@ -644,7 +461,6 @@ fn release(dry_run: bool) -> Result<()> {
         }
     }
 
-    // Read workspace version from Cargo.toml
     let cargo_toml_src =
         fs::read_to_string("Cargo.toml").context("Failed to read workspace Cargo.toml")?;
     let version = extract_workspace_version(&cargo_toml_src)?;
@@ -659,7 +475,6 @@ fn release(dry_run: bool) -> Result<()> {
         println!("{}", "(dry-run mode — no changes will be made)".yellow());
     }
 
-    // Optionally update CHANGELOG.md via git-cliff
     let has_cliff = Command::new("git-cliff").arg("--version").output().is_ok();
     if has_cliff {
         println!();
@@ -673,7 +488,6 @@ fn release(dry_run: bool) -> Result<()> {
                 .context("Failed to run git-cliff")?;
             if status.success() {
                 println!("  {} CHANGELOG.md updated", "✓".green());
-                // Stage and commit the changelog if it changed
                 let changelog_changed = Command::new("git")
                     .args(["diff", "--quiet", "CHANGELOG.md"])
                     .status()
@@ -716,7 +530,6 @@ fn release(dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Create annotated tag
     println!();
     println!("{}", format!("Creating tag {tag}...").blue());
     let tag_status = Command::new("git")
@@ -733,11 +546,6 @@ fn release(dry_run: bool) -> Result<()> {
     println!();
     println!("Push the tag to trigger the GitHub Actions release workflow:");
     println!("  {}", format!("git push origin {tag}").cyan());
-    println!();
-    println!("The workflow will:");
-    println!("  • Build binaries for macOS (arm64, x86_64) and Linux (x86_64)");
-    println!("  • Generate release notes from conventional commit history");
-    println!("  • Create a GitHub Release and attach the binaries");
 
     Ok(())
 }
@@ -753,7 +561,7 @@ fn extract_workspace_version(cargo_toml: &str) -> Result<String> {
         }
         if in_section {
             if trimmed.starts_with('[') {
-                break; // left the section
+                break;
             }
             if let Some(rest) = trimmed.strip_prefix("version") {
                 if let Some(rest) = rest.trim().strip_prefix('=') {
@@ -766,16 +574,18 @@ fn extract_workspace_version(cargo_toml: &str) -> Result<String> {
     anyhow::bail!("Could not find `version` in `[workspace.package]` section of Cargo.toml")
 }
 
-// === Shared helpers (used by platform modules via crate::) ===
+// ---------------------------------------------------------------------------
+// Build helpers
+// ---------------------------------------------------------------------------
 
-pub fn check_in_project_root() -> Result<()> {
+fn check_in_project_root() -> Result<()> {
     if !Path::new("Cargo.toml").exists() || !Path::new("crates").exists() {
         anyhow::bail!("Must be run from the agentd project root");
     }
     Ok(())
 }
 
-pub fn build_release() -> Result<()> {
+fn build_release() -> Result<()> {
     let status = Command::new("cargo")
         .arg("build")
         .arg("--release")
@@ -792,15 +602,12 @@ pub fn build_release() -> Result<()> {
 }
 
 /// Build the UI by running `bun install` and `bun run build` in the `ui/` directory.
-///
-/// Requires `bun` to be installed. The built output lands in `ui/dist/`.
-pub fn build_ui() -> Result<()> {
+fn build_ui() -> Result<()> {
     let ui_dir = Path::new("ui");
     if !ui_dir.exists() {
         anyhow::bail!("ui/ directory not found — must be run from project root");
     }
 
-    // Check bun is available
     if Command::new("bun").arg("--version").output().is_err() {
         eprintln!("{}", "bun not found.".red().bold());
         eprintln!("Install bun: {}", "https://bun.sh".cyan());
@@ -837,61 +644,5 @@ pub fn build_ui() -> Result<()> {
     }
 
     println!("  {} UI built to ui/dist/", "✓".green());
-    Ok(())
-}
-
-pub fn set_executable(path: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(path)?.permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(path, perms)?;
-    }
-    Ok(())
-}
-
-pub fn get_prefix() -> PathBuf {
-    env::var("PREFIX").map(PathBuf::from).unwrap_or_else(|_| {
-        if cfg!(target_os = "macos") || is_root() {
-            PathBuf::from("/usr/local")
-        } else {
-            // Linux unprivileged: default to ~/.local
-            home_dir().unwrap_or_else(|_| PathBuf::from("/usr/local")).join(".local")
-        }
-    })
-}
-
-/// Returns true when the effective user ID is 0 (root).
-pub fn is_root() -> bool {
-    #[cfg(unix)]
-    {
-        Command::new("id")
-            .arg("-u")
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .and_then(|s| s.trim().parse::<u32>().ok())
-            .map(|uid| uid == 0)
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        false
-    }
-}
-
-pub fn home_dir() -> Result<PathBuf> {
-    env::var("HOME").map(PathBuf::from).context("HOME environment variable not set")
-}
-
-pub fn validate_service_name(service: &str) -> Result<()> {
-    if !SERVICE_NAMES.contains(&service) {
-        anyhow::bail!(
-            "Invalid service name: '{}'. Valid services are: {}",
-            service,
-            SERVICE_NAMES.join(", ")
-        );
-    }
     Ok(())
 }

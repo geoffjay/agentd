@@ -12,6 +12,7 @@
 //!   units     → XDG_CONFIG_HOME/systemd/user  (WantedBy=default.target)
 
 use super::{Platform, ServiceInfo, SERVICES};
+use crate::InstallPaths;
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::fs;
@@ -67,16 +68,16 @@ impl LinuxPlatform {
 }
 
 impl Platform for LinuxPlatform {
-    fn install(&self, bin_dir: &Path) -> Result<()> {
-        install_binaries(bin_dir)?;
+    fn install(&self, paths: &InstallPaths) -> Result<()> {
+        install_binaries(paths.bin_src, paths.bin_dir)?;
 
         // Install UI assets
-        self.install_ui_assets()?;
+        self.install_ui_assets(paths.ui_src)?;
 
         // Generate and install systemd unit files
         let unit_dir = self.systemd_dir();
         fs::create_dir_all(&unit_dir).context("Failed to create systemd directory")?;
-        self.install_unit_files(&unit_dir, bin_dir)?;
+        self.install_unit_files(&unit_dir, paths.bin_dir)?;
 
         // Reload systemd daemon
         println!();
@@ -281,12 +282,15 @@ impl Platform for LinuxPlatform {
 }
 
 impl LinuxPlatform {
-    fn install_ui_assets(&self) -> Result<()> {
+    fn install_ui_assets(&self, ui_src: Option<&Path>) -> Result<()> {
         println!("{}", "Installing UI assets...".blue());
 
-        let ui_dist = Path::new("ui/dist");
-        if !ui_dist.exists() {
-            println!("  {} UI dist not found (ui/dist/) — skipping", "⚠".yellow());
+        let Some(ui_src) = ui_src else {
+            println!("  {} no UI source provided — skipping", "⚠".yellow());
+            return Ok(());
+        };
+        if !ui_src.exists() {
+            println!("  {} UI source not found ({}) — skipping", "⚠".yellow(), ui_src.display());
             return Ok(());
         }
 
@@ -294,7 +298,7 @@ impl LinuxPlatform {
         if dest.exists() {
             fs::remove_dir_all(&dest).context("Failed to remove old UI assets")?;
         }
-        copy_dir_recursive(ui_dist, &dest)?;
+        copy_dir_recursive(ui_src, &dest)?;
 
         println!("  {} UI assets installed to {}", "✓".green(), dest.display());
         Ok(())
@@ -379,53 +383,94 @@ WantedBy={wanted_by}
 
 // -- Private helpers --
 
-fn install_binaries(bin_dir: &Path) -> Result<()> {
+/// Locate the CLI binary in `bin_src`, accepting either the dev name (`cli`)
+/// or the released name (`agent`).
+fn find_cli_binary(bin_src: &Path) -> Option<PathBuf> {
+    for name in ["cli", "agent"] {
+        let candidate = bin_src.join(name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// True when `a` and `b` refer to the same file on disk.
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
+
+/// Copy `src` to `dest` unless they are the same file (the production case
+/// where the installer extracted binaries straight into the target bin dir),
+/// then ensure the result is executable.
+fn install_one_binary(src: &Path, dest: &Path, label: &str) -> Result<()> {
+    if same_file(src, dest) {
+        crate::set_executable(dest)?;
+        println!("  {} {} (already in place)", "✓".green(), label);
+        return Ok(());
+    }
+    fs::copy(src, dest).context(format!("Failed to install {label}"))?;
+    crate::set_executable(dest)?;
+    println!("  {} {}", "✓".green(), label);
+    Ok(())
+}
+
+fn install_binaries(bin_src: &Path, bin_dir: &Path) -> Result<()> {
     println!("{}", "Installing binaries...".blue());
 
     fs::create_dir_all(bin_dir)
         .context(format!("Failed to create bin directory: {}", bin_dir.display()))?;
 
-    // Install CLI binary
-    let cli_src = Path::new("target/release/cli");
-    let cli_dest = bin_dir.join("cli");
-    if cli_src.exists() {
-        fs::copy(cli_src, &cli_dest).context("Failed to install CLI binary")?;
-        crate::set_executable(&cli_dest)?;
-        println!("  {} CLI binary (cli)", "✓".green());
-    } else {
-        println!("  {} CLI binary (not built)", "⚠".yellow());
-    }
-
     // Install service binaries
     for service in SERVICES {
-        let src = Path::new("target/release").join(service.binary);
+        let src = bin_src.join(service.binary);
         let dest = bin_dir.join(service.binary);
 
         if src.exists() {
-            fs::copy(&src, &dest).context(format!("Failed to install {}", service.binary))?;
-            crate::set_executable(&dest)?;
-            println!("  {} {}", "✓".green(), service.binary);
+            install_one_binary(&src, &dest, service.binary)?;
         } else {
-            println!("  {} {} (not built)", "⚠".yellow(), service.binary);
+            println!("  {} {} (not found)", "⚠".yellow(), service.binary);
         }
     }
 
-    // Create agent symlink
+    // Install the CLI binary. In a dev build it is named `cli` and we add an
+    // `agent` symlink; a released artifact is already named `agent` and needs
+    // no symlink.
+    match find_cli_binary(bin_src) {
+        Some(cli_src) if cli_src.file_name().and_then(|n| n.to_str()) == Some("agent") => {
+            let dest = bin_dir.join("agent");
+            install_one_binary(&cli_src, &dest, "agent")?;
+        }
+        Some(cli_src) => {
+            let cli_dest = bin_dir.join("cli");
+            install_one_binary(&cli_src, &cli_dest, "cli")?;
+            create_agent_symlink(&cli_dest, &bin_dir.join("agent"));
+        }
+        None => {
+            println!("  {} CLI binary (not found in {})", "⚠".yellow(), bin_src.display());
+        }
+    }
+
+    Ok(())
+}
+
+/// Create (or replace) the `agent` symlink pointing at the installed CLI binary.
+fn create_agent_symlink(target_path: &Path, symlink_path: &Path) {
     println!();
     println!("{}", "Creating symlink...".blue());
-
-    let symlink_path = bin_dir.join("agent");
-    let target_path = cli_dest;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::symlink;
 
         if symlink_path.exists() {
-            fs::remove_file(&symlink_path).ok();
+            fs::remove_file(symlink_path).ok();
         }
 
-        match symlink(&target_path, &symlink_path) {
+        match symlink(target_path, symlink_path) {
             Ok(_) => {
                 println!("  {} agent -> {}", "✓".green(), target_path.display());
             }
@@ -434,8 +479,6 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
             }
         }
     }
-
-    Ok(())
 }
 
 /// Recursively copy a directory tree.

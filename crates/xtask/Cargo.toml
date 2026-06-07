@@ -7,14 +7,10 @@ publish = false
 [dependencies]
 anyhow = "1.0"
 colored = "2.1"
-toml = { workspace = true }
 tokio = { version = "1", features = ["full"] }
-memory = { path = "../memory" }
-notify = { path = "../notify" }
-orchestrator = { path = "../orchestrator" }
-communicate = { path = "../communicate" }
+agentd-install = { path = "../install" }
 agentd-common = { path = "../common" }
 
 [features]
 default = []
-index-service = []
+index-service = ["agentd-install/index-service"]

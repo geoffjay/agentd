@@ -32,6 +32,7 @@ dirs = "5"
 
 # Internal dependencies
 agentd-common = { path = "../common" }
+agentd-install = { path = "../install" }
 notify = { path = "../notify" }
 ask = { path = "../ask" }
 wrap = { path = "../wrap" }
@@ -45,7 +46,7 @@ agentd-tui = { path = "../tui" }
 
 [features]
 default = []
-index-service = []
+index-service = ["agentd-install/index-service"]
 
 [dev-dependencies]
 mockito = "1.2"

@@ -1,0 +1,23 @@
+[package]
+name = "agentd-install"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+colored = "2.1"
+toml = { workspace = true }
+tokio = { workspace = true }
+
+# Internal dependencies — used by the migration runners.
+agentd-common = { path = "../common" }
+memory = { path = "../memory" }
+notify = { path = "../notify" }
+orchestrator = { path = "../orchestrator" }
+communicate = { path = "../communicate" }
+
+[features]
+default = []
+index-service = []

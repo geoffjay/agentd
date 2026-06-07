@@ -1,6 +1,7 @@
 //! macOS platform implementation using LaunchAgent plists and launchctl.
 
 use super::{Platform, ServiceInfo, SERVICES};
+use crate::InstallPaths;
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::fs;
@@ -10,11 +11,11 @@ use std::process::Command;
 pub struct MacOSPlatform;
 
 impl Platform for MacOSPlatform {
-    fn install(&self, bin_dir: &Path) -> Result<()> {
-        install_binaries(bin_dir)?;
+    fn install(&self, paths: &InstallPaths) -> Result<()> {
+        install_binaries(paths.bin_src, paths.bin_dir)?;
 
         // Install UI assets
-        install_ui_assets()?;
+        install_ui_assets(paths.ui_src)?;
 
         // Install plist files
         let plist_dir = crate::home_dir()?.join("Library/LaunchAgents");
@@ -125,9 +126,7 @@ impl Platform for MacOSPlatform {
         let plist_path = plist_dir.join(&plist_name);
 
         if !plist_path.exists() {
-            anyhow::bail!(
-                "Service '{service}' not installed. Run 'cargo xtask install-user' first."
-            );
+            anyhow::bail!("Service '{service}' not installed. Run 'agent install' first.");
         }
 
         print!("  Starting agentd-{service}... ");
@@ -271,7 +270,19 @@ pub fn generate_plist(service: &ServiceInfo, bin_path: &Path, log_dir: &Path) ->
 
 // -- Private helpers --
 
-fn install_binaries(bin_dir: &Path) -> Result<()> {
+/// Locate the CLI binary in `bin_src`, accepting either the dev name (`cli`)
+/// or the released name (`agent`).
+fn find_cli_binary(bin_src: &Path) -> Option<PathBuf> {
+    for name in ["cli", "agent"] {
+        let candidate = bin_src.join(name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn install_binaries(bin_src: &Path, bin_dir: &Path) -> Result<()> {
     println!("{}", "Installing Agent.app bundle...".blue());
 
     // Create Agent.app bundle structure
@@ -283,19 +294,18 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
     fs::create_dir_all(&resources_dir).context("Failed to create Agent.app/Contents/Resources")?;
 
     // Install CLI binary to Agent.app/Contents/MacOS/cli
-    let cli_src = Path::new("target/release/cli");
     let cli_dest = macos_dir.join("cli");
-    if cli_src.exists() {
-        fs::copy(cli_src, &cli_dest).context("Failed to install CLI binary")?;
+    if let Some(cli_src) = find_cli_binary(bin_src) {
+        fs::copy(&cli_src, &cli_dest).context("Failed to install CLI binary")?;
         crate::set_executable(&cli_dest)?;
         println!("  {} CLI binary (cli)", "✓".green());
     } else {
-        println!("  {} CLI binary (not built)", "⚠".yellow());
+        println!("  {} CLI binary (not found in {})", "⚠".yellow(), bin_src.display());
     }
 
     // Install service binaries to Agent.app/Contents/MacOS/
     for service in SERVICES {
-        let src = Path::new("target/release").join(service.binary);
+        let src = bin_src.join(service.binary);
         let dest = macos_dir.join(service.binary);
 
         if src.exists() {
@@ -303,7 +313,7 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
             crate::set_executable(&dest)?;
             println!("  {} {}", "✓".green(), service.binary);
         } else {
-            println!("  {} {} (not built)", "⚠".yellow(), service.binary);
+            println!("  {} {} (not found)", "⚠".yellow(), service.binary);
         }
     }
 
@@ -324,7 +334,7 @@ fn install_binaries(bin_dir: &Path) -> Result<()> {
         );
     }
 
-    // Create symlink from /usr/local/bin/agent to CLI
+    // Create symlink from <bin_dir>/agent to the bundled CLI
     println!();
     println!("{}", "Creating symlink...".blue());
 
@@ -406,12 +416,15 @@ fn install_plists(plist_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn install_ui_assets() -> Result<()> {
+fn install_ui_assets(ui_src: Option<&Path>) -> Result<()> {
     println!("{}", "Installing UI assets...".blue());
 
-    let ui_dist = Path::new("ui/dist");
-    if !ui_dist.exists() {
-        println!("  {} UI dist not found (ui/dist/) — skipping", "⚠".yellow());
+    let Some(ui_src) = ui_src else {
+        println!("  {} no UI source provided — skipping", "⚠".yellow());
+        return Ok(());
+    };
+    if !ui_src.exists() {
+        println!("  {} UI source not found ({}) — skipping", "⚠".yellow(), ui_src.display());
         return Ok(());
     }
 
@@ -419,7 +432,7 @@ fn install_ui_assets() -> Result<()> {
     if dest.exists() {
         fs::remove_dir_all(&dest).context("Failed to remove old UI assets")?;
     }
-    copy_dir_recursive(ui_dist, &dest)?;
+    copy_dir_recursive(ui_src, &dest)?;
 
     println!("  {} UI assets installed to {}", "✓".green(), dest.display());
     Ok(())

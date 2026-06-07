@@ -87,8 +87,8 @@ use commands::index::IndexClient;
 use commands::IndexCommand;
 use commands::{
     AskCommand, AuthCommand, CommunicateCommand, ConfigCommand, MemoryCommand, NotifyCommand,
-    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, SystemAgentsCommand,
-    WrapCommand,
+    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, ServiceCommand,
+    SystemAgentsCommand, WrapCommand,
 };
 use communicate::client::CommunicateClient;
 use memory::client::MemoryClient;
@@ -416,6 +416,72 @@ enum Commands {
         #[command(subcommand)]
         command: Box<SystemAgentsCommand>,
     },
+
+    /// Install agentd services on this host.
+    ///
+    /// Writes platform service definitions (launchd plists on macOS, systemd
+    /// units on Linux), gap-fills the agentd config file, installs shell
+    /// completions, and applies database migrations. Binaries are expected to
+    /// already be on disk alongside the `agent` binary (or in `--bin-src`).
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent install
+    /// agent install --ui-dir ./ui/dist
+    /// agent install --skip-migrations
+    /// ```
+    Install {
+        /// Directory containing the agentd binaries (defaults to the directory
+        /// of the running `agent` binary).
+        #[arg(long)]
+        bin_src: Option<std::path::PathBuf>,
+        /// Directory of built UI assets to install (e.g. `ui/dist`).
+        #[arg(long)]
+        ui_dir: Option<std::path::PathBuf>,
+        /// Skip applying database migrations.
+        #[arg(long)]
+        skip_migrations: bool,
+    },
+
+    /// Remove agentd services and binaries from this host.
+    Uninstall,
+
+    /// Manage agentd service lifecycle (start/stop/restart/status).
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent service start
+    /// agent service stop notify
+    /// agent service status
+    /// ```
+    Service {
+        #[command(subcommand)]
+        command: ServiceCommand,
+    },
+
+    /// Apply pending database migrations for all services (or one).
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent migrate
+    /// agent migrate --service notify
+    /// ```
+    Migrate {
+        /// Limit migration to a single service.
+        #[arg(long)]
+        service: Option<String>,
+    },
+
+    /// Show the migration status of all service databases (or one).
+    #[command(name = "migrate-status")]
+    MigrateStatus {
+        /// Limit the status report to a single service.
+        #[arg(long)]
+        service: Option<String>,
+    },
 }
 
 /// Main entry point for the agent CLI.
@@ -568,6 +634,22 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|_| "http://localhost:17006".to_string());
             let client = OrchestratorClient::new(url);
             command.execute(&client, cli.json).await?;
+        }
+        Commands::Install { bin_src, ui_dir, skip_migrations } => {
+            commands::install::run_install(bin_src, ui_dir, skip_migrations, Cli::command())
+                .await?;
+        }
+        Commands::Uninstall => {
+            commands::install::run_uninstall()?;
+        }
+        Commands::Service { command } => {
+            command.execute()?;
+        }
+        Commands::Migrate { service } => {
+            agentd_install::migrate::migrate(service.as_deref()).await?;
+        }
+        Commands::MigrateStatus { service } => {
+            agentd_install::migrate::migrate_status(service.as_deref()).await?;
         }
     }
 
