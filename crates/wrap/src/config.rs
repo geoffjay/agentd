@@ -118,9 +118,8 @@ impl ValidateConfig for WrapConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    // Shared with other modules' tests so env-var mutations don't race.
+    use crate::ENV_LOCK;
 
     #[test]
     fn test_defaults() {

@@ -207,6 +207,8 @@ pub struct TmuxLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Shared with other modules' tests so AGENTD_BACKEND mutations don't race.
+    use crate::ENV_LOCK;
 
     #[test]
     fn test_launch_request_serialization() {
@@ -355,6 +357,7 @@ mod tests {
 
     #[test]
     fn from_env_strict_unset_returns_tmux() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Remove any inherited env var so the test is deterministic.
         std::env::remove_var("AGENTD_BACKEND");
         let bt = BackendType::from_env_strict().unwrap();
@@ -363,6 +366,7 @@ mod tests {
 
     #[test]
     fn from_env_strict_tmux_explicit() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("AGENTD_BACKEND", "tmux");
         let bt = BackendType::from_env_strict().unwrap();
         assert_eq!(bt, BackendType::Tmux);
@@ -371,6 +375,7 @@ mod tests {
 
     #[test]
     fn from_env_strict_docker() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("AGENTD_BACKEND", "docker");
         let bt = BackendType::from_env_strict().unwrap();
         assert_eq!(bt, BackendType::Docker);
@@ -379,6 +384,7 @@ mod tests {
 
     #[test]
     fn from_env_strict_pty() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("AGENTD_BACKEND", "pty");
         let bt = BackendType::from_env_strict().unwrap();
         assert_eq!(bt, BackendType::Pty);
@@ -387,6 +393,7 @@ mod tests {
 
     #[test]
     fn from_env_strict_subprocess() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("AGENTD_BACKEND", "subprocess");
         let bt = BackendType::from_env_strict().unwrap();
         assert_eq!(bt, BackendType::Subprocess);
@@ -395,6 +402,7 @@ mod tests {
 
     #[test]
     fn from_env_strict_unknown_errors() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("AGENTD_BACKEND", "kubernetes");
         let result = BackendType::from_env_strict();
         assert!(result.is_err());

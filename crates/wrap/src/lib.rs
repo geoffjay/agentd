@@ -51,6 +51,15 @@ pub use types::{
     SessionInfo, SessionListResponse, TmuxLayout,
 };
 
+/// Crate-wide lock that serialises tests which mutate process-global
+/// environment variables (e.g. `AGENTD_BACKEND`).
+///
+/// Tests in different modules (`config`, `types`) all touch the same env vars,
+/// so they must share a single lock — otherwise they race when run in parallel
+/// within the same test binary.
+#[cfg(test)]
+pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     #[test]
