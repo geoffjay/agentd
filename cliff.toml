@@ -19,7 +19,7 @@ body = """
 ### {{ group }}
 
 {% for commit in commits %}\
-- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | upper_first }}{% if commit.github.pr_number %} ([#{{ commit.github.pr_number }}]({{ commit.github.pr_url }})){% endif %}
+- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | upper_first }}{% if commit.github.pr_number %} ([#{{ commit.github.pr_number }}](https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}/pull/{{ commit.github.pr_number }})){% endif %}
 {% endfor %}\
 {% endfor %}\n
 """

@@ -3,153 +3,16 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-06-07
+
+### Fixed
+
+- Use rustls reqwest in all crates to fix musl release build
+
 ## [0.4.0] - 2026-06-07
 
 ### Added
 
-- Migrate agentd-common storage module from SQLx to SeaORM
-- Define SeaORM entities and migrate notify storage to SeaORM
-- Define SeaORM entities for orchestrator crate agent and scheduler models
-- Remove deprecated SQLx dependencies after SeaORM migration
-- Add sea-orm-cli entity generation and migration commands to xtask
-- Generate db entities
-- Support pull requests in workflows
-- Add review agent out of staging
-- Reconcile restarts agents with stale tmux sessions on startup
-- Add Otterfile
-- Add agents and skills for claude code
-- Update Otterfile
-- Add usage tracking and context management types
-- Add agent_usage_sessions schema and auto_clear_threshold
-- Add usage session CRUD storage methods (#147)
-- Add clear_context and get_usage_stats to AgentManager (#150)
-- Add usage and clear-context endpoints
-- Add usage and clear-context client methods
-- Add usage and clear-context subcommands
-- Add usage persistence and auto-clear callback
-- Extract usage data from WebSocket result messages
-- Support auto_clear_threshold in YAML agent templates
-- Add TypeScript types for usage tracking and context management
-- Add usage API client methods and useAgentUsage hook
-- Add agent usage panel to agent detail page
-- Add clear context action and auto-clear threshold config
-- Add usage and cache efficiency charts to monitoring dashboard
-- Add real-time usage update events to WebSocket stream
-- Add usage cost indicators to agent list and dashboard summary
-- Define ExecutionBackend trait and implement TmuxBackend adapter
-- Add debug endpoint and websocket improvements
-- Implement DockerBackend using bollard crate
-- Handle Docker networking and WebSocket URL rewriting
-- Add documentation agent and workflow
-- Add Dockerfile and CI pipeline for Claude Code execution image
-- Add design agent and workflow
-- Add backend selection to AgentConfig and orchestrator startup
-- Update CLI for Docker backend support
-- Add design file
-- Improve layout and style
-- Make input multi-line
-- Update design files
-- Add reconciliation and health check support for Docker backend
-- Add integration tests and documentation for Docker execution backend
-- Support AGENTD_ENV for dev and test
-- Add additional_dirs field to AgentConfig, DB entity, and YAML template
-- Add REST API endpoints to manage agent additional_dirs at runtime
-- Shell-escape --add-dir paths and warn on missing dirs
-- Add add-dir and remove-dir commands for agent directory management
-- Display and manage additional directories in agent details page
-- Consolidate agent action buttons into a dropdown menu
-- Scaffold agentd-memory crate with workspace integration (#300)
-- Define memory types, traits, and domain model (#301)
-- Implement embedding service with OpenAI-compatible provider support
-- Implement LanceDB vector store backend
-- Implement REST API endpoints for memory service
-- Add CLI commands and client for agentd-memory service
-- Add integration tests and comprehensive documentation
-- Add memory TypeScript types and API client
-- Add useMemories and useMemorySearch React hooks
-- Add memory list page with filters and pagination
-- Add memory create dialog and semantic search panel
-- Add memory plist
-- Integrate memory service into navigation, search, and dashboard
-- Add memory UI integration tests and MSW test infrastructure
-- Implement SQLite metadata storage and SeaORM entities
-- Consistent table layouts and detail drawer for list pages
-- Define TriggerStrategy trait for workflow scheduling
-- Implement PollingStrategy wrapping TaskSource + interval
-- Add POST /workflows/{id}/trigger endpoint for manual dispatch
-- Add protection from destructive commands
-- Add skills
-- Add memory protocol to agents and workflows
-- Add Bash(pattern) command-level filtering to tool policies
-- Enhance agent log tool call display with tool details
-- Persist agent log history and surface thinking blocks
-- Track agent busy/idle activity state in ConnectionRegistry
-- Add lsp for claude
-- Add LinearIssues variant to TriggerConfig
-- Define room/participant/message models, entities, and migrations
-- Scaffold communicate crate with Axum server and SeaORM storage
-- Implement room management REST API (#491)
-- Implement participant management REST API (#492)
-- Implement message persistence and REST API (#493)
-- Add real-time WebSocket message streaming (#494)
-- Add CommunicateClient for service-to-service calls
-- Auto-register agents as room participants on connection (#496)
-- Implement MessageBridge for agent message delivery (#497)
-- Add room management endpoints for agents
-- Add communicate subcommand group for room and message management
-- Add room templates and communicate integration to agent apply
-- Implement room list and chat message view for inter-agent comms
-- Add communicate service to migration pipeline
-- Add plist for communicate
-- Add human message input and room management to communicate
-- Add integration tests for message bridge (#504)
-- Improve chat room layout
-- Add agent-communicate Claude Code skill
-- Update agents with rooms
-- Add real-time todos panel to agent details page
-- Show empty todos
-- Add syntax highlighting for prompt display via react-shiki (#507)
-- Initialize git-spice and configure project defaults
-- Add git-spice skill with project conventions
-- Update all agent system prompts to use git-spice commands
-- Update workflow prompt templates to use git-spice commands
-- Add operations and security communication rooms
-- Add conductor agent for pipeline orchestration
-- Add triage agent for automatic issue processing
-- Add enricher agent for issue quality improvement
-- Add tester agent for systematic test coverage
-- Add security agent for proactive vulnerability auditing
-- Add refactor agent and workflows for code improvement
-- Add research agent for technology investigation and analysis
-- Add enrichment-worker workflow (closes #629)
-- Add test-worker workflow (closes #630)
-- Add research-worker workflow (closes #632)
-- Add architect agent for cross-service design review and ADRs
-- Add release-manager agent for changelog and version management
-- Add security-audit and security-worker workflows (closes #633)
-- Update room memberships for all new agents (#636)
-- Create pipeline labels and define label-driven state machine
-- Create pipeline labels and define label-driven state machine
-- Create research-agent GitHub label
-- Create research-agent label and add declarative label config
-- Create merge-worker merge orchestration workflow
-- Create merge-worker merge orchestration workflow
-- Create conductor-sync pipeline orchestration workflow
-- Create conductor-sync pipeline orchestration workflows
-- Create triage-worker workflow
-- Create triage-worker workflow for needs-triage label dispatch
-- Add file-path scoping to restrict agent write access
-- Add file-path scoping to agent tool policies
-- Add dispatch_result source_id propagation and wire pipeline chaining workflows
-- Add dispatch_result trigger and source_id propagation (address review feedback)
-- Define and enforce human approval gates for autonomous operations
-- Define and enforce human approval gates
-- Add merge automation to conductor agent
-- Add detailed merge automation with CI verification and stack ordering
-- Add agent coordination hooks to prevent duplicate work
-- Agent coordination checkpoint (address review feedback)
-- Add HealthResponse::degraded constructor and is_healthy helper to common crate
-- Add HealthResponse::degraded constructor and is_healthy helper (closes #647)
 - Implement PtyBackend for ExecutionBackend trait (closes #673)
 - PTY session I/O capture and streaming infrastructure
 - Add PtyOutputStream with ring-buffer history and broadcast streaming
@@ -447,31 +310,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Rename tmux_session to session_id with storage migration
-- Make bollard a regular dependency instead of feature-gated
-- WorkflowRunner accepts Box<dyn TriggerStrategy>
 - Migrate services with existing config.rs to shared TOML config
 
 ### Documentation
 
-- Add SeaORM patterns and conventions for agentd contributors (#230)
-- Documentation review and update for issue #318
-- Add additional directories feature documentation (#361)
-- Add memory service API and CLI documentation
-- Document TriggerStrategy abstraction and source_config migration (#349)
-- Document cron and delay schedule triggers (#350)
-- Document event bus and lifecycle/dispatch-result triggers (#351)
-- Document webhook trigger setup and GitHub integration (#352)
-- Document manual trigger API and CLI usage (#353)
-- Review and consolidate workflow trigger documentation (#348)
-- Document inter-agent communication architecture and user guide (#505)
-- Clarify dev vs prod port scheme and agent status behaviour
-- Add research agent reference and pipeline flow
-- Add research agent reference and update nav (closes #683)
-- Autonomous pipeline architecture reference
-- Add autonomous pipeline architecture reference (closes #646)
-- Add agent contributor onboarding guide
-- Add agent contributor onboarding guide (closes #649)
 - Add Linear trigger documentation and example workflows
 - Fix factual inaccuracies flagged in review
 - Add README and MCP client configuration guide
@@ -494,108 +336,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- Run cargo fmt
-- Run cargo fmt
-- Resolve clippy errors
-- Run cargo fmt
-- Remove duplication
-- Run cargo fmt
-- Remove generated entities
-- Ui layout issues
-- Use snake case on agent status
-- Fix notifications page crash caused by NotificationSource type mismatch
-- Add useEffect return check
-- Terminate_agent deletes storage record instead of updating to Stopped
-- Run cargo fmt
-- Run cargo fmt
-- Resolve clippy errors
-- Remove broken width setting from dialog
-- Address review feedback
-- Run cargo fmt
-- Update quinn-proto
-- Tweak layout and font colors
-- Apply review feedback
-- Handle tmux errors correctly
-- Run cargo fmt
-- Resolve review feedback
-- Resolve review feedback
-- Run cargo fmt
-- Run cargo fmt
-- Run cargo fmt
-- Layout issues
-- Add usage to agent list
-- Handle websocket log events
-- Reconnect restarted agents
-- Handle restart reconnection
-- Run cargo fmt
-- Run cargo fmt
-- Address PR #313 review feedback
-- Run cargo fmt
-- Rename existing node user instead of creating new UID 1000
-- Address code review findings for Dockerfile and CI
-- Run cargo fmt
-- Address PR #324 code review feedback
-- Run cargo fmt
-- Run cargo fmt
-- Address PR #325 code review feedback
-- Run cargo fmt
-- Use /bin/sh instead of /bin/bash for general agent type in Docker
-- Allocate TTY and open stdin for Docker containers
-- Dialog width
-- Remove stale types.rs placeholder after rebase onto feature/memory-service
-- Run cargo fmt
-- Clippy errors
-- Clippy errors
-- Address PR #377 review feedback
-- Run cargo fmt
-- Use consistent port pattern
-- Memory dialog width
-- Drawer width
-- Run cargo fmt
-- Run cargo fmt
-- Install protoc for lance-encoding build on Linux
-- Resolve clippy warnings for too_many_arguments and large_enum_variant
-- Run cargo fmt
-- Run cargo fmt
-- Run cargo fmt
-- Run cargo fmt
-- Run cargo fmt
-- Run cargo fmt
-- Run cargo fmt
-- Run cargo fmt
-- Run cargo fmt
-- Hook path and cleanup issue
-- Improper handling of undefined
-- Address review feedback on MessageBridge (#497)
-- Address PR #517 review — typed communicate errors
-- Errors in corrupt details log
-- Address PR #518 review — watch auto-join, port, URL encoding, pagination
-- Address PR #519 review — teardown rooms, conflict handling, UX fixes
-- Address PR #521 review — openWebSocket recursion, socket event handling, useMemo
-- Layout
-- Address PR #524 review feedback
-- Template kind for rooms
-- Address PR #526 review feedback
-- Handle chat room websocket correctly
-- Prevent undefined access
-- Make communication page fixed
-- Remove annoying border
-- More layout
-- Add port to orchestrator plist
-- Persist and restore agent room memberships
-- Deduplicate message delivery to agents via MessageBridge
-- Remove failing use of mut
-- Address PR #482 review issues
-- Resolve cargo audit vulnerabilities
-- Resolve cargo audit failures on issue-473
-- Correct grep comment filters and audit redundancy in security-audit workflow
-- Address review feedback on Step 1, 3, 6, 8 and conductor sort note
-- Normalize room participant identifiers to agent UUIDs
-- Normalize room participant identifiers to agent UUIDs (closes #707)
-- Resolve cargo audit security vulnerabilities
-- Resolve cargo audit security vulnerabilities
-- Resolve new agent stack issues
-- Reduce conductor command size using scripts
 - Fix pty_stream doctest by removing tokio_test dependency
 - Auto-focus terminal on interactive mode toggle
 - Auto-focus terminal when switching to interactive mode
@@ -700,6 +440,286 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Ui formatting
 - Clippy and test issues
 - Doc_test issues
+
+## [0.3.0-pre] - 2026-03-23
+
+### Added
+
+- Migrate agentd-common storage module from SQLx to SeaORM
+- Define SeaORM entities and migrate notify storage to SeaORM
+- Define SeaORM entities for orchestrator crate agent and scheduler models
+- Remove deprecated SQLx dependencies after SeaORM migration
+- Add sea-orm-cli entity generation and migration commands to xtask
+- Generate db entities
+- Support pull requests in workflows
+- Add review agent out of staging
+- Reconcile restarts agents with stale tmux sessions on startup
+- Add Otterfile
+- Add agents and skills for claude code
+- Update Otterfile
+- Add usage tracking and context management types
+- Add agent_usage_sessions schema and auto_clear_threshold
+- Add usage session CRUD storage methods (#147)
+- Add clear_context and get_usage_stats to AgentManager (#150)
+- Add usage and clear-context endpoints
+- Add usage and clear-context client methods
+- Add usage and clear-context subcommands
+- Add usage persistence and auto-clear callback
+- Extract usage data from WebSocket result messages
+- Support auto_clear_threshold in YAML agent templates
+- Add TypeScript types for usage tracking and context management
+- Add usage API client methods and useAgentUsage hook
+- Add agent usage panel to agent detail page
+- Add clear context action and auto-clear threshold config
+- Add usage and cache efficiency charts to monitoring dashboard
+- Add real-time usage update events to WebSocket stream
+- Add usage cost indicators to agent list and dashboard summary
+- Define ExecutionBackend trait and implement TmuxBackend adapter
+- Add debug endpoint and websocket improvements
+- Implement DockerBackend using bollard crate
+- Handle Docker networking and WebSocket URL rewriting
+- Add documentation agent and workflow
+- Add Dockerfile and CI pipeline for Claude Code execution image
+- Add design agent and workflow
+- Add backend selection to AgentConfig and orchestrator startup
+- Update CLI for Docker backend support
+- Add design file
+- Improve layout and style
+- Make input multi-line
+- Update design files
+- Add reconciliation and health check support for Docker backend
+- Add integration tests and documentation for Docker execution backend
+- Support AGENTD_ENV for dev and test
+- Add additional_dirs field to AgentConfig, DB entity, and YAML template
+- Add REST API endpoints to manage agent additional_dirs at runtime ([#363](https://github.com/geoffjay/agentd/pull/363))
+- Shell-escape --add-dir paths and warn on missing dirs
+- Add add-dir and remove-dir commands for agent directory management
+- Display and manage additional directories in agent details page
+- Consolidate agent action buttons into a dropdown menu
+- Scaffold agentd-memory crate with workspace integration (#300)
+- Define memory types, traits, and domain model (#301)
+- Implement embedding service with OpenAI-compatible provider support
+- Implement LanceDB vector store backend
+- Implement REST API endpoints for memory service
+- Add CLI commands and client for agentd-memory service
+- Add integration tests and comprehensive documentation
+- Add memory TypeScript types and API client
+- Add useMemories and useMemorySearch React hooks
+- Add memory list page with filters and pagination
+- Add memory create dialog and semantic search panel
+- Add memory plist
+- Integrate memory service into navigation, search, and dashboard
+- Add memory UI integration tests and MSW test infrastructure
+- Implement SQLite metadata storage and SeaORM entities
+- Consistent table layouts and detail drawer for list pages
+- Define TriggerStrategy trait for workflow scheduling
+- Implement PollingStrategy wrapping TaskSource + interval
+- Add POST /workflows/{id}/trigger endpoint for manual dispatch
+- Add protection from destructive commands
+- Add skills
+- Add memory protocol to agents and workflows
+- Add Bash(pattern) command-level filtering to tool policies
+- Enhance agent log tool call display with tool details
+- Persist agent log history and surface thinking blocks
+- Track agent busy/idle activity state in ConnectionRegistry
+- Add lsp for claude
+- Add LinearIssues variant to TriggerConfig
+- Define room/participant/message models, entities, and migrations
+- Scaffold communicate crate with Axum server and SeaORM storage
+- Implement room management REST API (#491)
+- Implement participant management REST API (#492)
+- Implement message persistence and REST API (#493)
+- Add real-time WebSocket message streaming (#494)
+- Add CommunicateClient for service-to-service calls
+- Auto-register agents as room participants on connection (#496)
+- Implement MessageBridge for agent message delivery (#497)
+- Add room management endpoints for agents
+- Add communicate subcommand group for room and message management
+- Add room templates and communicate integration to agent apply
+- Implement room list and chat message view for inter-agent comms
+- Add communicate service to migration pipeline
+- Add plist for communicate
+- Add human message input and room management to communicate
+- Add integration tests for message bridge (#504)
+- Improve chat room layout
+- Add agent-communicate Claude Code skill
+- Update agents with rooms
+- Add real-time todos panel to agent details page
+- Show empty todos
+- Add syntax highlighting for prompt display via react-shiki (#507)
+- Initialize git-spice and configure project defaults
+- Add git-spice skill with project conventions
+- Update all agent system prompts to use git-spice commands
+- Update workflow prompt templates to use git-spice commands
+- Add operations and security communication rooms
+- Add conductor agent for pipeline orchestration
+- Add triage agent for automatic issue processing
+- Add enricher agent for issue quality improvement
+- Add tester agent for systematic test coverage
+- Add security agent for proactive vulnerability auditing
+- Add refactor agent and workflows for code improvement
+- Add research agent for technology investigation and analysis
+- Add enrichment-worker workflow (closes #629)
+- Add test-worker workflow (closes #630)
+- Add research-worker workflow (closes #632)
+- Add architect agent for cross-service design review and ADRs
+- Add release-manager agent for changelog and version management
+- Add security-audit and security-worker workflows (closes #633)
+- Update room memberships for all new agents (#636)
+- Create pipeline labels and define label-driven state machine
+- Create pipeline labels and define label-driven state machine
+- Create research-agent GitHub label
+- Create research-agent label and add declarative label config
+- Create merge-worker merge orchestration workflow
+- Create merge-worker merge orchestration workflow
+- Create conductor-sync pipeline orchestration workflow
+- Create conductor-sync pipeline orchestration workflows
+- Create triage-worker workflow
+- Create triage-worker workflow for needs-triage label dispatch
+- Add file-path scoping to restrict agent write access
+- Add file-path scoping to agent tool policies
+- Add dispatch_result source_id propagation and wire pipeline chaining workflows
+- Add dispatch_result trigger and source_id propagation (address review feedback)
+- Define and enforce human approval gates for autonomous operations
+- Define and enforce human approval gates
+- Add merge automation to conductor agent
+- Add detailed merge automation with CI verification and stack ordering
+- Add agent coordination hooks to prevent duplicate work
+- Agent coordination checkpoint (address review feedback)
+- Add HealthResponse::degraded constructor and is_healthy helper to common crate
+- Add HealthResponse::degraded constructor and is_healthy helper (closes #647)
+
+### Changed
+
+- Rename tmux_session to session_id with storage migration
+- Make bollard a regular dependency instead of feature-gated
+- WorkflowRunner accepts Box<dyn TriggerStrategy>
+
+### Documentation
+
+- Add SeaORM patterns and conventions for agentd contributors (#230)
+- Documentation review and update for issue #318
+- Add additional directories feature documentation (#361)
+- Add memory service API and CLI documentation
+- Document TriggerStrategy abstraction and source_config migration (#349)
+- Document cron and delay schedule triggers (#350)
+- Document event bus and lifecycle/dispatch-result triggers (#351)
+- Document webhook trigger setup and GitHub integration (#352)
+- Document manual trigger API and CLI usage (#353)
+- Review and consolidate workflow trigger documentation (#348)
+- Document inter-agent communication architecture and user guide (#505)
+- Clarify dev vs prod port scheme and agent status behaviour
+- Add research agent reference and pipeline flow
+- Add research agent reference and update nav (closes #683)
+- Autonomous pipeline architecture reference
+- Add autonomous pipeline architecture reference (closes #646)
+- Add agent contributor onboarding guide
+- Add agent contributor onboarding guide (closes #649)
+
+### Fixed
+
+- Run cargo fmt
+- Run cargo fmt
+- Resolve clippy errors
+- Run cargo fmt
+- Remove duplication
+- Run cargo fmt
+- Remove generated entities
+- Ui layout issues
+- Use snake case on agent status
+- Fix notifications page crash caused by NotificationSource type mismatch
+- Add useEffect return check
+- Terminate_agent deletes storage record instead of updating to Stopped
+- Run cargo fmt
+- Run cargo fmt
+- Resolve clippy errors
+- Remove broken width setting from dialog
+- Address review feedback
+- Run cargo fmt
+- Update quinn-proto
+- Tweak layout and font colors
+- Apply review feedback
+- Handle tmux errors correctly
+- Run cargo fmt
+- Resolve review feedback
+- Resolve review feedback
+- Run cargo fmt
+- Run cargo fmt
+- Run cargo fmt
+- Layout issues
+- Add usage to agent list
+- Handle websocket log events
+- Reconnect restarted agents
+- Handle restart reconnection
+- Run cargo fmt
+- Run cargo fmt
+- Address PR #313 review feedback
+- Run cargo fmt
+- Rename existing node user instead of creating new UID 1000
+- Address code review findings for Dockerfile and CI
+- Run cargo fmt
+- Address PR #324 code review feedback
+- Run cargo fmt
+- Run cargo fmt
+- Address PR #325 code review feedback
+- Run cargo fmt
+- Use /bin/sh instead of /bin/bash for general agent type in Docker
+- Allocate TTY and open stdin for Docker containers
+- Dialog width
+- Remove stale types.rs placeholder after rebase onto feature/memory-service
+- Run cargo fmt
+- Clippy errors
+- Clippy errors
+- Address PR #377 review feedback
+- Run cargo fmt
+- Use consistent port pattern
+- Memory dialog width
+- Drawer width
+- Run cargo fmt
+- Run cargo fmt
+- Install protoc for lance-encoding build on Linux
+- Resolve clippy warnings for too_many_arguments and large_enum_variant
+- Run cargo fmt
+- Run cargo fmt
+- Run cargo fmt
+- Run cargo fmt
+- Run cargo fmt
+- Run cargo fmt
+- Run cargo fmt
+- Run cargo fmt
+- Run cargo fmt
+- Hook path and cleanup issue
+- Improper handling of undefined
+- Address review feedback on MessageBridge (#497)
+- Address PR #517 review — typed communicate errors
+- Errors in corrupt details log
+- Address PR #518 review — watch auto-join, port, URL encoding, pagination
+- Address PR #519 review — teardown rooms, conflict handling, UX fixes
+- Address PR #521 review — openWebSocket recursion, socket event handling, useMemo
+- Layout
+- Address PR #524 review feedback
+- Template kind for rooms ([#525](https://github.com/geoffjay/agentd/pull/525))
+- Address PR #526 review feedback
+- Handle chat room websocket correctly
+- Prevent undefined access
+- Make communication page fixed
+- Remove annoying border
+- More layout
+- Add port to orchestrator plist
+- Persist and restore agent room memberships
+- Deduplicate message delivery to agents via MessageBridge
+- Remove failing use of mut
+- Address PR #482 review issues
+- Resolve cargo audit vulnerabilities
+- Resolve cargo audit failures on issue-473
+- Correct grep comment filters and audit redundancy in security-audit workflow
+- Address review feedback on Step 1, 3, 6, 8 and conductor sort note
+- Normalize room participant identifiers to agent UUIDs
+- Normalize room participant identifiers to agent UUIDs (closes #707)
+- Resolve cargo audit security vulnerabilities
+- Resolve cargo audit security vulnerabilities ([#713](https://github.com/geoffjay/agentd/pull/713))
+- Resolve new agent stack issues
+- Reduce conductor command size using scripts
 
 ## [0.3.0] - 2026-03-08
 
