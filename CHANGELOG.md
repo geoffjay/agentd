@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.2] - 2026-06-08
+
+### Added
+
+- Extract install/service logic into agentd-install crate
+
+### Fixed
+
+- Use up to date intel runner
+
 ## [0.4.1] - 2026-06-07
 
 ### Fixed
