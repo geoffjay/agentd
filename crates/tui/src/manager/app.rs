@@ -280,10 +280,10 @@ impl ManagerApp {
 
         let filtered = queries::filtered_indices(&picker.filter);
         match key.code {
-            KeyCode::Down | KeyCode::Char('j') => {
-                if !filtered.is_empty() && picker.cursor + 1 < filtered.len() {
-                    picker.cursor += 1;
-                }
+            KeyCode::Down | KeyCode::Char('j')
+                if !filtered.is_empty() && picker.cursor + 1 < filtered.len() =>
+            {
+                picker.cursor += 1;
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 picker.cursor = picker.cursor.saturating_sub(1);
@@ -383,34 +383,28 @@ impl ManagerApp {
                     self.metric_query.insert(self.metric_query_cursor, c);
                     self.metric_query_cursor += c.len_utf8();
                 }
-                KeyCode::Backspace => {
-                    if self.metric_query_cursor > 0 {
-                        let prev = self.metric_query[..self.metric_query_cursor]
-                            .char_indices()
-                            .next_back()
-                            .map(|(i, _)| i)
-                            .unwrap_or(0);
-                        self.metric_query.drain(prev..self.metric_query_cursor);
-                        self.metric_query_cursor = prev;
-                    }
+                KeyCode::Backspace if self.metric_query_cursor > 0 => {
+                    let prev = self.metric_query[..self.metric_query_cursor]
+                        .char_indices()
+                        .next_back()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
+                    self.metric_query.drain(prev..self.metric_query_cursor);
+                    self.metric_query_cursor = prev;
                 }
-                KeyCode::Left => {
-                    if self.metric_query_cursor > 0 {
-                        self.metric_query_cursor = self.metric_query[..self.metric_query_cursor]
-                            .char_indices()
-                            .next_back()
-                            .map(|(i, _)| i)
-                            .unwrap_or(0);
-                    }
+                KeyCode::Left if self.metric_query_cursor > 0 => {
+                    self.metric_query_cursor = self.metric_query[..self.metric_query_cursor]
+                        .char_indices()
+                        .next_back()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
                 }
-                KeyCode::Right => {
-                    if self.metric_query_cursor < self.metric_query.len() {
-                        self.metric_query_cursor += self.metric_query[self.metric_query_cursor..]
-                            .chars()
-                            .next()
-                            .map(|c| c.len_utf8())
-                            .unwrap_or(0);
-                    }
+                KeyCode::Right if self.metric_query_cursor < self.metric_query.len() => {
+                    self.metric_query_cursor += self.metric_query[self.metric_query_cursor..]
+                        .chars()
+                        .next()
+                        .map(|c| c.len_utf8())
+                        .unwrap_or(0);
                 }
                 KeyCode::Enter => {
                     self.execute_metric_query().await;

@@ -729,10 +729,8 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => {
                 cursor = cursor.saturating_sub(1);
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if cursor + 1 < n {
-                    cursor += 1;
-                }
+            KeyCode::Down | KeyCode::Char('j') if cursor + 1 < n => {
+                cursor += 1;
             }
             KeyCode::Char(' ') => {
                 if let Some(tag) = tags.get(cursor) {
