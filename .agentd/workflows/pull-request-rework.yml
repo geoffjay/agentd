@@ -40,8 +40,6 @@ prompt_template: |
   2. Search for any prior review findings in this area:
      agent memory search "review findings" --as-actor worker --tags reviewer --limit 5 --json
   3. Review results to understand recurring issues or past decisions.
-  4. Search the code index for context around the files being changed:
-     agent index search "{{title}}" --mode hybrid --language rust --limit 5 --json
 
   Instructions:
   1. Check out the branch for this PR:

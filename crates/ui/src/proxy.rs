@@ -11,7 +11,6 @@ pub struct ProxyState {
     pub ask_url: String,
     pub notify_url: String,
     pub orchestrator_url: String,
-    pub index_url: String,
 }
 
 /// Proxy requests under `/api/ask/**` to the ask service.
@@ -36,14 +35,6 @@ pub async fn proxy_orchestrator(
     req: Request<Body>,
 ) -> Result<Response, StatusCode> {
     proxy_request(&state.client, &state.orchestrator_url, "/api/orchestrator", req).await
-}
-
-/// Proxy requests under `/api/index/**` to the index service.
-pub async fn proxy_index(
-    State(state): State<ProxyState>,
-    req: Request<Body>,
-) -> Result<Response, StatusCode> {
-    proxy_request(&state.client, &state.index_url, "/api/index", req).await
 }
 
 /// Forward an inbound request to an upstream service, stripping the prefix.

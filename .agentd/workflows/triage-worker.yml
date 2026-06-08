@@ -42,8 +42,6 @@ prompt_template: |
   2. Search for known triage patterns or label conventions:
      agent memory search "triage label conventions" --as-actor triage --limit 3 --json
   3. Review results and apply labels consistently with past decisions.
-  4. Search the code index to estimate which crates are affected:
-     agent index search "{{title}}" --mode vector --language rust --limit 5 --json
 
   Instructions:
 

@@ -172,16 +172,6 @@ All configuration keys with their TOML path, environment variable, default value
 |----------|---------------------|---------|-------------|
 | `services.communicate.port` | `AGENTD_COMMUNICATE_PORT` | `17010` | HTTP listen port |
 
-### agentd-index (port 17012)
-
-| TOML Key | Environment Variable | Default | Description |
-|----------|---------------------|---------|-------------|
-| `services.index.port` | `AGENTD_INDEX_PORT` | `17012` | HTTP listen port |
-| `services.index.embedding_provider` | `AGENTD_INDEX_EMBEDDING_PROVIDER` | `ollama` | Embedding provider: `ollama`, `openai` |
-| `services.index.embedding_model` | `AGENTD_INDEX_EMBEDDING_MODEL` | `nomic-embed-text` | Embedding model name |
-| `services.index.lance_path` | `AGENTD_INDEX_LANCE_PATH` | XDG data dir | LanceDB storage directory |
-| `services.index.languages` | `AGENTD_INDEX_LANGUAGES` | `rust,python,javascript,typescript` | Languages to index (env var: comma-separated string) |
-
 ### agentd-mcp (stdio transport)
 
 The MCP server uses stdio transport and has no dedicated port of its own. These settings control how the MCP tools reach the other agentd services.
@@ -217,37 +207,14 @@ Both `agentd-orchestrator` and `agentd-wrap` support four execution backends. Se
 - `ollama` - Local Ollama instance (default model: `nomic-embed-text`)
 - `openai` - OpenAI API (default model: `text-embedding-3-small`)
 
-**agentd-index** supports:
-- `ollama` - Local Ollama instance (default; default model: `nomic-embed-text`)
-- `openai` - OpenAI API (default model: `text-embedding-3-large`)
-
 ### LanceDB Paths
 
-The `lance_path` for both memory and index services defaults to the platform-specific XDG data directory:
+The `lance_path` for the memory service defaults to the platform-specific XDG data directory:
 
-- **Linux:** `~/.local/share/agentd-memory/lancedb` and `~/.local/share/agentd-index/lancedb`
-- **macOS:** `~/Library/Application Support/agentd-memory/lancedb` and `~/Library/Application Support/agentd-index/lancedb`
+- **Linux:** `~/.local/share/agentd-memory/lancedb`
+- **macOS:** `~/Library/Application Support/agentd-memory/lancedb`
 
 Override with the environment variable or a TOML entry when you want vector data on a specific volume.
-
-### Code Indexing Languages
-
-`services.index.languages` lists the programming languages that `agentd-index` will parse and chunk. Supported values:
-
-| Language name | File extensions indexed |
-|---------------|------------------------|
-| `rust` | `.rs` |
-| `python` | `.py` |
-| `javascript` | `.js`, `.jsx`, `.mjs` |
-| `typescript` | `.ts`, `.tsx` |
-
-Any other string is treated as a literal file extension (e.g. `"go"` indexes `.go` files).
-
-When setting via environment variable, use a comma-separated list:
-
-```bash
-AGENTD_INDEX_LANGUAGES=rust,python,go
-```
 
 ### Hook Notify Service URL
 
@@ -285,10 +252,6 @@ host = "127.0.0.1"
 [services.orchestrator]
 backend = "tmux"
 reconcile_interval_secs = 10
-
-[services.index]
-embedding_provider = "ollama"
-embedding_model = "nomic-embed-text"
 
 [services.memory]
 embedding_provider = "ollama"
@@ -349,13 +312,6 @@ port = 8009
 [services.communicate]
 port = 8010
 
-[services.index]
-port = 8012
-embedding_provider = "openai"
-embedding_model = "text-embedding-3-large"
-lance_path = "/data/agentd/index/lancedb"
-languages = ["rust", "python", "typescript", "go"]
-
 [services.mcp]
 orchestrator_url = "http://orchestrator.internal:8006"
 notify_url = "http://notify.internal:8004"
@@ -386,9 +342,6 @@ communicate_url = "http://communicate:17010"
 
 [services.memory]
 lance_path = "/data/lancedb"
-
-[services.index]
-lance_path = "/data/index-lancedb"
 
 [services.mcp]
 orchestrator_url = "http://orchestrator:17006"

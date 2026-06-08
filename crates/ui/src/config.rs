@@ -14,8 +14,6 @@ pub struct UiConfig {
     pub notify_service_url: String,
     /// URL of the orchestrator service.
     pub orchestrator_service_url: String,
-    /// URL of the index service.
-    pub index_service_url: String,
 }
 
 impl UiConfig {
@@ -29,7 +27,6 @@ impl UiConfig {
     /// - `AGENTD_ASK_SERVICE_URL` — ask service URL (default: `http://localhost:7001`)
     /// - `AGENTD_NOTIFY_SERVICE_URL` — notify service URL (default: `http://localhost:7004`)
     /// - `AGENTD_ORCHESTRATOR_SERVICE_URL` — orchestrator service URL (default: `http://localhost:7006`)
-    /// - `AGENTD_INDEX_SERVICE_URL` — index service URL (default: `http://localhost:17012`)
     pub fn load() -> Self {
         let shared = agentd_common::config::load().unwrap_or_else(|e| {
             tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
@@ -50,8 +47,6 @@ impl UiConfig {
                 .unwrap_or_else(|_| "http://localhost:17004".to_string()),
             orchestrator_service_url: std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:17006".to_string()),
-            index_service_url: std::env::var("AGENTD_INDEX_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17012".to_string()),
         }
     }
 
@@ -93,7 +88,6 @@ mod tests {
             ask_service_url: "http://localhost:7001".to_string(),
             notify_service_url: "http://localhost:7004".to_string(),
             orchestrator_service_url: "http://localhost:7006".to_string(),
-            index_service_url: "http://localhost:17012".to_string(),
         };
         assert!(config.validate().is_err());
     }
@@ -106,7 +100,6 @@ mod tests {
             ask_service_url: "http://localhost:7001".to_string(),
             notify_service_url: "http://localhost:7004".to_string(),
             orchestrator_service_url: "http://localhost:7006".to_string(),
-            index_service_url: "http://localhost:17012".to_string(),
         };
         assert!(config.validate().is_err());
     }

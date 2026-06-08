@@ -9,7 +9,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ServiceStatus } from "@/components/common/StatusBadge";
 import { askClient } from "@/services/ask";
 import { communicateClient } from "@/services/communicate";
-import { indexClient } from "@/services/codeindex";
 import { memoryClient } from "@/services/memory";
 import { notifyClient } from "@/services/notify";
 import { orchestratorClient } from "@/services/orchestrator";
@@ -17,7 +16,7 @@ import type { HealthResponse } from "@/types/common";
 
 export interface ServiceHealth {
 	name: string;
-	key: "orchestrator" | "notify" | "ask" | "memory" | "index" | "communicate";
+	key: "orchestrator" | "notify" | "ask" | "memory" | "communicate";
 	port: number;
 	status: ServiceStatus;
 	version?: string;
@@ -79,7 +78,6 @@ export function useServiceHealth(): UseServiceHealthResult {
 			fetchHealth("notify", () => notifyClient.getHealth(), 17004),
 			fetchHealth("ask", () => askClient.getHealth(), 17001),
 			fetchHealth("memory", () => memoryClient.getHealth(), 17008),
-			fetchHealth("index", () => indexClient.getHealth(), 17012),
 			fetchHealth("communicate", () => communicateClient.getHealth(), 17010),
 		]);
 		setServices(results);

@@ -49,7 +49,6 @@ package() {
         agentd-communicate
         agentd-core
         agentd-hook
-        agentd-index
         agentd-memory
         agentd-monitor
         agentd-notify

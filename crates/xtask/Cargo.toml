@@ -13,4 +13,3 @@ agentd-common = { path = "../common" }
 
 [features]
 default = []
-index-service = ["agentd-install/index-service"]

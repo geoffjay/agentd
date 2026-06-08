@@ -14,8 +14,6 @@ export const serviceConfig = {
 	communicateServiceUrl:
 		import.meta.env.VITE_AGENTD_COMMUNICATE_SERVICE_URL ??
 		"http://localhost:17010",
-	indexServiceUrl:
-		import.meta.env.VITE_AGENTD_INDEX_SERVICE_URL ?? "http://localhost:17012",
 } as const;
 
 export type ServiceConfig = typeof serviceConfig;

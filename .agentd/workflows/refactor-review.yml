@@ -36,8 +36,6 @@ prompt_template: |
   3. Check for existing open refactor issues to avoid duplicates:
      gh issue list --repo geoffjay/agentd --label refactor --state open \
        --json number,title | jq '.[].title'
-  4. Search the code index for patterns and duplication in the target crate:
-     agent index search "<target-crate> patterns" --mode hybrid --file-pattern "crates/<target-crate>/src/**" --limit 15 --json
 
   Review Instructions:
 

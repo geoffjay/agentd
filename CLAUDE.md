@@ -6,6 +6,20 @@ This file provides guidance for Claude Code and AI agents working on the agentd 
 
 agentd is a Rust workspace containing multiple services. See `README.md` for the full overview.
 
+## Removed: Code Index Service
+
+The `index` crate (`agentd-index`, a semantic + keyword code search service on port 17012)
+and all of its supporting code — CLI commands, config, UI feature, packaging, and docs — were
+**removed** as an experiment whose compilation, installation, and maintenance overhead outweighed
+its benefit. If future work calls for re-adding indexing or semantic code search, recover the prior
+implementation from git rather than building it from scratch:
+
+- The last commit that contained the index crate was `4b71527e` (release v0.4.2).
+- To find the exact removal commit later, run `git log --oneline --diff-filter=D -- crates/index`.
+- Inspect the old code with `git show 4b71527e:crates/index/Cargo.toml` (or check out the tree:
+  `git checkout 4b71527e -- crates/index`), which captures the dependencies (tree-sitter, lancedb,
+  tantivy, arrow, etc.), chunking pipeline, embedding store, and API surface that existed before.
+
 ## Branch Strategy
 
 All feature work branches off of a feature branch prefixed by `feature/` with the scope appended as

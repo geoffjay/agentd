@@ -20,4 +20,3 @@ communicate = { path = "../communicate" }
 
 [features]
 default = []
-index-service = []

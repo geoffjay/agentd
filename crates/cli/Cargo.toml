@@ -46,7 +46,6 @@ agentd-tui = { path = "../tui" }
 
 [features]
 default = []
-index-service = ["agentd-install/index-service"]
 
 [dev-dependencies]
 mockito = "1.2"

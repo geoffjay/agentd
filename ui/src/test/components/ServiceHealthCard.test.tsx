@@ -85,19 +85,6 @@ describe("ServiceHealthCard", () => {
 		expect(mockNavigate).toHaveBeenCalled();
 	});
 
-	it("navigates to /code-index when index card is clicked", () => {
-		const indexService: ServiceHealth = {
-			name: "Index",
-			key: "index",
-			port: 17012,
-			status: "healthy",
-			lastChecked: new Date(),
-		};
-		renderCard(indexService);
-		fireEvent.click(screen.getByRole("button"));
-		expect(mockNavigate).toHaveBeenCalledWith("/code-index");
-	});
-
 	it("navigates to /communicate when communicate card is clicked", () => {
 		const communicateService: ServiceHealth = {
 			name: "Communicate",
@@ -109,18 +96,6 @@ describe("ServiceHealthCard", () => {
 		renderCard(communicateService);
 		fireEvent.click(screen.getByRole("button"));
 		expect(mockNavigate).toHaveBeenCalledWith("/communicate");
-	});
-
-	it("renders correct port for index service", () => {
-		const indexService: ServiceHealth = {
-			name: "Index",
-			key: "index",
-			port: 17012,
-			status: "healthy",
-			lastChecked: new Date(),
-		};
-		renderCard(indexService);
-		expect(screen.getByText(/Port 17012/)).toBeInTheDocument();
 	});
 
 	it("renders correct port for communicate service", () => {

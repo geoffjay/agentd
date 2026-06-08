@@ -177,7 +177,6 @@ agentd is a Rust workspace of microservices.  All expose `/health` (GET).
 | core          | 17010    | 7010      | Auth gateway, API proxy                  |
 | communicate   | 17010    | 7010      | Room-based messaging (WebSocket + REST)  |
 | memory        | 17008    | 17008     | Semantic vector memory store             |
-| index         | 17012    | 17012     | Code search (semantic + keyword, optional) |
 | notify        | 17005    | 17005     | Notification routing and delivery        |
 | wrap          | 17007    | 7007      | Docker/tmux execution backend            |
 

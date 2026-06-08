@@ -42,8 +42,6 @@ prompt_template: |
      agent memory search "issue {{source_id}}" --as-actor research --limit 3 --json
   3. Review results and build on existing findings rather than re-investigating
      what is already known.
-  4. Search the code index for existing implementations related to the research topic:
-     agent index search "{{title}}" --mode vector --language rust --limit 10 --json
 
   Instructions:
 

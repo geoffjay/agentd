@@ -41,19 +41,6 @@ export {
 	resetNotificationSeq,
 } from "./notification";
 export {
-	makeAddRepoRequest,
-	makeAgenticMatch,
-	makeAgenticSearchResponse,
-	makeCodeSearchResponse,
-	makeListReposResponse,
-	makeRepoList,
-	makeRepoRecord,
-	makeRepoStatusResponse,
-	makeSearchResultItem,
-	makeSearchResultList,
-	resetCodeIndexSeq,
-} from "./codeindex";
-export {
 	makeAnswerResponse,
 	makeQuestion,
 	makeQuestionActionResponse,

@@ -13,7 +13,6 @@ const SERVICE_ROUTES: Record<string, string> = {
 	notify: "/notifications",
 	ask: "/questions",
 	memory: "/memories",
-	index: "/code-index",
 	communicate: "/communicate",
 };
 

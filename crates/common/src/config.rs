@@ -46,10 +46,6 @@
 //! | `AGENTD_MEMORY_EMBEDDING_PROVIDER`   | `services.memory.embedding_provider`          |
 //! | `AGENTD_MEMORY_EMBEDDING_MODEL`      | `services.memory.embedding_model`             |
 //! | `AGENTD_MEMORY_LANCE_PATH`           | `services.memory.lance_path`                  |
-//! | `AGENTD_INDEX_PORT`                  | `services.index.port`                         |
-//! | `AGENTD_INDEX_EMBEDDING_PROVIDER`    | `services.index.embedding_provider`           |
-//! | `AGENTD_INDEX_EMBEDDING_MODEL`       | `services.index.embedding_model`              |
-//! | `AGENTD_INDEX_LANCE_PATH`            | `services.index.lance_path`                   |
 //! | `AGENTD_HOOK_PORT`                   | `services.hook.port`                          |
 //! | `AGENTD_HISTORY_SIZE`                | `services.hook.history_size`                  |
 //! | `AGENTD_NOTIFY_SERVICE_URL`          | `services.hook.notify_service_url`            |
@@ -65,18 +61,11 @@
 //! | `AGENTD_MCP_WRAP_URL`                | `services.mcp.wrap_url`                       |
 //! | `AGENTD_MCP_MONITOR_URL`             | `services.mcp.monitor_url`                    |
 //! | `AGENTD_MCP_HOOK_URL`                | `services.mcp.hook_url`                       |
-//! | `AGENTD_INDEX_LANGUAGES`             | `services.index.languages`                    |
 //! | `AGENTD_RECONCILE_INTERVAL_SECS`     | `services.orchestrator.reconcile_interval_secs` |
 //! | `AGENTD_UI_PORT`                     | `services.ui.port`                            |
 //! | `AGENTD_UI_DIR`                      | `services.ui.ui_dir`                          |
 //! | `AGENTD_RECONCILE_INTERVAL_SECS`     | `services.orchestrator.reconcile_interval_secs` |
 //! | `AGENTD_COLLECTION_INTERVAL_SECS`    | `services.monitor.collection_interval_secs`     |
-//! | `AGENTD_INDEX_LANGUAGES`             | `services.index.languages`                      |
-//! | `AGENTD_INDEX_EMBEDDING_ENDPOINT`    | `services.index.embedding_endpoint`             |
-//! | `AGENTD_INDEX_EMBEDDING_API_KEY`     | `services.index.embedding_api_key`              |
-//! | `AGENTD_INDEX_LANCE_TABLE`           | `services.index.lance_table`                    |
-//! | `AGENTD_INDEX_WATCH_INTERVAL`        | `services.index.watch_interval_secs`            |
-//! | `AGENTD_INDEX_IGNORE_PATTERNS`       | `services.index.ignore_patterns`                |
 //! | `AGENTD_NOTIFY_SERVICE_URL`          | `services.hook.notify_service_url`              |
 //! | `AGENTD_NOTIFY_ON_FAILURE`           | `services.hook.notify_on_failure`               |
 //! | `AGENTD_NOTIFY_ON_LONG_RUNNING`      | `services.hook.notify_on_long_running`          |
@@ -261,52 +250,6 @@ impl Default for MemoryConfig {
     }
 }
 
-/// Configuration for the `agentd-index` service (port 17012).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct IndexConfig {
-    /// HTTP listen port. Defaults to `17012`.
-    pub port: u16,
-    /// Embedding provider: `"ollama"` or `"openai"`. Defaults to `"ollama"`.
-    pub embedding_provider: String,
-    /// Embedding model name. Defaults to `"nomic-embed-text"`.
-    pub embedding_model: String,
-    /// LanceDB directory path. Defaults to XDG data dir.
-    pub lance_path: String,
-    /// Supported programming languages for indexing.
-    pub languages: Vec<String>,
-    /// Ollama/OpenAI embedding endpoint URL.
-    ///
-    /// Defaults to `"http://localhost:11434/v1"`.
-    pub embedding_endpoint: String,
-    /// API key for embedding requests (required for remote OpenAI).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub embedding_api_key: Option<String>,
-    /// LanceDB table name for code chunks. Defaults to `"code_chunks"`.
-    pub lance_table: String,
-    /// File-system watch polling interval in seconds. Defaults to `30`.
-    pub watch_interval_secs: u64,
-    /// Glob patterns to exclude from indexing.
-    pub ignore_patterns: Vec<String>,
-}
-
-impl Default for IndexConfig {
-    fn default() -> Self {
-        Self {
-            port: 17012,
-            embedding_provider: "ollama".to_string(),
-            embedding_model: "nomic-embed-text".to_string(),
-            lance_path: default_index_lance_path(),
-            languages: default_index_languages(),
-            embedding_endpoint: "http://localhost:11434/v1".to_string(),
-            embedding_api_key: None,
-            lance_table: "code_chunks".to_string(),
-            watch_interval_secs: 30,
-            ignore_patterns: default_index_ignore_patterns(),
-        }
-    }
-}
-
 /// Configuration for the `agentd-hook` service (port 17002).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -466,7 +409,6 @@ pub struct ServicesConfig {
     pub orchestrator: OrchestratorConfig,
     pub wrap: WrapConfig,
     pub memory: MemoryConfig,
-    pub index: IndexConfig,
     pub hook: HookConfig,
     pub monitor: MonitorConfig,
     pub communicate: CommunicateConfig,
@@ -580,20 +522,6 @@ impl ValidateConfig for MemoryConfig {
     }
 }
 
-impl ValidateConfig for IndexConfig {
-    fn validate(&self) -> Result<()> {
-        validate_port(self.port, "index")?;
-        if self.languages.is_empty() {
-            bail!("index.languages must contain at least one language");
-        }
-        match self.embedding_provider.as_str() {
-            "ollama" | "openai" => {}
-            other => bail!("index.embedding_provider must be one of ollama, openai; got: {other}"),
-        }
-        Ok(())
-    }
-}
-
 impl ValidateConfig for HookConfig {
     fn validate(&self) -> Result<()> {
         validate_port(self.port, "hook")?;
@@ -676,7 +604,6 @@ impl AgentdConfig {
             ("[services.orchestrator]", self.services.orchestrator.validate()),
             ("[services.wrap]", self.services.wrap.validate()),
             ("[services.memory]", self.services.memory.validate()),
-            ("[services.index]", self.services.index.validate()),
             ("[services.hook]", self.services.hook.validate()),
             ("[services.monitor]", self.services.monitor.validate()),
             ("[services.mcp]", self.services.mcp.validate()),
@@ -863,60 +790,6 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     &file.services.memory.lance_path,
                     &d.services.memory.lance_path,
                 ),
-            },
-            index: IndexConfig {
-                port: pick_u16(
-                    base.services.index.port,
-                    file.services.index.port,
-                    d.services.index.port,
-                ),
-                embedding_provider: pick(
-                    &base.services.index.embedding_provider,
-                    &file.services.index.embedding_provider,
-                    &d.services.index.embedding_provider,
-                ),
-                embedding_model: pick(
-                    &base.services.index.embedding_model,
-                    &file.services.index.embedding_model,
-                    &d.services.index.embedding_model,
-                ),
-                lance_path: pick(
-                    &base.services.index.lance_path,
-                    &file.services.index.lance_path,
-                    &d.services.index.lance_path,
-                ),
-                languages: if file.services.index.languages != d.services.index.languages {
-                    file.services.index.languages
-                } else {
-                    base.services.index.languages
-                },
-                embedding_endpoint: pick(
-                    &base.services.index.embedding_endpoint,
-                    &file.services.index.embedding_endpoint,
-                    &d.services.index.embedding_endpoint,
-                ),
-                embedding_api_key: file
-                    .services
-                    .index
-                    .embedding_api_key
-                    .or(base.services.index.embedding_api_key),
-                lance_table: pick(
-                    &base.services.index.lance_table,
-                    &file.services.index.lance_table,
-                    &d.services.index.lance_table,
-                ),
-                watch_interval_secs: pick_u64(
-                    base.services.index.watch_interval_secs,
-                    file.services.index.watch_interval_secs,
-                    d.services.index.watch_interval_secs,
-                ),
-                ignore_patterns: if file.services.index.ignore_patterns
-                    != d.services.index.ignore_patterns
-                {
-                    file.services.index.ignore_patterns
-                } else {
-                    base.services.index.ignore_patterns
-                },
             },
             hook: HookConfig {
                 port: pick_u16(
@@ -1119,46 +992,6 @@ fn apply_env_overrides(cfg: &mut AgentdConfig) {
         cfg.services.memory.lance_path = v;
     }
 
-    // ── Index ─────────────────────────────────────────────────────────────
-    if let Some(p) = parse_port("AGENTD_INDEX_PORT") {
-        cfg.services.index.port = p;
-    }
-    if let Ok(v) = env::var("AGENTD_INDEX_EMBEDDING_PROVIDER") {
-        cfg.services.index.embedding_provider = v;
-    }
-    if let Ok(v) = env::var("AGENTD_INDEX_EMBEDDING_MODEL") {
-        cfg.services.index.embedding_model = v;
-    }
-    if let Ok(v) = env::var("AGENTD_INDEX_LANCE_PATH") {
-        cfg.services.index.lance_path = v;
-    }
-    if let Ok(v) = env::var("AGENTD_INDEX_LANGUAGES") {
-        let langs: Vec<String> =
-            v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-        if !langs.is_empty() {
-            cfg.services.index.languages = langs;
-        }
-    }
-    if let Ok(v) = env::var("AGENTD_INDEX_EMBEDDING_ENDPOINT") {
-        cfg.services.index.embedding_endpoint = v;
-    }
-    if let Ok(v) = env::var("AGENTD_INDEX_EMBEDDING_API_KEY") {
-        cfg.services.index.embedding_api_key = Some(v);
-    }
-    if let Ok(v) = env::var("AGENTD_INDEX_LANCE_TABLE") {
-        cfg.services.index.lance_table = v;
-    }
-    if let Some(s) = parse_u64("AGENTD_INDEX_WATCH_INTERVAL") {
-        cfg.services.index.watch_interval_secs = s;
-    }
-    if let Ok(v) = env::var("AGENTD_INDEX_IGNORE_PATTERNS") {
-        let patterns: Vec<String> =
-            v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-        if !patterns.is_empty() {
-            cfg.services.index.ignore_patterns = patterns;
-        }
-    }
-
     // ── Hook ──────────────────────────────────────────────────────────────
     if let Some(p) = parse_port("AGENTD_HOOK_PORT") {
         cfg.services.hook.port = p;
@@ -1326,25 +1159,6 @@ fn default_memory_lance_path() -> String {
         .unwrap_or_else(|| "lancedb".to_string())
 }
 
-fn default_index_lance_path() -> String {
-    ProjectDirs::from("", "", "agentd-index")
-        .map(|d| d.data_dir().join("lancedb").to_string_lossy().to_string())
-        .unwrap_or_else(|| "lancedb".to_string())
-}
-
-fn default_index_languages() -> Vec<String> {
-    vec![
-        "rust".to_string(),
-        "python".to_string(),
-        "javascript".to_string(),
-        "typescript".to_string(),
-    ]
-}
-
-fn default_index_ignore_patterns() -> Vec<String> {
-    vec![".git".to_string(), "target".to_string(), "node_modules".to_string(), "dist".to_string()]
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1377,7 +1191,6 @@ mod tests {
         assert_eq!(cfg.services.orchestrator.port, 17006);
         assert_eq!(cfg.services.wrap.port, 17005);
         assert_eq!(cfg.services.memory.port, 17008);
-        assert_eq!(cfg.services.index.port, 17012);
         assert_eq!(cfg.services.hook.port, 17002);
         assert_eq!(cfg.services.monitor.port, 17003);
         assert_eq!(cfg.services.communicate.port, 17010);
@@ -1389,15 +1202,6 @@ mod tests {
     fn test_default_orchestrator_backend() {
         let cfg = AgentdConfig::default();
         assert_eq!(cfg.services.orchestrator.backend, "tmux");
-    }
-
-    #[test]
-    fn test_default_index_languages() {
-        let cfg = AgentdConfig::default();
-        assert!(cfg.services.index.languages.contains(&"rust".to_string()));
-        assert!(cfg.services.index.languages.contains(&"python".to_string()));
-        assert!(cfg.services.index.languages.contains(&"javascript".to_string()));
-        assert!(cfg.services.index.languages.contains(&"typescript".to_string()));
     }
 
     #[test]
@@ -1447,16 +1251,6 @@ port = 19004
         // Fields absent from TOML fall back to compiled defaults
         assert_eq!(cfg.services.ask.port, 17001);
         assert_eq!(cfg.general.host, "127.0.0.1");
-    }
-
-    #[test]
-    fn test_toml_services_index_languages_override() {
-        let toml_str = r#"
-[services.index]
-languages = ["go", "ruby"]
-"#;
-        let cfg: AgentdConfig = toml::from_str(toml_str).expect("parse failed");
-        assert_eq!(cfg.services.index.languages, vec!["go", "ruby"]);
     }
 
     // ── File-based load (uses load_from_path — no global env var needed) ───
@@ -1532,15 +1326,6 @@ history_size = 1000
         let cfg = load_from_path(None).expect("load failed");
         env::remove_var("AGENTD_NOTIFY_PORT");
         assert_eq!(cfg.services.notify.port, 19004);
-    }
-
-    #[test]
-    fn test_env_override_index_languages() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        env::set_var("AGENTD_INDEX_LANGUAGES", "go,ruby,kotlin");
-        let cfg = load_from_path(None).expect("load failed");
-        env::remove_var("AGENTD_INDEX_LANGUAGES");
-        assert_eq!(cfg.services.index.languages, vec!["go", "ruby", "kotlin"]);
     }
 
     #[test]
@@ -1633,15 +1418,6 @@ history_size = 1000
     }
 
     #[test]
-    fn test_env_override_index_languages_with_spaces() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        env::set_var("AGENTD_INDEX_LANGUAGES", "go, ruby, kotlin");
-        let cfg = load_from_path(None).expect("load failed");
-        env::remove_var("AGENTD_INDEX_LANGUAGES");
-        assert_eq!(cfg.services.index.languages, vec!["go", "ruby", "kotlin"]);
-    }
-
-    #[test]
     fn test_env_override_monitor_history_size() {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         env::set_var("AGENTD_MONITOR_HISTORY_SIZE", "200");
@@ -1665,16 +1441,6 @@ history_size = 1000
         assert!(cfg.services.hook.notify_on_failure);
         assert!(cfg.services.hook.notify_on_long_running);
         assert_eq!(cfg.services.hook.long_running_threshold_ms, 30_000);
-    }
-
-    #[test]
-    fn test_default_index_fields() {
-        let cfg = AgentdConfig::default();
-        assert_eq!(cfg.services.index.embedding_endpoint, "http://localhost:11434/v1");
-        assert!(cfg.services.index.embedding_api_key.is_none());
-        assert_eq!(cfg.services.index.lance_table, "code_chunks");
-        assert_eq!(cfg.services.index.watch_interval_secs, 30);
-        assert!(cfg.services.index.ignore_patterns.contains(&"target".to_string()));
     }
 
     // ── Edge cases: empty / unknown keys / concurrent load ─────────────────
@@ -1775,7 +1541,6 @@ port = 13003
         assert_eq!(cfg.services.orchestrator.port, 17006);
         assert_eq!(cfg.services.wrap.port, 17005);
         assert_eq!(cfg.services.memory.port, 17008);
-        assert_eq!(cfg.services.index.port, 17012);
         assert_eq!(cfg.services.hook.port, 17002);
         assert_eq!(cfg.services.communicate.port, 17010);
         assert_eq!(cfg.services.core.port, 17000);
@@ -1796,7 +1561,6 @@ port = 13003
             ("memory", cfg.services.memory.port, 17008),
             ("ui", cfg.services.ui.port, 17009),
             ("communicate", cfg.services.communicate.port, 17010),
-            ("index", cfg.services.index.port, 17012),
         ];
         for (name, actual, expected) in ports {
             assert_eq!(actual, expected, "{} port mismatch", name);
@@ -1850,16 +1614,5 @@ notify_url = "http://ntf:7004"
         assert_eq!(cfg.services.mcp.notify_url, "http://ntf:7004");
         // Unset MCP URLs keep defaults
         assert_eq!(cfg.services.mcp.ask_url, "http://localhost:17001");
-    }
-
-    #[test]
-    fn test_index_languages_from_file_overrides_default() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let toml_str = "[services.index]\nlanguages = [\"go\", \"java\"]\n";
-        let mut f = tempfile::NamedTempFile::new().unwrap();
-        use std::io::Write;
-        write!(f, "{}", toml_str).unwrap();
-        let cfg = load_from_path(Some(f.path())).expect("load failed");
-        assert_eq!(cfg.services.index.languages, vec!["go", "java"]);
     }
 }

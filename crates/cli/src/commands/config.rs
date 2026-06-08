@@ -267,32 +267,6 @@ embedding_model = "text-embedding-3-small"
 # lance_path = "~/.local/share/agentd-memory/lancedb"
 
 # ---------------------------------------------------------------------------
-# [services.index] — code index service (port 17012)
-# ---------------------------------------------------------------------------
-
-[services.index]
-
-# HTTP listen port
-# Environment variable: AGENTD_INDEX_PORT
-port = 17012
-
-# Embedding provider: ollama, openai
-# Environment variable: AGENTD_INDEX_EMBEDDING_PROVIDER
-embedding_provider = "ollama"
-
-# Embedding model name
-# Environment variable: AGENTD_INDEX_EMBEDDING_MODEL
-embedding_model = "nomic-embed-text"
-
-# LanceDB storage path
-# Environment variable: AGENTD_INDEX_LANCE_PATH
-# lance_path = "~/.local/share/agentd-index/lancedb"
-
-# Programming languages to index (comma-separated in env var form)
-# Environment variable: AGENTD_INDEX_LANGUAGES
-languages = ["rust", "python", "javascript", "typescript"]
-
-# ---------------------------------------------------------------------------
 # [services.hook] — shell-hook daemon (port 17002)
 # ---------------------------------------------------------------------------
 
