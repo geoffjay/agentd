@@ -3,9 +3,10 @@
  * updated agents.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { orchestratorClient } from "@/services/orchestrator";
 import type { Agent, AgentStatus, AgentUsageStats } from "@/types/orchestrator";
+import { usePolling } from "./usePolling";
 
 export interface AgentStatusCounts {
 	running: number;
@@ -72,9 +73,12 @@ export function useAgentSummary(): UseAgentSummaryResult {
 		useState<AggregateUsageSummary | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | undefined>();
+	const hasLoadedRef = useRef(false);
 
 	const fetch = useCallback(async () => {
-		setLoading(true);
+		// Only flash the loading skeleton on the very first load — subsequent
+		// polls refresh in the background (stale-while-revalidate).
+		if (!hasLoadedRef.current) setLoading(true);
 		setError(undefined);
 		try {
 			// Fetch all agents (up to 200 for summary purposes)
@@ -116,13 +120,12 @@ export function useAgentSummary(): UseAgentSummaryResult {
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to load agents");
 		} finally {
+			hasLoadedRef.current = true;
 			setLoading(false);
 		}
 	}, []);
 
-	useEffect(() => {
-		void fetch();
-	}, [fetch]);
+	usePolling(fetch);
 
 	return {
 		counts,

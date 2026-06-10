@@ -51,9 +51,15 @@ describe("buildNivoTheme", () => {
 		expect(theme.axis?.ticks?.text?.fill).toBe("#888");
 	});
 
-	it("uses border for grid lines", () => {
+	it("uses softened (50% alpha) border for grid lines", () => {
 		const theme = buildNivoTheme(MOCK_TOKENS);
-		expect(theme.grid?.line?.stroke).toBe("#333");
+		// border "#333" → rgba at half strength so grids recede behind data
+		expect(theme.grid?.line?.stroke).toBe("rgba(51, 51, 51, 0.5)");
+	});
+
+	it("uses softened (50% alpha) border for axis tick lines", () => {
+		const theme = buildNivoTheme(MOCK_TOKENS);
+		expect(theme.axis?.ticks?.line?.stroke).toBe("rgba(51, 51, 51, 0.5)");
 	});
 
 	it("uses surfaceRaised for tooltip background", () => {

@@ -7,7 +7,7 @@
 
 import { HttpResponse, http, ws } from "msw";
 import type { PaginatedResponse } from "@/types/common";
-import type { Agent, PendingApproval } from "@/types/orchestrator";
+import type { Agent, PendingApproval, Workflow } from "@/types/orchestrator";
 import { makeAgent, makeAgentList, makeApprovalList } from "../factories";
 
 const BASE = "http://localhost:17006";
@@ -192,6 +192,14 @@ export const orchestratorHandlers = [
 
 	http.post(`${BASE}/approvals/:id/deny`, ({ params }) =>
 		HttpResponse.json({ id: params.id, status: "Denied" }),
+	),
+
+	// -------------------------------------------------------------------------
+	// Workflows
+	// -------------------------------------------------------------------------
+
+	http.get(`${BASE}/workflows`, () =>
+		HttpResponse.json(paginated<Workflow>([])),
 	),
 
 	// -------------------------------------------------------------------------

@@ -6,14 +6,12 @@ import { ResponsiveBar } from "@nivo/bar";
 import { Bell, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ChartSkeleton } from "@/components/common/LoadingSkeleton";
+import { useChartPalette } from "@/hooks/useChartPalette";
+import { useNivoTheme } from "@/hooks/useNivoTheme";
 import type { UseNotificationSummaryResult } from "@/hooks/useNotificationSummary";
 
-const PRIORITY_COLORS: Record<string, string> = {
-	low: "#94a3b8",
-	normal: "#60a5fa",
-	high: "#f59e0b",
-	urgent: "#ef4444",
-};
+/** Alpha used for bar fills — muted so bars don't overpower the page */
+const FILL_ALPHA = 0.7;
 
 type NotificationSummaryProps = UseNotificationSummaryResult;
 
@@ -25,23 +23,22 @@ export function NotificationSummary({
 	loading,
 	error,
 }: NotificationSummaryProps) {
+	const palette = useChartPalette();
+	const nivoTheme = useNivoTheme();
+
+	// Theme-aware priority colors (full strength — mute with withAlpha for fills)
+	const priorityColors: Record<string, string> = {
+		low: palette.neutral,
+		normal: palette.info,
+		high: palette.warning,
+		urgent: palette.error,
+	};
+
 	const barData = [
-		{ priority: "low", count: priorityCounts.low, color: PRIORITY_COLORS.low },
-		{
-			priority: "normal",
-			count: priorityCounts.normal,
-			color: PRIORITY_COLORS.normal,
-		},
-		{
-			priority: "high",
-			count: priorityCounts.high,
-			color: PRIORITY_COLORS.high,
-		},
-		{
-			priority: "urgent",
-			count: priorityCounts.urgent,
-			color: PRIORITY_COLORS.urgent,
-		},
+		{ priority: "low", count: priorityCounts.low },
+		{ priority: "normal", count: priorityCounts.normal },
+		{ priority: "high", count: priorityCounts.high },
+		{ priority: "urgent", count: priorityCounts.urgent },
 	];
 
 	const hasData = total > 0;
@@ -118,7 +115,11 @@ export function NotificationSummary({
 									keys={["count"]}
 									indexBy="priority"
 									colors={({ data }) =>
-										PRIORITY_COLORS[data.priority as string] ?? "#94a3b8"
+										palette.withAlpha(
+											priorityColors[data.priority as string] ??
+												palette.neutral,
+											FILL_ALPHA,
+										)
 									}
 									enableLabel={false}
 									axisLeft={null}
@@ -134,13 +135,7 @@ export function NotificationSummary({
 											{indexValue}: {value}
 										</div>
 									)}
-									theme={{
-										axis: {
-											ticks: {
-												text: { fill: "#94a3b8", fontSize: 11 },
-											},
-										},
-									}}
+									theme={nivoTheme}
 								/>
 							</div>
 						</div>

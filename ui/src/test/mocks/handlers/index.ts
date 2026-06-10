@@ -14,6 +14,7 @@
 import { askHandlers } from "./ask";
 import { communicateHandlers } from "./communicate";
 import { memoryHandlers } from "./memory";
+import { monitorHandlers } from "./monitor";
 import { notifyHandlers } from "./notify";
 import { orchestratorHandlers } from "./orchestrator";
 
@@ -23,12 +24,14 @@ export const handlers = [
 	...askHandlers,
 	...memoryHandlers,
 	...communicateHandlers,
+	...monitorHandlers,
 ];
 
 export {
 	askHandlers,
 	communicateHandlers,
 	memoryHandlers,
+	monitorHandlers,
 	notifyHandlers,
 	orchestratorHandlers,
 };

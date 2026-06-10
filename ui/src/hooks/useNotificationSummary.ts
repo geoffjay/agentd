@@ -2,9 +2,10 @@
  * useNotificationSummary — fetches notification count and priority breakdown.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { notifyClient } from "@/services/notify";
 import type { NotificationPriority } from "@/types/notify";
+import { usePolling } from "./usePolling";
 
 export interface NotificationPriorityCounts {
 	low: number;
@@ -20,6 +21,7 @@ export interface UseNotificationSummaryResult {
 	priorityCounts: NotificationPriorityCounts;
 	loading: boolean;
 	error?: string;
+	refetch: () => void;
 }
 
 const EMPTY_PRIORITY: NotificationPriorityCounts = {
@@ -37,9 +39,12 @@ export function useNotificationSummary(): UseNotificationSummaryResult {
 		useState<NotificationPriorityCounts>(EMPTY_PRIORITY);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | undefined>();
+	const hasLoadedRef = useRef(false);
 
 	const fetch = useCallback(async () => {
-		setLoading(true);
+		// Only flash the loading skeleton on the very first load — subsequent
+		// polls refresh in the background (stale-while-revalidate).
+		if (!hasLoadedRef.current) setLoading(true);
 		setError(undefined);
 		try {
 			const [actionable, countData] = await Promise.all([
@@ -77,13 +82,20 @@ export function useNotificationSummary(): UseNotificationSummaryResult {
 				err instanceof Error ? err.message : "Failed to load notifications",
 			);
 		} finally {
+			hasLoadedRef.current = true;
 			setLoading(false);
 		}
 	}, []);
 
-	useEffect(() => {
-		void fetch();
-	}, [fetch]);
+	usePolling(fetch);
 
-	return { pending, unread, total, priorityCounts, loading, error };
+	return {
+		pending,
+		unread,
+		total,
+		priorityCounts,
+		loading,
+		error,
+		refetch: fetch,
+	};
 }
