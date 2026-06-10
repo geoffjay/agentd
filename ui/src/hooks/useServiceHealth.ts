@@ -1,22 +1,25 @@
 /**
- * useServiceHealth — polls all three service health endpoints in parallel.
+ * useServiceHealth — polls all service health endpoints in parallel.
  *
  * Uses a stale-while-revalidate pattern: returns the last known data
- * immediately while refreshing in the background every 30 seconds.
+ * immediately while refreshing in the background every 30 seconds
+ * (paused while the tab is hidden, via the shared usePolling helper).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import type { ServiceStatus } from "@/components/common/StatusBadge";
 import { askClient } from "@/services/ask";
 import { communicateClient } from "@/services/communicate";
 import { memoryClient } from "@/services/memory";
+import { monitorClient } from "@/services/monitor";
 import { notifyClient } from "@/services/notify";
 import { orchestratorClient } from "@/services/orchestrator";
 import type { HealthResponse } from "@/types/common";
+import { usePolling } from "./usePolling";
 
 export interface ServiceHealth {
 	name: string;
-	key: "orchestrator" | "notify" | "ask" | "memory" | "communicate";
+	key: "orchestrator" | "notify" | "ask" | "memory" | "communicate" | "monitor";
 	port: number;
 	status: ServiceStatus;
 	version?: string;
@@ -31,8 +34,6 @@ export interface UseServiceHealthResult {
 	initializing: boolean;
 	refresh: () => void;
 }
-
-const REFRESH_INTERVAL_MS = 30_000;
 
 async function fetchHealth(
 	key: ServiceHealth["key"],
@@ -69,7 +70,6 @@ export function useServiceHealth(): UseServiceHealthResult {
 	const [services, setServices] = useState<ServiceHealth[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [initializing, setInitializing] = useState(true);
-	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
 	const fetch = useCallback(async () => {
 		setLoading(true);
@@ -79,24 +79,17 @@ export function useServiceHealth(): UseServiceHealthResult {
 			fetchHealth("ask", () => askClient.getHealth(), 17001),
 			fetchHealth("memory", () => memoryClient.getHealth(), 17008),
 			fetchHealth("communicate", () => communicateClient.getHealth(), 17010),
+			fetchHealth("monitor", () => monitorClient.getHealth(), 17003),
 		]);
 		setServices(results);
 		setLoading(false);
 		setInitializing(false);
 	}, []);
 
+	usePolling(fetch);
+
 	const refresh = useCallback(() => {
 		void fetch();
-	}, [fetch]);
-
-	useEffect(() => {
-		void fetch();
-		intervalRef.current = setInterval(() => {
-			void fetch();
-		}, REFRESH_INTERVAL_MS);
-		return () => {
-			if (intervalRef.current) clearInterval(intervalRef.current);
-		};
 	}, [fetch]);
 
 	return { services, loading, initializing, refresh };

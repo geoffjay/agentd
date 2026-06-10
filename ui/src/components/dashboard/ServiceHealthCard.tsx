@@ -14,6 +14,7 @@ const SERVICE_ROUTES: Record<string, string> = {
 	ask: "/questions",
 	memory: "/memories",
 	communicate: "/communicate",
+	monitor: "/monitoring",
 };
 
 interface ServiceHealthCardProps {

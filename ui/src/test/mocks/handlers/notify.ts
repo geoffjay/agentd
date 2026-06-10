@@ -47,6 +47,35 @@ export const notifyHandlers = [
 		return HttpResponse.json(notif, { status: 201 });
 	}),
 
+	// -------------------------------------------------------------------------
+	// Filtered views + count
+	//
+	// NOTE: these MUST be registered before the `/notifications/:id` routes —
+	// MSW matches handlers in order, and `:id` would otherwise swallow
+	// `actionable`, `history`, and `count` as path parameters.
+	// -------------------------------------------------------------------------
+
+	http.get(`${BASE}/notifications/actionable`, () =>
+		HttpResponse.json(paginated<Notification>(DEFAULT_PENDING)),
+	),
+
+	http.get(`${BASE}/notifications/history`, () =>
+		HttpResponse.json(paginated<Notification>([])),
+	),
+
+	http.get(`${BASE}/notifications/count`, () =>
+		HttpResponse.json(
+			makeCountResponse(DEFAULT_NOTIFICATIONS.length, {
+				Pending: 2,
+				Viewed: 1,
+			}),
+		),
+	),
+
+	// -------------------------------------------------------------------------
+	// Single-notification routes
+	// -------------------------------------------------------------------------
+
 	http.get(`${BASE}/notifications/:id`, ({ params }) => {
 		const notif =
 			DEFAULT_NOTIFICATIONS.find((n) => n.id === params.id) ??
@@ -65,30 +94,5 @@ export const notifyHandlers = [
 	http.delete(
 		`${BASE}/notifications/:id`,
 		() => new HttpResponse(null, { status: 204 }),
-	),
-
-	// -------------------------------------------------------------------------
-	// Filtered views
-	// -------------------------------------------------------------------------
-
-	http.get(`${BASE}/notifications/actionable`, () =>
-		HttpResponse.json(paginated<Notification>(DEFAULT_PENDING)),
-	),
-
-	http.get(`${BASE}/notifications/history`, () =>
-		HttpResponse.json(paginated<Notification>([])),
-	),
-
-	// -------------------------------------------------------------------------
-	// Count
-	// -------------------------------------------------------------------------
-
-	http.get(`${BASE}/notifications/count`, () =>
-		HttpResponse.json(
-			makeCountResponse(DEFAULT_NOTIFICATIONS.length, {
-				Pending: 2,
-				Viewed: 1,
-			}),
-		),
 	),
 ];

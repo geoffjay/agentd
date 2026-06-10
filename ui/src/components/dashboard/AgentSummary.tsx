@@ -12,18 +12,11 @@ import {
 } from "@/components/common/LoadingSkeleton";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import type { UseAgentSummaryResult } from "@/hooks/useAgentSummary";
+import { useChartPalette } from "@/hooks/useChartPalette";
 import type { Agent } from "@/types/orchestrator";
 
-// ---------------------------------------------------------------------------
-// Pie chart colour map
-// ---------------------------------------------------------------------------
-
-const STATUS_COLORS: Record<string, string> = {
-	running: "#8ac926",
-	pending: "#ffca3a",
-	stopped: "#94a3b8",
-	failed: "#ff595e",
-};
+/** Alpha used for chart fills — muted so arcs don't overpower the page */
+const FILL_ALPHA = 0.7;
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -70,30 +63,40 @@ export function AgentSummary({
 	error,
 	onCreateAgent,
 }: AgentSummaryProps) {
+	const palette = useChartPalette();
+
+	// Theme-aware status colors (full strength — for legend dots only)
+	const statusColors: Record<string, string> = {
+		running: palette.success,
+		pending: palette.warning,
+		stopped: palette.neutral,
+		failed: palette.error,
+	};
+
 	const pieData = [
 		{
 			id: "Running",
 			label: "Running",
 			value: counts.running,
-			color: STATUS_COLORS.running,
+			color: statusColors.running,
 		},
 		{
 			id: "Pending",
 			label: "Pending",
 			value: counts.pending,
-			color: STATUS_COLORS.pending,
+			color: statusColors.pending,
 		},
 		{
 			id: "Stopped",
 			label: "Stopped",
 			value: counts.stopped,
-			color: STATUS_COLORS.stopped,
+			color: statusColors.stopped,
 		},
 		{
 			id: "Failed",
 			label: "Failed",
 			value: counts.failed,
-			color: STATUS_COLORS.failed,
+			color: statusColors.failed,
 		},
 	].filter((d) => d.value > 0);
 
@@ -154,10 +157,12 @@ export function AgentSummary({
 						<div className="relative mt-4 h-40 w-full">
 							<ResponsivePie
 								data={pieData}
-								colors={{ datum: "data.color" }}
+								colors={(d) => palette.withAlpha(d.data.color, FILL_ALPHA)}
 								innerRadius={0.6}
 								padAngle={2}
 								cornerRadius={3}
+								borderWidth={1}
+								borderColor={palette.surface}
 								enableArcLabels={false}
 								enableArcLinkLabels={false}
 								tooltip={({ datum }) => (
@@ -165,20 +170,7 @@ export function AgentSummary({
 										{datum.label}: {datum.value}
 									</div>
 								)}
-								legends={[
-									{
-										anchor: "right",
-										direction: "column",
-										itemWidth: 80,
-										itemHeight: 16,
-										itemsSpacing: 4,
-										symbolSize: 10,
-										symbolShape: "circle",
-										itemTextColor: "#94a3b8",
-										translateX: 90,
-									},
-								]}
-								margin={{ top: 8, right: 100, bottom: 8, left: 8 }}
+								margin={{ top: 8, right: 8, bottom: 8, left: 8 }}
 							/>
 						</div>
 					) : (
@@ -196,7 +188,7 @@ export function AgentSummary({
 									>
 										<span
 											className="h-2 w-2 rounded-full"
-											style={{ background: STATUS_COLORS[status] }}
+											style={{ background: statusColors[status] }}
 										/>
 										{count} {status}
 									</span>

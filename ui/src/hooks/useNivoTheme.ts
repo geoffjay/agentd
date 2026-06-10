@@ -1,6 +1,9 @@
 /**
  * useNivoTheme -- derives a Nivo chart theme from the active ThemeTokens.
  *
+ * Grid lines and axis tick lines are softened (50% alpha) so chart chrome
+ * recedes behind the data instead of competing with it.
+ *
  * Usage:
  *   const nivoTheme = useNivoTheme()
  *   <ResponsiveLine theme={nivoTheme} ... />
@@ -9,10 +12,11 @@
 import type { PartialTheme as NivoTheme } from "@nivo/theming";
 import { useMemo } from "react";
 import type { ThemeTokens } from "@/styles/theme-tokens";
-import { useTheme } from "./useTheme";
+import { useThemeTokens, withAlpha } from "./useChartPalette";
 
 /** Build a Nivo chart theme from ThemeTokens. */
 export function buildNivoTheme(t: ThemeTokens): NivoTheme {
+	const softLine = withAlpha(t.border, 0.5);
 	return {
 		background: t.surface,
 		axis: {
@@ -20,7 +24,7 @@ export function buildNivoTheme(t: ThemeTokens): NivoTheme {
 				line: { stroke: t.borderStrong, strokeWidth: 1 },
 			},
 			ticks: {
-				line: { stroke: t.border, strokeWidth: 1 },
+				line: { stroke: softLine, strokeWidth: 1 },
 				text: { fill: t.textMuted, fontSize: 11 },
 			},
 			legend: {
@@ -28,7 +32,7 @@ export function buildNivoTheme(t: ThemeTokens): NivoTheme {
 			},
 		},
 		grid: {
-			line: { stroke: t.border, strokeWidth: 1 },
+			line: { stroke: softLine, strokeWidth: 1 },
 		},
 		legends: {
 			text: { fill: t.textSecondary, fontSize: 12 },
@@ -50,6 +54,6 @@ export function buildNivoTheme(t: ThemeTokens): NivoTheme {
 }
 
 export function useNivoTheme(): NivoTheme {
-	const { theme } = useTheme();
-	return useMemo(() => buildNivoTheme(theme), [theme]);
+	const tokens = useThemeTokens();
+	return useMemo(() => buildNivoTheme(tokens), [tokens]);
 }

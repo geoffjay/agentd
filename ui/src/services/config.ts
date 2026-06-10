@@ -11,6 +11,8 @@ export const serviceConfig = {
 		"http://localhost:17006",
 	memoryServiceUrl:
 		import.meta.env.VITE_AGENTD_MEMORY_SERVICE_URL ?? "http://localhost:17008",
+	monitorServiceUrl:
+		import.meta.env.VITE_AGENTD_MONITOR_SERVICE_URL ?? "http://localhost:17003",
 	communicateServiceUrl:
 		import.meta.env.VITE_AGENTD_COMMUNICATE_SERVICE_URL ??
 		"http://localhost:17010",

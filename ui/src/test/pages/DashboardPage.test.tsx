@@ -36,6 +36,7 @@ vi.mock("@/hooks/useNotificationSummary", () => ({
 		priorityCounts: { low: 0, normal: 0, high: 0, urgent: 0 },
 		loading: false,
 		error: undefined,
+		refetch: vi.fn(),
 	}),
 }));
 
@@ -48,9 +49,48 @@ vi.mock("@/hooks/useServiceHealth", () => ({
 	}),
 }));
 
+vi.mock("@/hooks/useSystemMetrics", () => ({
+	useSystemMetrics: () => ({
+		history: [],
+		latest: null,
+		alerts: [],
+		status: null,
+		available: false,
+		loading: false,
+		error: "Monitor service unavailable",
+		refetch: vi.fn(),
+	}),
+}));
+
+vi.mock("@/hooks/useDashboardStats", () => ({
+	useDashboardStats: () => ({
+		pendingApprovals: 0,
+		workflows: 0,
+		pendingQuestions: 0,
+		loading: false,
+		refetch: vi.fn(),
+	}),
+}));
+
+vi.mock("@/hooks/useActivityFeed", () => ({
+	useActivityFeed: () => ({
+		events: [],
+		buckets: [],
+		loading: false,
+		error: undefined,
+		refetch: vi.fn(),
+	}),
+}));
+
 // Mock nivo so it doesn't complain about missing ResizeObserver in jsdom
 vi.mock("@nivo/pie", () => ({
 	ResponsivePie: () => <div data-testid="mock-pie" />,
+}));
+vi.mock("@nivo/bar", () => ({
+	ResponsiveBar: () => <div data-testid="mock-bar" />,
+}));
+vi.mock("@nivo/line", () => ({
+	ResponsiveLine: () => <div data-testid="mock-line" />,
 }));
 
 // ---------------------------------------------------------------------------
