@@ -23,7 +23,7 @@ and then runs `agent install` to do the platform-specific setup. The
 platform-specific logic stays in Rust (one source of truth) rather than being
 reimplemented in shell.
 
-## Phase 1 — `agentd-install` crate + `agent install` (this change)
+## Phase 1 — `agentd-install` crate + `agent install` (done)
 
 Relocate the install/service/migration logic out of the dev-only `xtask` crate
 into a reusable `agentd-install` library that the shipped `agent` binary can
@@ -47,17 +47,51 @@ call with no source tree and no `cargo`/`bun`.
   `agentd-install`. `release` and `generate-entities` (which needs
   `sea-orm-cli`) remain dev-only in `xtask`.
 
-## Phase 2 — cargo-dist + installer + release pipeline (future)
+## Phase 2 — installer + release pipeline (done)
 
-- Adopt [`cargo-dist`](https://opensource.axo.dev/cargo-dist/) to generate the
-  `curl … | sh` installer, per-target tarballs, `SHA256SUMS`, and a release
-  manifest from the existing tag-triggered workflow.
-- The installer downloads + verifies + extracts binaries into a `bin` dir, then
-  runs `agent install` for the platform/service/migration setup.
-- Add `aarch64-unknown-linux-gnu` (or musl) to the release matrix — currently
-  there is no Linux arm64 artifact.
-- Optionally publish a Homebrew tap formula and `cargo-binstall` metadata
-  (cargo-dist can emit both).
+Delivered as a hand-rolled workflow + POSIX installer rather than cargo-dist
+(see "Why not cargo-dist" below).
 
-cargo-dist will not perform the launchd/systemd/migration setup — that stays in
-`agent install`, which is exactly why Phase 1 is the prerequisite.
+- The tag-triggered release workflow now produces per-target tarballs
+  (`agentd-<tag>-<target>.tar.gz`) containing all service binaries with bare
+  names (`agent`, `agentd-*` - the layout `agent install --bin-src` expects)
+  plus the built web UI under `ui/`, alongside a `SHA256SUMS` file and the
+  installer script itself. The loose per-binary `<bin>-<target>` assets were
+  dropped: their target-suffixed names were never discoverable by
+  `install_binaries()`, and nothing consumed them.
+- `contrib/scripts/install.sh` is a POSIX `sh` installer uploaded to every
+  release, so the canonical install command is:
+
+  ```sh
+  curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh | sh
+  ```
+
+  It detects the platform, resolves the latest tag via the `releases/latest`
+  redirect (`AGENTD_VERSION` pins a version), downloads and sha256-verifies the
+  tarball, extracts to a temp dir, and runs
+  `agent install --bin-src <stage> --ui-dir <stage>/ui` - the
+  platform/service/migration setup stays in Rust.
+- `aarch64-unknown-linux-musl` was added to the release matrix on the
+  `ubuntu-24.04-arm` runner (native arm64; `musl-tools` provides the native
+  musl-gcc), closing the Linux arm64 gap.
+- Release tags containing a `-` (e.g. `v0.5.0-rc.1`) publish as pre-releases,
+  so installer/pipeline changes can be tested end-to-end without affecting
+  `releases/latest`.
+
+### Why not cargo-dist
+
+cargo-dist (actively maintained again as of 2025/2026) models each workspace
+package as its own "app": every package gets its own tarball and its own
+installer. It cannot bundle binaries from multiple workspace crates
+(`agent` + nine `agentd-*` services) into a single tarball or a single
+`curl … | sh` installer, and its generated installer has no post-install hook
+to run `agent install`. Working around that would have meant either ~10
+separate installers or restructuring every service crate behind thin bin
+wrappers in one package. The hand-rolled workflow is small and achieves the
+same end state.
+
+`cargo-binstall` metadata and a Homebrew tap were descoped: binstall requires
+publishing the CLI crate to crates.io (it is currently the unpublished `cli`
+package) and would only place the bare binary on `PATH`, skipping the service
+and migration setup that `agent install` performs. Revisit if a crates.io
+publishing effort ever happens.

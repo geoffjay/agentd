@@ -53,49 +53,47 @@ Installation and utility scripts for agentd.
 
 #### install.sh
 
-Interactive installation script for end users.
-
-**Features:**
-- Guided installation process
-- Colored terminal output
-- Service auto-start option
-- Comprehensive status checks
+POSIX `sh` installer for prebuilt release binaries. Uploaded to every GitHub
+Release so it can be piped straight from `releases/latest/download/install.sh`.
 
 **Usage:**
 ```bash
-./contrib/scripts/install.sh
+curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh | sh
 ```
 
 **What it does:**
-1. Checks prerequisites (macOS, Rust/Cargo)
-2. Verifies project directory
-3. Builds release binaries
-4. Installs binaries to `/usr/local/bin/`
-5. Installs plist files to `~/Library/LaunchAgents/`
-6. Optionally starts services
-7. Displays next steps
+1. Detects the platform (Linux x86_64/aarch64 musl, macOS Intel/Apple Silicon)
+2. Resolves the latest release tag (or `AGENTD_VERSION` to pin a version)
+3. Downloads the release tarball and `SHA256SUMS`, and verifies the checksum
+4. Extracts to a temporary directory
+5. Runs `agent install` for the platform-specific setup (binaries, launchd/systemd services, config, web UI, database migrations)
+
+No Rust toolchain or source tree is required; all installation logic lives in
+the `agentd-install` crate, this script only fetches and verifies artifacts.
+`PREFIX` overrides the install prefix.
 
 ## Installation Methods
 
-### cargo xtask (Recommended)
+### Release installer (Recommended)
+```bash
+curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh | sh
+```
+
+Prebuilt binaries from GitHub Releases, verified via `SHA256SUMS`.
+
+### cargo xtask (from source)
 ```bash
 cargo xtask install-user
 cargo xtask start-services
 ```
 
-Type-safe Rust-based installer with better error handling.
-
-### Interactive Script
-```bash
-./contrib/scripts/install.sh
-```
-
-Guided installation with prompts and colored output.
+Builds binaries and the UI locally, then performs the same platform setup.
 
 ## See Also
 
-- [INSTALL.md](../INSTALL.md) - Detailed installation guide
-- [xtask/](../xtask/) - Rust-based installer implementation
+- [docs/public/install.md](../docs/public/install.md) - Detailed installation guide
+- [crates/install/](../crates/install/) - Rust installation library
+- [crates/xtask/](../crates/xtask/) - Dev-only build + install front-end
 
 ## Contributing
 

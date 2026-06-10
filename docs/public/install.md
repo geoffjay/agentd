@@ -16,20 +16,49 @@ The agentd system consists of:
 
 ## Prerequisites
 
-- macOS (tested on macOS 14+)
-- Rust toolchain (1.75+)
-- Git
+- macOS (tested on macOS 14+) or Linux
+- Rust toolchain (1.75+) and Git - only for installing from source
 
 ## Installation Methods
 
 Choose one of two installation methods:
 
-1. **cargo xtask** - Type-safe Rust installer (recommended)
-2. **Bash script** - Interactive installer
+1. **Release installer** - Downloads prebuilt binaries from GitHub Releases (recommended)
+2. **cargo xtask** - Builds and installs from source
 
 ## Quick Start
 
-### Option 1: cargo xtask (Recommended)
+### Option 1: Release installer (Recommended)
+
+```bash
+curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh | sh
+```
+
+No Rust toolchain or source tree required. The script:
+
+1. Detects your platform (Linux x86_64/aarch64 via static musl binaries, macOS Intel/Apple Silicon)
+2. Downloads the release tarball and `SHA256SUMS`, and verifies the checksum
+3. Extracts to a temporary directory
+4. Runs `agent install` to install binaries, service definitions (launchd/systemd), configuration, the web UI, and database migrations
+
+Environment variables:
+
+```bash
+# Pin a specific version instead of the latest release
+AGENTD_VERSION=v0.5.0 sh -c "$(curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh)"
+
+# Override the install prefix (default: /usr/local on macOS or as root, ~/.local otherwise)
+PREFIX=$HOME/.local sh -c "$(curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh)"
+```
+
+After installation:
+
+```bash
+agent service start
+agent service status
+```
+
+### Option 2: cargo xtask (from source)
 
 ```bash
 # Clone the repository
@@ -56,14 +85,6 @@ export PATH="$HOME/.local/bin:$PATH"
 # Start services
 cargo xtask start-services
 ```
-
-### Option 2: Interactive Bash Script
-
-```bash
-./contrib/scripts/install.sh
-```
-
-The script will guide you through the installation process.
 
 ## Detailed Installation with cargo xtask
 

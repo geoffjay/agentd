@@ -152,23 +152,38 @@ full guide including manual setup, dashboard descriptions, and troubleshooting.
 ### Prerequisites
 
 - macOS 14+ (tested) or Linux
-- Rust 1.75+ ([Install Rust](https://rustup.rs/))
-- Git
 - tmux (for agent session management with tmux backend)
 - Docker Engine 20.10+ or Docker Desktop (optional, for Docker backend)
+- Rust 1.75+ ([Install Rust](https://rustup.rs/)) - only for installing from source
 
-### Install
+### Install from a release (recommended)
+
+```bash
+curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh | sh
+```
+
+The installer detects your platform (Linux x86_64/aarch64, macOS Intel/Apple
+Silicon), downloads the release tarball, verifies its checksum, and runs
+`agent install` to set up binaries, services (launchd/systemd), configuration,
+and database migrations.
+
+```bash
+# Pin a specific version
+AGENTD_VERSION=v0.5.0 sh -c "$(curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh)"
+
+# Override the install prefix (default: /usr/local on macOS or as root, ~/.local otherwise)
+PREFIX=$HOME/.local sh -c "$(curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh)"
+```
+
+### Install from source
 
 ```bash
 # Using cargo xtask (creates Agent.app bundle + shell completions)
 cargo xtask install-user
 cargo xtask start-services
-
-# Or use the interactive script
-./contrib/scripts/install.sh
 ```
 
-For detailed installation instructions, see [INSTALL.md](INSTALL.md). Once installed, follow the **[Getting Started Guide](docs/public/getting-started.md)** to learn the full workflow.
+For detailed installation instructions, see [docs/public/install.md](docs/public/install.md). Once installed, follow the **[Getting Started Guide](docs/public/getting-started.md)** to learn the full workflow.
 
 ## Usage
 
