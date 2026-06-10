@@ -163,6 +163,50 @@ async fn non_manual_workflow_trigger_creates_dispatched_record() {
     assert_eq!(dispatches[0].status, DispatchStatus::Dispatched);
 }
 
+/// The originating task (including url/labels/assignee/metadata) is persisted
+/// on the dispatch record so the UI can prefill a re-trigger with the same
+/// variables.
+#[tokio::test]
+async fn trigger_workflow_persists_task_for_retry() {
+    let (storage, _tmp) = create_test_storage().await;
+    let registry = ConnectionRegistry::new();
+    let agent_id = Uuid::new_v4();
+    let _agent_rx = register_mock_agent(&registry, agent_id).await;
+
+    let trigger = TriggerConfig::GithubIssues {
+        owner: "org".to_string(),
+        repo: "repo".to_string(),
+        labels: vec![],
+        state: "open".to_string(),
+        assignee: None,
+    };
+    let workflow = make_workflow(agent_id, trigger);
+    storage.add_workflow(&workflow).await.unwrap();
+
+    let scheduler = Arc::new(Scheduler::new(storage.clone(), registry));
+
+    let mut task = make_task("issue-77");
+    task.body = "Fix the flaky test".to_string();
+    task.url = "https://github.com/org/repo/issues/77".to_string();
+    task.labels = vec!["bug".to_string(), "ci".to_string()];
+    task.assignee = Some("geoff".to_string());
+    task.metadata.insert("retry_of".to_string(), "some-dispatch-id".to_string());
+
+    let record = scheduler.trigger_workflow(&workflow.id, task).await.unwrap();
+    let returned = record.task.as_ref().expect("returned record should carry the task");
+    assert_eq!(returned.url, "https://github.com/org/repo/issues/77");
+
+    // The task round-trips through persistence with all fields intact.
+    let dispatches = storage.list_dispatches(&workflow.id).await.unwrap();
+    let stored = dispatches[0].task.as_ref().expect("task should be persisted");
+    assert_eq!(stored.title, "Task issue-77");
+    assert_eq!(stored.body, "Fix the flaky test");
+    assert_eq!(stored.url, "https://github.com/org/repo/issues/77");
+    assert_eq!(stored.labels, vec!["bug".to_string(), "ci".to_string()]);
+    assert_eq!(stored.assignee.as_deref(), Some("geoff"));
+    assert_eq!(stored.metadata.get("retry_of").map(String::as_str), Some("some-dispatch-id"));
+}
+
 // ---------------------------------------------------------------------------
 // trigger_workflow() requires the agent to be connected (direct path)
 // ---------------------------------------------------------------------------

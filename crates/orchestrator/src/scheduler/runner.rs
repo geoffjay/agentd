@@ -192,6 +192,7 @@ impl WorkflowRunner {
                 status: DispatchStatus::Dispatched,
                 dispatched_at: Utc::now(),
                 completed_at: None,
+                task: Some(task.clone()),
             };
             self.storage.add_dispatch(&record).await?;
 

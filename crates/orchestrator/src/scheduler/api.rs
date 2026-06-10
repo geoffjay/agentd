@@ -390,7 +390,8 @@ async fn dispatch_history(
 ///
 /// Accepts an optional JSON body:
 /// ```json
-/// { "title": "...", "body": "...", "metadata": { "key": "value" } }
+/// { "title": "...", "body": "...", "url": "...", "labels": ["..."],
+///   "assignee": "...", "metadata": { "key": "value" } }
 /// ```
 ///
 /// Returns:
@@ -415,9 +416,9 @@ async fn trigger_workflow(
         source_id,
         title: req.title.unwrap_or_else(|| "Manual trigger".to_string()),
         body: req.body.unwrap_or_default(),
-        url: String::new(),
-        labels: vec![],
-        assignee: None,
+        url: req.url.unwrap_or_default(),
+        labels: req.labels.unwrap_or_default(),
+        assignee: req.assignee,
         metadata: req.metadata,
     };
 

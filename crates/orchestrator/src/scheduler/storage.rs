@@ -166,6 +166,7 @@ impl SchedulerStorage {
             status: Set(record.status.to_string()),
             dispatched_at: Set(record.dispatched_at.to_rfc3339()),
             completed_at: Set(record.completed_at.map(|dt| dt.to_rfc3339())),
+            task_json: Set(record.task.as_ref().and_then(|t| serde_json::to_string(t).ok())),
         };
 
         dispatch_entity::Entity::insert(model).exec(&self.db).await?;
@@ -539,6 +540,9 @@ fn model_to_dispatch(model: dispatch_entity::Model) -> Result<DispatchRecord> {
             .completed_at
             .map(|s| DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&Utc)))
             .transpose()?,
+        // Lenient decode: a corrupt or legacy `task_json` value must not fail
+        // the whole dispatch listing — fall back to `None`.
+        task: model.task_json.as_deref().and_then(|s| serde_json::from_str(s).ok()),
     })
 }
 
@@ -549,7 +553,7 @@ fn model_to_dispatch(model: dispatch_entity::Model) -> Result<DispatchRecord> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scheduler::types::TriggerConfig;
+    use crate::scheduler::types::{Task, TriggerConfig};
     use crate::storage::AgentStorage;
     use tempfile::TempDir;
 
@@ -622,6 +626,18 @@ mod tests {
         let workflow = test_workflow();
         storage.add_workflow(&workflow).await.unwrap();
 
+        let task = Task {
+            source_id: "42".to_string(),
+            title: "Login bug".to_string(),
+            body: "Fix the login bug".to_string(),
+            url: "https://example.com/issues/42".to_string(),
+            labels: vec!["bug".to_string()],
+            assignee: Some("geoff".to_string()),
+            metadata: std::collections::HashMap::from([(
+                "priority".to_string(),
+                "high".to_string(),
+            )]),
+        };
         let record = DispatchRecord {
             id: Uuid::new_v4(),
             workflow_id: workflow.id,
@@ -631,6 +647,7 @@ mod tests {
             status: DispatchStatus::Dispatched,
             dispatched_at: Utc::now(),
             completed_at: None,
+            task: Some(task),
         };
 
         // Add dispatch
@@ -658,6 +675,15 @@ mod tests {
         let history = storage.list_dispatches(&workflow.id).await.unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].status, DispatchStatus::Completed);
+
+        // The originating task round-trips through `task_json`.
+        let stored_task = history[0].task.as_ref().expect("task should be persisted");
+        assert_eq!(stored_task.title, "Login bug");
+        assert_eq!(stored_task.body, "Fix the login bug");
+        assert_eq!(stored_task.url, "https://example.com/issues/42");
+        assert_eq!(stored_task.labels, vec!["bug".to_string()]);
+        assert_eq!(stored_task.assignee.as_deref(), Some("geoff"));
+        assert_eq!(stored_task.metadata.get("priority").map(String::as_str), Some("high"));
     }
 
     #[tokio::test]
@@ -675,6 +701,7 @@ mod tests {
             status: DispatchStatus::Dispatched,
             dispatched_at: Utc::now(),
             completed_at: None,
+            task: None,
         };
         storage.add_dispatch(&record).await.unwrap();
 
@@ -683,6 +710,34 @@ mod tests {
 
         let updated = storage.list_dispatches(&workflow.id).await.unwrap();
         assert_eq!(updated[0].status, DispatchStatus::Failed);
+        // Records created without a task round-trip as `None` (legacy rows).
+        assert!(updated[0].task.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_task_json_lenient_decode() {
+        // A corrupt `task_json` value must not fail the listing — it decodes
+        // leniently to `None`.
+        let (storage, _tmp) = create_test_storage().await;
+        let workflow = test_workflow();
+        storage.add_workflow(&workflow).await.unwrap();
+
+        let model = dispatch_entity::ActiveModel {
+            id: Set(Uuid::new_v4().to_string()),
+            workflow_id: Set(workflow.id.to_string()),
+            source_id: Set("corrupt".to_string()),
+            agent_id: Set(workflow.agent_id.to_string()),
+            prompt_sent: Set("test".to_string()),
+            status: Set("completed".to_string()),
+            dispatched_at: Set(Utc::now().to_rfc3339()),
+            completed_at: Set(None),
+            task_json: Set(Some("not valid json".to_string())),
+        };
+        dispatch_entity::Entity::insert(model).exec(&storage.db).await.unwrap();
+
+        let history = storage.list_dispatches(&workflow.id).await.unwrap();
+        assert_eq!(history.len(), 1);
+        assert!(history[0].task.is_none());
     }
 
     // -----------------------------------------------------------------------

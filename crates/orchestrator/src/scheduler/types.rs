@@ -379,6 +379,10 @@ pub struct DispatchRecord {
     pub status: DispatchStatus,
     pub dispatched_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
+    /// The task whose variables were rendered into `prompt_sent`.
+    /// `None` for records created before task persistence was added.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<Task>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -430,6 +434,13 @@ pub struct TriggerWorkflowRequest {
     pub title: Option<String>,
     /// Task body / description.
     pub body: Option<String>,
+    /// Task URL (defaults to empty). Lets retries of source-derived
+    /// dispatches reproduce `{{url}}` faithfully.
+    pub url: Option<String>,
+    /// Task labels (defaults to none).
+    pub labels: Option<Vec<String>>,
+    /// Task assignee (defaults to none).
+    pub assignee: Option<String>,
     /// Arbitrary metadata key-value pairs.
     #[serde(default)]
     pub metadata: HashMap<String, String>,
@@ -507,6 +518,9 @@ pub struct DispatchResponse {
     pub status: DispatchStatus,
     pub dispatched_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
+    /// The task whose variables were rendered into `prompt_sent`, when recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<Task>,
 }
 
 impl From<DispatchRecord> for DispatchResponse {
@@ -520,6 +534,7 @@ impl From<DispatchRecord> for DispatchResponse {
             status: d.status,
             dispatched_at: d.dispatched_at,
             completed_at: d.completed_at,
+            task: d.task,
         }
     }
 }
@@ -559,6 +574,52 @@ mod tests {
         } else {
             panic!("Expected AgentIdle variant");
         }
+    }
+
+    #[test]
+    fn test_dispatch_record_deserializes_without_task_field() {
+        // Records serialized before task persistence was added (no `task` key)
+        // must still deserialize, with `task` defaulting to `None`.
+        let json = format!(
+            r#"{{
+                "id": "{}",
+                "workflow_id": "{}",
+                "source_id": "42",
+                "agent_id": "{}",
+                "prompt_sent": "do the thing",
+                "status": "completed",
+                "dispatched_at": "2026-06-10T00:00:00Z",
+                "completed_at": null
+            }}"#,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4()
+        );
+        let record: DispatchRecord = serde_json::from_str(&json).unwrap();
+        assert!(record.task.is_none());
+    }
+
+    #[test]
+    fn test_trigger_workflow_request_accepts_full_task_fields() {
+        // url/labels/assignee passthrough for faithful re-triggers.
+        let json = r#"{
+            "title": "Re-run",
+            "body": "details",
+            "url": "https://example.com/issues/7",
+            "labels": ["bug"],
+            "assignee": "geoff",
+            "metadata": {"retry_of": "abc"}
+        }"#;
+        let req: TriggerWorkflowRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.url.as_deref(), Some("https://example.com/issues/7"));
+        assert_eq!(req.labels, Some(vec!["bug".to_string()]));
+        assert_eq!(req.assignee.as_deref(), Some("geoff"));
+
+        // Old minimal payloads still deserialize.
+        let req: TriggerWorkflowRequest = serde_json::from_str(r#"{"title": "x"}"#).unwrap();
+        assert!(req.url.is_none());
+        assert!(req.labels.is_none());
+        assert!(req.assignee.is_none());
     }
 
     #[test]
