@@ -18,6 +18,9 @@ pub struct Model {
     pub status: String,
     pub dispatched_at: String,
     pub completed_at: Option<String>,
+    /// JSON-serialized `Task` whose variables were rendered into `prompt_sent`.
+    /// NULL for records created before task persistence was added.
+    pub task_json: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -2720,6 +2720,9 @@ async fn trigger_workflow_cmd(
     let request = TriggerWorkflowRequest {
         title: title.map(|s| s.to_string()),
         body: body.map(|s| s.to_string()),
+        url: None,
+        labels: None,
+        assignee: None,
         metadata: std::collections::HashMap::new(),
     };
 
@@ -3124,6 +3127,7 @@ mod tests {
             status: DispatchStatus::Completed,
             dispatched_at: Utc::now(),
             completed_at: Some(Utc::now()),
+            task: None,
         };
         // Should not panic
         display_dispatch(&dispatch);

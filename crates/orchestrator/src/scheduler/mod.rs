@@ -328,6 +328,7 @@ impl Scheduler {
                         status: DispatchStatus::Pending,
                         dispatched_at: chrono::Utc::now(),
                         completed_at: None,
+                        task: Some(task.clone()),
                     };
                     self.storage.add_dispatch(&record).await?;
 
@@ -359,6 +360,7 @@ impl Scheduler {
             status: DispatchStatus::Dispatched,
             dispatched_at: chrono::Utc::now(),
             completed_at: None,
+            task: Some(task.clone()),
         };
         self.storage.add_dispatch(&record).await?;
 

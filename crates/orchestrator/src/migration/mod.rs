@@ -29,6 +29,7 @@ mod m20260417_000015_add_project_id_to_agents_workflows;
 mod m20260417_000016_add_conversation_events;
 mod m20260513_000017_add_skills_to_agents;
 mod m20260525_000018_add_conversation_event_seq;
+mod m20260610_000019_add_task_json_to_dispatch_log;
 
 /// The migration runner — applies all known migrations in order.
 pub struct Migrator;
@@ -55,6 +56,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260417_000016_add_conversation_events::Migration),
             Box::new(m20260513_000017_add_skills_to_agents::Migration),
             Box::new(m20260525_000018_add_conversation_event_seq::Migration),
+            Box::new(m20260610_000019_add_task_json_to_dispatch_log::Migration),
         ]
     }
 }
