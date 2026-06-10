@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.3] - 2026-06-10
+
+### Added
+
+- Update crush config
+
 ## [0.4.2] - 2026-06-08
 
 ### Added
