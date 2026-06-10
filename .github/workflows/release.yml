@@ -9,8 +9,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  build-ui:
+    name: Build UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build UI
+        working-directory: ui
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Upload UI assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
+          if-no-files-found: error
+
   build:
     name: Build (${{ matrix.target }})
+    needs: build-ui
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -18,6 +41,9 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
+          # GitHub-hosted arm64 runners are free for public repositories only.
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
           - target: x86_64-apple-darwin
             os: macos-15-intel
           - target: aarch64-apple-darwin
@@ -47,35 +73,51 @@ jobs:
       - name: Build release binaries
         run: cargo build --release --workspace --bins --target ${{ matrix.target }}
 
-      - name: Package binaries
+      - name: Download UI assets
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: stage/ui
+
+      # The tarball is created here in the build job (not the release job)
+      # because artifact upload/download strips executable bits; a tarball
+      # preserves the modes recorded inside it. `agent install` expects bare
+      # binary names (`agent`, `agentd-*`) in --bin-src, so the archive root
+      # holds exactly that layout plus the `ui/` assets.
+      - name: Package tarball
         shell: bash
         run: |
+          set -euo pipefail
           TARGET="${{ matrix.target }}"
+          VERSION="${{ github.ref_name }}"
           BINS=(
-            cli
             agentd-ask
             agentd-communicate
             agentd-core
+            agentd-hook
             agentd-memory
+            agentd-monitor
             agentd-notify
             agentd-orchestrator
+            agentd-ui
             agentd-wrap
           )
-          mkdir -p dist
+          # A missing binary must fail the release rather than ship an
+          # incomplete tarball, so no existence guards here.
           for bin in "${BINS[@]}"; do
-            src="target/${TARGET}/release/${bin}"
-            if [ -f "$src" ]; then
-              # Rename the user-facing CLI binary: cli -> agent
-              dest_name="${bin/cli/agent}"
-              cp "$src" "dist/${dest_name}-${TARGET}"
-            fi
+            cp "target/${TARGET}/release/${bin}" "stage/${bin}"
           done
+          # Rename the user-facing CLI binary: cli -> agent
+          cp "target/${TARGET}/release/cli" "stage/agent"
+          chmod 755 stage/agent stage/agentd-*
+          mkdir -p dist
+          tar -czf "dist/agentd-${VERSION}-${TARGET}.tar.gz" -C stage .
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.target }}
-          path: dist/*
+          name: tarball-${{ matrix.target }}
+          path: dist/*.tar.gz
           if-no-files-found: error
 
   release:
@@ -100,9 +142,17 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: binaries-*
+          pattern: tarball-*
           path: dist
           merge-multiple: true
+
+      - name: Generate checksums and stage installer
+        run: |
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS
+          # Uploaded under the basename `install.sh` so that
+          # `releases/latest/download/install.sh` resolves.
+          cp ../contrib/scripts/install.sh install.sh
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -110,3 +160,6 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: dist/*
           fail_on_unmatched_files: true
+          # Tags like v0.5.0-rc.1 publish as pre-releases and never become
+          # the `latest` release the installer resolves by default.
+          prerelease: ${{ contains(github.ref_name, '-') }}
