@@ -245,7 +245,7 @@ export function WorkflowDetail() {
 				<h2 className="text-base font-semibold text-th-text mb-4">
 					Dispatch history
 				</h2>
-				<DispatchHistory workflowId={workflow.id} />
+				<DispatchHistory workflowId={workflow.id} workflow={workflow} />
 			</div>
 
 			{/* Edit dialog */}

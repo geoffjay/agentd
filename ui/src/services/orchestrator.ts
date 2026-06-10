@@ -27,6 +27,7 @@ import type {
 	SendMessageResponse,
 	SetModelRequest,
 	ToolPolicy,
+	TriggerWorkflowRequest,
 	UpdatePolicyRequest,
 	UpdateWorkflowRequest,
 	Workflow,
@@ -224,6 +225,18 @@ export class OrchestratorClient extends ApiClient {
 			`/workflows/${id}/history`,
 			params as Record<string, string>,
 		);
+	}
+
+	/**
+	 * Manually trigger a workflow, bypassing its normal trigger strategy.
+	 * Used by the dispatch retry modal to re-run a dispatch with
+	 * (optionally edited) variables.
+	 */
+	triggerWorkflow(
+		id: string,
+		request?: TriggerWorkflowRequest,
+	): Promise<DispatchRecord> {
+		return this.post<DispatchRecord>(`/workflows/${id}/trigger`, request ?? {});
 	}
 
 	// -------------------------------------------------------------------------

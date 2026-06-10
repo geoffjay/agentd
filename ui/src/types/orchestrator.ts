@@ -215,6 +215,11 @@ export interface DispatchRecord {
 	status: DispatchStatus;
 	dispatched_at: string;
 	completed_at?: string;
+	/**
+	 * The task whose variables were rendered into prompt_sent.
+	 * Absent for records created before task persistence was added.
+	 */
+	task?: Task | null;
 }
 
 /**
@@ -229,6 +234,19 @@ export interface Task {
 	labels: string[];
 	assignee?: string;
 	metadata: Record<string, string>;
+}
+
+/**
+ * Request body for manually triggering a workflow.
+ * Mirrors the Rust TriggerWorkflowRequest type.
+ */
+export interface TriggerWorkflowRequest {
+	title?: string;
+	body?: string;
+	url?: string;
+	labels?: string[];
+	assignee?: string;
+	metadata?: Record<string, string>;
 }
 
 /** Request body for creating a workflow */

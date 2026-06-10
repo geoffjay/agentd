@@ -5,12 +5,17 @@
  * Supports filtering by status and pagination.
  */
 
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { ListItemSkeleton } from "@/components/common/LoadingSkeleton";
 import { Pagination } from "@/components/common/Pagination";
+import { RetryDispatchModal } from "@/components/workflows/RetryDispatchModal";
 import { useDispatchHistory } from "@/hooks/useWorkflows";
-import type { DispatchRecord, DispatchStatus } from "@/types/orchestrator";
+import type {
+	DispatchRecord,
+	DispatchStatus,
+	Workflow,
+} from "@/types/orchestrator";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,6 +23,11 @@ import type { DispatchRecord, DispatchStatus } from "@/types/orchestrator";
 
 export interface DispatchHistoryProps {
 	workflowId: string;
+	/**
+	 * The full workflow. When provided, dispatch rows become clickable and
+	 * open the re-trigger modal (which needs the prompt template).
+	 */
+	workflow?: Workflow;
 	pageSize?: number;
 }
 
@@ -64,12 +74,25 @@ const STATUS_OPTIONS: Array<{ value: DispatchStatus | "all"; label: string }> =
 // Row component
 // ---------------------------------------------------------------------------
 
-function DispatchRow({ record }: { record: DispatchRecord }) {
+function DispatchRow({
+	record,
+	onRetry,
+}: {
+	record: DispatchRecord;
+	onRetry?: (record: DispatchRecord) => void;
+}) {
 	const [expanded, setExpanded] = useState(false);
+	const colCount = onRetry ? 6 : 5;
 
 	return (
 		<>
-			<tr className="border-t border-th-border-subtle hover:bg-th-surface-hover">
+			<tr
+				className={[
+					"border-t border-th-border-subtle hover:bg-th-surface-hover",
+					onRetry ? "cursor-pointer" : "",
+				].join(" ")}
+				onClick={onRetry ? () => onRetry(record) : undefined}
+			>
 				<td className="py-2 px-4 font-mono text-xs text-th-text-muted">
 					{record.source_id}
 				</td>
@@ -81,7 +104,10 @@ function DispatchRow({ record }: { record: DispatchRecord }) {
 						{record.prompt_sent.length > 80 && (
 							<button
 								type="button"
-								onClick={() => setExpanded((v) => !v)}
+								onClick={(e) => {
+									e.stopPropagation();
+									setExpanded((v) => !v);
+								}}
 								className="flex-shrink-0 text-th-text-link hover:text-th-text-link focus-visible:outline-none"
 								aria-label={expanded ? "Collapse prompt" : "Expand prompt"}
 							>
@@ -103,11 +129,27 @@ function DispatchRow({ record }: { record: DispatchRecord }) {
 				<td className="py-2 px-4 text-xs text-th-text-faint whitespace-nowrap">
 					{record.completed_at ? formatDate(record.completed_at) : "—"}
 				</td>
+				{onRetry && (
+					<td className="py-2 px-4">
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								onRetry(record);
+							}}
+							className="rounded p-1 text-th-text-muted hover:text-th-text-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-th-focus-ring"
+							aria-label="Re-trigger this dispatch"
+							title="Re-trigger this dispatch"
+						>
+							<RotateCcw size={14} />
+						</button>
+					</td>
+				)}
 			</tr>
 
 			{expanded && (
 				<tr className="bg-th-surface-sunken">
-					<td colSpan={5} className="px-4 py-2">
+					<td colSpan={colCount} className="px-4 py-2">
 						<pre className="text-xs font-mono text-th-text-secondary whitespace-pre-wrap">
 							{record.prompt_sent}
 						</pre>
@@ -124,19 +166,30 @@ function DispatchRow({ record }: { record: DispatchRecord }) {
 
 export function DispatchHistory({
 	workflowId,
+	workflow,
 	pageSize = 20,
 }: DispatchHistoryProps) {
 	const [page, setPage] = useState(1);
 	const [statusFilter, setStatusFilter] = useState<DispatchStatus | "all">(
 		"all",
 	);
+	const [retryTarget, setRetryTarget] = useState<DispatchRecord | null>(null);
 
-	const { dispatches, total, loading, error } = useDispatchHistory({
+	const { dispatches, total, loading, error, refetch } = useDispatchHistory({
 		workflowId,
 		page,
 		pageSize,
 		status: statusFilter === "all" ? undefined : statusFilter,
 	});
+
+	const colCount = workflow ? 6 : 5;
+
+	function handleRetried() {
+		// Reset to the unfiltered first page so the new dispatch is visible.
+		setStatusFilter("all");
+		setPage(1);
+		refetch();
+	}
 
 	return (
 		<div className="space-y-3">
@@ -185,13 +238,18 @@ export function DispatchHistory({
 							<th className="py-2 px-4 text-left text-xs font-medium text-th-text-muted uppercase tracking-wide">
 								Completed
 							</th>
+							{workflow && (
+								<th className="py-2 px-4 text-left text-xs font-medium text-th-text-muted uppercase tracking-wide">
+									<span className="sr-only">Actions</span>
+								</th>
+							)}
 						</tr>
 					</thead>
 					<tbody>
 						{loading ? (
 							Array.from({ length: 3 }).map((_, i) => (
 								<tr key={i} className="border-t border-th-border-subtle">
-									<td colSpan={5} className="p-2">
+									<td colSpan={colCount} className="p-2">
 										<ListItemSkeleton />
 									</td>
 								</tr>
@@ -199,7 +257,7 @@ export function DispatchHistory({
 						) : error ? (
 							<tr>
 								<td
-									colSpan={5}
+									colSpan={colCount}
 									className="py-8 text-center text-sm text-th-status-error-text"
 								>
 									{error}
@@ -208,7 +266,7 @@ export function DispatchHistory({
 						) : dispatches.length === 0 ? (
 							<tr>
 								<td
-									colSpan={5}
+									colSpan={colCount}
 									className="py-8 text-center text-sm text-th-text-faint"
 								>
 									No dispatches found.
@@ -216,7 +274,11 @@ export function DispatchHistory({
 							</tr>
 						) : (
 							dispatches.map((record) => (
-								<DispatchRow key={record.id} record={record} />
+								<DispatchRow
+									key={record.id}
+									record={record}
+									onRetry={workflow ? setRetryTarget : undefined}
+								/>
 							))
 						)}
 					</tbody>
@@ -231,6 +293,17 @@ export function DispatchHistory({
 					totalItems={total}
 					pageSize={pageSize}
 					onPageChange={setPage}
+				/>
+			)}
+
+			{/* Re-trigger modal */}
+			{workflow && (
+				<RetryDispatchModal
+					open={retryTarget !== null}
+					workflow={workflow}
+					dispatch={retryTarget}
+					onClose={() => setRetryTarget(null)}
+					onRetried={handleRetried}
 				/>
 			)}
 		</div>
