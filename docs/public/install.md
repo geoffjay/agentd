@@ -58,6 +58,24 @@ agent service start
 agent service status
 ```
 
+#### Web UI service discovery
+
+The installed web UI needs no build-time configuration: at startup the SPA
+fetches `/config.json` from the `agentd-ui` service, which derives the
+browser-facing service locations from the agentd config file (the same
+`config.toml` the installer gap-fills with production ports). By default each
+service is reached at the page's own hostname with the service's configured
+port, which works for direct access to the host.
+
+Deployments that front services with a reverse proxy or TLS can override the
+full URL per service:
+
+```toml
+[services.ui.public_urls]
+orchestrator = "https://agentd.example.com/orchestrator"
+notify = "https://agentd.example.com/notify"
+```
+
 ### Option 2: cargo xtask (from source)
 
 ```bash

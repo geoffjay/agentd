@@ -26,10 +26,11 @@
 
 pub mod config;
 pub mod proxy;
+pub mod runtime_config;
 
 use anyhow::Result;
 use axum::routing::{any, get};
-use axum::Router;
+use axum::{Json, Router};
 use proxy::ProxyState;
 use std::path::Path;
 use tower_http::services::{ServeDir, ServeFile};
@@ -58,8 +59,13 @@ pub async fn run(config: config::UiConfig) -> Result<()> {
     let index_path = ui_path.join("index.html");
     let serve_dir = ServeDir::new(&ui_dir).fallback(ServeFile::new(&index_path));
 
+    // Runtime configuration for the SPA: built once at startup, immutable
+    // for the lifetime of the process.
+    let runtime_config = config.runtime_config.clone();
+
     let router = Router::new()
         .route("/health", get(|| async { "ok" }))
+        .route("/config.json", get(move || async move { Json(runtime_config.clone()) }))
         // API proxy routes — use `any` to support all HTTP methods
         .route("/api/ask/{*path}", any(proxy::proxy_ask))
         .route("/api/notify/{*path}", any(proxy::proxy_notify))

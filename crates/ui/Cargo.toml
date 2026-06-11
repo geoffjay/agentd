@@ -21,8 +21,10 @@ anyhow = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true, features = ["cors", "fs"] }
 reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true }
 agentd-common = { path = "../common" }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+serde_json = { workspace = true }
