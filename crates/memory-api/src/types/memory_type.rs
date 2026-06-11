@@ -16,7 +16,7 @@ use std::str::FromStr;
 /// # Examples
 ///
 /// ```rust
-/// use memory::types::MemoryType;
+/// use memory_api::types::MemoryType;
 ///
 /// assert_eq!(MemoryType::default(), MemoryType::Information);
 ///

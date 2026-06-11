@@ -13,7 +13,7 @@ tokio = { workspace = true }
 
 # Internal dependencies — used by the migration runners.
 agentd-common = { path = "../common" }
-memory = { path = "../memory" }
+memory-api = { path = "../memory-api" }
 notify = { path = "../notify" }
 orchestrator = { path = "../orchestrator" }
 communicate = { path = "../communicate" }

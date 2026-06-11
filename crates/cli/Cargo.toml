@@ -39,7 +39,7 @@ wrap = { path = "../wrap" }
 orchestrator = { path = "../orchestrator" }
 monitor = { path = "../monitor" }
 hook = { path = "../hook" }
-memory = { path = "../memory" }
+memory-api = { path = "../memory-api" }
 communicate = { path = "../communicate" }
 agentd-mcp = { path = "../mcp" }
 agentd-tui = { path = "../tui" }

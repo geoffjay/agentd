@@ -26,4 +26,4 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 toml = { workspace = true }
 agentd-common = { path = "../common" }
 orchestrator = { path = "../orchestrator" }
-memory = { path = "../memory" }
+memory-api = { path = "../memory-api" }

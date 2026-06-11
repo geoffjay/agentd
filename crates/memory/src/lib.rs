@@ -7,8 +7,11 @@
 //!
 //! The memory crate is structured as a dual library + binary:
 //!
-//! - **Library** (`lib.rs`): Public types, traits, client, and storage backends
-//!   used by the CLI and other crates.
+//! - **Library** (`lib.rs`): Storage backends, embedding services, and
+//!   configuration, plus the API surface (types, client, entity, migrations)
+//!   re-exported from the lightweight `memory-api` crate. API consumers (CLI,
+//!   TUI, installer) depend on `memory-api` directly so they don't inherit
+//!   the lancedb dependency graph.
 //! - **Binary** (`main.rs`): HTTP server with REST API endpoints (private `api`
 //!   module).
 //!
@@ -117,28 +120,15 @@
 //! # }
 //! ```
 
-pub mod client;
 pub mod config;
-pub mod entity;
 pub mod error;
-pub(crate) mod migration;
 pub mod storage;
 pub mod store;
-pub mod types;
 
-/// Apply all pending SeaORM migrations to the SQLite database at `db_path`.
-///
-/// Creates the file if it does not exist. Designed for use by `cargo xtask migrate`.
-pub async fn apply_migrations_for_path(db_path: &std::path::Path) -> anyhow::Result<()> {
-    agentd_common::storage::apply_migrations::<migration::Migrator>(db_path).await
-}
-
-/// Return the status of all known migrations for the database at `db_path`.
-///
-/// Each entry is `(migration_name, is_applied)`. Designed for use by
-/// `cargo xtask migrate-status`.
-pub async fn migration_status_for_path(
-    db_path: &std::path::Path,
-) -> anyhow::Result<Vec<(String, bool)>> {
-    agentd_common::storage::migration_status::<migration::Migrator>(db_path).await
-}
+// The API surface (types, client, entity, migrations) lives in the
+// `memory-api` crate so that API consumers (CLI, TUI, installer) do not
+// inherit the lancedb dependency graph. Re-exported here so the service's
+// module layout (and the `crate::types`/`crate::entity` paths used
+// internally) stays unchanged.
+pub(crate) use memory_api::migration;
+pub use memory_api::{apply_migrations_for_path, client, entity, migration_status_for_path, types};

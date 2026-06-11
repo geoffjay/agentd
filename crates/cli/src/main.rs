@@ -87,7 +87,7 @@ use commands::{
     SystemAgentsCommand, WrapCommand,
 };
 use communicate::client::CommunicateClient;
-use memory::client::MemoryClient;
+use memory_api::client::MemoryClient;
 use notify::client::NotifyClient;
 use orchestrator::client::OrchestratorClient;
 use std::env;

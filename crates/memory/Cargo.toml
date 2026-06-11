@@ -46,10 +46,10 @@ reqwest = { workspace = true, features = ["json"] }
 futures = "0.3"
 
 # Additional utilities
-uuid = { version = "1.11", features = ["v4", "serde"] }
 chrono = { workspace = true }
 directories = "6.0.0"
 agentd-common = { path = "../common" }
+memory-api = { path = "../memory-api" }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 

@@ -1,0 +1,23 @@
+[package]
+name = "memory-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# HTTP client for the memory service REST API
+reqwest = { workspace = true, features = ["json"] }
+
+# SQLite metadata schema + migrations (shared with `agent install migrate`)
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+async-trait = "0.1"
+
+agentd-common = { path = "../common" }

@@ -24,7 +24,7 @@ use super::{MemoryType, VisibilityLevel};
 /// # Examples
 ///
 /// ```rust
-/// use memory::types::{Memory, MemoryType, VisibilityLevel};
+/// use memory_api::types::{Memory, MemoryType, VisibilityLevel};
 /// use chrono::Utc;
 ///
 /// let now = Utc::now();
@@ -95,7 +95,7 @@ impl Memory {
     /// # Examples
     ///
     /// ```rust
-    /// use memory::types::Memory;
+    /// use memory_api::types::Memory;
     ///
     /// let id = Memory::generate_id();
     /// assert!(id.starts_with("mem_"));
@@ -125,7 +125,7 @@ impl Memory {
     /// # Examples
     ///
     /// ```rust
-    /// use memory::types::{Memory, MemoryType, VisibilityLevel};
+    /// use memory_api::types::{Memory, MemoryType, VisibilityLevel};
     /// use chrono::Utc;
     ///
     /// let now = Utc::now();

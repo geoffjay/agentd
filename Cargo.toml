@@ -10,6 +10,7 @@ members = [
     "crates/install",
     "crates/mcp",
     "crates/memory",
+    "crates/memory-api",
     "crates/monitor",
     "crates/notify",
     "crates/orchestrator",
