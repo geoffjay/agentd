@@ -7,8 +7,8 @@
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
 use crate::tools::{
-    agents, approvals, communicate, creation, diagnostic, health, lifecycle, memory, notifications,
-    orchestrator_debug, remediation, workflows,
+    agents, approvals, communicate, creation, diagnostic, health, lifecycle, memory, metrics,
+    notifications, orchestrator_debug, remediation, workflows,
 };
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
@@ -963,6 +963,33 @@ impl AgentdMcp {
         service: Option<String>,
     ) -> String {
         health::run_get_prometheus_metrics(&self.client, service.as_deref()).await
+    }
+
+    /// Run a curated PromQL query via the monitor service.
+    #[tool(
+        description = "Run a curated PromQL query against the agentd Prometheus stack via the monitor service. Call without a name to list the catalog (dispatch-success-rate, dispatch-throughput, agent-restart-rate, http-error-rate, http-p95-latency, session-cost, approvals-backlog, host-saturation, ...). window is like 15m/1h/24h; range=true returns a six-hour trend summarized per series instead of an instant value. Falls back gracefully when Prometheus is down (use get_prometheus_metrics for direct scraping)."
+    )]
+    async fn query_metrics(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Catalog query name; omit to list the catalog")]
+        name: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Time window for rate/increase queries, e.g. 15m, 1h, 24h")]
+        window: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "true for a range query (trend over the last 6h) instead of an instant value"
+        )]
+        range: Option<bool>,
+    ) -> String {
+        metrics::run_query_metrics(
+            &self.client,
+            name.as_deref(),
+            window.as_deref(),
+            range.unwrap_or(false),
+        )
+        .await
     }
 }
 

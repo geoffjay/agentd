@@ -394,7 +394,7 @@ async fn test_bootstrap_creates_system_agent() {
     manager.bootstrap_system_agents().await.unwrap();
 
     let system_agents = storage.list_system_agents().await.unwrap();
-    assert_eq!(system_agents.len(), 3, "one agent per registry definition");
+    assert_eq!(system_agents.len(), 4, "one agent per registry definition");
     assert!(system_agents.iter().all(|a| a.built_in));
 
     let system = system_agents.iter().find(|a| a.name == SYSTEM_AGENT_NAME).unwrap();
@@ -419,7 +419,7 @@ async fn test_bootstrap_is_idempotent() {
     manager.bootstrap_system_agents().await.unwrap();
 
     let system_agents = storage.list_system_agents().await.unwrap();
-    assert_eq!(system_agents.len(), 3, "bootstrap must not create duplicate system agents");
+    assert_eq!(system_agents.len(), 4, "bootstrap must not create duplicate system agents");
     let diagnostician = system_agents.iter().find(|a| a.name == DIAGNOSTICIAN_AGENT_NAME).unwrap();
     assert_eq!(
         diagnostician.status,

@@ -12,6 +12,7 @@
 //! - `health`             — service health probes, system metrics, prometheus
 //! - `lifecycle`          — restart/terminate agents, send messages, update policy/model
 //! - `memory`             — search and list stored memories
+//! - `metrics`            — curated Prometheus queries via the monitor service
 //! - `notifications`      — list/create/dismiss notifications
 //! - `orchestrator_debug` — state-mismatch detection, queue inspection, conversation summary, projects
 //! - `policy`             — shared ToolPolicy JSON construction
@@ -26,6 +27,7 @@ pub mod diagnostic;
 pub mod health;
 pub mod lifecycle;
 pub mod memory;
+pub mod metrics;
 pub mod notifications;
 pub mod orchestrator_debug;
 pub mod policy;
