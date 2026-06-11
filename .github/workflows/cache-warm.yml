@@ -1,0 +1,75 @@
+# Warms the Rust caches used by the tag-triggered Release workflow.
+#
+# GitHub Actions only lets a run restore caches created on its own ref or on
+# the default branch. Release runs happen on tag refs (a fresh ref every
+# release), so the only caches they can ever restore are ones saved from
+# `main` — which is what this workflow provides. The rust-cache `shared-key`
+# here must stay identical to the one in release.yml for the keys to match.
+#
+# Triggers:
+#   - push to main touching Cargo.lock: dependency set changed, re-warm.
+#   - weekly schedule: keeps the caches alive past GitHub's 7-day eviction
+#     window when no release or lockfile change happens in between.
+#   - manual dispatch: for warming on demand (e.g. after this workflow lands).
+name: Warm Release Cache
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - "Cargo.lock"
+
+concurrency:
+  group: cache-warm-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  warm:
+    name: Warm (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Must mirror the build matrix in release.yml.
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install protoc and musl tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler musl-tools
+
+      - name: Install protoc (macOS)
+        if: runner.os == 'macOS'
+        run: brew install protobuf
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target }}
+
+      # Same invocation as the release build so the dependency artifacts in
+      # the cache are directly reusable. rust-cache strips the workspace
+      # crates' own artifacts before saving, so only dependencies persist.
+      # On an exact cache-key hit this is a near no-op (and rust-cache skips
+      # re-saving), but the restore still refreshes the eviction timer.
+      - name: Build release dependencies
+        run: cargo build --release --workspace --bins --target ${{ matrix.target }}
