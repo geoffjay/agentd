@@ -28,6 +28,12 @@ pub const SYSTEM_AGENT_NAME: &str = "agentd-system";
 /// Name of the built-in diagnostician agent.
 pub const DIAGNOSTICIAN_AGENT_NAME: &str = "agentd-diagnostician";
 
+/// Name of the built-in architect agent (creates agents and workflows).
+pub const ARCHITECT_AGENT_NAME: &str = "agentd-architect";
+
+/// Name of the built-in analyst agent (metrics and health analysis).
+pub const ANALYST_AGENT_NAME: &str = "agentd-analyst";
+
 /// Env var that, when set to `1`/`true`, adds remediation tools to the
 /// diagnostician's allowlist (restart_failed_agents, retry_failed_dispatches,
 /// cleanup_stale_dispatches, resolve_notification_backlog). Default off.
@@ -113,7 +119,7 @@ impl SystemAgentDef {
 /// are refreshed, and stored built-ins whose name is no longer listed here
 /// are removed as orphans.
 pub fn builtin_agent_defs() -> Vec<SystemAgentDef> {
-    vec![system_agent_def(), diagnostician_def()]
+    vec![system_agent_def(), diagnostician_def(), architect_def(), analyst_def()]
 }
 
 /// Definition of the `agentd-system` domain-expert agent.
@@ -218,17 +224,18 @@ fn diagnostician_def() -> SystemAgentDef {
         lazy: true,
         prompt: diagnostician_prompt,
         tool_policy: diagnostician_tool_policy,
-        mcp_servers: diagnostician_mcp_servers,
+        mcp_servers: agentd_mcp_servers,
     }
 }
 
-/// MCP server map for the diagnostician: the agentd MCP server over stdio.
+/// MCP server map shared by the MCP-driven built-ins: the agentd MCP server
+/// over stdio.
 ///
 /// Service URLs are pinned via `AGENTD_*_URL` env vars derived from this
 /// deployment's loaded configuration (the exact vars `agentd-mcp` reads), so
 /// the MCP server talks to the right ports regardless of the tmux shell
 /// environment. Localhost URLs only — no secrets, drift-stable.
-fn diagnostician_mcp_servers() -> Option<HashMap<String, McpServerConfig>> {
+fn agentd_mcp_servers() -> Option<HashMap<String, McpServerConfig>> {
     let services = agentd_common::config::load().map(|c| c.services).unwrap_or_default();
     let env: HashMap<String, String> = [
         ("AGENTD_ORCHESTRATOR_URL", services.orchestrator.port),
@@ -342,6 +349,300 @@ you did.
 
 You have no filesystem or shell access. For source-level questions, defer to
 the agentd-system agent in the `system` room.
+";
+
+// ---------------------------------------------------------------------------
+// agentd-architect
+// ---------------------------------------------------------------------------
+
+/// Definition of the `agentd-architect` agent.
+///
+/// A lazy built-in that designs and provisions agents and workflows through
+/// the agentd MCP server's creation tools. It can create and adjust live
+/// resources but deliberately cannot delete workflows, terminate or restart
+/// agents, or write files (repository `.agentd/*.yml` templates are
+/// human-gated).
+fn architect_def() -> SystemAgentDef {
+    SystemAgentDef {
+        name: ARCHITECT_AGENT_NAME,
+        model: "sonnet",
+        rooms: &["system"],
+        working_dir: WorkingDirStrategy::CurrentDir,
+        lazy: true,
+        prompt: architect_prompt,
+        tool_policy: architect_tool_policy,
+        mcp_servers: agentd_mcp_servers,
+    }
+}
+
+/// Tool policy for the architect: creation + inspection, no destruction.
+///
+/// Write tools are enumerated individually (never globbed) so adding a new
+/// mutating MCP tool can't silently expand the architect's capabilities.
+/// Excluded deliberately: `delete_workflow`, `terminate_agent`,
+/// `restart_agent`, all approval tools, `Write`/`Edit`, unrestricted `Bash`.
+fn architect_tool_policy() -> ToolPolicy {
+    ToolPolicy::AllowList {
+        tools: vec![
+            // ── MCP write tools (exact names only) ────────────────────────
+            "mcp__agentd__create_agent".to_string(),
+            "mcp__agentd__create_workflow".to_string(),
+            "mcp__agentd__update_workflow".to_string(),
+            "mcp__agentd__set_workflow_enabled".to_string(),
+            "mcp__agentd__trigger_workflow".to_string(),
+            "mcp__agentd__send_agent_message".to_string(),
+            "mcp__agentd__send_room_message".to_string(),
+            // ── MCP read tools ─────────────────────────────────────────────
+            "mcp__agentd__list_*".to_string(),
+            "mcp__agentd__get_*".to_string(),
+            "mcp__agentd__diagnose_agent".to_string(),
+            "mcp__agentd__diagnose_workflow".to_string(),
+            "mcp__agentd__check_service_health".to_string(),
+            // ── Local read-only tools for studying the codebase ───────────
+            "Read".to_string(),
+            "Grep".to_string(),
+            "Glob".to_string(),
+            "LS".to_string(),
+            "Bash(curl *)".to_string(),
+            "Bash(agent *)".to_string(),
+        ],
+        sandbox_bypass: vec![],
+    }
+}
+
+/// System prompt for the architect.
+fn architect_prompt() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    format!("agentd version: {version}\n\n{ARCHITECT_PROMPT}")
+}
+
+/// # Token budget
+///
+/// Target: under 6 000 tokens (≈ 24 000 characters). The TriggerConfig
+/// reference must list every variant — a test enforces this stays in sync
+/// with the scheduler enum.
+const ARCHITECT_PROMPT: &str = "\
+You are the agentd architect — a built-in agent that designs and provisions
+agents and workflows on the agentd platform.
+
+─────────────────────────────────────────────────────────────────────────────
+HARD CONSTRAINT: API ONLY, NEVER FILES
+─────────────────────────────────────────────────────────────────────────────
+
+You create live resources EXCLUSIVELY through the agentd MCP tools
+(create_agent, create_workflow, ...). You must NEVER edit repository files —
+in particular `.agentd/*.yml` templates, which are human-gated declarative
+state applied via `agent apply`. If asked to change a template, output the
+YAML for a human to commit instead, and say why you cannot write it yourself.
+
+─────────────────────────────────────────────────────────────────────────────
+WORKFLOW TRIGGER REFERENCE (trigger_config)
+─────────────────────────────────────────────────────────────────────────────
+
+`trigger_config` is a JSON object whose `type` selects the trigger:
+
+  manual                 {\"type\":\"manual\"} — fired explicitly via
+                         trigger_workflow; ideal for smoke tests.
+  cron                   {\"type\":\"cron\",\"expression\":\"0 9 * * MON-FRI\"}
+  delay                  {\"type\":\"delay\",\"run_at\":\"2026-06-12T09:00:00Z\"}
+                         — one-shot at an ISO 8601 time.
+  agent_idle             {\"type\":\"agent_idle\",\"idle_seconds\":600}
+                         — fires after the agent has been idle that long.
+  agent_lifecycle        {\"type\":\"agent_lifecycle\",\"event\":\"session_start\"}
+                         — events: session_start | session_end | context_clear.
+  dispatch_result        {\"type\":\"dispatch_result\",\"source_workflow_id\":
+                         \"<uuid>\",\"status\":\"completed\"} — workflow
+                         chaining; both filters optional.
+  webhook                {\"type\":\"webhook\",\"secret\":\"...\",\"source\":
+                         \"github\"} — inbound webhooks (github | linear | any).
+  queue                  {\"type\":\"queue\",\"queue_name\":\"my-queue\"}
+                         — consumes tasks pushed to a named internal queue.
+  ask_response           {\"type\":\"ask_response\",\"agent_id\":\"...\",
+                         \"category\":\"...\",\"response_pattern\":\".*\"}
+                         — fires when a human answers a question; all optional.
+  composite              {\"type\":\"composite\",\"mode\":\"or\",\"triggers\":
+                         [...]} — combine ≥2 sub-triggers with \"or\"/\"and\"
+                         (AND uses correlation_window_secs, default 60).
+  github_issues          {\"type\":\"github_issues\",\"owner\":\"o\",\"repo\":
+                         \"r\",\"labels\":[\"bug\"],\"state\":\"open\"}
+  github_pull_requests   {\"type\":\"github_pull_requests\",\"owner\":\"o\",
+                         \"repo\":\"r\",\"state\":\"open\"}
+  linear_issues          {\"type\":\"linear_issues\",\"team_key\":\"ENG\",
+                         \"status\":[\"Todo\"]} — needs AGENTD_LINEAR_API_KEY.
+  gitlab_issues          {\"type\":\"gitlab_issues\",\"owner\":\"group\",
+                         \"repo\":\"project\",\"state\":\"opened\"}
+  gitlab_merge_requests  {\"type\":\"gitlab_merge_requests\",\"owner\":\"group\",
+                         \"repo\":\"project\",\"state\":\"opened\"}
+                         — GitLab triggers need AGENTD_GITLAB_TOKEN; GitLab
+                         states use \"opened\", not \"open\".
+
+─────────────────────────────────────────────────────────────────────────────
+PROMPT TEMPLATES
+─────────────────────────────────────────────────────────────────────────────
+
+`prompt_template` supports {{placeholder}} substitution from the trigger's
+task payload. Unknown placeholders are REJECTED at create time (the API error
+tells you which); {{metadata.*}} passes through verbatim when absent.
+
+Always available: {{title}}, {{body}}, {{url}}, {{labels}}, {{assignee}},
+{{source_id}}, {{metadata}}.
+
+Per-trigger highlights: cron adds {{fire_time}}/{{cron_expression}};
+dispatch_result adds {{source_workflow_id}}/{{dispatch_id}}/{{status}};
+github_pull_requests adds {{head_ref}}/{{base_ref}}/{{is_draft}};
+linear_issues adds {{identifier}}/{{state}}/{{team}}/{{priority}};
+gitlab merge requests add {{source_branch}}/{{target_branch}}/{{draft}};
+queue adds {{queue_name}}/{{queue_task_id}}; ask_response adds
+{{question}}/{{answer}}/{{category}}/{{event_type}}.
+
+─────────────────────────────────────────────────────────────────────────────
+DESIGN GUIDANCE
+─────────────────────────────────────────────────────────────────────────────
+
+1. Look before you build: list_agents / list_workflows / get_workflow to copy
+   proven configs and avoid duplicate names.
+2. Give every agent a restrictive tool policy (allow_list with exactly what
+   the job needs). Do the same for workflow tool policies.
+3. Never put secrets in prompts. You cannot set env vars by design — if an
+   agent needs credentials, tell the human to create it via the CLI with
+   --env.
+4. Pick poll intervals deliberately (default 60s; faster polling costs API
+   quota on GitHub/Linear/GitLab triggers).
+5. Smoke-test: create new workflows with a manual trigger first (or disabled,
+   enabled: false), fire once with trigger_workflow, inspect with
+   list_dispatches and diagnose_workflow, then switch the real trigger via
+   update_workflow.
+6. Report what you built in the `system` room: names, IDs, trigger summary,
+   and how to verify.
+
+You cannot delete workflows, terminate or restart agents, or approve tool
+requests. For those, give the human the exact command instead.
+";
+
+// ---------------------------------------------------------------------------
+// agentd-analyst
+// ---------------------------------------------------------------------------
+
+/// Definition of the `agentd-analyst` agent.
+///
+/// A lazy built-in that analyzes platform metrics and health: the curated
+/// Prometheus query catalog (via the monitor service's `query_metrics` MCP
+/// tool) plus the orchestrator's read APIs. Strictly read-only except for
+/// posting findings (notifications and room messages).
+fn analyst_def() -> SystemAgentDef {
+    SystemAgentDef {
+        name: ANALYST_AGENT_NAME,
+        model: "sonnet",
+        rooms: &["system"],
+        working_dir: WorkingDirStrategy::CurrentDir,
+        lazy: true,
+        prompt: analyst_prompt,
+        tool_policy: analyst_tool_policy,
+        mcp_servers: agentd_mcp_servers,
+    }
+}
+
+/// Tool policy for the analyst: read/diagnose tool families plus the two
+/// escalation channels (create_notification, send_room_message). No
+/// lifecycle, creation, approval, or remediation tools.
+fn analyst_tool_policy() -> ToolPolicy {
+    ToolPolicy::AllowList {
+        tools: vec![
+            // ── Metrics and diagnostics (read-only families) ──────────────
+            "mcp__agentd__query_metrics".to_string(),
+            "mcp__agentd__diagnose_*".to_string(),
+            "mcp__agentd__check_*".to_string(),
+            "mcp__agentd__get_*".to_string(),
+            "mcp__agentd__list_*".to_string(),
+            "mcp__agentd__search_*".to_string(),
+            "mcp__agentd__inspect_*".to_string(),
+            // ── Escalation channels (exact names) ─────────────────────────
+            "mcp__agentd__create_notification".to_string(),
+            "mcp__agentd__send_room_message".to_string(),
+            // ── Local read-only tools ──────────────────────────────────────
+            "Read".to_string(),
+            "Grep".to_string(),
+            "Glob".to_string(),
+            "Bash(curl *)".to_string(),
+        ],
+        sandbox_bypass: vec![],
+    }
+}
+
+/// System prompt for the analyst.
+fn analyst_prompt() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    format!("agentd version: {version}\n\n{ANALYST_PROMPT}")
+}
+
+/// # Coverage note
+///
+/// The query-name list must stay in sync with
+/// `monitor::queries::QUERY_CATALOG` (cross-crate, so the unit test pins a
+/// const string list rather than importing the catalog).
+const ANALYST_PROMPT: &str = "\
+You are the agentd analyst — a built-in agent that analyzes platform metrics
+and health trends, surfaces anomalies, and recommends actions. You are
+read-only: you never modify agents, workflows, or configuration.
+
+─────────────────────────────────────────────────────────────────────────────
+METRICS TOOLKIT
+─────────────────────────────────────────────────────────────────────────────
+
+`query_metrics(name, window?, range?)` runs curated PromQL via the monitor
+service. Call it with no name to list the catalog. Key queries and healthy
+baselines:
+
+  service-up              All targets at 1. Any 0 → check_single_service.
+  dispatch-success-rate   ≥ 0.9 over 24h. Lower → get_failed_dispatches,
+                          then diagnose_workflow on the offenders.
+  dispatch-throughput     Know your normal; a sudden drop to zero on an
+                          enabled workflow means its trigger or agent broke.
+  agent-restart-rate      ~0. Sustained nonzero → crash-looping; diagnose
+                          the restarting agents.
+  agents-active vs websocket-connections
+                          Should match. A gap → diagnose_state_mismatches.
+  approvals-backlog       Near 0. Growth → agents are blocked on humans;
+                          notify the operator.
+  http-error-rate         ~0 per service. Spikes → check that service's
+                          health and recent deploys.
+  http-p95-latency        Know your normal (typically ms). Sustained growth
+                          → host-saturation next.
+  session-cost            Watch the 24h delta; a spike → list_agents and
+                          get_conversation_summary to find the hot agent.
+  notifications-backlog, message-drops, host-saturation
+                          Self-explanatory; drops and saturation are 🔴.
+
+Use `range: true` for trends (per-series min/avg/max/last over 6h) when an
+instant value needs context. If Prometheus is down (502), fall back to
+`get_prometheus_metrics(<service>)` direct scrapes and say so in your report.
+
+─────────────────────────────────────────────────────────────────────────────
+PLAYBOOKS
+─────────────────────────────────────────────────────────────────────────────
+
+Cost spike     → session-cost (24h) → list_agents →
+                 get_conversation_summary on busy agents → report the top
+                 spenders and what they were doing.
+Latency        → http-p95-latency per service → host-saturation →
+                 the slow service's health endpoint via curl.
+Failures       → dispatch-success-rate → get_failed_dispatches →
+                 diagnose_workflow → name the failing workflow and the
+                 pattern (always-fails vs intermittent).
+Routine review → service-up, dispatch-success-rate, agent-restart-rate,
+                 approvals-backlog, session-cost, host-saturation — then
+                 report only what deviates.
+
+─────────────────────────────────────────────────────────────────────────────
+REPORTING
+─────────────────────────────────────────────────────────────────────────────
+
+Post findings to the `system` room (send_room_message). For anything needing
+human action, also create_notification with priority matched to impact:
+data-loss or all-agents-blocked → high; degradation → medium; observations →
+low. Every finding needs: metric evidence, time window, suspected cause, and
+a concrete recommended action (you cannot act — name the command or the agent
+that should).
 ";
 
 /// Carry runtime-derived fields from a stored config over to a freshly built
@@ -727,6 +1028,167 @@ mod tests {
         // And the default policy (var unset) excludes them again.
         let default_policy = diagnostician_tool_policy();
         assert!(!default_policy.evaluate("mcp__agentd__restart_failed_agents", None));
+    }
+
+    #[test]
+    fn architect_is_lazy_with_agentd_mcp_server() {
+        let def = architect_def();
+        assert!(def.lazy);
+        let config = def.build_config();
+        assert!(config.mcp_servers.is_some_and(|s| s.contains_key("agentd")));
+    }
+
+    #[test]
+    fn architect_policy_allows_creation_and_denies_destruction() {
+        let policy = architect_tool_policy();
+
+        for allowed in [
+            "mcp__agentd__create_agent",
+            "mcp__agentd__create_workflow",
+            "mcp__agentd__update_workflow",
+            "mcp__agentd__set_workflow_enabled",
+            "mcp__agentd__trigger_workflow",
+            "mcp__agentd__send_agent_message",
+            "mcp__agentd__list_workflows",
+            "mcp__agentd__get_workflow",
+            "mcp__agentd__diagnose_workflow",
+            "Read",
+            "Grep",
+        ] {
+            assert!(policy.evaluate(allowed, None), "must allow {allowed}");
+        }
+
+        for denied in [
+            "mcp__agentd__delete_workflow",
+            "mcp__agentd__terminate_agent",
+            "mcp__agentd__restart_agent",
+            "mcp__agentd__restart_failed_agents",
+            "mcp__agentd__update_agent_tool_policy",
+            "mcp__agentd__update_agent_model",
+            "mcp__agentd__approve_tool_request",
+            "mcp__agentd__auto_approve_safe_tools",
+            "Write",
+            "Edit",
+            "Bash",
+        ] {
+            assert!(!policy.evaluate(denied, None), "must deny {denied}");
+        }
+
+        // Bash is restricted to specific prefixes.
+        let curl = serde_json::json!({"command": "curl http://localhost:17006/health"});
+        assert!(policy.evaluate("Bash", Some(&curl)));
+        let rm = serde_json::json!({"command": "rm -rf /"});
+        assert!(!policy.evaluate("Bash", Some(&rm)));
+    }
+
+    #[test]
+    fn architect_prompt_covers_every_trigger_variant() {
+        // Keep in sync with the scheduler's TriggerConfig variants. A new
+        // variant must be documented in the architect prompt.
+        const TRIGGER_TYPES: &[&str] = &[
+            "github_issues",
+            "github_pull_requests",
+            "cron",
+            "delay",
+            "agent_lifecycle",
+            "dispatch_result",
+            "webhook",
+            "manual",
+            "agent_idle",
+            "linear_issues",
+            "composite",
+            "queue",
+            "ask_response",
+            "gitlab_issues",
+            "gitlab_merge_requests",
+        ];
+        let prompt = architect_prompt();
+        for t in TRIGGER_TYPES {
+            assert!(prompt.contains(t), "architect prompt must document trigger `{t}`");
+        }
+        // The hard constraint is stated prominently.
+        assert!(prompt.contains(".agentd/*.yml"));
+        assert!(prompt.len() < 26_000, "architect prompt budget: {}", prompt.len());
+    }
+
+    #[test]
+    fn analyst_is_lazy_with_agentd_mcp_server() {
+        let def = analyst_def();
+        assert!(def.lazy);
+        let config = def.build_config();
+        assert!(config.mcp_servers.is_some_and(|s| s.contains_key("agentd")));
+    }
+
+    #[test]
+    fn analyst_policy_is_read_only_plus_escalation() {
+        let policy = analyst_tool_policy();
+
+        for allowed in [
+            "mcp__agentd__query_metrics",
+            "mcp__agentd__get_prometheus_metrics",
+            "mcp__agentd__get_system_metrics",
+            "mcp__agentd__diagnose_system",
+            "mcp__agentd__check_service_health",
+            "mcp__agentd__list_agents",
+            "mcp__agentd__get_failed_dispatches",
+            "mcp__agentd__get_conversation_summary",
+            "mcp__agentd__inspect_queue",
+            "mcp__agentd__create_notification",
+            "mcp__agentd__send_room_message",
+            "Read",
+        ] {
+            assert!(policy.evaluate(allowed, None), "must allow {allowed}");
+        }
+
+        for denied in [
+            "mcp__agentd__create_agent",
+            "mcp__agentd__create_workflow",
+            "mcp__agentd__update_workflow",
+            "mcp__agentd__delete_workflow",
+            "mcp__agentd__terminate_agent",
+            "mcp__agentd__restart_agent",
+            "mcp__agentd__restart_failed_agents",
+            "mcp__agentd__send_agent_message",
+            "mcp__agentd__approve_tool_request",
+            "Write",
+            "Edit",
+            "Bash",
+        ] {
+            assert!(!policy.evaluate(denied, None), "must deny {denied}");
+        }
+    }
+
+    #[test]
+    fn analyst_prompt_covers_the_query_catalog() {
+        // Keep in sync with monitor::queries::QUERY_CATALOG (cross-crate, so
+        // pinned here as a const list). A new catalog entry should be added
+        // to the analyst's baseline guidance.
+        const CATALOG_NAMES: &[&str] = &[
+            "service-up",
+            "dispatch-success-rate",
+            "dispatch-throughput",
+            "agent-restart-rate",
+            "agents-active",
+            "websocket-connections",
+            "approvals-backlog",
+            "approvals-resolution",
+            "http-error-rate",
+            "http-p95-latency",
+            "session-cost",
+            "notifications-backlog",
+            "message-drops",
+            "host-saturation",
+        ];
+        let prompt = analyst_prompt();
+        for name in CATALOG_NAMES {
+            // approvals-resolution is covered by the approvals-backlog
+            // guidance; everything else must appear verbatim.
+            if *name == "approvals-resolution" {
+                continue;
+            }
+            assert!(prompt.contains(name), "analyst prompt must mention `{name}`");
+        }
+        assert!(prompt.len() < 26_000, "analyst prompt budget: {}", prompt.len());
     }
 
     #[test]

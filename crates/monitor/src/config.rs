@@ -33,6 +33,9 @@ pub struct MonitorConfig {
     pub disk_alert_threshold: f32,
     /// Maximum number of metric snapshots to retain in memory (default: 120)
     pub history_size: usize,
+    /// Base URL of the Prometheus server backing the named-query API
+    /// (default: http://127.0.0.1:9090, matching infra/prometheus/).
+    pub prometheus_url: String,
 }
 
 impl MonitorConfig {
@@ -77,6 +80,9 @@ impl MonitorConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(120),
+            // TODO(#1201): migrate when shared schema adds prometheus_url
+            prometheus_url: env::var("AGENTD_PROMETHEUS_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:9090".to_string()),
         }
     }
 
@@ -96,6 +102,7 @@ impl Default for MonitorConfig {
             memory_alert_threshold: 90.0,
             disk_alert_threshold: 90.0,
             history_size: 120,
+            prometheus_url: "http://127.0.0.1:9090".to_string(),
         }
     }
 }
@@ -116,6 +123,14 @@ impl ValidateConfig for MonitorConfig {
             if !(0.0..=100.0).contains(&threshold) {
                 bail!("{name} must be between 0.0 and 100.0, got: {threshold}");
             }
+        }
+        if !self.prometheus_url.starts_with("http://")
+            && !self.prometheus_url.starts_with("https://")
+        {
+            bail!(
+                "monitor.prometheus_url must start with http:// or https://, got: {}",
+                self.prometheus_url
+            );
         }
         Ok(())
     }

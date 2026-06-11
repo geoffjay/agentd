@@ -97,34 +97,17 @@ pub async fn run_update_agent_tool_policy(
     mode: &str,
     tools: Option<Vec<String>>,
 ) -> String {
-    let policy = match mode {
-        "allow_all" => json!("AllowAll"),
-        "deny_all" => json!("DenyAll"),
-        "require_approval" => json!("RequireApproval"),
-        "allow_list" => {
-            let list = tools.clone().unwrap_or_default();
-            if list.is_empty() {
-                return "🔴 `allow_list` mode requires at least one tool name in the `tools` parameter.".to_string();
-            }
-            json!({ "AllowList": { "tools": list } })
-        }
-        "deny_list" => {
-            let list = tools.clone().unwrap_or_default();
-            if list.is_empty() {
-                return "🔴 `deny_list` mode requires at least one tool name in the `tools` parameter.".to_string();
-            }
-            json!({ "DenyList": { "tools": list } })
-        }
-        other => {
-            return format!(
-                "🔴 Unknown policy mode `{other}`.\n\
-                 Valid modes: `allow_all`, `deny_all`, `require_approval`, `allow_list`, `deny_list`"
-            );
-        }
+    // Internally-tagged shape matching the orchestrator's ToolPolicy enum.
+    // The previous externally-tagged construction ({"AllowList": ...}) never
+    // deserialized server-side.
+    let policy = match crate::tools::policy::build_tool_policy(mode, tools.as_deref()) {
+        Ok(p) => p,
+        Err(msg) => return msg,
     };
 
+    // The orchestrator routes this endpoint as PUT (POST returns 405).
     let url = format!("{}/agents/{agent_id}/policy", client.orchestrator_url());
-    match client.post::<Value, Value>(&url, &policy).await {
+    match client.put::<Value, Value>(&url, &policy).await {
         Ok(_) => {
             let tools_note = match mode {
                 "allow_list" | "deny_list" => {
@@ -156,10 +139,11 @@ pub async fn run_terminate_agent(client: &AgentdClient, agent_id: &str) -> Strin
 
 /// Change the model an agent is using.
 pub async fn run_update_agent_model(client: &AgentdClient, agent_id: &str, model: &str) -> String {
+    // The orchestrator routes this endpoint as PUT (POST returns 405).
     let url = format!("{}/agents/{agent_id}/model", client.orchestrator_url());
     // SetModelRequest: { model: Option<String>, restart: bool }
     let body = json!({ "model": model, "restart": false });
-    match client.post::<Value, Value>(&url, &body).await {
+    match client.put::<Value, Value>(&url, &body).await {
         Ok(resp) => {
             let status = resp["status"].as_str().unwrap_or("updated");
             format!("✅ Model for agent `{agent_id}` updated to `{model}`. Status: `{status}`.")
