@@ -100,6 +100,8 @@ impl std::str::FromStr for AgentStatus {
 /// Example glob syntax:
 /// - `"Bash(git-spice *)"` — any git-spice command
 /// - `"Bash(gh pr *)"` — any `gh pr` subcommand
+/// - `"mcp__agentd__*"` — any tool of the `agentd` MCP server (trailing
+///   name glob; see [`match_tool`] — a bare `"*"` is deliberately inert)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum ToolPolicy {
@@ -208,17 +210,33 @@ impl ToolPolicy {
 
 /// Match a tool entry against a tool name and its input.
 ///
-/// Supports three forms:
+/// Supports four forms:
 /// - `"Bash"` — plain name match, ignores input.
+/// - `"mcp__agentd__*"` — trailing-glob name match: any tool whose name
+///   starts with the prefix before the `*`. Primarily for allowlisting MCP
+///   tool families (`mcp__<server>__<tool>`). A bare `"*"` is deliberately
+///   inert — use the `AllowAll` mode for that.
 /// - `"Bash(cargo *)"` — matches only when the tool is `Bash` and its
 ///   `command` input field satisfies the glob-style pattern.
 /// - `"Write(docs/**)"` — matches only when the tool is `Write` (or any
 ///   file tool with a `file_path` input field) and the path satisfies
 ///   the glob-style pattern. Supports `*` (single segment) and `**`
 ///   (any number of segments).
+///
+/// `sandbox_bypass` lists share this matcher, so name globs work there too.
 fn match_tool(pattern: &str, tool_name: &str, input: Option<&serde_json::Value>) -> bool {
     if pattern == tool_name {
         return true;
+    }
+    // Trailing-glob on a plain tool name: "mcp__agentd__*" matches
+    // "mcp__agentd__diagnose_system". Requires a non-empty prefix and no
+    // parentheses so "Bash(cargo *)" handling below is untouched.
+    if !pattern.contains('(') {
+        if let Some(prefix) = pattern.strip_suffix('*') {
+            if !prefix.is_empty() {
+                return tool_name.starts_with(prefix);
+            }
+        }
     }
     if let Some((tool, cmd_pattern)) = parse_tool_pattern(pattern) {
         if tool == tool_name {
@@ -1068,6 +1086,60 @@ mod tests {
         assert!(!policy.evaluate("Write", None));
         assert!(policy.evaluate("Read", None));
         assert!(policy.evaluate("Grep", None));
+    }
+
+    #[test]
+    fn test_match_tool_trailing_name_glob() {
+        assert!(match_tool("mcp__agentd__*", "mcp__agentd__diagnose_system", None));
+        assert!(match_tool("mcp__agentd__*", "mcp__agentd__list_agents", None));
+        assert!(match_tool("mcp__agentd__diagnose_*", "mcp__agentd__diagnose_workflow", None));
+        assert!(!match_tool("mcp__agentd__*", "mcp__other__diagnose_system", None));
+        assert!(!match_tool("mcp__agentd__diagnose_*", "mcp__agentd__restart_agent", None));
+    }
+
+    #[test]
+    fn test_match_tool_bare_star_is_inert() {
+        // AllowAll mode exists for "allow everything"; a bare "*" entry in a
+        // list must not become a backdoor allow-all.
+        assert!(!match_tool("*", "Bash", None));
+        assert!(!match_tool("*", "mcp__agentd__diagnose_system", None));
+    }
+
+    #[test]
+    fn test_match_tool_name_glob_does_not_affect_parenthesized_patterns() {
+        let input = serde_json::json!({"command": "cargo test --workspace"});
+        assert!(match_tool("Bash(cargo *)", "Bash", Some(&input)));
+        assert!(!match_tool("Bash(cargo *)", "Bashful", Some(&input)));
+        // A parenthesized pattern ending in `*)` must still go through
+        // command matching, not name-glob matching.
+        let rm = serde_json::json!({"command": "rm -rf /"});
+        assert!(!match_tool("Bash(cargo *)", "Bash", Some(&rm)));
+    }
+
+    #[test]
+    fn test_tool_policy_name_glob_in_allow_and_deny_lists() {
+        let allow = ToolPolicy::AllowList {
+            tools: vec!["mcp__agentd__diagnose_*".to_string(), "Read".to_string()],
+            sandbox_bypass: vec![],
+        };
+        assert!(allow.evaluate("mcp__agentd__diagnose_system", None));
+        assert!(allow.evaluate("Read", None));
+        assert!(!allow.evaluate("mcp__agentd__restart_agent", None));
+        assert!(!allow.evaluate("Write", None));
+
+        let deny = ToolPolicy::DenyList {
+            tools: vec!["mcp__agentd__restart_*".to_string()],
+            sandbox_bypass: vec![],
+        };
+        assert!(!deny.evaluate("mcp__agentd__restart_failed_agents", None));
+        assert!(deny.evaluate("mcp__agentd__diagnose_system", None));
+    }
+
+    #[test]
+    fn test_sandbox_bypass_name_glob() {
+        let policy = ToolPolicy::AllowAll { sandbox_bypass: vec!["mcp__agentd__*".to_string()] };
+        assert!(policy.matches_sandbox_bypass("mcp__agentd__list_agents", None));
+        assert!(!policy.matches_sandbox_bypass("mcp__other__list", None));
     }
 
     #[test]
