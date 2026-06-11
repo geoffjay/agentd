@@ -78,4 +78,14 @@ impl AgentdClient {
         let resp = self.inner.post(url).json(body).send().await?.error_for_status()?;
         Ok(resp.json::<T>().await?)
     }
+
+    /// Perform a PUT request with a JSON body and deserialize the JSON response.
+    pub async fn put<B: serde::Serialize, T: serde::de::DeserializeOwned>(
+        &self,
+        url: &str,
+        body: &B,
+    ) -> Result<T> {
+        let resp = self.inner.put(url).json(body).send().await?.error_for_status()?;
+        Ok(resp.json::<T>().await?)
+    }
 }
