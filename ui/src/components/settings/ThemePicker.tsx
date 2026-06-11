@@ -6,8 +6,7 @@
  */
 
 import { Check, Monitor } from "lucide-react";
-import { THEME_LIST } from "@/styles/themes/index";
-import { THEME_REGISTRY } from "@/styles/themes/index";
+import { THEME_LIST, THEME_REGISTRY } from "@/styles/themes/index";
 
 interface ThemePickerProps {
 	value: string;

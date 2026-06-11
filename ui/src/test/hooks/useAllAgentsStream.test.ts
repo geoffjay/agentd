@@ -6,11 +6,11 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAllAgentsStream } from "@/hooks/useAllAgentsStream";
 import { agentEventBus } from "@/services/eventBus";
-import type { AgentStatusChangeEvent } from "@/types/orchestrator";
 import {
 	installMockWebSocket,
 	type MockWebSocket,
 } from "@/test/mocks/mockWebSocket";
+import type { AgentStatusChangeEvent } from "@/types/orchestrator";
 
 let lastWs: MockWebSocket | undefined;
 let cleanup: () => void;

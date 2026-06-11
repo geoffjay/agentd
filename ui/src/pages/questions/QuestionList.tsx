@@ -20,10 +20,10 @@ import {
 	WifiOff,
 } from "lucide-react";
 import { useState } from "react";
+import { Pagination } from "@/components/common/Pagination";
 import { AnswerDialog } from "@/components/questions/AnswerDialog";
 import { QuestionCard } from "@/components/questions/QuestionCard";
-import { Pagination } from "@/components/common/Pagination";
-import { useAskService, POLLING_INTERVAL_OPTIONS } from "@/hooks/useAskService";
+import { POLLING_INTERVAL_OPTIONS, useAskService } from "@/hooks/useAskService";
 import type { Question, QuestionStatus } from "@/types/ask";
 
 // ---------------------------------------------------------------------------

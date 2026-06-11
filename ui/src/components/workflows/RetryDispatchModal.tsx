@@ -78,9 +78,9 @@ export function RetryDispatchModal({
 	const [url, setUrl] = useState("");
 	const [labelsRaw, setLabelsRaw] = useState("");
 	const [assignee, setAssignee] = useState("");
-	const [metadataValues, setMetadataValues] = useState<
-		Record<string, string>
-	>({});
+	const [metadataValues, setMetadataValues] = useState<Record<string, string>>(
+		{},
+	);
 	const [newMetaKey, setNewMetaKey] = useState("");
 	const [newMetaValue, setNewMetaValue] = useState("");
 	const [submitting, setSubmitting] = useState(false);
@@ -90,8 +90,7 @@ export function RetryDispatchModal({
 		() => extractTemplateVariables(workflow.prompt_template),
 		[workflow.prompt_template],
 	);
-	const hasVariable = (name: string) =>
-		variables.some((v) => v.name === name);
+	const hasVariable = (name: string) => variables.some((v) => v.name === name);
 	const metadataVariables = variables.filter((v) => v.kind === "metadata");
 	const usesMetadataMap = variables.some((v) => v.kind === "metadata-map");
 
@@ -146,10 +145,7 @@ export function RetryDispatchModal({
 		assignee: assignee || undefined,
 		metadata: metadataValues,
 	};
-	const preview = renderTemplatePreview(
-		workflow.prompt_template,
-		previewTask,
-	);
+	const preview = renderTemplatePreview(workflow.prompt_template, previewTask);
 
 	async function handleSubmit() {
 		setSubmitting(true);
@@ -228,8 +224,8 @@ export function RetryDispatchModal({
 				{/* Body */}
 				<div className="px-6 py-5 space-y-5">
 					<p className="text-sm text-th-text-muted">
-						Re-runs <span className="font-medium">{workflow.name}</span>{" "}
-						as a new manual dispatch. Original dispatch:{" "}
+						Re-runs <span className="font-medium">{workflow.name}</span> as a
+						new manual dispatch. Original dispatch:{" "}
 						<span className="font-mono text-xs">{dispatch.source_id}</span>
 					</p>
 
@@ -241,15 +237,15 @@ export function RetryDispatchModal({
 
 					{!originalTask && (
 						<p className="rounded-md bg-th-status-warning-bg px-3 py-2 text-sm text-th-status-warning-text">
-							Original input values were not recorded for this dispatch.
-							Fill in the variables below to re-run it.
+							Original input values were not recorded for this dispatch. Fill in
+							the variables below to re-run it.
 						</p>
 					)}
 
 					{editableCount === 0 && (
 						<p className="text-sm text-th-text-faint">
-							This workflow's prompt has no editable variables — it will
-							be re-run as-is.
+							This workflow's prompt has no editable variables — it will be
+							re-run as-is.
 						</p>
 					)}
 
@@ -380,8 +376,7 @@ export function RetryDispatchModal({
 							</legend>
 							{Object.entries(metadataValues)
 								.filter(
-									([key]) =>
-										!metadataVariables.some((v) => v.name === key),
+									([key]) => !metadataVariables.some((v) => v.name === key),
 								)
 								.map(([key, value]) => (
 									<div key={key} className="flex items-center gap-2">

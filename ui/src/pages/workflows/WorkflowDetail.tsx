@@ -19,33 +19,11 @@ import { WorkflowForm } from "@/components/workflows/WorkflowForm";
 import { useAgents } from "@/hooks/useAgents";
 import { useWorkflowDetail } from "@/hooks/useWorkflows";
 import type { CreateWorkflowRequest } from "@/types/orchestrator";
+import { triggerSummary } from "@/utils/triggers";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function sourceDetail(
-	src:
-		| {
-				type: string;
-				owner?: string;
-				repo?: string;
-				labels?: string[];
-				state?: string;
-		  }
-		| undefined,
-): string {
-	if (!src) return "No source configured";
-	if (src.type === "github_issues") {
-		const parts: string[] = [];
-		if (src.owner && src.repo) parts.push(`${src.owner}/${src.repo}`);
-		if (src.labels && src.labels.length > 0)
-			parts.push(`Labels: ${src.labels.join(", ")}`);
-		if (src.state) parts.push(`State: ${src.state}`);
-		return parts.join(" · ");
-	}
-	return src.type;
-}
 
 function formatDateTime(iso: string): string {
 	return new Date(iso).toLocaleString(undefined, {
@@ -206,8 +184,8 @@ export function WorkflowDetail() {
 				</h2>
 				<dl>
 					<ConfigRow
-						label="Source"
-						value={sourceDetail(workflow.source_config)}
+						label="Trigger"
+						value={triggerSummary(workflow.trigger_config)}
 					/>
 					<ConfigRow
 						label="Poll interval"

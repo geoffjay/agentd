@@ -23,8 +23,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { AnswerDialog } from "@/components/questions/AnswerDialog";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { AnswerDialog } from "@/components/questions/AnswerDialog";
 import { askClient } from "@/services/ask";
 import type { Question } from "@/types/ask";
 

@@ -5,8 +5,8 @@
  * Pairs with AgentPolicyEditor which is shown during editing.
  */
 
-import { useState } from "react";
 import { ChevronDown, ChevronRight, ShieldAlert } from "lucide-react";
+import { useState } from "react";
 import type { ToolPolicy } from "@/types/orchestrator";
 
 // ---------------------------------------------------------------------------

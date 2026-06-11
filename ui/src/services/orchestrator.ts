@@ -28,12 +28,32 @@ import type {
 	SetModelRequest,
 	ToolPolicy,
 	TriggerWorkflowRequest,
+	UpdateAgentRequest,
+	UpdateAgentResponse,
 	UpdatePolicyRequest,
 	UpdateWorkflowRequest,
 	Workflow,
 } from "@/types/orchestrator";
 import { ApiClient } from "./base";
 import { serviceConfig } from "./config";
+
+/**
+ * Normalize a workflow payload from the API.
+ *
+ * The orchestrator emits `trigger_config`; older versions emitted
+ * `source_config`. Accept both so the UI works against either.
+ */
+function normalizeWorkflow(
+	raw: Workflow & { source_config?: unknown },
+): Workflow {
+	if (!raw.trigger_config && raw.source_config) {
+		return {
+			...raw,
+			trigger_config: raw.source_config as Workflow["trigger_config"],
+		};
+	}
+	return raw;
+}
 
 export class OrchestratorClient extends ApiClient {
 	// -------------------------------------------------------------------------
@@ -84,6 +104,21 @@ export class OrchestratorClient extends ApiClient {
 
 	restartAgent(id: string): Promise<Agent> {
 		return this.post<Agent>(`/agents/${id}/restart`, {});
+	}
+
+	/**
+	 * `PATCH /agents/{id}` — update an agent's configuration.
+	 *
+	 * Merge-patch semantics: absent fields are unchanged. Pass
+	 * `restart: true` to relaunch the process so launch-affecting changes
+	 * apply immediately. See {@link UpdateAgentRequest} for env redaction
+	 * round-trip rules.
+	 */
+	updateAgent(
+		id: string,
+		request: UpdateAgentRequest,
+	): Promise<UpdateAgentResponse> {
+		return this.patch<UpdateAgentResponse>(`/agents/${id}`, request);
 	}
 
 	// -------------------------------------------------------------------------
@@ -188,29 +223,32 @@ export class OrchestratorClient extends ApiClient {
 	// Workflows
 	// -------------------------------------------------------------------------
 
-	listWorkflows(params?: {
+	async listWorkflows(params?: {
 		limit?: number;
 		offset?: number;
 	}): Promise<PaginatedResponse<Workflow>> {
-		return this.get<PaginatedResponse<Workflow>>(
+		const page = await this.get<PaginatedResponse<Workflow>>(
 			"/workflows",
 			params as Record<string, string>,
 		);
+		return { ...page, items: page.items.map(normalizeWorkflow) };
 	}
 
-	getWorkflow(id: string): Promise<Workflow> {
-		return this.get<Workflow>(`/workflows/${id}`);
+	async getWorkflow(id: string): Promise<Workflow> {
+		return normalizeWorkflow(await this.get<Workflow>(`/workflows/${id}`));
 	}
 
-	createWorkflow(request: CreateWorkflowRequest): Promise<Workflow> {
-		return this.post<Workflow>("/workflows", request);
+	async createWorkflow(request: CreateWorkflowRequest): Promise<Workflow> {
+		return normalizeWorkflow(await this.post<Workflow>("/workflows", request));
 	}
 
-	updateWorkflow(
+	async updateWorkflow(
 		id: string,
 		request: UpdateWorkflowRequest,
 	): Promise<Workflow> {
-		return this.put<Workflow>(`/workflows/${id}`, request);
+		return normalizeWorkflow(
+			await this.put<Workflow>(`/workflows/${id}`, request),
+		);
 	}
 
 	deleteWorkflow(id: string): Promise<void> {

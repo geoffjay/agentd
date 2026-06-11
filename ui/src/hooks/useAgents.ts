@@ -16,6 +16,8 @@ import type {
 	AgentStatus,
 	AgentUsageStats,
 	CreateAgentRequest,
+	UpdateAgentRequest,
+	UpdateAgentResponse,
 } from "@/types/orchestrator";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,11 @@ export interface UseAgentsResult {
 	refetch: () => void;
 	/** Create a new agent; returns the created Agent */
 	createAgent: (request: CreateAgentRequest) => Promise<Agent>;
+	/** Update an agent's config (merge-patch); returns the updated agent + restart flags */
+	updateAgent: (
+		id: string,
+		request: UpdateAgentRequest,
+	) => Promise<UpdateAgentResponse>;
 	/** Terminate a single agent by id */
 	deleteAgent: (id: string) => Promise<void>;
 	/** Terminate multiple agents by id */
@@ -256,6 +263,18 @@ export function useAgents({
 		[fetchAgents],
 	);
 
+	const updateAgent = useCallback(
+		async (
+			id: string,
+			request: UpdateAgentRequest,
+		): Promise<UpdateAgentResponse> => {
+			const updated = await orchestratorClient.updateAgent(id, request);
+			await fetchAgents(true); // refresh list after update
+			return updated;
+		},
+		[fetchAgents],
+	);
+
 	const deleteAgent = useCallback(async (id: string): Promise<void> => {
 		await orchestratorClient.deleteAgent(id);
 		setAllAgents((prev) => prev.filter((a) => a.id !== id));
@@ -276,6 +295,7 @@ export function useAgents({
 		error,
 		refetch,
 		createAgent,
+		updateAgent,
 		deleteAgent,
 		bulkDelete,
 	};

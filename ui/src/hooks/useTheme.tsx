@@ -20,8 +20,8 @@ import {
 	useState,
 } from "react";
 import { loadSettings, saveSettings } from "@/stores/settingsStore";
-import type { ThemeTokens } from "@/styles/theme-tokens";
 import { applyTheme, getTheme, resolveThemeId } from "@/stores/themeStore";
+import type { ThemeTokens } from "@/styles/theme-tokens";
 
 // ---------------------------------------------------------------------------
 // Context

@@ -1,9 +1,9 @@
 /**
  * WorkflowForm tests.
  *
- * Covers the null-guard fix for source_config: editing a workflow where
- * source_config is undefined/null must not throw, and editing one with a
- * valid github_issues source_config must populate the form fields correctly.
+ * Covers the null-guard fix for trigger_config: editing a workflow where
+ * trigger_config is undefined/null must not throw, and editing one with a
+ * valid github_issues trigger_config must populate the form fields correctly.
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
@@ -52,7 +52,7 @@ const validWorkflow: Workflow = {
 	id: "wf-1",
 	name: "My Workflow",
 	agent_id: "agent-1",
-	source_config: {
+	trigger_config: {
 		type: "github_issues",
 		owner: "geoffjay",
 		repo: "agentd",
@@ -105,7 +105,7 @@ describe("WorkflowForm", () => {
 		});
 	});
 
-	describe("edit mode — valid source_config", () => {
+	describe("edit mode — valid trigger_config", () => {
 		it("populates the name field", async () => {
 			renderForm(validWorkflow);
 			await waitFor(() => {
@@ -143,21 +143,21 @@ describe("WorkflowForm", () => {
 		});
 	});
 
-	describe("edit mode — missing source_config (null guard)", () => {
-		it("does not throw when source_config is undefined", () => {
+	describe("edit mode — missing trigger_config (null guard)", () => {
+		it("does not throw when trigger_config is undefined", () => {
 			// Cast to bypass TypeScript: simulates an API response with missing field
 			const brokenWorkflow = {
 				...validWorkflow,
-				source_config: undefined,
+				trigger_config: undefined,
 			} as unknown as Workflow;
 
 			expect(() => renderForm(brokenWorkflow)).not.toThrow();
 		});
 
-		it("renders the dialog without crashing when source_config is undefined", () => {
+		it("renders the dialog without crashing when trigger_config is undefined", () => {
 			const brokenWorkflow = {
 				...validWorkflow,
-				source_config: undefined,
+				trigger_config: undefined,
 			} as unknown as Workflow;
 
 			renderForm(brokenWorkflow);
@@ -167,10 +167,10 @@ describe("WorkflowForm", () => {
 			).toBeInTheDocument();
 		});
 
-		it("leaves GitHub fields at defaults when source_config is undefined", async () => {
+		it("leaves GitHub fields at defaults when trigger_config is undefined", async () => {
 			const brokenWorkflow = {
 				...validWorkflow,
-				source_config: undefined,
+				trigger_config: undefined,
 			} as unknown as Workflow;
 
 			renderForm(brokenWorkflow);
@@ -182,10 +182,10 @@ describe("WorkflowForm", () => {
 			});
 		});
 
-		it("does not throw when source_config is null", () => {
+		it("does not throw when trigger_config is null", () => {
 			const brokenWorkflow = {
 				...validWorkflow,
-				source_config: null,
+				trigger_config: null,
 			} as unknown as Workflow;
 
 			expect(() => renderForm(brokenWorkflow)).not.toThrow();

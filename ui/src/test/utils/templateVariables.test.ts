@@ -16,9 +16,7 @@ import {
 
 describe("extractTemplateVariables", () => {
 	it("extracts variables in order of first appearance", () => {
-		const vars = extractTemplateVariables(
-			"Fix {{title}} at {{url}}: {{body}}",
-		);
+		const vars = extractTemplateVariables("Fix {{title}} at {{url}}: {{body}}");
 		expect(vars.map((v) => v.name)).toEqual(["title", "url", "body"]);
 	});
 
@@ -90,9 +88,7 @@ describe("renderTemplatePreview", () => {
 			"{{title}} ({{labels}}) by {{assignee}} at {{fire_time}}",
 			task,
 		);
-		expect(result).toBe(
-			"Login bug (bug, p1) by geoff at 2026-06-10T00:00:00Z",
-		);
+		expect(result).toBe("Login bug (bug, p1) by geoff at 2026-06-10T00:00:00Z");
 	});
 
 	it("renders the whole metadata map for {{metadata}}", () => {

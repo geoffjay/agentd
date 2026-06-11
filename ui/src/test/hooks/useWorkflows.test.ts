@@ -17,7 +17,7 @@ function makeWorkflow(overrides: Partial<Workflow> = {}): Workflow {
 		id: "wf-1",
 		name: "Test Workflow",
 		agent_id: "agent-1",
-		source_config: {
+		trigger_config: {
 			type: "github_issues",
 			owner: "acme",
 			repo: "myrepo",

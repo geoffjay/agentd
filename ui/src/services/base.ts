@@ -223,6 +223,10 @@ export class ApiClient {
 		return this.request<T>("PUT", path, body);
 	}
 
+	protected patch<T>(path: string, body?: unknown): Promise<T> {
+		return this.request<T>("PATCH", path, body);
+	}
+
 	protected delete<T>(path: string): Promise<T> {
 		return this.request<T>("DELETE", path);
 	}

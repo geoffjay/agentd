@@ -2,9 +2,9 @@
  * StatusBadge — coloured pill/dot for entity status values.
  */
 
+import type { QuestionStatus } from "@/types/ask";
 import type { NotificationStatus } from "@/types/notify";
 import type { AgentStatus } from "@/types/orchestrator";
-import type { QuestionStatus } from "@/types/ask";
 
 export type ServiceStatus = "healthy" | "degraded" | "down" | "unknown";
 

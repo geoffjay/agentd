@@ -34,6 +34,22 @@ export type ToolPolicy =
 // AgentConfig
 // ---------------------------------------------------------------------------
 
+/** Docker network policy for container-backed agents. */
+export type NetworkPolicy = "internet" | "isolated" | "host_network";
+
+/** Additional volume mount for Docker-backed agents. */
+export interface VolumeMount {
+	host_path: string;
+	container_path: string;
+	read_only?: boolean;
+}
+
+/** CPU / memory limits for Docker-backed agents. */
+export interface ResourceLimits {
+	cpu_limit?: number;
+	memory_limit_mb?: number;
+}
+
 /** Full agent configuration */
 export interface AgentConfig {
 	working_dir: string;
@@ -41,7 +57,8 @@ export interface AgentConfig {
 	shell: string;
 	interactive: boolean;
 	prompt?: string;
-	worktree?: string;
+	/** When true, the session is started with --worktree. */
+	worktree?: boolean;
 	system_prompt?: string;
 	/** Path to a file whose contents replace or append to the system prompt. */
 	system_prompt_file?: string;
@@ -54,6 +71,10 @@ export interface AgentConfig {
 	additional_dirs?: string[];
 	/** Communicate rooms the agent is auto-joined to on connection. */
 	rooms?: string[];
+	network_policy?: NetworkPolicy;
+	docker_image?: string;
+	extra_mounts?: VolumeMount[];
+	resource_limits?: ResourceLimits;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +117,8 @@ export interface CreateAgentRequest {
 	shell: string;
 	interactive: boolean;
 	prompt?: string;
-	worktree?: string;
+	/** When true, the session is started with --worktree. */
+	worktree?: boolean;
 	system_prompt?: string;
 	system_prompt_file?: string;
 	append_system_prompt?: boolean;
@@ -104,6 +126,63 @@ export interface CreateAgentRequest {
 	model?: string;
 	env?: Record<string, string>;
 	auto_clear_threshold?: number;
+	additional_dirs?: string[];
+	/** Communicate rooms the agent auto-joins when it connects. */
+	rooms?: string[];
+	network_policy?: NetworkPolicy;
+	docker_image?: string;
+	extra_mounts?: VolumeMount[];
+	resource_limits?: ResourceLimits;
+}
+
+/**
+ * Value the API substitutes for env values in agent responses. Sending it
+ * back in an update keeps the stored value for that key, so a redacted
+ * config can be round-tripped without knowing the secrets.
+ */
+export const ENV_REDACTED = "***";
+
+/**
+ * Request body for PATCH /agents/{id} (merge-patch semantics).
+ *
+ * Absent fields are left unchanged. `env` is a full replacement when
+ * present, except entries valued exactly `ENV_REDACTED` keep the stored
+ * value. Empty strings clear `prompt` / `system_prompt` /
+ * `system_prompt_file`; the two system prompt fields are mutually
+ * exclusive (setting one non-empty clears the other).
+ */
+export interface UpdateAgentRequest {
+	name?: string;
+	working_dir?: string;
+	shell?: string;
+	prompt?: string;
+	system_prompt?: string;
+	system_prompt_file?: string;
+	append_system_prompt?: boolean;
+	model?: string;
+	tool_policy?: ToolPolicy;
+	env?: Record<string, string>;
+	auto_clear_threshold?: number;
+	additional_dirs?: string[];
+	rooms?: string[];
+	worktree?: boolean;
+	/**
+	 * Restart the agent process immediately so launch-affecting changes
+	 * (working_dir, shell, model, env, system prompt, additional_dirs,
+	 * worktree) take effect. Defaults to false.
+	 */
+	restart?: boolean;
+}
+
+/** Response body for PATCH /agents/{id}: the agent plus restart flags. */
+export interface UpdateAgentResponse extends Agent {
+	/**
+	 * True when launch-affecting fields changed on a running agent and no
+	 * restart was performed — the live process still uses the old config.
+	 */
+	requires_restart: boolean;
+	/** True when the agent process was restarted as part of this update. */
+	restarted: boolean;
 }
 
 /** Send a message to an agent */
@@ -167,23 +246,108 @@ export type DispatchStatus =
 	| "skipped";
 
 /**
- * Tagged union for different task source backends.
+ * Expected origin of a webhook payload.
+ * Mirrors the Rust WebhookSource enum (note: `GitHub` snake_cases to "git_hub").
  */
-export type TaskSourceConfig =
+export type WebhookSource = "git_hub" | "linear" | "any";
+
+/**
+ * Tagged union for workflow trigger configurations.
+ * Mirrors the Rust TriggerConfig enum (crates/orchestrator scheduler/types.rs).
+ */
+export type TriggerConfig =
 	| {
 			type: "github_issues";
 			owner: string;
 			repo: string;
-			labels: string[];
-			state: "open" | "closed" | "all";
+			labels?: string[];
+			state?: "open" | "closed" | "all";
+			assignee?: string | null;
 	  }
 	| {
 			type: "github_pull_requests";
 			owner: string;
 			repo: string;
-			labels: string[];
-			state: "open" | "closed" | "merged" | "all";
+			labels?: string[];
+			state?: "open" | "closed" | "merged" | "all";
+			assignee?: string | null;
+	  }
+	| {
+			type: "cron";
+			/** Standard cron expression, e.g. "0 9 * * MON-FRI". */
+			expression: string;
+	  }
+	| {
+			type: "delay";
+			/** ISO 8601 datetime string. */
+			run_at: string;
+	  }
+	| {
+			type: "agent_lifecycle";
+			event: "session_start" | "session_end" | "context_clear";
+	  }
+	| {
+			type: "dispatch_result";
+			source_workflow_id?: string | null;
+			status?: DispatchStatus | null;
+	  }
+	| {
+			type: "webhook";
+			secret?: string | null;
+			source?: WebhookSource;
+	  }
+	| { type: "manual" }
+	| {
+			type: "agent_idle";
+			idle_seconds: number;
+	  }
+	| {
+			type: "linear_issues";
+			team_key?: string | null;
+			project?: string | null;
+			status?: string[] | null;
+			labels?: string[];
+			assignee?: string | null;
+	  }
+	| {
+			type: "composite";
+			mode: "or" | "and";
+			/** Nested trigger configurations — minimum 2, max depth 3. */
+			triggers: TriggerConfig[];
+			/** AND mode: seconds before partial correlation state resets (default 60). */
+			correlation_window_secs?: number | null;
+	  }
+	| {
+			type: "queue";
+			queue_name: string;
+			poll_interval_secs?: number | null;
+			visibility_timeout_secs?: number | null;
+	  }
+	| {
+			type: "ask_response";
+			agent_id?: string | null;
+			category?: string | null;
+			response_pattern?: string | null;
+	  }
+	| {
+			type: "gitlab_issues";
+			owner: string;
+			repo: string;
+			labels?: string[];
+			state?: "opened" | "closed" | "all";
+			assignee?: string | null;
+	  }
+	| {
+			type: "gitlab_merge_requests";
+			owner: string;
+			repo: string;
+			labels?: string[];
+			state?: "opened" | "closed" | "merged" | "all";
+			assignee?: string | null;
 	  };
+
+/** All trigger type discriminators. */
+export type TriggerType = TriggerConfig["type"];
 
 /**
  * A workflow as returned by the API.
@@ -193,7 +357,7 @@ export interface Workflow {
 	id: string;
 	name: string;
 	agent_id: string;
-	source_config: TaskSourceConfig;
+	trigger_config: TriggerConfig;
 	prompt_template: string;
 	poll_interval_secs: number;
 	enabled: boolean;
@@ -253,7 +417,7 @@ export interface TriggerWorkflowRequest {
 export interface CreateWorkflowRequest {
 	name: string;
 	agent_id: string;
-	source_config: TaskSourceConfig;
+	trigger_config: TriggerConfig;
 	prompt_template: string;
 	poll_interval_secs: number;
 	enabled: boolean;
@@ -267,6 +431,13 @@ export interface UpdateWorkflowRequest {
 	poll_interval_secs?: number;
 	enabled?: boolean;
 	tool_policy?: ToolPolicy;
+	/**
+	 * Replace the trigger configuration. If the workflow is enabled, the
+	 * orchestrator restarts its runner so the change applies immediately.
+	 */
+	trigger_config?: TriggerConfig;
+	/** Re-assign the workflow to a different agent (must be running). */
+	agent_id?: string;
 }
 
 /** Legacy type alias kept for compatibility */

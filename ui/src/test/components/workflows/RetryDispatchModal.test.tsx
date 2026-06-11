@@ -29,7 +29,7 @@ const workflow: Workflow = {
 	id: "wf-1",
 	name: "Fix Issues",
 	agent_id: "agent-1",
-	source_config: {
+	trigger_config: {
 		type: "github_issues",
 		owner: "geoffjay",
 		repo: "agentd",

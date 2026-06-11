@@ -6,7 +6,6 @@
  * - Answer or dismiss a pending question
  */
 
-import type { HealthResponse, PaginatedResponse } from "@/types/common";
 import type {
 	AnswerQuestionRequest,
 	AnswerRequest,
@@ -17,6 +16,7 @@ import type {
 	QuestionsListResponse,
 	TriggerResponse,
 } from "@/types/ask";
+import type { HealthResponse, PaginatedResponse } from "@/types/common";
 import { ApiClient } from "./base";
 import { serviceConfig } from "./config";
 

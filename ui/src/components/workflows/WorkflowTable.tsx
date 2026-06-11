@@ -16,6 +16,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import type { ColumnDef } from "@/components/common/DataTable";
 import { DataTable } from "@/components/common/DataTable";
 import type { Agent, Workflow } from "@/types/orchestrator";
+import { triggerSummary } from "@/utils/triggers";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,15 +36,7 @@ export interface WorkflowTableProps {
 // ---------------------------------------------------------------------------
 
 function sourceLabel(workflow: Workflow): string {
-	const src = workflow.source_config;
-	if (!src) return "No source";
-	if (src.type === "github_issues") {
-		const parts = [`${src.owner}/${src.repo}`];
-		if (src.labels.length > 0) parts.push(`#${src.labels[0]}`);
-		if (src.labels.length > 1) parts.push(`+${src.labels.length - 1}`);
-		return `GitHub: ${parts.join(" ")}`;
-	}
-	return src.type;
+	return triggerSummary(workflow.trigger_config);
 }
 
 function formatInterval(secs: number): string {

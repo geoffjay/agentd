@@ -2,8 +2,13 @@
  * Tests for QuestionDetail page (v0.12.0 model).
  */
 
-import { act, render, screen, waitFor } from "@testing-library/react";
-import { fireEvent } from "@testing-library/react";
+import {
+	act,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QuestionDetail } from "@/pages/questions/QuestionDetail";

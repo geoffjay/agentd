@@ -96,12 +96,12 @@ export function WorkflowForm({
 		if (workflow) {
 			setName(workflow.name);
 			setAgentId(workflow.agent_id);
-			const src = workflow.source_config;
+			const src = workflow.trigger_config;
 			if (src?.type === "github_issues") {
 				setOwner(src.owner);
 				setRepo(src.repo);
 				setLabelsRaw((src.labels ?? []).join(", "));
-				setIssueState(src.state as "open" | "closed" | "all");
+				setIssueState((src.state ?? "open") as "open" | "closed" | "all");
 			}
 			setPromptTemplate(workflow.prompt_template);
 			setPollMinutes(secsToMinutes(workflow.poll_interval_secs));
@@ -168,7 +168,7 @@ export function WorkflowForm({
 			const request: CreateWorkflowRequest = {
 				name: name.trim(),
 				agent_id: agentId,
-				source_config: {
+				trigger_config: {
 					type: "github_issues",
 					owner: owner.trim(),
 					repo: repo.trim(),
