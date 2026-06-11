@@ -182,9 +182,33 @@ pub async fn mock_orchestrator_server() -> MockServer {
                     "limit": 100,
                     "offset": 0
                 }))
+            })
+            .post(create_workflow_handler),
+        )
+        .route(
+            "/workflows/{id}",
+            get(get_workflow_handler).put(update_workflow_handler).delete(
+                |Path(id): Path<String>| async move {
+                    use axum::response::IntoResponse;
+                    if id == "cccccccc-0000-0000-0000-000000000003" {
+                        axum::http::StatusCode::NO_CONTENT.into_response()
+                    } else {
+                        (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "not found"})))
+                            .into_response()
+                    }
+                },
+            ),
+        )
+        .route(
+            "/workflows/{id}/trigger",
+            post(|Path(id): Path<String>| async move {
+                Json(json!({
+                    "dispatch_id": "99999999-0000-0000-0000-000000000042",
+                    "workflow_id": id,
+                    "status": "dispatched"
+                }))
             }),
         )
-        .route("/workflows/{id}", get(get_workflow_handler))
         .route("/workflows/{id}/history", get(dispatch_history_handler))
         .route(
             "/metrics",
@@ -232,6 +256,40 @@ async fn create_agent_handler() -> (axum::http::StatusCode, Json<Value>) {
             "status": "pending"
         })),
     )
+}
+
+async fn create_workflow_handler(Json(body): Json<Value>) -> (axum::http::StatusCode, Json<Value>) {
+    // Reject like the orchestrator's server-side validation would.
+    if body.get("trigger_config").and_then(|t| t.get("type")).is_none() {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(json!({"error": "trigger_config.type required"})),
+        );
+    }
+    let mut workflow = mock_workflow();
+    workflow["id"] = json!("22222222-0000-0000-0000-000000000077");
+    workflow["name"] = body["name"].clone();
+    workflow["trigger_config"] = body["trigger_config"].clone();
+    (axum::http::StatusCode::CREATED, Json(workflow))
+}
+
+async fn update_workflow_handler(
+    Path(id): Path<String>,
+    Json(body): Json<Value>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if id == "cccccccc-0000-0000-0000-000000000003" {
+        let mut workflow = mock_workflow();
+        if let Some(enabled) = body.get("enabled") {
+            workflow["enabled"] = enabled.clone();
+        }
+        if let Some(name) = body.get("name") {
+            workflow["name"] = name.clone();
+        }
+        Json(workflow).into_response()
+    } else {
+        (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response()
+    }
 }
 
 async fn get_workflow_handler(Path(id): Path<String>) -> axum::response::Response {

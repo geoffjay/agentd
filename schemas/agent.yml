@@ -27,6 +27,7 @@ propertyOrder:
   - auto_clear_threshold
   - additional_dirs
   - rooms
+  - mcp_servers
   - network_policy
   - docker_image
   - extra_mounts
@@ -202,6 +203,51 @@ properties:
             - engineering
             - name: operations
               role: observer
+
+  mcp_servers:
+    description: |
+      MCP servers available to the agent's Claude session, keyed by
+      server name. The orchestrator writes the map to a per-agent config
+      file and launches claude with --mcp-config <file>
+      --strict-mcp-config, so the agent gets exactly these servers and
+      nothing inherited from user-level configuration.
+
+      Requires a Claude Code version that supports --mcp-config and
+      --strict-mcp-config. Currently tmux-backed agents only — the
+      config file is not visible inside Docker containers.
+    type: object
+    additionalProperties:
+      type: object
+      properties:
+        command:
+          description: "Executable to launch (PATH-resolved or absolute)."
+          type: string
+          minLength: 1
+        args:
+          description: "Arguments passed to the command."
+          type: array
+          items:
+            type: string
+        env:
+          description: |
+            Environment variables for the server process. Values are
+            redacted in API responses.
+          type: object
+          additionalProperties:
+            type: string
+      required:
+        - command
+      additionalProperties: false
+    examples:
+      -
+        - "agentd MCP server via the agent CLI"
+        - |
+          mcp_servers:
+            agentd:
+              command: agent
+              args: [mcp]
+              env:
+                AGENTD_ORCHESTRATOR_URL: http://localhost:17006
 
 required:
   - name

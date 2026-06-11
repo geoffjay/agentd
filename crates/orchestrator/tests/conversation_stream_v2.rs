@@ -200,6 +200,7 @@ async fn create_agent(storage: &AgentStorage) -> Uuid {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         },
     );
     storage.add(&agent).await.unwrap();
