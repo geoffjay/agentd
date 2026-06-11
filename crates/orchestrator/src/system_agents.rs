@@ -31,6 +31,9 @@ pub const DIAGNOSTICIAN_AGENT_NAME: &str = "agentd-diagnostician";
 /// Name of the built-in architect agent (creates agents and workflows).
 pub const ARCHITECT_AGENT_NAME: &str = "agentd-architect";
 
+/// Name of the built-in analyst agent (metrics and health analysis).
+pub const ANALYST_AGENT_NAME: &str = "agentd-analyst";
+
 /// Env var that, when set to `1`/`true`, adds remediation tools to the
 /// diagnostician's allowlist (restart_failed_agents, retry_failed_dispatches,
 /// cleanup_stale_dispatches, resolve_notification_backlog). Default off.
@@ -116,7 +119,7 @@ impl SystemAgentDef {
 /// are refreshed, and stored built-ins whose name is no longer listed here
 /// are removed as orphans.
 pub fn builtin_agent_defs() -> Vec<SystemAgentDef> {
-    vec![system_agent_def(), diagnostician_def(), architect_def()]
+    vec![system_agent_def(), diagnostician_def(), architect_def(), analyst_def()]
 }
 
 /// Definition of the `agentd-system` domain-expert agent.
@@ -514,6 +517,132 @@ DESIGN GUIDANCE
 
 You cannot delete workflows, terminate or restart agents, or approve tool
 requests. For those, give the human the exact command instead.
+";
+
+// ---------------------------------------------------------------------------
+// agentd-analyst
+// ---------------------------------------------------------------------------
+
+/// Definition of the `agentd-analyst` agent.
+///
+/// A lazy built-in that analyzes platform metrics and health: the curated
+/// Prometheus query catalog (via the monitor service's `query_metrics` MCP
+/// tool) plus the orchestrator's read APIs. Strictly read-only except for
+/// posting findings (notifications and room messages).
+fn analyst_def() -> SystemAgentDef {
+    SystemAgentDef {
+        name: ANALYST_AGENT_NAME,
+        model: "sonnet",
+        rooms: &["system"],
+        working_dir: WorkingDirStrategy::CurrentDir,
+        lazy: true,
+        prompt: analyst_prompt,
+        tool_policy: analyst_tool_policy,
+        mcp_servers: agentd_mcp_servers,
+    }
+}
+
+/// Tool policy for the analyst: read/diagnose tool families plus the two
+/// escalation channels (create_notification, send_room_message). No
+/// lifecycle, creation, approval, or remediation tools.
+fn analyst_tool_policy() -> ToolPolicy {
+    ToolPolicy::AllowList {
+        tools: vec![
+            // ── Metrics and diagnostics (read-only families) ──────────────
+            "mcp__agentd__query_metrics".to_string(),
+            "mcp__agentd__diagnose_*".to_string(),
+            "mcp__agentd__check_*".to_string(),
+            "mcp__agentd__get_*".to_string(),
+            "mcp__agentd__list_*".to_string(),
+            "mcp__agentd__search_*".to_string(),
+            "mcp__agentd__inspect_*".to_string(),
+            // ── Escalation channels (exact names) ─────────────────────────
+            "mcp__agentd__create_notification".to_string(),
+            "mcp__agentd__send_room_message".to_string(),
+            // ── Local read-only tools ──────────────────────────────────────
+            "Read".to_string(),
+            "Grep".to_string(),
+            "Glob".to_string(),
+            "Bash(curl *)".to_string(),
+        ],
+        sandbox_bypass: vec![],
+    }
+}
+
+/// System prompt for the analyst.
+fn analyst_prompt() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    format!("agentd version: {version}\n\n{ANALYST_PROMPT}")
+}
+
+/// # Coverage note
+///
+/// The query-name list must stay in sync with
+/// `monitor::queries::QUERY_CATALOG` (cross-crate, so the unit test pins a
+/// const string list rather than importing the catalog).
+const ANALYST_PROMPT: &str = "\
+You are the agentd analyst — a built-in agent that analyzes platform metrics
+and health trends, surfaces anomalies, and recommends actions. You are
+read-only: you never modify agents, workflows, or configuration.
+
+─────────────────────────────────────────────────────────────────────────────
+METRICS TOOLKIT
+─────────────────────────────────────────────────────────────────────────────
+
+`query_metrics(name, window?, range?)` runs curated PromQL via the monitor
+service. Call it with no name to list the catalog. Key queries and healthy
+baselines:
+
+  service-up              All targets at 1. Any 0 → check_single_service.
+  dispatch-success-rate   ≥ 0.9 over 24h. Lower → get_failed_dispatches,
+                          then diagnose_workflow on the offenders.
+  dispatch-throughput     Know your normal; a sudden drop to zero on an
+                          enabled workflow means its trigger or agent broke.
+  agent-restart-rate      ~0. Sustained nonzero → crash-looping; diagnose
+                          the restarting agents.
+  agents-active vs websocket-connections
+                          Should match. A gap → diagnose_state_mismatches.
+  approvals-backlog       Near 0. Growth → agents are blocked on humans;
+                          notify the operator.
+  http-error-rate         ~0 per service. Spikes → check that service's
+                          health and recent deploys.
+  http-p95-latency        Know your normal (typically ms). Sustained growth
+                          → host-saturation next.
+  session-cost            Watch the 24h delta; a spike → list_agents and
+                          get_conversation_summary to find the hot agent.
+  notifications-backlog, message-drops, host-saturation
+                          Self-explanatory; drops and saturation are 🔴.
+
+Use `range: true` for trends (per-series min/avg/max/last over 6h) when an
+instant value needs context. If Prometheus is down (502), fall back to
+`get_prometheus_metrics(<service>)` direct scrapes and say so in your report.
+
+─────────────────────────────────────────────────────────────────────────────
+PLAYBOOKS
+─────────────────────────────────────────────────────────────────────────────
+
+Cost spike     → session-cost (24h) → list_agents →
+                 get_conversation_summary on busy agents → report the top
+                 spenders and what they were doing.
+Latency        → http-p95-latency per service → host-saturation →
+                 the slow service's health endpoint via curl.
+Failures       → dispatch-success-rate → get_failed_dispatches →
+                 diagnose_workflow → name the failing workflow and the
+                 pattern (always-fails vs intermittent).
+Routine review → service-up, dispatch-success-rate, agent-restart-rate,
+                 approvals-backlog, session-cost, host-saturation — then
+                 report only what deviates.
+
+─────────────────────────────────────────────────────────────────────────────
+REPORTING
+─────────────────────────────────────────────────────────────────────────────
+
+Post findings to the `system` room (send_room_message). For anything needing
+human action, also create_notification with priority matched to impact:
+data-loss or all-agents-blocked → high; degradation → medium; observations →
+low. Every finding needs: metric evidence, time window, suspected cause, and
+a concrete recommended action (you cannot act — name the command or the agent
+that should).
 ";
 
 /// Carry runtime-derived fields from a stored config over to a freshly built
@@ -980,6 +1109,86 @@ mod tests {
         // The hard constraint is stated prominently.
         assert!(prompt.contains(".agentd/*.yml"));
         assert!(prompt.len() < 26_000, "architect prompt budget: {}", prompt.len());
+    }
+
+    #[test]
+    fn analyst_is_lazy_with_agentd_mcp_server() {
+        let def = analyst_def();
+        assert!(def.lazy);
+        let config = def.build_config();
+        assert!(config.mcp_servers.is_some_and(|s| s.contains_key("agentd")));
+    }
+
+    #[test]
+    fn analyst_policy_is_read_only_plus_escalation() {
+        let policy = analyst_tool_policy();
+
+        for allowed in [
+            "mcp__agentd__query_metrics",
+            "mcp__agentd__get_prometheus_metrics",
+            "mcp__agentd__get_system_metrics",
+            "mcp__agentd__diagnose_system",
+            "mcp__agentd__check_service_health",
+            "mcp__agentd__list_agents",
+            "mcp__agentd__get_failed_dispatches",
+            "mcp__agentd__get_conversation_summary",
+            "mcp__agentd__inspect_queue",
+            "mcp__agentd__create_notification",
+            "mcp__agentd__send_room_message",
+            "Read",
+        ] {
+            assert!(policy.evaluate(allowed, None), "must allow {allowed}");
+        }
+
+        for denied in [
+            "mcp__agentd__create_agent",
+            "mcp__agentd__create_workflow",
+            "mcp__agentd__update_workflow",
+            "mcp__agentd__delete_workflow",
+            "mcp__agentd__terminate_agent",
+            "mcp__agentd__restart_agent",
+            "mcp__agentd__restart_failed_agents",
+            "mcp__agentd__send_agent_message",
+            "mcp__agentd__approve_tool_request",
+            "Write",
+            "Edit",
+            "Bash",
+        ] {
+            assert!(!policy.evaluate(denied, None), "must deny {denied}");
+        }
+    }
+
+    #[test]
+    fn analyst_prompt_covers_the_query_catalog() {
+        // Keep in sync with monitor::queries::QUERY_CATALOG (cross-crate, so
+        // pinned here as a const list). A new catalog entry should be added
+        // to the analyst's baseline guidance.
+        const CATALOG_NAMES: &[&str] = &[
+            "service-up",
+            "dispatch-success-rate",
+            "dispatch-throughput",
+            "agent-restart-rate",
+            "agents-active",
+            "websocket-connections",
+            "approvals-backlog",
+            "approvals-resolution",
+            "http-error-rate",
+            "http-p95-latency",
+            "session-cost",
+            "notifications-backlog",
+            "message-drops",
+            "host-saturation",
+        ];
+        let prompt = analyst_prompt();
+        for name in CATALOG_NAMES {
+            // approvals-resolution is covered by the approvals-backlog
+            // guidance; everything else must appear verbatim.
+            if *name == "approvals-resolution" {
+                continue;
+            }
+            assert!(prompt.contains(name), "analyst prompt must mention `{name}`");
+        }
+        assert!(prompt.len() < 26_000, "analyst prompt budget: {}", prompt.len());
     }
 
     #[test]

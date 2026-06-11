@@ -19,6 +19,19 @@ pub enum ApiError {
     #[error("No metrics available — collection has not run yet")]
     NoMetricsAvailable,
 
+    /// Unknown named query — message lists the catalog.
+    #[error("Unknown query `{0}`")]
+    UnknownQuery(String),
+
+    /// Invalid query parameter (window, step, ...).
+    #[error("Invalid query parameter: {0}")]
+    BadQueryParam(String),
+
+    /// Prometheus itself is unreachable or rejected the query — distinct
+    /// from a monitor failure so callers can tell which layer is down.
+    #[error("Prometheus unavailable: {0}")]
+    PrometheusUnavailable(String),
+
     /// Internal service error
     #[error("Internal error: {0}")]
     Internal(String),
@@ -29,6 +42,14 @@ impl IntoResponse for ApiError {
         let (status, message) = match &self {
             ApiError::CollectionFailed(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
             ApiError::NoMetricsAvailable => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
+            ApiError::UnknownQuery(_) => {
+                let names: Vec<&str> =
+                    crate::queries::QUERY_CATALOG.iter().map(|q| q.name).collect();
+                let message = format!("{self}. Known queries: {}", names.join(", "));
+                return (StatusCode::NOT_FOUND, Json(json!({ "error": message }))).into_response();
+            }
+            ApiError::BadQueryParam(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            ApiError::PrometheusUnavailable(msg) => (StatusCode::BAD_GATEWAY, msg.clone()),
             ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
 
