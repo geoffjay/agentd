@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.5] - 2026-06-11
+
+### Added
+
+- Persist task variables on dispatch records
+- Re-trigger workflow dispatches from the dispatch history
+- Runtime service configuration via /config.json
+
+## [0.4.4-rc.1] - 2026-06-10
+
+### Added
+
+- Overhaul dashboard with theme-aware charts, auto-refresh, and system metrics
+- Release tarballs, checksums, and curl|sh installer (phase 2)
+
 ## [0.4.3] - 2026-06-10
 
 ### Added
