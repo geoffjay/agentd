@@ -14,6 +14,9 @@ pub struct UiConfig {
     pub notify_service_url: String,
     /// URL of the orchestrator service.
     pub orchestrator_service_url: String,
+    /// Runtime configuration document served to the SPA at `/config.json`,
+    /// built from the same shared config this struct was loaded from.
+    pub runtime_config: crate::runtime_config::RuntimeConfig,
 }
 
 impl UiConfig {
@@ -32,9 +35,11 @@ impl UiConfig {
             tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
             agentd_common::config::AgentdConfig::default()
         });
+        let runtime_config = crate::runtime_config::build(&shared);
         let base = shared.services.ui;
 
         Self {
+            runtime_config,
             port: std::env::var("AGENTD_UI_PORT")
                 .or_else(|_| std::env::var("AGENTD_PORT"))
                 .ok()
@@ -80,27 +85,24 @@ mod tests {
         assert!(config.validate().is_ok());
     }
 
-    #[test]
-    fn test_validate_zero_port_fails() {
-        let config = UiConfig {
-            port: 0,
-            ui_dir: "./ui/dist".to_string(),
+    fn test_config(port: u16, ui_dir: &str) -> UiConfig {
+        UiConfig {
+            port,
+            ui_dir: ui_dir.to_string(),
             ask_service_url: "http://localhost:7001".to_string(),
             notify_service_url: "http://localhost:7004".to_string(),
             orchestrator_service_url: "http://localhost:7006".to_string(),
-        };
-        assert!(config.validate().is_err());
+            runtime_config: crate::runtime_config::build(&Default::default()),
+        }
+    }
+
+    #[test]
+    fn test_validate_zero_port_fails() {
+        assert!(test_config(0, "./ui/dist").validate().is_err());
     }
 
     #[test]
     fn test_validate_empty_ui_dir_fails() {
-        let config = UiConfig {
-            port: 17009,
-            ui_dir: "".to_string(),
-            ask_service_url: "http://localhost:7001".to_string(),
-            notify_service_url: "http://localhost:7004".to_string(),
-            orchestrator_service_url: "http://localhost:7006".to_string(),
-        };
-        assert!(config.validate().is_err());
+        assert!(test_config(17009, "").validate().is_err());
     }
 }

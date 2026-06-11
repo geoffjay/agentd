@@ -77,6 +77,11 @@ Delivered as a hand-rolled workflow + POSIX installer rather than cargo-dist
 - Release tags containing a `-` (e.g. `v0.5.0-rc.1`) publish as pre-releases,
   so installer/pipeline changes can be tested end-to-end without affecting
   `releases/latest`.
+- The web UI in the tarball is host-agnostic: instead of baking `VITE_*` env
+  values at build time (which a prebuilt artifact cannot carry per host), the
+  SPA fetches `/config.json` from `agentd-ui` at startup. The endpoint derives
+  service ports from the shared `config.toml`, with optional full-URL
+  overrides in `[services.ui.public_urls]` for reverse-proxy/TLS deployments.
 
 ### Why not cargo-dist
 

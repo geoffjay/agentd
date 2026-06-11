@@ -388,11 +388,29 @@ pub struct UiConfig {
     ///
     /// Defaults to `"./ui/dist"`.
     pub ui_dir: String,
+    /// Explicit browser-facing URL overrides per service, served to the SPA
+    /// via `GET /config.json`.
+    ///
+    /// By default the SPA reaches each service at
+    /// `<page protocol>//<page hostname>:<service port>`, which is correct
+    /// when the service ports are reachable from the browser. Deployments
+    /// that front services with a reverse proxy or TLS can override the full
+    /// URL per service instead:
+    ///
+    /// ```toml
+    /// [services.ui.public_urls]
+    /// orchestrator = "https://agentd.example.com/orchestrator"
+    /// ```
+    pub public_urls: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for UiConfig {
     fn default() -> Self {
-        Self { port: 17009, ui_dir: "./ui/dist".to_string() }
+        Self {
+            port: 17009,
+            ui_dir: "./ui/dist".to_string(),
+            public_urls: std::collections::BTreeMap::new(),
+        }
     }
 }
 
@@ -922,6 +940,11 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     &file.services.ui.ui_dir,
                     &d.services.ui.ui_dir,
                 ),
+                public_urls: if file.services.ui.public_urls.is_empty() {
+                    base.services.ui.public_urls.clone()
+                } else {
+                    file.services.ui.public_urls.clone()
+                },
             },
         },
     }
