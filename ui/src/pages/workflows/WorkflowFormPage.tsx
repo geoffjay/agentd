@@ -173,7 +173,7 @@ export function WorkflowFormPage() {
 
 	if (loading) {
 		return (
-			<div id="main-content" className="mx-auto max-w-3xl space-y-5">
+			<div id="main-content" className="space-y-5">
 				<CardSkeleton />
 			</div>
 		);
@@ -181,7 +181,7 @@ export function WorkflowFormPage() {
 
 	if (loadError) {
 		return (
-			<div id="main-content" className="mx-auto max-w-3xl space-y-5">
+			<div id="main-content" className="space-y-5">
 				<div className="rounded-md bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text">
 					{loadError}
 				</div>
@@ -193,7 +193,7 @@ export function WorkflowFormPage() {
 	}
 
 	return (
-		<div id="main-content" className="mx-auto max-w-6xl space-y-5">
+		<div id="main-content" className="space-y-5">
 			<Link
 				to={backTarget}
 				className="inline-flex items-center gap-2 text-sm text-th-text-muted hover:text-th-text-secondary"
