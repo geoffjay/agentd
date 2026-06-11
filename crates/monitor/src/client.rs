@@ -104,6 +104,50 @@ impl MonitorClient {
 
         resp.json::<SystemStatus>().await.context("Failed to parse status response")
     }
+
+    /// `GET /queries` — fetch the named-query catalog as raw JSON.
+    pub async fn list_queries(&self) -> Result<serde_json::Value> {
+        let url = format!("{}/queries", self.base_url);
+        let resp = self.http.get(&url).send().await.with_context(|| format!("GET {url}"))?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!("GET /queries failed: HTTP {}", resp.status()));
+        }
+
+        resp.json().await.context("Failed to parse queries catalog")
+    }
+
+    /// `GET /queries/{name}` — execute a named query.
+    ///
+    /// `window` substitutes `$__window` (e.g. `"15m"`); `range` switches from
+    /// an instant evaluation to a range query over the last six hours.
+    pub async fn run_query(
+        &self,
+        name: &str,
+        window: Option<&str>,
+        range: bool,
+    ) -> Result<serde_json::Value> {
+        let mut url = format!("{}/queries/{name}", self.base_url);
+        let mut params = vec![];
+        if let Some(window) = window {
+            params.push(format!("window={window}"));
+        }
+        if range {
+            params.push("mode=range".to_string());
+        }
+        if !params.is_empty() {
+            url = format!("{url}?{}", params.join("&"));
+        }
+
+        let resp = self.http.get(&url).send().await.with_context(|| format!("GET {url}"))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow!("GET /queries/{name} failed: HTTP {} — {}", status, body));
+        }
+
+        resp.json().await.context("Failed to parse query result")
+    }
 }
 
 #[cfg(test)]
