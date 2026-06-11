@@ -7,8 +7,8 @@
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
 use crate::tools::{
-    agents, approvals, communicate, diagnostic, health, lifecycle, memory, notifications,
-    orchestrator_debug, remediation, workflows,
+    agents, approvals, communicate, creation, diagnostic, health, lifecycle, memory, metrics,
+    notifications, orchestrator_debug, remediation, workflows,
 };
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
@@ -227,6 +227,238 @@ impl AgentdMcp {
         limit: Option<u32>,
     ) -> String {
         workflows::run_get_failed_dispatches(&self.client, limit).await
+    }
+
+    // ── Agent and workflow creation ─────────────────────────────────────
+
+    /// Create a new agent.
+    #[tool(
+        description = "Create a new agent. Exposes the safe subset of agent configuration: name, working_dir, model, system_prompt, initial prompt, tool policy, and rooms. Env vars and Docker settings are deliberately NOT exposed (secrets must not transit MCP) — use the CLI for those. Returns the new agent ID."
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn create_agent(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Unique agent name")]
+        name: String,
+        #[tool(param)]
+        #[schemars(description = "Absolute working directory for the agent process")]
+        working_dir: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Model alias or full name (e.g. sonnet, opus, claude-sonnet-4-6). Omit for the default."
+        )]
+        model: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "System prompt for the agent's Claude session")]
+        system_prompt: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "If true, the system prompt is appended to Claude's default prompt instead of replacing it"
+        )]
+        append_system_prompt: Option<bool>,
+        #[tool(param)]
+        #[schemars(description = "Initial prompt delivered once the agent connects")]
+        prompt: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "Tool policy mode: allow_all | deny_all | require_approval | allow_list | deny_list. Omit for allow_all."
+        )]
+        tool_policy_mode: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Tool names/patterns for allow_list or deny_list modes")]
+        tool_policy_tools: Option<Vec<String>>,
+        #[tool(param)]
+        #[schemars(description = "Communicate room names the agent auto-joins on connect")]
+        rooms: Option<Vec<String>>,
+    ) -> String {
+        creation::run_create_agent(
+            &self.client,
+            &name,
+            &working_dir,
+            model.as_deref(),
+            system_prompt.as_deref(),
+            append_system_prompt.unwrap_or(false),
+            prompt.as_deref(),
+            tool_policy_mode.as_deref(),
+            tool_policy_tools,
+            rooms,
+        )
+        .await
+    }
+
+    /// Create a new workflow.
+    #[tool(
+        description = "Create a new workflow that dispatches prompts to an agent when its trigger fires. trigger_config is a JSON object with a `type` field, e.g. {\"type\":\"cron\",\"expression\":\"0 9 * * MON-FRI\"}, {\"type\":\"manual\"}, or {\"type\":\"agent_idle\",\"idle_seconds\":600}. Valid types: github_issues, github_pull_requests, cron, delay, agent_lifecycle, dispatch_result, webhook, manual, agent_idle, linear_issues, composite, queue, ask_response, gitlab_issues, gitlab_merge_requests. Use get_workflow on an existing workflow to copy a working config. prompt_template supports {{placeholder}} substitution and is validated server-side."
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn create_workflow(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Workflow name")]
+        name: String,
+        #[tool(param)]
+        #[schemars(
+            description = "ID (UUID) of the agent that receives dispatched prompts — see list_agents"
+        )]
+        agent_id: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Trigger configuration object with a `type` field (see tool description for examples)"
+        )]
+        trigger_config: serde_json::Value,
+        #[tool(param)]
+        #[schemars(
+            description = "Prompt template dispatched on trigger; {{placeholder}} variables are substituted from the trigger payload"
+        )]
+        prompt_template: String,
+        #[tool(param)]
+        #[schemars(description = "Polling interval in seconds for polling triggers (default: 60)")]
+        poll_interval_secs: Option<u64>,
+        #[tool(param)]
+        #[schemars(description = "Whether the workflow starts enabled (default: true)")]
+        enabled: Option<bool>,
+        #[tool(param)]
+        #[schemars(
+            description = "Tool policy mode applied to dispatched runs: allow_all | deny_all | require_approval | allow_list | deny_list"
+        )]
+        tool_policy_mode: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Tool names/patterns for allow_list or deny_list modes")]
+        tool_policy_tools: Option<Vec<String>>,
+    ) -> String {
+        creation::run_create_workflow(
+            &self.client,
+            &name,
+            &agent_id,
+            trigger_config,
+            &prompt_template,
+            poll_interval_secs,
+            enabled,
+            tool_policy_mode.as_deref(),
+            tool_policy_tools,
+        )
+        .await
+    }
+
+    /// Update an existing workflow.
+    #[tool(
+        description = "Update an existing workflow. Only the provided fields change (merge semantics): name, agent_id, trigger_config, prompt_template, poll_interval_secs, enabled, tool policy. Use set_workflow_enabled for a plain enable/disable toggle."
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn update_workflow(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The workflow ID (UUID) to update")]
+        workflow_id: String,
+        #[tool(param)]
+        #[schemars(description = "New workflow name")]
+        name: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Reassign to this agent ID (UUID)")]
+        agent_id: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Replacement trigger configuration object with a `type` field")]
+        trigger_config: Option<serde_json::Value>,
+        #[tool(param)]
+        #[schemars(description = "Replacement prompt template")]
+        prompt_template: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "New polling interval in seconds")]
+        poll_interval_secs: Option<u64>,
+        #[tool(param)]
+        #[schemars(description = "Enable or disable the workflow")]
+        enabled: Option<bool>,
+        #[tool(param)]
+        #[schemars(
+            description = "Tool policy mode: allow_all | deny_all | require_approval | allow_list | deny_list"
+        )]
+        tool_policy_mode: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Tool names/patterns for allow_list or deny_list modes")]
+        tool_policy_tools: Option<Vec<String>>,
+    ) -> String {
+        creation::run_update_workflow(
+            &self.client,
+            &workflow_id,
+            name.as_deref(),
+            agent_id.as_deref(),
+            trigger_config,
+            prompt_template.as_deref(),
+            poll_interval_secs,
+            enabled,
+            tool_policy_mode.as_deref(),
+            tool_policy_tools,
+        )
+        .await
+    }
+
+    /// Enable or disable a workflow.
+    #[tool(
+        description = "Enable or disable a workflow. Disabled workflows keep their configuration and history but their trigger no longer fires."
+    )]
+    async fn set_workflow_enabled(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The workflow ID (UUID)")]
+        workflow_id: String,
+        #[tool(param)]
+        #[schemars(description = "true to enable, false to disable")]
+        enabled: bool,
+    ) -> String {
+        creation::run_set_workflow_enabled(&self.client, &workflow_id, enabled).await
+    }
+
+    /// Manually trigger a workflow.
+    #[tool(
+        description = "Manually trigger a workflow, dispatching its prompt template immediately. Optional title/body/url/labels/metadata populate the {{placeholder}} variables in the template. Ideal for smoke-testing a freshly created workflow."
+    )]
+    async fn trigger_workflow(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The workflow ID (UUID) to trigger")]
+        workflow_id: String,
+        #[tool(param)]
+        #[schemars(description = "Task title substituted into {{title}}")]
+        title: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Task body substituted into {{body}}")]
+        body: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Task URL substituted into {{url}}")]
+        url: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Labels substituted into {{labels}}")]
+        labels: Option<Vec<String>>,
+        #[tool(param)]
+        #[schemars(
+            description = "Additional string key/value metadata for {{metadata.*}} placeholders"
+        )]
+        metadata: Option<serde_json::Value>,
+    ) -> String {
+        creation::run_trigger_workflow(
+            &self.client,
+            &workflow_id,
+            title.as_deref(),
+            body.as_deref(),
+            url.as_deref(),
+            labels,
+            metadata,
+        )
+        .await
+    }
+
+    /// Delete a workflow.
+    #[tool(
+        description = "⚠️ DESTRUCTIVE: Delete a workflow permanently. Its trigger stops firing and the configuration is removed (dispatch history is retained). Prefer set_workflow_enabled(false) when you may need the workflow again."
+    )]
+    async fn delete_workflow(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The workflow ID (UUID) to delete")]
+        workflow_id: String,
+    ) -> String {
+        creation::run_delete_workflow(&self.client, &workflow_id).await
     }
 
     // ── Notification management ─────────────────────────────────────────
@@ -732,6 +964,33 @@ impl AgentdMcp {
     ) -> String {
         health::run_get_prometheus_metrics(&self.client, service.as_deref()).await
     }
+
+    /// Run a curated PromQL query via the monitor service.
+    #[tool(
+        description = "Run a curated PromQL query against the agentd Prometheus stack via the monitor service. Call without a name to list the catalog (dispatch-success-rate, dispatch-throughput, agent-restart-rate, http-error-rate, http-p95-latency, session-cost, approvals-backlog, host-saturation, ...). window is like 15m/1h/24h; range=true returns a six-hour trend summarized per series instead of an instant value. Falls back gracefully when Prometheus is down (use get_prometheus_metrics for direct scraping)."
+    )]
+    async fn query_metrics(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Catalog query name; omit to list the catalog")]
+        name: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Time window for rate/increase queries, e.g. 15m, 1h, 24h")]
+        window: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "true for a range query (trend over the last 6h) instead of an instant value"
+        )]
+        range: Option<bool>,
+    ) -> String {
+        metrics::run_query_metrics(
+            &self.client,
+            name.as_deref(),
+            window.as_deref(),
+            range.unwrap_or(false),
+        )
+        .await
+    }
 }
 
 #[tool(tool_box)]
@@ -744,7 +1003,9 @@ impl ServerHandler for AgentdMcp {
                  diagnostic services as MCP tools. \
                  Start with `diagnose_system` or `check_service_health` for a \
                  system overview. Use `diagnose_state_mismatches` to catch \
-                 subtle agent stuckness."
+                 subtle agent stuckness. Provision resources with \
+                 `create_agent` and `create_workflow`; smoke-test new \
+                 workflows with `trigger_workflow`."
                     .into(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),

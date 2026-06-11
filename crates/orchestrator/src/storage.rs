@@ -111,6 +111,11 @@ impl AgentStorage {
             pid: Set(agent.pid.map(|p| p as i64)),
             project_id: Set(agent.project_id.map(|id| id.to_string())),
             built_in: Set(if agent.built_in { 1 } else { 0 }),
+            mcp_servers: Set(agent
+                .config
+                .mcp_servers
+                .as_ref()
+                .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()))),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -217,6 +222,16 @@ impl AgentStorage {
                         .resource_limits
                         .as_ref()
                         .map(|r| serde_json::to_string(r).unwrap_or_else(|_| "{}".to_string())),
+                ),
+            )
+            .col_expr(
+                agent_entity::Column::McpServers,
+                Expr::value(
+                    agent
+                        .config
+                        .mcp_servers
+                        .as_ref()
+                        .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string())),
                 ),
             )
             .col_expr(
@@ -1111,6 +1126,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
                 .and_then(|s| serde_json::from_str(s).ok()),
             additional_dirs: serde_json::from_str(&model.additional_dirs).unwrap_or_default(),
             rooms: serde_json::from_str(&model.rooms).unwrap_or_default(),
+            mcp_servers: model.mcp_servers.as_deref().and_then(|s| serde_json::from_str(s).ok()),
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
@@ -1218,6 +1234,7 @@ mod tests {
                 resource_limits: None,
                 additional_dirs: vec![],
                 rooms: vec![],
+                mcp_servers: None,
             },
         )
     }

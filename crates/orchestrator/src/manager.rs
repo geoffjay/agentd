@@ -25,6 +25,18 @@ pub struct AgentManager {
     ws_base_url: String,
     /// Conversation event retention policy applied at terminate and on schedule.
     retention_config: Arc<RetentionConfig>,
+    /// Directory holding per-agent MCP config files (`<agent_id>.json`),
+    /// written at spawn/restart for agents with `mcp_servers` configured.
+    mcp_config_dir: std::path::PathBuf,
+}
+
+/// Default directory for per-agent MCP config files: a sibling of the
+/// orchestrator database (survives restarts, respects `AGENTD_ENV`).
+fn default_mcp_config_dir() -> std::path::PathBuf {
+    AgentStorage::get_db_path()
+        .ok()
+        .and_then(|db| db.parent().map(|p| p.join("mcp")))
+        .unwrap_or_else(|| std::env::temp_dir().join("agentd-mcp"))
 }
 
 impl AgentManager {
@@ -53,7 +65,21 @@ impl AgentManager {
         ws_base_url: String,
         retention_config: Arc<RetentionConfig>,
     ) -> Self {
-        Self { storage, backend, registry, ws_base_url, retention_config }
+        Self {
+            storage,
+            backend,
+            registry,
+            ws_base_url,
+            retention_config,
+            mcp_config_dir: default_mcp_config_dir(),
+        }
+    }
+
+    /// Override the MCP config directory (tests pass a `TempDir` path).
+    #[allow(dead_code)]
+    pub fn with_mcp_config_dir(mut self, dir: std::path::PathBuf) -> Self {
+        self.mcp_config_dir = dir;
+        self
     }
 
     pub fn registry(&self) -> &ConnectionRegistry {
@@ -158,8 +184,14 @@ impl AgentManager {
             .backend
             .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
-        let claude_cmd =
-            build_claude_command(&agent.config, &ws_url, effective_interactive, use_stdio);
+        let mcp_config_path = self.write_mcp_config(&agent)?;
+        let claude_cmd = build_claude_command(
+            &agent.config,
+            &ws_url,
+            effective_interactive,
+            use_stdio,
+            mcp_config_path.as_deref(),
+        );
 
         // Persist the launch command so the UI can display it for debugging.
         agent.launch_command = Some(claude_cmd.clone());
@@ -299,6 +331,7 @@ impl AgentManager {
 
         // Remove the record from storage entirely so the name can be reused.
         self.storage.delete(id).await?;
+        self.remove_mcp_config(id);
 
         // Set status on the returned value for callers that inspect it.
         agent.status = AgentStatus::Stopped;
@@ -307,6 +340,53 @@ impl AgentManager {
         info!(agent_id = %id, "Agent terminated and record deleted");
 
         Ok(agent)
+    }
+
+    /// Write the agent's MCP server map to its per-agent config file.
+    ///
+    /// Returns the file path to pass via `--mcp-config`, or `None` when the
+    /// agent has no `mcp_servers` configured. The file is created with mode
+    /// 0600 — MCP server env vars can carry secrets.
+    ///
+    /// Known limitation: the file lives on the orchestrator host, so
+    /// Docker-backed agents cannot see it. We deliberately do not inline the
+    /// JSON into the launch command instead — that would leak the env values
+    /// into the UI-visible `launch_command`.
+    fn write_mcp_config(&self, agent: &Agent) -> anyhow::Result<Option<String>> {
+        let Some(servers) = agent.config.mcp_servers.as_ref().filter(|s| !s.is_empty()) else {
+            // Config removed since last launch — drop any stale file.
+            self.remove_mcp_config(&agent.id);
+            return Ok(None);
+        };
+
+        if agent.config.docker_image.is_some() {
+            warn!(
+                agent_id = %agent.id,
+                "mcp_servers is configured but the agent uses a Docker image; \
+                 the MCP config file is not visible inside containers (tmux-only for now)"
+            );
+        }
+
+        std::fs::create_dir_all(&self.mcp_config_dir)?;
+        let path = self.mcp_config_dir.join(format!("{}.json", agent.id));
+        let body = serde_json::to_vec_pretty(&serde_json::json!({ "mcpServers": servers }))?;
+        std::fs::write(&path, body)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        Ok(Some(path.to_string_lossy().into_owned()))
+    }
+
+    /// Best-effort removal of an agent's MCP config file.
+    fn remove_mcp_config(&self, agent_id: &Uuid) {
+        let path = self.mcp_config_dir.join(format!("{agent_id}.json"));
+        if path.exists() {
+            if let Err(e) = std::fs::remove_file(&path) {
+                warn!(%agent_id, %e, "Failed to remove MCP config file");
+            }
+        }
     }
 
     /// Bootstrap built-in system agents at orchestrator startup.
@@ -467,6 +547,7 @@ impl AgentManager {
         }
         self.registry.unregister(&agent.id).await;
         self.storage.delete(&agent.id).await?;
+        self.remove_mcp_config(&agent.id);
         Ok(())
     }
 
@@ -1059,8 +1140,16 @@ impl AgentManager {
             .backend
             .agent_ws_url(&session_name, Some(&session_config))
             .unwrap_or_else(|| format!("{}/ws/{}", self.ws_base_url, agent.id));
-        let claude_cmd =
-            build_claude_command(&agent.config, &ws_url, effective_interactive, use_stdio);
+        // Always rewrite the MCP config — a PATCH may have changed servers
+        // since the last launch.
+        let mcp_config_path = self.write_mcp_config(&agent)?;
+        let claude_cmd = build_claude_command(
+            &agent.config,
+            &ws_url,
+            effective_interactive,
+            use_stdio,
+            mcp_config_path.as_deref(),
+        );
 
         // Persist the launch command so the UI can display it for debugging.
         agent.launch_command = Some(claude_cmd.clone());
@@ -1217,6 +1306,7 @@ fn build_claude_command(
     ws_url: &str,
     interactive: bool,
     use_stdio: bool,
+    mcp_config_path: Option<&str>,
 ) -> String {
     let mut args = vec!["claude".to_string()];
 
@@ -1249,6 +1339,14 @@ fn build_claude_command(
 
     for dir in &config.additional_dirs {
         args.push(format!("--add-dir {}", shell_escape_value(dir)));
+    }
+
+    // MCP servers: point claude at the per-agent config file and ignore any
+    // user-level mcpServers — a policy-managed agent gets exactly the servers
+    // the orchestrator configured.
+    if let Some(path) = mcp_config_path {
+        args.push(format!("--mcp-config {}", shell_escape_value(path)));
+        args.push("--strict-mcp-config".to_string());
     }
 
     // System prompt flags — four combinations based on (file vs inline) × (replace vs append).
@@ -1327,13 +1425,14 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         }
     }
 
     #[test]
     fn test_build_claude_command_no_model() {
         let config = base_config();
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(!cmd.contains("--model"));
         assert!(cmd.contains("claude"));
         assert!(cmd.contains("--sdk-url"));
@@ -1342,14 +1441,60 @@ mod tests {
     #[test]
     fn test_build_claude_command_with_model_alias() {
         let config = AgentConfig { model: Some("opus".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--model opus"));
+    }
+
+    #[test]
+    fn test_build_claude_command_with_mcp_config_path() {
+        let config = base_config();
+        let cmd = build_claude_command(
+            &config,
+            "ws://localhost:7006/ws/abc",
+            false,
+            false,
+            Some("/data/mcp/abc.json"),
+        );
+        assert!(cmd.contains("--mcp-config '/data/mcp/abc.json'"));
+        // Strict mode always accompanies an orchestrator-managed MCP config so
+        // the agent cannot inherit user-level servers.
+        assert!(cmd.contains("--strict-mcp-config"));
+        let mcp_pos = cmd.find("--mcp-config").unwrap();
+        let strict_pos = cmd.find("--strict-mcp-config").unwrap();
+        assert!(mcp_pos < strict_pos);
+    }
+
+    #[test]
+    fn test_build_claude_command_without_mcp_config_path() {
+        let config = base_config();
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
+        assert!(!cmd.contains("--mcp-config"));
+        assert!(!cmd.contains("--strict-mcp-config"));
+    }
+
+    #[test]
+    fn test_build_claude_command_mcp_config_coexists_with_other_flags() {
+        let config = AgentConfig {
+            model: Some("sonnet".to_string()),
+            system_prompt: Some("be helpful".to_string()),
+            ..base_config()
+        };
+        let cmd = build_claude_command(
+            &config,
+            "ws://localhost:7006/ws/abc",
+            false,
+            false,
+            Some("/tmp/mcp.json"),
+        );
+        assert!(cmd.contains("--model sonnet"));
+        assert!(cmd.contains("--system-prompt 'be helpful'"));
+        assert!(cmd.contains("--mcp-config '/tmp/mcp.json'"));
     }
 
     #[test]
     fn test_build_claude_command_with_full_model_name() {
         let config = AgentConfig { model: Some("claude-sonnet-4-6".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--model claude-sonnet-4-6"));
     }
 
@@ -1357,7 +1502,7 @@ mod tests {
     fn test_build_claude_command_model_with_interactive() {
         let config =
             AgentConfig { model: Some("haiku".to_string()), interactive: true, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true, false, None);
         assert!(cmd.contains("--model haiku"));
         assert!(!cmd.contains("--sdk-url"));
     }
@@ -1369,7 +1514,7 @@ mod tests {
             user: Some("deploy".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.starts_with("sudo -u deploy env"));
         assert!(cmd.contains("--model sonnet"));
     }
@@ -1379,7 +1524,7 @@ mod tests {
         // The generated command must always unset SUDO_* variables so that
         // Claude Code's env-var credential detection is not suppressed.
         let config = AgentConfig { user: Some("cap".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("-u SUDO_USER"), "must unset SUDO_USER: {cmd}");
         assert!(cmd.contains("-u SUDO_UID"), "must unset SUDO_UID: {cmd}");
         assert!(cmd.contains("-u SUDO_GID"), "must unset SUDO_GID: {cmd}");
@@ -1391,7 +1536,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), "tok-123".to_string());
         let config = AgentConfig { user: Some("cap".to_string()), env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.starts_with("sudo -u cap env"));
         assert!(cmd.contains("-u SUDO_USER"));
         assert!(cmd.contains("-u SUDO_UID"));
@@ -1411,7 +1556,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test123".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
 
         assert!(cmd.contains("ANTHROPIC_API_KEY='sk-ant-test123'"));
         // Env prefix must come before claude
@@ -1425,7 +1570,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_API_KEY".to_string(), "sk-ant-test".to_string());
         let config = AgentConfig { user: Some("deploy".to_string()), env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
 
         // For sudo, env vars are injected via `env` to cross the sudo boundary
         assert!(cmd.starts_with("sudo -u deploy env"));
@@ -1439,7 +1584,7 @@ mod tests {
         // Value contains a single quote — must be properly escaped
         env.insert("MY_VAR".to_string(), "it's a value".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
 
         // Single-quote escaping: ' → '\''
         assert!(cmd.contains("MY_VAR='it'\\''s a value'"));
@@ -1453,7 +1598,7 @@ mod tests {
         env.insert("123STARTS_WITH_DIGIT".to_string(), "v".to_string());
         env.insert("GOOD_KEY".to_string(), "ok".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
 
         assert!(cmd.contains("GOOD_KEY='ok'"));
         assert!(!cmd.contains("BAD KEY"));
@@ -1464,7 +1609,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_empty_env_no_prefix() {
         let config = base_config(); // env is empty
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
 
         // Must start directly with claude (no env prefix)
         assert!(cmd.starts_with("claude"));
@@ -1475,7 +1620,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("ANTHROPIC_BASE_URL".to_string(), "https://custom.api.example.com".to_string());
         let config = AgentConfig { interactive: true, env, ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true, false, None);
 
         assert!(cmd.contains("ANTHROPIC_BASE_URL='https://custom.api.example.com'"));
         assert!(!cmd.contains("--sdk-url"));
@@ -1489,8 +1634,8 @@ mod tests {
         env.insert("ANTHROPIC_BASE_URL".to_string(), "https://example.com".to_string());
         env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), "tok-123".to_string());
         let config = AgentConfig { env, ..base_config() };
-        let cmd1 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
-        let cmd2 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd1 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
+        let cmd2 = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
 
         // Output must be deterministic (sorted) across calls
         assert_eq!(cmd1, cmd2);
@@ -1528,7 +1673,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_no_system_prompt_flag_when_absent() {
         let config = base_config();
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(!cmd.contains("--system-prompt"), "no system-prompt flag when none configured");
         assert!(!cmd.contains("--append-system-prompt"), "no append flag when none configured");
     }
@@ -1539,7 +1684,7 @@ mod tests {
             system_prompt: Some("You are a Rust expert".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--system-prompt 'You are a Rust expert'"));
         assert!(!cmd.contains("--append-system-prompt"));
         assert!(!cmd.contains("--system-prompt-file"));
@@ -1551,7 +1696,7 @@ mod tests {
             system_prompt_file: Some("./.agentd/agents/expert.md".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--system-prompt-file './.agentd/agents/expert.md'"));
         assert!(!cmd.contains("--system-prompt "));
         assert!(!cmd.contains("--append-system-prompt"));
@@ -1564,7 +1709,7 @@ mod tests {
             append_system_prompt: true,
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--append-system-prompt 'Always use TypeScript'"));
         assert!(!cmd.contains("--system-prompt "));
         assert!(!cmd.contains("--system-prompt-file"));
@@ -1577,7 +1722,7 @@ mod tests {
             append_system_prompt: true,
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--append-system-prompt-file './style-rules.txt'"));
         assert!(!cmd.contains("--system-prompt "));
         assert!(!cmd.contains("--system-prompt-file "));
@@ -1588,7 +1733,7 @@ mod tests {
         // Single quotes in the prompt must be shell-escaped.
         let config =
             AgentConfig { system_prompt: Some("You're an expert".to_string()), ..base_config() };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--system-prompt 'You'\\''re an expert'"));
     }
 
@@ -1599,7 +1744,7 @@ mod tests {
             append_system_prompt: true,
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--append-system-prompt 'Don'\\''t skip tests'"));
     }
 
@@ -1611,7 +1756,7 @@ mod tests {
             system_prompt_file: Some("./file.md".to_string()),
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--system-prompt 'inline prompt'"));
         assert!(!cmd.contains("--system-prompt-file"));
     }
@@ -1625,7 +1770,7 @@ mod tests {
             append_system_prompt: true,
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--append-system-prompt 'inline append'"));
         assert!(!cmd.contains("--append-system-prompt-file"));
         assert!(!cmd.contains("--system-prompt-file"));
@@ -1637,7 +1782,7 @@ mod tests {
     #[test]
     fn test_build_claude_command_no_add_dir_when_empty() {
         let config = base_config(); // additional_dirs is empty
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(!cmd.contains("--add-dir"), "no --add-dir flag when additional_dirs is empty");
     }
 
@@ -1647,7 +1792,7 @@ mod tests {
             additional_dirs: vec!["/tmp/project".to_string(), "/home/user/data".to_string()],
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--add-dir '/tmp/project'"), "first dir must appear");
         assert!(cmd.contains("--add-dir '/home/user/data'"), "second dir must appear");
     }
@@ -1659,7 +1804,7 @@ mod tests {
             additional_dirs: vec!["/tmp/my project/it's here".to_string()],
             ..base_config()
         };
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         // Single-quote escaping: ' → '\''
         assert!(
             cmd.contains("--add-dir '/tmp/my project/it'\\''s here'"),
@@ -1671,7 +1816,7 @@ mod tests {
     fn test_build_claude_command_pty_backend_no_sdk_url() {
         // Simulates PTY backend: effective_interactive = true
         let config = base_config();
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", true, false, None);
         assert!(!cmd.contains("--sdk-url"), "PTY mode must not include --sdk-url");
         assert!(!cmd.contains("--input-format"), "PTY mode must not include --input-format");
         assert!(!cmd.contains("--output-format"), "PTY mode must not include --output-format");
@@ -1682,7 +1827,7 @@ mod tests {
     fn test_build_claude_command_sdk_mode_has_sdk_url() {
         // Non-PTY backend: effective_interactive = false
         let config = base_config(); // interactive = false
-        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false);
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
         assert!(cmd.contains("--sdk-url"));
         assert!(cmd.contains("--input-format stream-json"));
         assert!(cmd.contains("--output-format stream-json"));
