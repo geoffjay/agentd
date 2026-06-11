@@ -19,11 +19,20 @@
 //! Rust string literals so that they are version-controlled with the code and
 //! require no files on disk.
 
-use crate::types::{AgentConfig, ToolPolicy};
+use crate::types::{AgentConfig, McpServerConfig, ToolPolicy};
 use std::collections::HashMap;
 
 /// Name of the primary built-in system agent.
 pub const SYSTEM_AGENT_NAME: &str = "agentd-system";
+
+/// Name of the built-in diagnostician agent.
+pub const DIAGNOSTICIAN_AGENT_NAME: &str = "agentd-diagnostician";
+
+/// Env var that, when set to `1`/`true`, adds remediation tools to the
+/// diagnostician's allowlist (restart_failed_agents, retry_failed_dispatches,
+/// cleanup_stale_dispatches, resolve_notification_backlog). Default off.
+/// Flipping it is a config drift, so the policy refreshes on next bootstrap.
+pub const DIAGNOSTICIAN_REMEDIATION_ENV: &str = "AGENTD_DIAGNOSTICIAN_REMEDIATION";
 
 /// How a built-in agent's `working_dir` is derived at bootstrap time.
 #[derive(Debug, Clone, Copy)]
@@ -60,6 +69,8 @@ pub struct SystemAgentDef {
     pub prompt: fn() -> String,
     /// Builds the agent's tool policy.
     pub tool_policy: fn() -> ToolPolicy,
+    /// Builds the MCP server map for the agent's Claude session.
+    pub mcp_servers: fn() -> Option<HashMap<String, McpServerConfig>>,
 }
 
 impl SystemAgentDef {
@@ -91,7 +102,7 @@ impl SystemAgentDef {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: self.rooms.iter().map(|r| r.to_string()).collect(),
-            mcp_servers: None,
+            mcp_servers: (self.mcp_servers)(),
         }
     }
 }
@@ -102,7 +113,7 @@ impl SystemAgentDef {
 /// are refreshed, and stored built-ins whose name is no longer listed here
 /// are removed as orphans.
 pub fn builtin_agent_defs() -> Vec<SystemAgentDef> {
-    vec![system_agent_def()]
+    vec![system_agent_def(), diagnostician_def()]
 }
 
 /// Definition of the `agentd-system` domain-expert agent.
@@ -128,6 +139,7 @@ fn system_agent_def() -> SystemAgentDef {
         lazy: false,
         prompt: system_agent_prompt,
         tool_policy: system_agent_tool_policy,
+        mcp_servers: || None,
     }
 }
 
@@ -185,6 +197,152 @@ fn render_service_table(services: &agentd_common::config::ServicesConfig) -> Str
     table.push_str("| mcp           | —     | MCP server (stdio transport, no port)    |\n");
     table
 }
+
+// ---------------------------------------------------------------------------
+// agentd-diagnostician
+// ---------------------------------------------------------------------------
+
+/// Definition of the `agentd-diagnostician` agent.
+///
+/// A lazy built-in that diagnoses the agentd platform exclusively through the
+/// agentd MCP server (`agent mcp`). MCP-only tooling keeps its capability
+/// story trivially auditable: the allowlist is a handful of read-only verb
+/// prefixes, with remediation tools gated behind
+/// [`DIAGNOSTICIAN_REMEDIATION_ENV`].
+fn diagnostician_def() -> SystemAgentDef {
+    SystemAgentDef {
+        name: DIAGNOSTICIAN_AGENT_NAME,
+        model: "sonnet",
+        rooms: &["system"],
+        working_dir: WorkingDirStrategy::CurrentDir,
+        lazy: true,
+        prompt: diagnostician_prompt,
+        tool_policy: diagnostician_tool_policy,
+        mcp_servers: diagnostician_mcp_servers,
+    }
+}
+
+/// MCP server map for the diagnostician: the agentd MCP server over stdio.
+///
+/// Service URLs are pinned via `AGENTD_*_URL` env vars derived from this
+/// deployment's loaded configuration (the exact vars `agentd-mcp` reads), so
+/// the MCP server talks to the right ports regardless of the tmux shell
+/// environment. Localhost URLs only — no secrets, drift-stable.
+fn diagnostician_mcp_servers() -> Option<HashMap<String, McpServerConfig>> {
+    let services = agentd_common::config::load().map(|c| c.services).unwrap_or_default();
+    let env: HashMap<String, String> = [
+        ("AGENTD_ORCHESTRATOR_URL", services.orchestrator.port),
+        ("AGENTD_COMMUNICATE_URL", services.communicate.port),
+        ("AGENTD_MEMORY_URL", services.memory.port),
+        ("AGENTD_NOTIFY_URL", services.notify.port),
+        ("AGENTD_ASK_URL", services.ask.port),
+        ("AGENTD_WRAP_URL", services.wrap.port),
+        ("AGENTD_MONITOR_URL", services.monitor.port),
+        ("AGENTD_HOOK_URL", services.hook.port),
+    ]
+    .into_iter()
+    .map(|(var, port)| (var.to_string(), format!("http://localhost:{port}")))
+    .collect();
+
+    Some(HashMap::from([(
+        "agentd".to_string(),
+        McpServerConfig { command: agentd_mcp_command(), args: vec!["mcp".to_string()], env },
+    )]))
+}
+
+/// Resolve the command used to launch the agentd MCP server.
+///
+/// Prefers the `agent` binary sitting next to the running orchestrator
+/// executable (installed layouts, where launchd/systemd may provide a minimal
+/// PATH), falling back to PATH resolution (`cargo run` development). The
+/// value participates in drift detection, which is correct: a moved binary is
+/// a real config change, and it is stable within one install.
+fn agentd_mcp_command() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("agent")))
+        .filter(|sibling| sibling.is_file())
+        .map(|sibling| sibling.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "agent".to_string())
+}
+
+/// Tool policy for the diagnostician: read-only agentd MCP tool families.
+///
+/// The verb-prefix globs (`diagnose_`, `check_`, `get_`, `list_`, `search_`,
+/// `inspect_`) cover every read-only tool the agentd MCP server exposes and
+/// stay correct as new read tools are added, while excluding all mutating
+/// verbs (`restart_`, `terminate_`, `update_`, `send_`, `create_`,
+/// `approve_`, `deny_`, `dismiss_`, `retry_`, `cleanup_`, `resolve_`,
+/// `auto_`). No `Bash`/`Read`/`Write` — agentd-system covers filesystem and
+/// CLI inspection; the diagnostician is MCP-only.
+///
+/// With [`DIAGNOSTICIAN_REMEDIATION_ENV`] set, four specific remediation
+/// tools are appended. `auto_approve_safe_tools` is never included — it
+/// weakens *other* agents' approval posture.
+fn diagnostician_tool_policy() -> ToolPolicy {
+    let mut tools = vec![
+        "mcp__agentd__diagnose_*".to_string(),
+        "mcp__agentd__check_*".to_string(),
+        "mcp__agentd__get_*".to_string(),
+        "mcp__agentd__list_*".to_string(),
+        "mcp__agentd__search_*".to_string(),
+        "mcp__agentd__inspect_*".to_string(),
+    ];
+
+    let remediation_enabled = std::env::var(DIAGNOSTICIAN_REMEDIATION_ENV)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if remediation_enabled {
+        tools.extend([
+            "mcp__agentd__restart_failed_agents".to_string(),
+            "mcp__agentd__retry_failed_dispatches".to_string(),
+            "mcp__agentd__cleanup_stale_dispatches".to_string(),
+            "mcp__agentd__resolve_notification_backlog".to_string(),
+        ]);
+    }
+
+    ToolPolicy::AllowList { tools, sandbox_bypass: vec![] }
+}
+
+/// System prompt for the diagnostician. Short by design (~700 tokens): the
+/// MCP tool descriptions carry the operational details.
+fn diagnostician_prompt() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    format!("agentd version: {version}\n\n{DIAGNOSTICIAN_PROMPT}")
+}
+
+const DIAGNOSTICIAN_PROMPT: &str = "\
+You are the agentd diagnostician — a built-in agent that investigates the
+health of the agentd platform using the `agentd` MCP server's tools.
+
+WORKFLOW
+
+1. Start wide: `diagnose_system` or `check_service_health` for an overview.
+2. Drill down with `diagnose_agent`, `diagnose_workflow`,
+   `diagnose_state_mismatches`, `inspect_queue`, `get_failed_dispatches`,
+   `get_prometheus_metrics`, and `get_system_metrics`.
+3. Report findings as a structured summary:
+   - Symptom — what is observably wrong
+   - Evidence — the tool outputs that demonstrate it
+   - Root cause — your best-supported explanation
+   - Remediation — the EXACT command or tool call that would fix it
+
+WHAT YOU CAN AND CANNOT DO
+
+Your tool policy allows only read-only agentd MCP tools (diagnose_*, check_*,
+get_*, list_*, search_*, inspect_*). By default you cannot restart agents,
+retry dispatches, approve tools, or modify anything — recommend the exact
+remediation for a human (or an authorized agent) to run instead.
+
+If remediation tools appear in your toolbox (restart_failed_agents,
+retry_failed_dispatches, cleanup_stale_dispatches,
+resolve_notification_backlog), the operator has explicitly enabled them; use
+them only when your diagnosis clearly supports the action, and report what
+you did.
+
+You have no filesystem or shell access. For source-level questions, defer to
+the agentd-system agent in the `system` room.
+";
 
 /// Carry runtime-derived fields from a stored config over to a freshly built
 /// one, producing the config a drifted agent should be updated to.
@@ -489,9 +647,94 @@ mod tests {
         let defs = builtin_agent_defs();
         let mut names: Vec<&str> = defs.iter().map(|d| d.name).collect();
         assert!(names.contains(&SYSTEM_AGENT_NAME));
+        assert!(names.contains(&DIAGNOSTICIAN_AGENT_NAME));
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), defs.len(), "registry names must be unique");
+    }
+
+    #[test]
+    fn diagnostician_is_lazy_with_agentd_mcp_server() {
+        let def = diagnostician_def();
+        assert!(def.lazy, "diagnostician spawns on first message");
+
+        let config = def.build_config();
+        let servers = config.mcp_servers.expect("diagnostician has MCP servers");
+        let agentd = &servers["agentd"];
+        assert!(!agentd.command.is_empty());
+        assert_eq!(agentd.args, vec!["mcp"]);
+        // Service URLs pinned for the MCP server process.
+        assert!(agentd.env["AGENTD_ORCHESTRATOR_URL"].starts_with("http://localhost:"));
+        assert_eq!(agentd.env.len(), 8, "all eight AGENTD_*_URL vars pinned");
+    }
+
+    #[test]
+    fn diagnostician_policy_allows_read_tools_and_denies_mutations() {
+        let policy = diagnostician_tool_policy();
+
+        for allowed in [
+            "mcp__agentd__diagnose_system",
+            "mcp__agentd__diagnose_state_mismatches",
+            "mcp__agentd__check_service_health",
+            "mcp__agentd__get_prometheus_metrics",
+            "mcp__agentd__list_agents",
+            "mcp__agentd__search_memories",
+            "mcp__agentd__inspect_queue",
+        ] {
+            assert!(policy.evaluate(allowed, None), "must allow {allowed}");
+        }
+
+        // Note: the remediation-gated tools are asserted in
+        // `diagnostician_remediation_env_gates_specific_tools`, which owns the
+        // env var — checking them here would race with that test's set_var.
+        for denied in [
+            "mcp__agentd__restart_agent",
+            "mcp__agentd__terminate_agent",
+            "mcp__agentd__update_agent_model",
+            "mcp__agentd__send_room_message",
+            "mcp__agentd__create_notification",
+            "mcp__agentd__approve_tool_request",
+            "mcp__agentd__auto_approve_safe_tools",
+            "Bash",
+            "Read",
+            "Write",
+            "Edit",
+        ] {
+            assert!(!policy.evaluate(denied, None), "must deny {denied}");
+        }
+    }
+
+    #[test]
+    fn diagnostician_remediation_env_gates_specific_tools() {
+        // Env-var tests mutate process state — keep both halves in one test
+        // to avoid races with parallel test threads on the same var.
+        std::env::set_var(DIAGNOSTICIAN_REMEDIATION_ENV, "1");
+        let policy = diagnostician_tool_policy();
+        std::env::remove_var(DIAGNOSTICIAN_REMEDIATION_ENV);
+
+        for allowed in [
+            "mcp__agentd__restart_failed_agents",
+            "mcp__agentd__retry_failed_dispatches",
+            "mcp__agentd__cleanup_stale_dispatches",
+            "mcp__agentd__resolve_notification_backlog",
+        ] {
+            assert!(policy.evaluate(allowed, None), "remediation on: must allow {allowed}");
+        }
+        // Never included, even with remediation on.
+        assert!(!policy.evaluate("mcp__agentd__auto_approve_safe_tools", None));
+        assert!(!policy.evaluate("mcp__agentd__terminate_agent", None));
+
+        // And the default policy (var unset) excludes them again.
+        let default_policy = diagnostician_tool_policy();
+        assert!(!default_policy.evaluate("mcp__agentd__restart_failed_agents", None));
+    }
+
+    #[test]
+    fn diagnostician_prompt_is_focused_and_within_budget() {
+        let prompt = diagnostician_prompt();
+        assert!(prompt.starts_with("agentd version: "));
+        assert!(prompt.contains("diagnose_system"));
+        assert!(prompt.len() < 4_000, "diagnostician prompt should stay small: {}", prompt.len());
     }
 
     #[test]
