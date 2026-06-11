@@ -26,7 +26,7 @@ use orchestrator::{
     manager::AgentManager,
     scheduler::{storage::SchedulerStorage, Scheduler},
     storage::AgentStorage,
-    system_agents::SYSTEM_AGENT_NAME,
+    system_agents::{DIAGNOSTICIAN_AGENT_NAME, SYSTEM_AGENT_NAME},
     types::{Agent, AgentConfig, ToolPolicy},
     websocket::ConnectionRegistry,
 };
@@ -384,7 +384,9 @@ async fn test_create_agent_ignores_builtin_field() {
 // Tests: bootstrap_system_agents()
 // ---------------------------------------------------------------------------
 
-/// `bootstrap_system_agents()` creates the system agent with `built_in = true`.
+/// `bootstrap_system_agents()` creates every registry agent with
+/// `built_in = true`: the eager system agent running, the lazy diagnostician
+/// as a dormant `Pending` record without a session.
 #[tokio::test]
 async fn test_bootstrap_creates_system_agent() {
     let (_app, storage, manager, _tmp) = build_app().await;
@@ -392,15 +394,23 @@ async fn test_bootstrap_creates_system_agent() {
     manager.bootstrap_system_agents().await.unwrap();
 
     let system_agents = storage.list_system_agents().await.unwrap();
-    assert_eq!(system_agents.len(), 1, "exactly one system agent should exist");
+    assert_eq!(system_agents.len(), 4, "one agent per registry definition");
+    assert!(system_agents.iter().all(|a| a.built_in));
 
-    let agent = &system_agents[0];
-    assert_eq!(agent.name, SYSTEM_AGENT_NAME);
-    assert!(agent.built_in, "system agent must have built_in = true");
+    let system = system_agents.iter().find(|a| a.name == SYSTEM_AGENT_NAME).unwrap();
+    assert_eq!(system.status, orchestrator::types::AgentStatus::Running);
+
+    let diagnostician = system_agents.iter().find(|a| a.name == DIAGNOSTICIAN_AGENT_NAME).unwrap();
+    assert_eq!(
+        diagnostician.status,
+        orchestrator::types::AgentStatus::Pending,
+        "lazy built-ins stay dormant until first message"
+    );
+    assert!(diagnostician.session_id.is_none(), "dormant agents have no session");
 }
 
 /// `bootstrap_system_agents()` is idempotent — calling it twice does not
-/// create a second system agent.
+/// create duplicate agents or wake dormant ones.
 #[tokio::test]
 async fn test_bootstrap_is_idempotent() {
     let (_app, storage, manager, _tmp) = build_app().await;
@@ -409,7 +419,13 @@ async fn test_bootstrap_is_idempotent() {
     manager.bootstrap_system_agents().await.unwrap();
 
     let system_agents = storage.list_system_agents().await.unwrap();
-    assert_eq!(system_agents.len(), 1, "bootstrap must not create duplicate system agents");
+    assert_eq!(system_agents.len(), 4, "bootstrap must not create duplicate system agents");
+    let diagnostician = system_agents.iter().find(|a| a.name == DIAGNOSTICIAN_AGENT_NAME).unwrap();
+    assert_eq!(
+        diagnostician.status,
+        orchestrator::types::AgentStatus::Pending,
+        "repeated bootstrap must not wake lazy agents"
+    );
 }
 
 /// Config drift: a stale stored config is refreshed from the definition.
@@ -420,7 +436,13 @@ async fn test_bootstrap_refreshes_drifted_config() {
     manager.bootstrap_system_agents().await.unwrap();
 
     // Simulate a previous release's stored config.
-    let mut agent = storage.list_system_agents().await.unwrap().pop().unwrap();
+    let mut agent = storage
+        .list_system_agents()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == SYSTEM_AGENT_NAME)
+        .unwrap();
     agent.config.model = Some("opus".to_string());
     agent.config.system_prompt = Some("stale prompt from v0.0.1".to_string());
     storage.update(&agent).await.unwrap();
@@ -444,7 +466,13 @@ async fn test_bootstrap_ignores_working_dir_drift() {
 
     manager.bootstrap_system_agents().await.unwrap();
 
-    let mut agent = storage.list_system_agents().await.unwrap().pop().unwrap();
+    let mut agent = storage
+        .list_system_agents()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == SYSTEM_AGENT_NAME)
+        .unwrap();
     agent.config.working_dir = "/from/a/previous/launchd/boot".to_string();
     storage.update(&agent).await.unwrap();
     let before = storage.get(&agent.id).await.unwrap().unwrap();
@@ -574,7 +602,13 @@ async fn test_bootstrap_pty_backend_does_not_restart_loop() {
 
     manager.bootstrap_system_agents().await.unwrap();
 
-    let agent = storage.list_system_agents().await.unwrap().pop().unwrap();
+    let agent = storage
+        .list_system_agents()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == SYSTEM_AGENT_NAME)
+        .unwrap();
     assert!(agent.config.interactive, "PTY backend persists effective_interactive = true");
     let first_updated_at = agent.updated_at;
 
@@ -584,6 +618,52 @@ async fn test_bootstrap_pty_backend_does_not_restart_loop() {
     assert_eq!(
         agent.updated_at, first_updated_at,
         "second bootstrap must not refresh or restart a PTY-backend system agent"
+    );
+}
+
+/// Waking the bootstrapped diagnostician writes its agentd MCP config file
+/// and bakes --mcp-config/--strict-mcp-config into the launch command.
+#[tokio::test]
+async fn test_diagnostician_wake_writes_mcp_config() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mcp_dir = temp_dir.path().join("mcp");
+    let storage = Arc::new(AgentStorage::with_path(&db_path).await.unwrap());
+    let registry = ConnectionRegistry::new();
+    let manager = Arc::new(
+        AgentManager::new(
+            storage.clone(),
+            Arc::new(NullBackend),
+            registry,
+            "ws://localhost:7006".to_string(),
+        )
+        .with_mcp_config_dir(mcp_dir.clone()),
+    );
+
+    manager.bootstrap_system_agents().await.unwrap();
+
+    let dormant = storage
+        .list_system_agents()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == DIAGNOSTICIAN_AGENT_NAME)
+        .unwrap();
+    assert!(!mcp_dir.join(format!("{}.json", dormant.id)).exists(), "dormant: no file yet");
+
+    let woken = manager.ensure_builtin_running(&dormant.id).await.unwrap();
+    assert_eq!(woken.status, orchestrator::types::AgentStatus::Running);
+
+    let launch = woken.launch_command.expect("launch command recorded");
+    assert!(launch.contains("--mcp-config"), "launch: {launch}");
+    assert!(launch.contains("--strict-mcp-config"), "launch: {launch}");
+
+    let config_path = mcp_dir.join(format!("{}.json", dormant.id));
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    assert!(
+        written["mcpServers"]["agentd"]["command"].as_str().is_some_and(|c| !c.is_empty()),
+        "agentd MCP server configured: {written}"
     );
 }
 
