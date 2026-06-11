@@ -50,6 +50,16 @@ export interface ResourceLimits {
 	memory_limit_mb?: number;
 }
 
+/**
+ * One stdio MCP server entry, mirroring Claude Code's `mcpServers` format.
+ * `env` values are redacted in API responses like `AgentConfig.env`.
+ */
+export interface McpServerConfig {
+	command: string;
+	args?: string[];
+	env?: Record<string, string>;
+}
+
 /** Full agent configuration */
 export interface AgentConfig {
 	working_dir: string;
@@ -75,6 +85,8 @@ export interface AgentConfig {
 	docker_image?: string;
 	extra_mounts?: VolumeMount[];
 	resource_limits?: ResourceLimits;
+	/** MCP servers for the agent's Claude session, keyed by server name. */
+	mcp_servers?: Record<string, McpServerConfig>;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +145,8 @@ export interface CreateAgentRequest {
 	docker_image?: string;
 	extra_mounts?: VolumeMount[];
 	resource_limits?: ResourceLimits;
+	/** MCP servers for the agent's Claude session, keyed by server name. */
+	mcp_servers?: Record<string, McpServerConfig>;
 }
 
 /**
@@ -167,9 +181,15 @@ export interface UpdateAgentRequest {
 	rooms?: string[];
 	worktree?: boolean;
 	/**
+	 * Full replacement of the MCP server map when present (empty object
+	 * clears). Entry env values equal to `ENV_REDACTED` keep the stored
+	 * value, matching the `env` round-trip semantics.
+	 */
+	mcp_servers?: Record<string, McpServerConfig>;
+	/**
 	 * Restart the agent process immediately so launch-affecting changes
 	 * (working_dir, shell, model, env, system prompt, additional_dirs,
-	 * worktree) take effect. Defaults to false.
+	 * worktree, mcp_servers) take effect. Defaults to false.
 	 */
 	restart?: boolean;
 }

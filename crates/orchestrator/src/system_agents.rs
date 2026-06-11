@@ -91,6 +91,7 @@ impl SystemAgentDef {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: self.rooms.iter().map(|r| r.to_string()).collect(),
+            mcp_servers: None,
         }
     }
 }

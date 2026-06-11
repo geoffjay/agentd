@@ -68,6 +68,9 @@ pub struct Model {
     /// System agents are created programmatically and managed by the orchestrator;
     /// user-created agents always have this set to 0.
     pub built_in: i32,
+    /// JSON-serialized `HashMap<String, McpServerConfig>` of MCP servers for
+    /// the agent's Claude session. NULL when no servers are configured.
+    pub mcp_servers: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

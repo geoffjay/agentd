@@ -87,6 +87,11 @@ pub struct AgentTemplate {
     /// Rooms are created (if missing) during `agent apply` before agents start.
     #[serde(default)]
     pub rooms: Vec<AgentRoomConfig>,
+    /// MCP servers for the agent's Claude session, keyed by server name.
+    /// Forwarded verbatim to the orchestrator, which writes the map to a
+    /// per-agent config file and launches claude with `--mcp-config`.
+    #[serde(default)]
+    pub mcp_servers: Option<HashMap<String, orchestrator::types::McpServerConfig>>,
 }
 
 fn default_working_dir() -> String {
@@ -1227,6 +1232,7 @@ async fn apply_agent(
         resource_limits: tmpl.resource_limits.clone(),
         additional_dirs,
         rooms: tmpl.rooms.iter().map(|r| r.name().to_string()).collect(),
+        mcp_servers: tmpl.mcp_servers.clone(),
     };
 
     let agent = client.create_agent(&request).await?;
@@ -1998,5 +2004,32 @@ repo: myproject
             }
             other => panic!("Expected GitlabMergeRequests, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_agent_template_with_mcp_servers() {
+        let yaml = r#"
+name: diagnostician
+model: sonnet
+mcp_servers:
+  agentd:
+    command: agent
+    args: [mcp]
+    env:
+      AGENTD_ORCHESTRATOR_URL: http://localhost:17006
+"#;
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        let servers = tmpl.mcp_servers.expect("mcp_servers parsed");
+        let agentd = &servers["agentd"];
+        assert_eq!(agentd.command, "agent");
+        assert_eq!(agentd.args, vec!["mcp"]);
+        assert_eq!(agentd.env["AGENTD_ORCHESTRATOR_URL"], "http://localhost:17006");
+    }
+
+    #[test]
+    fn test_agent_template_without_mcp_servers_defaults_none() {
+        let yaml = "name: plain\n";
+        let tmpl: AgentTemplate = serde_yaml::from_str(yaml).unwrap();
+        assert!(tmpl.mcp_servers.is_none());
     }
 }
