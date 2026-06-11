@@ -233,6 +233,16 @@ async fn create_agent(
     // Validate and canonicalize system_prompt_file if provided.
     let system_prompt_file = req.system_prompt_file.map(validate_system_prompt_file).transpose()?;
 
+    if let Some(servers) = &req.mcp_servers {
+        for (name, server) in servers {
+            if server.command.trim().is_empty() {
+                return Err(ApiError::InvalidInput(format!(
+                    "mcp_servers entry '{name}' has an empty command"
+                )));
+            }
+        }
+    }
+
     let config = AgentConfig {
         working_dir: req.working_dir,
         user: req.user,
@@ -253,6 +263,7 @@ async fn create_agent(
         resource_limits: req.resource_limits,
         additional_dirs: req.additional_dirs,
         rooms: req.rooms,
+        mcp_servers: req.mcp_servers,
     };
 
     let agent = state.manager.spawn_agent(req.name, config, false).await?;
@@ -319,6 +330,7 @@ fn launch_affecting_changed(before: &Agent, after: &Agent) -> bool {
         || b.append_system_prompt != a.append_system_prompt
         || b.additional_dirs != a.additional_dirs
         || b.worktree != a.worktree
+        || b.mcp_servers != a.mcp_servers
 }
 
 /// Update an agent's configuration (merge-patch semantics).
@@ -442,6 +454,44 @@ async fn update_agent(
         agent.config.worktree = worktree;
     }
 
+    // MCP servers: full replacement (empty map clears). Entry env values that
+    // are the redaction sentinel keep the stored value, mirroring `env`.
+    if let Some(servers) = req.mcp_servers {
+        if servers.is_empty() {
+            agent.config.mcp_servers = None;
+        } else {
+            let mut merged = HashMap::with_capacity(servers.len());
+            for (name, mut server) in servers {
+                if server.command.trim().is_empty() {
+                    return Err(ApiError::InvalidInput(format!(
+                        "mcp_servers entry '{name}' has an empty command"
+                    )));
+                }
+                for (key, value) in server.env.iter_mut() {
+                    if value == ENV_REDACTED {
+                        let stored = before
+                            .config
+                            .mcp_servers
+                            .as_ref()
+                            .and_then(|m| m.get(&name))
+                            .and_then(|s| s.env.get(key));
+                        match stored {
+                            Some(stored) => *value = stored.clone(),
+                            None => {
+                                return Err(ApiError::InvalidInput(format!(
+                                    "mcp_servers entry '{name}' env key '{key}' is the redaction \
+                                     placeholder but the key has no stored value"
+                                )));
+                            }
+                        }
+                    }
+                }
+                merged.insert(name, server);
+            }
+            agent.config.mcp_servers = Some(merged);
+        }
+    }
+
     agent.updated_at = chrono::Utc::now();
 
     let needs_restart = launch_affecting_changed(&before, &agent);
@@ -465,7 +515,31 @@ async fn send_message(
     Json(req): Json<SendMessageRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Verify agent exists and is running.
-    let agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+    let mut agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    // Lazy built-in agents stay dormant until first contact: spawn on
+    // demand, then wait for the session to connect before delivering.
+    if agent.built_in && agent.status != AgentStatus::Running {
+        agent = state
+            .manager
+            .ensure_builtin_running(&id)
+            .await
+            .map_err(|e| ApiError::Internal(e.context("Failed to wake system agent")))?;
+
+        // SDK-mode delivery goes over the WebSocket, which needs the freshly
+        // spawned Claude process to connect back first.  Subprocess stdio
+        // backends register immediately; PTY/interactive agents bypass the
+        // registry entirely.
+        if !agent.config.interactive && !state.registry.is_connected(&id).await {
+            for _ in 0..30 {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                if state.registry.is_connected(&id).await {
+                    break;
+                }
+            }
+        }
+    }
+
     if agent.status != AgentStatus::Running {
         return Err(ApiError::Conflict(format!(
             "Agent {} is not running (status: {})",

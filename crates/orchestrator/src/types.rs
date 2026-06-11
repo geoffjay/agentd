@@ -100,6 +100,8 @@ impl std::str::FromStr for AgentStatus {
 /// Example glob syntax:
 /// - `"Bash(git-spice *)"` — any git-spice command
 /// - `"Bash(gh pr *)"` — any `gh pr` subcommand
+/// - `"mcp__agentd__*"` — any tool of the `agentd` MCP server (trailing
+///   name glob; see [`match_tool`] — a bare `"*"` is deliberately inert)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum ToolPolicy {
@@ -208,17 +210,33 @@ impl ToolPolicy {
 
 /// Match a tool entry against a tool name and its input.
 ///
-/// Supports three forms:
+/// Supports four forms:
 /// - `"Bash"` — plain name match, ignores input.
+/// - `"mcp__agentd__*"` — trailing-glob name match: any tool whose name
+///   starts with the prefix before the `*`. Primarily for allowlisting MCP
+///   tool families (`mcp__<server>__<tool>`). A bare `"*"` is deliberately
+///   inert — use the `AllowAll` mode for that.
 /// - `"Bash(cargo *)"` — matches only when the tool is `Bash` and its
 ///   `command` input field satisfies the glob-style pattern.
 /// - `"Write(docs/**)"` — matches only when the tool is `Write` (or any
 ///   file tool with a `file_path` input field) and the path satisfies
 ///   the glob-style pattern. Supports `*` (single segment) and `**`
 ///   (any number of segments).
+///
+/// `sandbox_bypass` lists share this matcher, so name globs work there too.
 fn match_tool(pattern: &str, tool_name: &str, input: Option<&serde_json::Value>) -> bool {
     if pattern == tool_name {
         return true;
+    }
+    // Trailing-glob on a plain tool name: "mcp__agentd__*" matches
+    // "mcp__agentd__diagnose_system". Requires a non-empty prefix and no
+    // parentheses so "Bash(cargo *)" handling below is untouched.
+    if !pattern.contains('(') {
+        if let Some(prefix) = pattern.strip_suffix('*') {
+            if !prefix.is_empty() {
+                return tool_name.starts_with(prefix);
+            }
+        }
     }
     if let Some((tool, cmd_pattern)) = parse_tool_pattern(pattern) {
         if tool == tool_name {
@@ -467,6 +485,27 @@ pub struct AgentConfig {
     /// Each entry is a room name — rooms will be created if they don't exist.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rooms: Vec<String>,
+    /// MCP servers available to the agent's Claude session, keyed by server
+    /// name. When set, the orchestrator writes the map to a per-agent config
+    /// file at spawn time and launches claude with
+    /// `--mcp-config <file> --strict-mcp-config` so the agent gets exactly
+    /// these servers and nothing inherited from user-level configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
+}
+
+/// One stdio MCP server entry, mirroring Claude Code's `mcpServers` format.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct McpServerConfig {
+    /// Executable to launch (resolved via PATH or an absolute path).
+    pub command: String,
+    /// Arguments passed to the command.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+    /// Environment variables set for the server process. Values are redacted
+    /// in API responses like `AgentConfig::env`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub env: HashMap<String, String>,
 }
 
 fn default_shell() -> String {
@@ -657,6 +696,10 @@ pub struct CreateAgentRequest {
     /// Rooms the agent should automatically join when it connects.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rooms: Vec<String>,
+    /// MCP servers for the agent's Claude session (see
+    /// [`AgentConfig::mcp_servers`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
 }
 
 /// Response body for agent endpoints.
@@ -706,6 +749,15 @@ impl From<Agent> for AgentResponse {
         // to avoid leaking secrets (API keys, tokens) via the REST API.
         let mut config = agent.config;
         config.env = config.env.into_keys().map(|k| (k, ENV_REDACTED.to_string())).collect();
+        // MCP server env maps can carry the same class of secrets.
+        if let Some(servers) = config.mcp_servers.as_mut() {
+            for server in servers.values_mut() {
+                server.env = std::mem::take(&mut server.env)
+                    .into_keys()
+                    .map(|k| (k, ENV_REDACTED.to_string()))
+                    .collect();
+            }
+        }
         Self {
             id: agent.id,
             name: agent.name,
@@ -784,10 +836,16 @@ pub struct UpdateAgentRequest {
     pub rooms: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree: Option<bool>,
+    /// Full replacement of the MCP server map when present. An empty map
+    /// clears all servers. Entry env values that are exactly [`ENV_REDACTED`]
+    /// keep the currently stored value for that key (matching `env`
+    /// round-trip semantics). Omitted = unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
     /// Restart the agent process immediately so launch-affecting changes
     /// (working_dir, shell, model, env, system prompt, additional_dirs,
-    /// worktree) take effect. Defaults to `false`: the config is persisted
-    /// and applies on the next restart.
+    /// worktree, mcp_servers) take effect. Defaults to `false`: the config is
+    /// persisted and applies on the next restart.
     #[serde(default)]
     pub restart: bool,
 }
@@ -1071,6 +1129,60 @@ mod tests {
     }
 
     #[test]
+    fn test_match_tool_trailing_name_glob() {
+        assert!(match_tool("mcp__agentd__*", "mcp__agentd__diagnose_system", None));
+        assert!(match_tool("mcp__agentd__*", "mcp__agentd__list_agents", None));
+        assert!(match_tool("mcp__agentd__diagnose_*", "mcp__agentd__diagnose_workflow", None));
+        assert!(!match_tool("mcp__agentd__*", "mcp__other__diagnose_system", None));
+        assert!(!match_tool("mcp__agentd__diagnose_*", "mcp__agentd__restart_agent", None));
+    }
+
+    #[test]
+    fn test_match_tool_bare_star_is_inert() {
+        // AllowAll mode exists for "allow everything"; a bare "*" entry in a
+        // list must not become a backdoor allow-all.
+        assert!(!match_tool("*", "Bash", None));
+        assert!(!match_tool("*", "mcp__agentd__diagnose_system", None));
+    }
+
+    #[test]
+    fn test_match_tool_name_glob_does_not_affect_parenthesized_patterns() {
+        let input = serde_json::json!({"command": "cargo test --workspace"});
+        assert!(match_tool("Bash(cargo *)", "Bash", Some(&input)));
+        assert!(!match_tool("Bash(cargo *)", "Bashful", Some(&input)));
+        // A parenthesized pattern ending in `*)` must still go through
+        // command matching, not name-glob matching.
+        let rm = serde_json::json!({"command": "rm -rf /"});
+        assert!(!match_tool("Bash(cargo *)", "Bash", Some(&rm)));
+    }
+
+    #[test]
+    fn test_tool_policy_name_glob_in_allow_and_deny_lists() {
+        let allow = ToolPolicy::AllowList {
+            tools: vec!["mcp__agentd__diagnose_*".to_string(), "Read".to_string()],
+            sandbox_bypass: vec![],
+        };
+        assert!(allow.evaluate("mcp__agentd__diagnose_system", None));
+        assert!(allow.evaluate("Read", None));
+        assert!(!allow.evaluate("mcp__agentd__restart_agent", None));
+        assert!(!allow.evaluate("Write", None));
+
+        let deny = ToolPolicy::DenyList {
+            tools: vec!["mcp__agentd__restart_*".to_string()],
+            sandbox_bypass: vec![],
+        };
+        assert!(!deny.evaluate("mcp__agentd__restart_failed_agents", None));
+        assert!(deny.evaluate("mcp__agentd__diagnose_system", None));
+    }
+
+    #[test]
+    fn test_sandbox_bypass_name_glob() {
+        let policy = ToolPolicy::AllowAll { sandbox_bypass: vec!["mcp__agentd__*".to_string()] };
+        assert!(policy.matches_sandbox_bypass("mcp__agentd__list_agents", None));
+        assert!(!policy.matches_sandbox_bypass("mcp__other__list", None));
+    }
+
+    #[test]
     fn test_tool_policy_default_is_allow_all() {
         let policy = ToolPolicy::default();
         assert_eq!(policy, ToolPolicy::AllowAll { sandbox_bypass: vec![] });
@@ -1178,6 +1290,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -1208,6 +1321,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -1236,6 +1350,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
@@ -1270,6 +1385,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1302,6 +1418,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1346,6 +1463,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -1381,6 +1499,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);
@@ -1500,6 +1619,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("docker_image"));
@@ -1536,6 +1656,7 @@ mod tests {
             }),
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("custom-image:v1"));
@@ -1582,6 +1703,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec!["/opt/configs".to_string(), "/shared/libs".to_string()],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("additional_dirs"));
@@ -1614,6 +1736,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         // Empty vec should be omitted from JSON output
@@ -1974,6 +2097,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);

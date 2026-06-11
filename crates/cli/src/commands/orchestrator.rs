@@ -192,6 +192,16 @@ pub enum OrchestratorCommand {
         #[arg(long)]
         tool_policy: Option<String>,
 
+        /// MCP servers for the agent's Claude session, as a path to a JSON
+        /// file or inline JSON.
+        ///
+        /// Accepts either a bare server map or a full {"mcpServers": {...}}
+        /// wrapper:
+        ///   --mcp-config ./mcp.json
+        ///   --mcp-config '{"agentd":{"command":"agent","args":["mcp"]}}'
+        #[arg(long = "mcp-config", value_name = "PATH_OR_JSON")]
+        mcp_config: Option<String>,
+
         /// Environment variables to set for the agent (KEY=VALUE format).
         ///
         /// Can be specified multiple times for multiple variables.
@@ -907,6 +917,7 @@ impl OrchestratorCommand {
                 attach,
                 model,
                 tool_policy,
+                mcp_config,
                 env_vars,
                 auto_clear_threshold,
                 network_policy,
@@ -931,6 +942,7 @@ impl OrchestratorCommand {
                     *attach,
                     model.as_deref(),
                     tool_policy.as_deref(),
+                    mcp_config.as_deref(),
                     env_vars,
                     *auto_clear_threshold,
                     network_policy.as_deref(),
@@ -1184,6 +1196,34 @@ fn parse_mount_flags(raw: &[String]) -> Result<Vec<orchestrator::types::VolumeMo
     Ok(mounts)
 }
 
+/// Parse a `--mcp-config` value: a path to a JSON file or inline JSON.
+///
+/// Accepts either a bare server map (`{"agentd": {...}}`) or a full
+/// `{"mcpServers": {...}}` wrapper, matching Claude Code's config format.
+fn parse_mcp_config(
+    raw: &str,
+) -> Result<std::collections::HashMap<String, orchestrator::types::McpServerConfig>> {
+    let content = if std::path::Path::new(raw).is_file() {
+        std::fs::read_to_string(raw).with_context(|| format!("Failed to read {raw}"))?
+    } else {
+        raw.to_string()
+    };
+
+    let value: serde_json::Value = serde_json::from_str(&content).context(
+        "Invalid --mcp-config: expected a JSON file path or inline JSON. \
+         Example: '{\"agentd\":{\"command\":\"agent\",\"args\":[\"mcp\"]}}'",
+    )?;
+
+    // Unwrap a {"mcpServers": {...}} wrapper if present.
+    let map = match value.get("mcpServers") {
+        Some(inner) => inner.clone(),
+        None => value,
+    };
+
+    serde_json::from_value(map)
+        .context("Invalid --mcp-config server map: each entry needs at least a \"command\"")
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn create_agent(
     client: &OrchestratorClient,
@@ -1200,6 +1240,7 @@ async fn create_agent(
     attach: bool,
     model: Option<&str>,
     tool_policy_json: Option<&str>,
+    mcp_config: Option<&str>,
     env_vars: &[String],
     auto_clear_threshold: Option<u64>,
     network_policy: Option<&str>,
@@ -1221,6 +1262,9 @@ async fn create_agent(
         Some(s) => serde_json::from_str(s).context("Invalid tool policy JSON. Example: '{\"mode\":\"allow_list\",\"tools\":[\"Read\",\"Grep\"]}'")?,
         None => Default::default(),
     };
+
+    // Parse --mcp-config from a file path or inline JSON.
+    let mcp_servers = mcp_config.map(parse_mcp_config).transpose()?;
 
     // Parse --env KEY=VALUE pairs into a HashMap.
     // Values containing '=' are handled correctly: only the first '=' is the delimiter.
@@ -1264,6 +1308,7 @@ async fn create_agent(
         resource_limits,
         additional_dirs: add_dirs.to_vec(),
         rooms: vec![],
+        mcp_servers,
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -3076,6 +3121,7 @@ mod tests {
                 resource_limits: None,
                 additional_dirs: vec![],
                 rooms: vec![],
+                mcp_servers: None,
             },
             session_id: Some("agentd-orch-abc123".to_string()),
             backend_type: Some("tmux".to_string()),
@@ -3938,6 +3984,7 @@ mod tests {
                 }),
                 additional_dirs: vec![],
                 rooms: vec![],
+                mcp_servers: None,
             },
             session_id: Some("abc123container".to_string()),
             backend_type: Some("docker".to_string()),
