@@ -54,3 +54,4 @@ export {
 	makeTriggerResponse,
 	resetQuestionSeq,
 } from "./question";
+export { makeTrigger, makeWorkflow } from "./workflow";

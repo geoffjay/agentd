@@ -16,8 +16,10 @@ import {
 	WorkflowsPage,
 } from "@/pages";
 import { AgentDetail } from "@/pages/agents/AgentDetail";
+import { AgentFormPage } from "@/pages/agents/AgentFormPage";
 import { QuestionDetail } from "@/pages/questions/QuestionDetail";
 import { WorkflowDetail } from "@/pages/workflows/WorkflowDetail";
+import { WorkflowFormPage } from "@/pages/workflows/WorkflowFormPage";
 
 function App() {
 	return (
@@ -28,12 +30,16 @@ function App() {
 					<Route element={<AppShell />}>
 						<Route index element={<DashboardPage />} />
 						<Route path="/agents" element={<AgentsPage />} />
+						<Route path="/agents/new" element={<AgentFormPage />} />
 						<Route path="/agents/:id" element={<AgentDetail />} />
+						<Route path="/agents/:id/edit" element={<AgentFormPage />} />
 						<Route path="/notifications" element={<NotificationsPage />} />
 						<Route path="/questions" element={<QuestionsPage />} />
 						<Route path="/questions/:id" element={<QuestionDetail />} />
 						<Route path="/workflows" element={<WorkflowsPage />} />
+						<Route path="/workflows/new" element={<WorkflowFormPage />} />
 						<Route path="/workflows/:id" element={<WorkflowDetail />} />
+						<Route path="/workflows/:id/edit" element={<WorkflowFormPage />} />
 						<Route path="/monitoring" element={<MonitoringPage />} />
 						<Route path="/hooks" element={<HooksPage />} />
 						<Route path="/settings" element={<SettingsPage />} />

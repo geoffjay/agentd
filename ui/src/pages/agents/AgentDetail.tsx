@@ -15,6 +15,7 @@ import {
 	ArrowLeft,
 	ChevronDown,
 	Copy,
+	Edit2,
 	Eraser,
 	FolderPlus,
 	Loader2,
@@ -877,7 +878,7 @@ export function AgentDetail() {
 						</div>
 					</div>
 
-					{/* Right: actions — Refresh (standalone) + Actions dropdown */}
+					{/* Right: actions — Refresh (standalone) + Edit + Actions dropdown */}
 					<div className="flex flex-shrink-0 items-center gap-2">
 						{/* Refresh — kept standalone: frequent, low-risk, no confirmation */}
 						<button
@@ -888,6 +889,18 @@ export function AgentDetail() {
 						>
 							<RefreshCw size={14} aria-hidden="true" />
 						</button>
+
+						{/* Edit — dedicated config edit page (not for built-in agents) */}
+						{!agent.built_in && (
+							<button
+								type="button"
+								onClick={() => navigate(`/agents/${agent.id}/edit`)}
+								className="inline-flex items-center gap-1.5 rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1"
+							>
+								<Edit2 size={14} aria-hidden="true" />
+								Edit
+							</button>
+						)}
 
 						{/* Actions dropdown */}
 						<ActionsDropdown

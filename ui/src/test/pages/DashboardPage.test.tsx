@@ -1,14 +1,13 @@
 /**
  * DashboardPage — Create Agent button wiring tests.
  *
- * Verifies that clicking the "Create Agent" button opens the dialog,
- * that submitting calls orchestratorClient.createAgent, and that the
- * dialog can be closed.
+ * The dashboard's "Create new agent" button navigates to the dedicated
+ * /agents/new page (the old slide-over dialog was removed).
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock all hooks the page depends on so the test is fast and deterministic
@@ -94,18 +93,6 @@ vi.mock("@nivo/line", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock orchestratorClient.createAgent
-// ---------------------------------------------------------------------------
-
-const mockCreateAgent = vi.fn();
-
-vi.mock("@/services/orchestrator", () => ({
-	orchestratorClient: {
-		createAgent: (...args: unknown[]) => mockCreateAgent(...args),
-	},
-}));
-
-// ---------------------------------------------------------------------------
 // Import the page AFTER all mocks are registered
 // ---------------------------------------------------------------------------
 
@@ -117,8 +104,14 @@ import { DashboardPage } from "@/pages/DashboardPage";
 
 function renderPage() {
 	return render(
-		<MemoryRouter>
-			<DashboardPage />
+		<MemoryRouter initialEntries={["/"]}>
+			<Routes>
+				<Route path="/" element={<DashboardPage />} />
+				<Route
+					path="/agents/new"
+					element={<div data-testid="agent-form-page" />}
+				/>
+			</Routes>
 		</MemoryRouter>,
 	);
 }
@@ -128,11 +121,6 @@ function renderPage() {
 // ---------------------------------------------------------------------------
 
 describe("DashboardPage — Create Agent button", () => {
-	beforeEach(() => {
-		mockCreateAgent.mockResolvedValue({ id: "agent-1", name: "test" });
-		mockRefetch.mockClear();
-	});
-
 	it("renders the Create Agent button inside AgentSummary", () => {
 		renderPage();
 		expect(
@@ -140,50 +128,12 @@ describe("DashboardPage — Create Agent button", () => {
 		).toBeInTheDocument();
 	});
 
-	it("opens the CreateAgentDialog when the button is clicked", () => {
+	it("navigates to /agents/new when the button is clicked", () => {
 		renderPage();
-		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("agent-form-page")).not.toBeInTheDocument();
 
 		fireEvent.click(screen.getByRole("button", { name: /create new agent/i }));
 
-		expect(screen.getByRole("dialog")).toBeInTheDocument();
-		expect(screen.getByLabelText("Create Agent")).toBeInTheDocument();
-	});
-
-	it("closes the dialog when Cancel is clicked", () => {
-		renderPage();
-		fireEvent.click(screen.getByRole("button", { name: /create new agent/i }));
-
-		expect(screen.getByRole("dialog")).toBeInTheDocument();
-
-		fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
-
-		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-	});
-
-	it("calls orchestratorClient.createAgent and refetch on submit", async () => {
-		renderPage();
-		fireEvent.click(screen.getByRole("button", { name: /create new agent/i }));
-
-		// Fill in required fields
-		fireEvent.change(screen.getByLabelText(/^name$/i), {
-			target: { value: "my-agent" },
-		});
-		fireEvent.change(screen.getByLabelText(/working directory/i), {
-			target: { value: "/home/user/project" },
-		});
-
-		fireEvent.click(screen.getByRole("button", { name: /^create agent$/i }));
-
-		await waitFor(() => {
-			expect(mockCreateAgent).toHaveBeenCalledWith(
-				expect.objectContaining({ name: "my-agent" }),
-			);
-		});
-
-		expect(mockRefetch).toHaveBeenCalled();
-
-		// Dialog should close after successful submit
-		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(screen.getByTestId("agent-form-page")).toBeInTheDocument();
 	});
 });

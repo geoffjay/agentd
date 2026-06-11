@@ -14,40 +14,51 @@ import { HighlightedCode } from "@/components/common";
 // Types
 // ---------------------------------------------------------------------------
 
+export interface TemplateVariableHint {
+	/** Variable name without braces, e.g. "title". */
+	name: string;
+	description: string;
+	sample: string;
+}
+
 export interface PromptTemplateEditorProps {
 	value: string;
 	onChange: (value: string) => void;
 	disabled?: boolean;
 	error?: string;
+	/**
+	 * Variable hints to display and substitute in the preview. Defaults to
+	 * the base task variables; the workflow form passes the selected
+	 * trigger's variables.
+	 */
+	variables?: TemplateVariableHint[];
+	/** Placeholder / preview fallback template. */
+	defaultTemplate?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Template variable definitions
 // ---------------------------------------------------------------------------
 
-const TEMPLATE_VARS: Array<{
-	name: string;
-	description: string;
-	sample: string;
-}> = [
-	{ name: "{{title}}", description: "Task title", sample: "Fix login bug" },
+const TEMPLATE_VARS: TemplateVariableHint[] = [
+	{ name: "title", description: "Task title", sample: "Fix login bug" },
 	{
-		name: "{{body}}",
+		name: "body",
 		description: "Task body / description",
 		sample: "Users cannot log in with SSO...",
 	},
 	{
-		name: "{{url}}",
+		name: "url",
 		description: "Source URL",
 		sample: "https://github.com/owner/repo/issues/42",
 	},
 	{
-		name: "{{labels}}",
+		name: "labels",
 		description: "Comma-separated labels",
 		sample: "bug, high-priority",
 	},
 	{
-		name: "{{source_id}}",
+		name: "source_id",
 		description: "Source identifier (e.g. issue number)",
 		sample: "42",
 	},
@@ -56,10 +67,13 @@ const TEMPLATE_VARS: Array<{
 const DEFAULT_TEMPLATE = `You are working on the following task:\n\nTitle: {{title}}\n\nDescription:\n{{body}}\n\nSource: {{url}}\nLabels: {{labels}}\n\nPlease work on this task and report back when complete.`;
 
 /** Render a template with sample values for preview */
-function renderPreview(template: string): string {
+function renderPreview(
+	template: string,
+	variables: TemplateVariableHint[],
+): string {
 	let result = template;
-	for (const v of TEMPLATE_VARS) {
-		result = result.replaceAll(v.name, v.sample);
+	for (const v of variables) {
+		result = result.replaceAll(`{{${v.name}}}`, v.sample);
 	}
 	return result;
 }
@@ -73,6 +87,8 @@ export function PromptTemplateEditor({
 	onChange,
 	disabled = false,
 	error,
+	variables = TEMPLATE_VARS,
+	defaultTemplate = DEFAULT_TEMPLATE,
 }: PromptTemplateEditorProps) {
 	const [showPreview, setShowPreview] = useState(false);
 	const [showVars, setShowVars] = useState(false);
@@ -82,7 +98,7 @@ export function PromptTemplateEditor({
 		onChange(value + varName);
 	}
 
-	const preview = renderPreview(value || DEFAULT_TEMPLATE);
+	const preview = renderPreview(value || defaultTemplate, variables);
 	const hasValue = value.trim().length > 0;
 
 	return (
@@ -93,7 +109,7 @@ export function PromptTemplateEditor({
 				onChange={(e) => onChange(e.target.value)}
 				disabled={disabled}
 				rows={6}
-				placeholder={DEFAULT_TEMPLATE}
+				placeholder={defaultTemplate}
 				className={[
 					"w-full rounded-md border px-3 py-2 text-sm font-mono",
 					"bg-th-input",
@@ -123,25 +139,25 @@ export function PromptTemplateEditor({
 				{showVars && (
 					<div className="border-t border-th-border bg-th-surface-sunken px-3 py-2">
 						<div className="flex flex-wrap gap-2">
-							{TEMPLATE_VARS.map((v) => (
+							{variables.map((v) => (
 								<button
 									key={v.name}
 									type="button"
-									onClick={() => insertVariable(v.name)}
+									onClick={() => insertVariable(`{{${v.name}}}`)}
 									disabled={disabled}
 									title={`${v.description} — click to insert`}
 									className="inline-flex items-center gap-1 rounded border border-th-border bg-th-surface px-2 py-0.5 font-mono text-xs text-th-text-link hover:bg-th-accent-subtle transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 								>
-									{v.name}
+									{`{{${v.name}}}`}
 								</button>
 							))}
 						</div>
 						<table className="mt-2 w-full text-xs">
 							<tbody>
-								{TEMPLATE_VARS.map((v) => (
+								{variables.map((v) => (
 									<tr key={v.name} className="border-t border-th-border-subtle">
 										<td className="py-1 pr-3 font-mono text-th-text-link whitespace-nowrap">
-											{v.name}
+											{`{{${v.name}}}`}
 										</td>
 										<td className="py-1 pr-3 text-th-text-muted">
 											{v.description}

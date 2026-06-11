@@ -4,7 +4,5 @@ export type { PromptTemplateEditorProps } from "./PromptTemplateEditor";
 export { PromptTemplateEditor } from "./PromptTemplateEditor";
 export type { RetryDispatchModalProps } from "./RetryDispatchModal";
 export { RetryDispatchModal } from "./RetryDispatchModal";
-export type { WorkflowFormProps } from "./WorkflowForm";
-export { WorkflowForm } from "./WorkflowForm";
 export type { WorkflowTableProps } from "./WorkflowTable";
 export { WorkflowTable } from "./WorkflowTable";

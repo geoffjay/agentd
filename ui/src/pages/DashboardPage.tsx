@@ -5,7 +5,8 @@
  */
 
 import { RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { ActivityChart } from "@/components/dashboard/ActivityChart";
 import { ActivityTimeline } from "@/components/dashboard/ActivityTimeline";
 import { AgentSummary } from "@/components/dashboard/AgentSummary";
@@ -22,8 +23,6 @@ import { useDashboardStats } from "@/hooks/useDashboardStats";
 import { useNotificationSummary } from "@/hooks/useNotificationSummary";
 import { useServiceHealth } from "@/hooks/useServiceHealth";
 import { useSystemMetrics } from "@/hooks/useSystemMetrics";
-import { CreateAgentDialog } from "@/pages/agents/CreateAgentDialog";
-import { orchestratorClient } from "@/services/orchestrator";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,7 +52,7 @@ export function DashboardPage() {
 	const systemMetrics = useSystemMetrics();
 	const dashboardStats = useDashboardStats();
 	const activityFeed = useActivityFeed();
-	const [createOpen, setCreateOpen] = useState(false);
+	const navigate = useNavigate();
 
 	// Most recent successful health check — doubles as the "Updated" stamp
 	// since service health refreshes on the same cadence as everything else.
@@ -135,7 +134,7 @@ export function DashboardPage() {
 			<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
 				<AgentSummary
 					{...agentSummary}
-					onCreateAgent={() => setCreateOpen(true)}
+					onCreateAgent={() => navigate("/agents/new")}
 				/>
 				<NotificationSummary {...notifSummary} />
 			</div>
@@ -164,16 +163,6 @@ export function DashboardPage() {
 				events={activityFeed.events}
 				loading={activityFeed.loading}
 				error={activityFeed.error}
-			/>
-
-			{/* Create agent dialog */}
-			<CreateAgentDialog
-				open={createOpen}
-				onClose={() => setCreateOpen(false)}
-				onCreate={async (request) => {
-					await orchestratorClient.createAgent(request);
-					agentSummary.refetch();
-				}}
 			/>
 		</div>
 	);

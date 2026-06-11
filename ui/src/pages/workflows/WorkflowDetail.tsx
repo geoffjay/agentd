@@ -15,10 +15,8 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { CardSkeleton } from "@/components/common/LoadingSkeleton";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { DispatchHistory } from "@/components/workflows/DispatchHistory";
-import { WorkflowForm } from "@/components/workflows/WorkflowForm";
 import { useAgents } from "@/hooks/useAgents";
 import { useWorkflowDetail } from "@/hooks/useWorkflows";
-import type { CreateWorkflowRequest } from "@/types/orchestrator";
 import { triggerSummary } from "@/utils/triggers";
 
 // ---------------------------------------------------------------------------
@@ -62,23 +60,12 @@ export function WorkflowDetail() {
 	const { id } = useParams<{ id: string }>();
 	const navigate = useNavigate();
 
-	const { workflow, loading, error, refetch, updateWorkflow, deleteWorkflow } =
+	const { workflow, loading, error, refetch, deleteWorkflow } =
 		useWorkflowDetail(id ?? "");
 
 	const { allAgents } = useAgents({ pageSize: 200 });
-	const [formOpen, setFormOpen] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const [deleting, setDeleting] = useState(false);
-
-	async function handleSave(request: CreateWorkflowRequest) {
-		await updateWorkflow({
-			name: request.name,
-			prompt_template: request.prompt_template,
-			poll_interval_secs: request.poll_interval_secs,
-			enabled: request.enabled,
-			tool_policy: request.tool_policy,
-		});
-	}
 
 	async function handleDelete() {
 		setDeleting(true);
@@ -160,7 +147,7 @@ export function WorkflowDetail() {
 					</button>
 					<button
 						type="button"
-						onClick={() => setFormOpen(true)}
+						onClick={() => navigate(`/workflows/${workflow.id}/edit`)}
 						className="inline-flex items-center gap-2 rounded-md border border-th-border-strong bg-th-surface px-3 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus:ring-th-focus-ring"
 					>
 						<Edit2 size={15} />
@@ -225,15 +212,6 @@ export function WorkflowDetail() {
 				</h2>
 				<DispatchHistory workflowId={workflow.id} workflow={workflow} />
 			</div>
-
-			{/* Edit dialog */}
-			<WorkflowForm
-				open={formOpen}
-				workflow={workflow}
-				agents={allAgents}
-				onSave={handleSave}
-				onClose={() => setFormOpen(false)}
-			/>
 
 			{/* Delete confirmation */}
 			<ConfirmDialog

@@ -8,7 +8,12 @@
 import { HttpResponse, http, ws } from "msw";
 import type { PaginatedResponse } from "@/types/common";
 import type { Agent, PendingApproval, Workflow } from "@/types/orchestrator";
-import { makeAgent, makeAgentList, makeApprovalList } from "../factories";
+import {
+	makeAgent,
+	makeAgentList,
+	makeApprovalList,
+	makeWorkflow,
+} from "../factories";
 
 const BASE = "http://localhost:17006";
 
@@ -59,6 +64,19 @@ export const orchestratorHandlers = [
 			DEFAULT_AGENTS.find((a) => a.id === params.id) ??
 			makeAgent({ id: String(params.id) });
 		return HttpResponse.json(agent);
+	}),
+
+	http.patch(`${BASE}/agents/:id`, async ({ params, request }) => {
+		const body = (await request.json()) as Record<string, unknown>;
+		const agent =
+			DEFAULT_AGENTS.find((a) => a.id === params.id) ??
+			makeAgent({ id: String(params.id) });
+		return HttpResponse.json({
+			...agent,
+			name: String(body.name ?? agent.name),
+			requires_restart: false,
+			restarted: Boolean(body.restart),
+		});
 	}),
 
 	// -------------------------------------------------------------------------
@@ -200,6 +218,32 @@ export const orchestratorHandlers = [
 
 	http.get(`${BASE}/workflows`, () =>
 		HttpResponse.json(paginated<Workflow>([])),
+	),
+
+	http.post(`${BASE}/workflows`, async ({ request }) => {
+		const body = (await request.json()) as Record<string, unknown>;
+		const workflow = makeWorkflow({
+			name: String(body.name ?? "new-workflow"),
+		});
+		return HttpResponse.json(workflow, { status: 201 });
+	}),
+
+	http.get(`${BASE}/workflows/:id`, ({ params }) =>
+		HttpResponse.json(makeWorkflow({ id: String(params.id) })),
+	),
+
+	http.put(`${BASE}/workflows/:id`, async ({ params, request }) => {
+		const body = (await request.json()) as Record<string, unknown>;
+		const workflow = makeWorkflow({ id: String(params.id) });
+		return HttpResponse.json({
+			...workflow,
+			...(body.name ? { name: String(body.name) } : {}),
+		});
+	}),
+
+	http.delete(
+		`${BASE}/workflows/:id`,
+		() => new HttpResponse(null, { status: 204 }),
 	),
 
 	// -------------------------------------------------------------------------

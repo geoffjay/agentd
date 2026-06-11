@@ -1,25 +1,24 @@
 /**
  * WorkflowList — workflow management page.
  *
- * Shows a table of all configured workflows with create, edit, delete,
- * and enable/disable actions. Includes search and pagination.
+ * Shows a table of all configured workflows with delete and
+ * enable/disable actions plus search and pagination. Creation and
+ * editing happen on the dedicated /workflows/new and
+ * /workflows/:id/edit pages.
  */
 
 import { Plus, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
-import { WorkflowForm } from "@/components/workflows/WorkflowForm";
+import { useNavigate } from "react-router-dom";
 import { WorkflowTable } from "@/components/workflows/WorkflowTable";
 import { useAgents } from "@/hooks/useAgents";
 import { useWorkflows } from "@/hooks/useWorkflows";
-import type { CreateWorkflowRequest, Workflow } from "@/types/orchestrator";
+import type { Workflow } from "@/types/orchestrator";
 
 export function WorkflowList() {
 	const [search, setSearch] = useState("");
 	const [page, setPage] = useState(1);
-	const [formOpen, setFormOpen] = useState(false);
-	const [editingWorkflow, setEditingWorkflow] = useState<
-		Workflow | undefined
-	>();
+	const navigate = useNavigate();
 
 	const {
 		workflows,
@@ -28,38 +27,19 @@ export function WorkflowList() {
 		refreshing,
 		error,
 		refetch,
-		createWorkflow,
-		updateWorkflow,
 		deleteWorkflow,
 		toggleEnabled,
-	} = useWorkflows({ search, page, pageSize: 20, paused: formOpen });
+	} = useWorkflows({ search, page, pageSize: 20 });
 
-	// We need the full agent list for the form dropdown
+	// Agent names for the table's agent column
 	const { allAgents } = useAgents({ pageSize: 200 });
 
 	function openCreate() {
-		setEditingWorkflow(undefined);
-		setFormOpen(true);
+		navigate("/workflows/new");
 	}
 
 	function openEdit(workflow: Workflow) {
-		setEditingWorkflow(workflow);
-		setFormOpen(true);
-	}
-
-	async function handleSave(request: CreateWorkflowRequest) {
-		if (editingWorkflow) {
-			await updateWorkflow(editingWorkflow.id, {
-				name: request.name,
-				prompt_template: request.prompt_template,
-				poll_interval_secs: request.poll_interval_secs,
-				enabled: request.enabled,
-				tool_policy: request.tool_policy,
-			});
-		} else {
-			await createWorkflow(request);
-		}
-		setPage(1);
+		navigate(`/workflows/${workflow.id}/edit`);
 	}
 
 	const pageCount = Math.ceil(total / 20);
@@ -162,15 +142,6 @@ export function WorkflowList() {
 					</div>
 				</div>
 			)}
-
-			{/* Create/Edit form dialog */}
-			<WorkflowForm
-				open={formOpen}
-				workflow={editingWorkflow}
-				agents={allAgents}
-				onSave={handleSave}
-				onClose={() => setFormOpen(false)}
-			/>
 		</div>
 	);
 }

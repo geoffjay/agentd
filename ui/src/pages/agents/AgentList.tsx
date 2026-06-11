@@ -5,7 +5,8 @@
  * - AgentFilters (status dropdown + name search)
  * - AgentTable (sortable, paginated, bulk-selectable)
  * - Pagination
- * - CreateAgentDialog (slide-over)
+ *
+ * Creation happens on the dedicated /agents/new page.
  *
  * URL query params are synced with the filter / page / sort state so
  * bookmarking and back-navigation work as expected.
@@ -13,14 +14,13 @@
 
 import { Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AgentFilters } from "@/components/agents/AgentFilters";
 import { AgentTable } from "@/components/agents/AgentTable";
 import { Pagination } from "@/components/common/Pagination";
 import type { SortDir, SortField } from "@/hooks/useAgents";
 import { useAgents } from "@/hooks/useAgents";
 import type { AgentStatus } from "@/types/orchestrator";
-import { CreateAgentDialog } from "./CreateAgentDialog";
 
 // ---------------------------------------------------------------------------
 // URL param helpers
@@ -57,6 +57,7 @@ const PAGE_SIZE = 20;
 
 export function AgentList() {
 	const [searchParams, setSearchParams] = useSearchParams();
+	const navigate = useNavigate();
 
 	// Derive filter/sort/page state from URL params
 	const status = toStatus(searchParams.get("status"));
@@ -64,9 +65,6 @@ export function AgentList() {
 	const page = toPage(searchParams.get("page"));
 	const sortBy = toSortField(searchParams.get("sort"));
 	const sortDir = toSortDir(searchParams.get("dir"));
-
-	// Dialog open state; also pauses auto-refresh
-	const [dialogOpen, setDialogOpen] = useState(false);
 
 	// Selection state (for bulk operations)
 	const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -79,7 +77,6 @@ export function AgentList() {
 		refreshing,
 		error,
 		refetch,
-		createAgent,
 		deleteAgent,
 		bulkDelete,
 		usageMap,
@@ -90,7 +87,6 @@ export function AgentList() {
 		pageSize: PAGE_SIZE,
 		sortBy,
 		sortDir,
-		paused: dialogOpen,
 	});
 
 	// Clear selection whenever the list data changes
@@ -140,14 +136,6 @@ export function AgentList() {
 		setParam({ sort: field, dir: newDir, page: null });
 	}
 
-	// ---------------------------------------------------------------------------
-	// Actions
-	// ---------------------------------------------------------------------------
-
-	async function handleCreate(request: Parameters<typeof createAgent>[0]) {
-		await createAgent(request);
-	}
-
 	const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
 	return (
@@ -185,7 +173,7 @@ export function AgentList() {
 					{/* Create agent button */}
 					<button
 						type="button"
-						onClick={() => setDialogOpen(true)}
+						onClick={() => navigate("/agents/new")}
 						className="flex items-center gap-1.5 rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring focus:ring-offset-1 transition-colors"
 					>
 						<Plus size={16} aria-hidden="true" />
@@ -238,13 +226,6 @@ export function AgentList() {
 					onPageChange={handlePageChange}
 				/>
 			)}
-
-			{/* Create agent dialog */}
-			<CreateAgentDialog
-				open={dialogOpen}
-				onClose={() => setDialogOpen(false)}
-				onCreate={handleCreate}
-			/>
 		</div>
 	);
 }
