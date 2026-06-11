@@ -9,7 +9,7 @@
  */
 
 import { AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AgentForm } from "@/components/agents/form/AgentForm";
 import {
@@ -23,7 +23,12 @@ import {
 	validateAgentForm,
 } from "@/components/agents/form/agentFormModel";
 import { CardSkeleton } from "@/components/common/LoadingSkeleton";
+import { YamlPanel } from "@/components/templates/YamlPanel";
 import { orchestratorClient } from "@/services/orchestrator";
+import {
+	exportAgentYaml,
+	importAgentYaml,
+} from "@/utils/yamlTemplates/agentTemplate";
 
 export function AgentFormPage() {
 	const { id } = useParams<{ id: string }>();
@@ -67,6 +72,15 @@ export function AgentFormPage() {
 		},
 		[],
 	);
+
+	const yamlExport = useMemo(() => exportAgentYaml(state), [state]);
+
+	const handleYamlImport = useCallback((text: string) => {
+		const result = importAgentYaml(text);
+		setState(result.state);
+		setErrors({});
+		return result.warnings;
+	}, []);
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();
@@ -146,7 +160,7 @@ export function AgentFormPage() {
 	}
 
 	return (
-		<div id="main-content" className="mx-auto max-w-3xl space-y-5">
+		<div id="main-content" className="mx-auto max-w-6xl space-y-5">
 			<Link
 				to={backTarget}
 				className="inline-flex items-center gap-2 text-sm text-th-text-muted hover:text-th-text-secondary"
@@ -210,39 +224,49 @@ export function AgentFormPage() {
 				</div>
 			)}
 
-			<form onSubmit={handleSubmit} noValidate>
-				<AgentForm
-					state={state}
-					errors={errors}
-					onChange={onChange}
-					disabled={submitting}
-					editing={editing}
-				/>
+			<div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+				<form onSubmit={handleSubmit} noValidate>
+					<AgentForm
+						state={state}
+						errors={errors}
+						onChange={onChange}
+						disabled={submitting}
+						editing={editing}
+					/>
 
-				<div className="mt-5 flex justify-end gap-3">
-					<button
-						type="button"
-						onClick={() => navigate(backTarget)}
-						disabled={submitting}
-						className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring disabled:opacity-50"
-					>
-						Cancel
-					</button>
-					<button
-						type="submit"
-						disabled={submitting}
-						className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring disabled:opacity-50 transition-colors"
-					>
-						{submitting
-							? editing
-								? "Saving…"
-								: "Creating…"
-							: editing
-								? "Save changes"
-								: "Create Agent"}
-					</button>
-				</div>
-			</form>
+					<div className="mt-5 flex justify-end gap-3">
+						<button
+							type="button"
+							onClick={() => navigate(backTarget)}
+							disabled={submitting}
+							className="rounded-md border border-th-border-strong bg-th-surface px-4 py-2 text-sm font-medium text-th-text-secondary hover:bg-th-surface-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring disabled:opacity-50"
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							disabled={submitting}
+							className="rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover focus:outline-none focus:ring-2 focus:ring-th-focus-ring disabled:opacity-50 transition-colors"
+						>
+							{submitting
+								? editing
+									? "Saving…"
+									: "Creating…"
+								: editing
+									? "Save changes"
+									: "Create Agent"}
+						</button>
+					</div>
+				</form>
+
+				<YamlPanel
+					title="Agent template"
+					exportedYaml={yamlExport.yaml}
+					exportWarnings={yamlExport.warnings}
+					onImport={handleYamlImport}
+					disabled={submitting}
+				/>
+			</div>
 		</div>
 	);
 }
