@@ -66,9 +66,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Restores the dependency cache that cache-warm.yml saves from main.
+      # `shared-key` must match that workflow exactly. Tag-ref runs can only
+      # restore caches created on main, and caches saved here on the tag ref
+      # would be unreachable by every future release run — so never save.
       - uses: Swatinem/rust-cache@v2
         with:
-          key: release-${{ matrix.target }}
+          shared-key: release-${{ matrix.target }}
+          save-if: false
 
       - name: Build release binaries
         run: cargo build --release --workspace --bins --target ${{ matrix.target }}
