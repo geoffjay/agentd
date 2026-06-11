@@ -40,3 +40,5 @@ chrono = { version = "0.4", features = ["serde"] }
 tokio-test = "0.4"
 axum = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
+# Round-trip tests locking JSON shapes against the real orchestrator types.
+orchestrator = { path = "../orchestrator" }

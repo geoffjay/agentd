@@ -485,6 +485,27 @@ pub struct AgentConfig {
     /// Each entry is a room name — rooms will be created if they don't exist.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rooms: Vec<String>,
+    /// MCP servers available to the agent's Claude session, keyed by server
+    /// name. When set, the orchestrator writes the map to a per-agent config
+    /// file at spawn time and launches claude with
+    /// `--mcp-config <file> --strict-mcp-config` so the agent gets exactly
+    /// these servers and nothing inherited from user-level configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
+}
+
+/// One stdio MCP server entry, mirroring Claude Code's `mcpServers` format.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct McpServerConfig {
+    /// Executable to launch (resolved via PATH or an absolute path).
+    pub command: String,
+    /// Arguments passed to the command.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+    /// Environment variables set for the server process. Values are redacted
+    /// in API responses like `AgentConfig::env`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub env: HashMap<String, String>,
 }
 
 fn default_shell() -> String {
@@ -675,6 +696,10 @@ pub struct CreateAgentRequest {
     /// Rooms the agent should automatically join when it connects.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rooms: Vec<String>,
+    /// MCP servers for the agent's Claude session (see
+    /// [`AgentConfig::mcp_servers`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
 }
 
 /// Response body for agent endpoints.
@@ -724,6 +749,15 @@ impl From<Agent> for AgentResponse {
         // to avoid leaking secrets (API keys, tokens) via the REST API.
         let mut config = agent.config;
         config.env = config.env.into_keys().map(|k| (k, ENV_REDACTED.to_string())).collect();
+        // MCP server env maps can carry the same class of secrets.
+        if let Some(servers) = config.mcp_servers.as_mut() {
+            for server in servers.values_mut() {
+                server.env = std::mem::take(&mut server.env)
+                    .into_keys()
+                    .map(|k| (k, ENV_REDACTED.to_string()))
+                    .collect();
+            }
+        }
         Self {
             id: agent.id,
             name: agent.name,
@@ -802,10 +836,16 @@ pub struct UpdateAgentRequest {
     pub rooms: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree: Option<bool>,
+    /// Full replacement of the MCP server map when present. An empty map
+    /// clears all servers. Entry env values that are exactly [`ENV_REDACTED`]
+    /// keep the currently stored value for that key (matching `env`
+    /// round-trip semantics). Omitted = unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
     /// Restart the agent process immediately so launch-affecting changes
     /// (working_dir, shell, model, env, system prompt, additional_dirs,
-    /// worktree) take effect. Defaults to `false`: the config is persisted
-    /// and applies on the next restart.
+    /// worktree, mcp_servers) take effect. Defaults to `false`: the config is
+    /// persisted and applies on the next restart.
     #[serde(default)]
     pub restart: bool,
 }
@@ -1250,6 +1290,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -1280,6 +1321,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -1308,6 +1350,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
@@ -1342,6 +1385,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1374,6 +1418,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1418,6 +1463,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -1453,6 +1499,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);
@@ -1572,6 +1619,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("docker_image"));
@@ -1608,6 +1656,7 @@ mod tests {
             }),
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("custom-image:v1"));
@@ -1654,6 +1703,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec!["/opt/configs".to_string(), "/shared/libs".to_string()],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("additional_dirs"));
@@ -1686,6 +1736,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         // Empty vec should be omitted from JSON output
@@ -2046,6 +2097,7 @@ mod tests {
             resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
+            mcp_servers: None,
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);
