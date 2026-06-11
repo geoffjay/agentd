@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.6] - 2026-06-11
+
+### Changed
+
+- Split memory API surface into a memory-api crate
+
 ## [0.4.5] - 2026-06-11
 
 ### Added
