@@ -7,8 +7,8 @@
 //! # Examples
 //!
 //! ```no_run
-//! use memory::client::MemoryClient;
-//! use memory::types::*;
+//! use memory_api::client::MemoryClient;
+//! use memory_api::types::*;
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! let client = MemoryClient::new("http://localhost:17008");
@@ -49,7 +49,7 @@ use agentd_common::types::PaginatedResponse;
 /// # Examples
 ///
 /// ```
-/// use memory::client::MemoryClient;
+/// use memory_api::client::MemoryClient;
 ///
 /// let client = MemoryClient::new("http://localhost:17008");
 /// ```

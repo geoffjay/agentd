@@ -40,8 +40,8 @@
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::*;
-use memory::client::MemoryClient;
-use memory::types::*;
+use memory_api::client::MemoryClient;
+use memory_api::types::*;
 use prettytable::{format, Cell, Row, Table};
 
 /// Subcommands for the agentd-memory service.

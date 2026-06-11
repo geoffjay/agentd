@@ -1,6 +1,6 @@
 use crate::control::app::{App, MemoryDialog, View};
 use chrono::{DateTime, Utc};
-use memory::types::MemoryType;
+use memory_api::types::MemoryType;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},

@@ -24,7 +24,7 @@ use std::str::FromStr;
 /// # Examples
 ///
 /// ```rust
-/// use memory::types::VisibilityLevel;
+/// use memory_api::types::VisibilityLevel;
 ///
 /// assert_eq!(VisibilityLevel::default(), VisibilityLevel::Public);
 ///
