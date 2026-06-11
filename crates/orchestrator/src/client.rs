@@ -38,7 +38,8 @@ use crate::types::{
     ClearContextRequest, ClearContextResponse, ConversationEventResponse, ConversationHistoryQuery,
     ConversationHistoryResponse, ConversationSummary, CreateAgentRequest, CreateProjectRequest,
     HealthResponse, PaginatedResponse, PendingApproval, Project, ProjectResponse,
-    SendMessageRequest, SendMessageResponse, SetModelRequest, ToolPolicy, UpdateProjectRequest,
+    SendMessageRequest, SendMessageResponse, SetModelRequest, ToolPolicy, UpdateAgentRequest,
+    UpdateAgentResponse, UpdateProjectRequest,
 };
 
 /// Typed HTTP client for the orchestrator service.
@@ -209,6 +210,19 @@ impl OrchestratorClient {
     ) -> Result<AgentResponse> {
         let request = SetModelRequest { model, restart };
         self.put(&format!("/agents/{}/model", id), &request).await
+    }
+
+    /// Update an agent's configuration (merge-patch semantics).
+    ///
+    /// Absent fields are left unchanged. Pass `restart: true` in the request
+    /// to relaunch the agent process so launch-affecting changes apply
+    /// immediately. See [`UpdateAgentRequest`] for env redaction rules.
+    pub async fn update_agent(
+        &self,
+        id: &Uuid,
+        request: &UpdateAgentRequest,
+    ) -> Result<UpdateAgentResponse> {
+        self.patch(&format!("/agents/{}", id), request).await
     }
 
     // -- Additional directory operations --
@@ -537,6 +551,18 @@ impl OrchestratorClient {
             .send()
             .await
             .context(format!("Failed to PUT {url}"))?;
+        Self::handle_response(response).await
+    }
+
+    async fn patch<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .patch(&url)
+            .json(body)
+            .send()
+            .await
+            .context(format!("Failed to PATCH {url}"))?;
         Self::handle_response(response).await
     }
 

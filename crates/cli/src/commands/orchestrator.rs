@@ -2648,7 +2648,7 @@ async fn update_workflow(
         prompt_template: prompt_template.map(|s| s.to_string()),
         poll_interval_secs: poll_interval,
         enabled,
-        tool_policy: None,
+        ..Default::default()
     };
 
     let workflow =

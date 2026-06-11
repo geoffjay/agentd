@@ -464,7 +464,7 @@ pub struct CreateWorkflowRequest {
 }
 
 /// Request body for updating a workflow.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpdateWorkflowRequest {
     pub name: Option<String>,
     pub prompt_template: Option<String>,
@@ -472,6 +472,12 @@ pub struct UpdateWorkflowRequest {
     pub enabled: Option<bool>,
     /// Update the tool policy for the workflow's agent.
     pub tool_policy: Option<ToolPolicy>,
+    /// Replace the trigger configuration. If the workflow is enabled, its
+    /// runner is restarted so the new trigger takes effect immediately.
+    #[serde(default, alias = "source_config")]
+    pub trigger_config: Option<TriggerConfig>,
+    /// Re-assign the workflow to a different agent (must exist and be running).
+    pub agent_id: Option<Uuid>,
 }
 
 /// Response body for workflow endpoints.
@@ -542,6 +548,27 @@ impl From<DispatchRecord> for DispatchResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_update_workflow_request_minimal_payload_still_deserializes() {
+        // Pre-existing clients send only a subset of fields.
+        let req: UpdateWorkflowRequest = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
+        assert_eq!(req.enabled, Some(true));
+        assert!(req.trigger_config.is_none());
+        assert!(req.agent_id.is_none());
+    }
+
+    #[test]
+    fn test_update_workflow_request_trigger_config_and_alias() {
+        let req: UpdateWorkflowRequest =
+            serde_json::from_str(r#"{"trigger_config": {"type": "manual"}}"#).unwrap();
+        assert!(matches!(req.trigger_config, Some(TriggerConfig::Manual {})));
+
+        // The legacy `source_config` key is accepted as an alias.
+        let req: UpdateWorkflowRequest =
+            serde_json::from_str(r#"{"source_config": {"type": "manual"}}"#).unwrap();
+        assert!(matches!(req.trigger_config, Some(TriggerConfig::Manual {})));
+    }
 
     #[test]
     fn test_trigger_config_agent_idle_trigger_type() {

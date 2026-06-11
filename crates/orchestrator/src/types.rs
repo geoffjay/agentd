@@ -693,12 +693,19 @@ pub struct AgentResponse {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Placeholder substituted for env values in API responses.
+///
+/// Also recognized on the way back in: `UpdateAgentRequest` env entries with
+/// this exact value keep the stored value for that key, so clients can
+/// round-trip a redacted config without knowing the secrets.
+pub const ENV_REDACTED: &str = "***";
+
 impl From<Agent> for AgentResponse {
     fn from(agent: Agent) -> Self {
         // Redact env values — keys are shown, but values are replaced with "***"
         // to avoid leaking secrets (API keys, tokens) via the REST API.
         let mut config = agent.config;
-        config.env = config.env.into_keys().map(|k| (k, "***".to_string())).collect();
+        config.env = config.env.into_keys().map(|k| (k, ENV_REDACTED.to_string())).collect();
         Self {
             id: agent.id,
             name: agent.name,
@@ -735,6 +742,66 @@ pub struct SetModelRequest {
     /// If false (default), the model change takes effect on next restart.
     #[serde(default)]
     pub restart: bool,
+}
+
+/// Request body for PATCH /agents/{id}.
+///
+/// Every field is optional; absent fields are left unchanged (merge-patch
+/// semantics). Plain `Option<T>` cannot express "clear this field" — for the
+/// string prompts, an empty string clears the value, and `system_prompt` /
+/// `system_prompt_file` are mutually exclusive (setting one non-empty clears
+/// the other). Use `PUT /agents/{id}/model` to clear the model.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateAgentRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub append_system_prompt: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_policy: Option<ToolPolicy>,
+    /// Full replacement of the env map when present. Entries whose value is
+    /// exactly [`ENV_REDACTED`] keep the currently stored value for that key;
+    /// keys absent from the map are removed. Omitted = unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_clear_threshold: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_dirs: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rooms: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<bool>,
+    /// Restart the agent process immediately so launch-affecting changes
+    /// (working_dir, shell, model, env, system prompt, additional_dirs,
+    /// worktree) take effect. Defaults to `false`: the config is persisted
+    /// and applies on the next restart.
+    #[serde(default)]
+    pub restart: bool,
+}
+
+/// Response body for PATCH /agents/{id}.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateAgentResponse {
+    #[serde(flatten)]
+    pub agent: AgentResponse,
+    /// True when launch-affecting fields changed on a running agent and no
+    /// restart was performed — the live process is still using the old config.
+    pub requires_restart: bool,
+    /// True when the agent process was restarted as part of this update.
+    pub restarted: bool,
 }
 
 /// Request body for POST /agents/{id}/message.
@@ -917,6 +984,50 @@ pub struct ClearContextResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_update_agent_request_minimal_payload() {
+        // All fields optional: an empty object is a valid no-op patch.
+        let req: UpdateAgentRequest = serde_json::from_str("{}").unwrap();
+        assert!(req.name.is_none());
+        assert!(req.env.is_none());
+        assert!(!req.restart);
+    }
+
+    #[test]
+    fn test_update_agent_request_partial_payload() {
+        let req: UpdateAgentRequest =
+            serde_json::from_str(r#"{"model": "opus", "restart": true}"#).unwrap();
+        assert_eq!(req.model.as_deref(), Some("opus"));
+        assert!(req.restart);
+        assert!(req.working_dir.is_none());
+    }
+
+    #[test]
+    fn test_update_agent_request_serializes_only_present_fields() {
+        let req = UpdateAgentRequest { model: Some("opus".to_string()), ..Default::default() };
+        let json = serde_json::to_value(&req).unwrap();
+        let obj = json.as_object().unwrap();
+        // Absent options are skipped; only `model` and the non-optional
+        // `restart` flag appear.
+        assert_eq!(obj.len(), 2, "unexpected fields serialized: {obj:?}");
+        assert_eq!(json["model"], "opus");
+        assert_eq!(json["restart"], false);
+    }
+
+    #[test]
+    fn test_agent_response_env_redaction_uses_shared_constant() {
+        let mut config: AgentConfig =
+            serde_json::from_value(serde_json::json!({ "working_dir": "/tmp" })).unwrap();
+        config.env.insert("ANTHROPIC_API_KEY".to_string(), "sk-secret".to_string());
+        let agent = Agent::new("redacted".to_string(), config);
+
+        let response = AgentResponse::from(agent);
+        assert_eq!(
+            response.config.env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some(ENV_REDACTED)
+        );
+    }
 
     #[test]
     fn test_tool_policy_allow_all() {

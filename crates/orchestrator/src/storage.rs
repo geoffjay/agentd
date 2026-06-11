@@ -126,19 +126,67 @@ impl AgentStorage {
         }
     }
 
-    /// Updates the mutable fields of an agent (status, session_id, backend_type, tool_policy, model, updated_at).
+    /// Updates the mutable fields of an agent (name, status, session_id,
+    /// backend_type, the full config, launch_command, pid, updated_at).
     pub async fn update(&self, agent: &Agent) -> Result<()> {
         use sea_orm::sea_query::Expr;
 
         let result = agent_entity::Entity::update_many()
+            .col_expr(agent_entity::Column::Name, Expr::value(agent.name.clone()))
             .col_expr(agent_entity::Column::Status, Expr::value(agent.status.to_string()))
             .col_expr(agent_entity::Column::SessionId, Expr::value(agent.session_id.clone()))
             .col_expr(agent_entity::Column::BackendType, Expr::value(agent.backend_type.clone()))
+            .col_expr(
+                agent_entity::Column::WorkingDir,
+                Expr::value(agent.config.working_dir.clone()),
+            )
+            .col_expr(agent_entity::Column::User, Expr::value(agent.config.user.clone()))
+            .col_expr(agent_entity::Column::Shell, Expr::value(agent.config.shell.clone()))
+            .col_expr(
+                agent_entity::Column::Interactive,
+                Expr::value(if agent.config.interactive { 1 } else { 0 }),
+            )
+            .col_expr(agent_entity::Column::Prompt, Expr::value(agent.config.prompt.clone()))
+            .col_expr(
+                agent_entity::Column::Worktree,
+                Expr::value(if agent.config.worktree { 1 } else { 0 }),
+            )
+            .col_expr(
+                agent_entity::Column::SystemPrompt,
+                Expr::value(agent.config.system_prompt.clone()),
+            )
+            .col_expr(
+                agent_entity::Column::SystemPromptFile,
+                Expr::value(agent.config.system_prompt_file.clone()),
+            )
+            .col_expr(
+                agent_entity::Column::AppendSystemPrompt,
+                Expr::value(if agent.config.append_system_prompt { 1 } else { 0 }),
+            )
             .col_expr(
                 agent_entity::Column::ToolPolicy,
                 Expr::value(serde_json::to_string(&agent.config.tool_policy).unwrap_or_default()),
             )
             .col_expr(agent_entity::Column::Model, Expr::value(agent.config.model.clone()))
+            .col_expr(
+                agent_entity::Column::Env,
+                Expr::value(
+                    serde_json::to_string(&agent.config.env).unwrap_or_else(|_| "{}".to_string()),
+                ),
+            )
+            .col_expr(
+                agent_entity::Column::AdditionalDirs,
+                Expr::value(
+                    serde_json::to_string(&agent.config.additional_dirs)
+                        .unwrap_or_else(|_| "[]".to_string()),
+                ),
+            )
+            .col_expr(
+                agent_entity::Column::Rooms,
+                Expr::value(
+                    serde_json::to_string(&agent.config.rooms).unwrap_or_else(|_| "[]".to_string()),
+                ),
+            )
             .col_expr(
                 agent_entity::Column::AutoClearThreshold,
                 Expr::value(agent.config.auto_clear_threshold.map(|v| v as i64)),

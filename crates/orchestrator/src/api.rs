@@ -68,7 +68,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/info", get(backend_info))
         .route("/agents", get(list_agents).post(create_agent))
         .route("/system-agents", get(list_system_agents))
-        .route("/agents/{id}", get(get_agent).delete(terminate_agent))
+        .route("/agents/{id}", get(get_agent).patch(update_agent).delete(terminate_agent))
         .route("/agents/{id}/message", post(send_message))
         .route("/agents/{id}/restart", post(restart_agent))
         .route("/agents/{id}/model", axum::routing::put(set_agent_model))
@@ -211,28 +211,27 @@ async fn list_system_agents(State(state): State<ApiState>) -> Result<impl IntoRe
     Ok(Json(items))
 }
 
+/// Validate that a `system_prompt_file` path exists and is a regular file,
+/// returning its canonicalized form. Shared by create and update handlers.
+fn validate_system_prompt_file(raw: String) -> Result<String, ApiError> {
+    let p = std::path::Path::new(&raw);
+    if !p.exists() {
+        return Err(ApiError::InvalidInput(format!("system_prompt_file does not exist: {raw}")));
+    }
+    if !p.is_file() {
+        return Err(ApiError::InvalidInput(format!(
+            "system_prompt_file is not a regular file: {raw}"
+        )));
+    }
+    Ok(std::fs::canonicalize(p).map(|c| c.to_string_lossy().to_string()).unwrap_or(raw))
+}
+
 async fn create_agent(
     State(state): State<ApiState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Validate and canonicalize system_prompt_file if provided.
-    let system_prompt_file = req
-        .system_prompt_file
-        .map(|raw| {
-            let p = std::path::Path::new(&raw);
-            if !p.exists() {
-                return Err(ApiError::InvalidInput(format!(
-                    "system_prompt_file does not exist: {raw}"
-                )));
-            }
-            if !p.is_file() {
-                return Err(ApiError::InvalidInput(format!(
-                    "system_prompt_file is not a regular file: {raw}"
-                )));
-            }
-            Ok(std::fs::canonicalize(p).map(|c| c.to_string_lossy().to_string()).unwrap_or(raw))
-        })
-        .transpose()?;
+    let system_prompt_file = req.system_prompt_file.map(validate_system_prompt_file).transpose()?;
 
     let config = AgentConfig {
         working_dir: req.working_dir,
@@ -305,6 +304,158 @@ async fn restart_agent(
     metrics::counter!("agents_restarted_total").increment(1);
 
     Ok(Json(AgentResponse::from(agent)))
+}
+
+/// Fields that are baked into the launch command or session at spawn time.
+/// Changing any of these on a running agent requires a restart to take effect.
+fn launch_affecting_changed(before: &Agent, after: &Agent) -> bool {
+    let (b, a) = (&before.config, &after.config);
+    b.working_dir != a.working_dir
+        || b.shell != a.shell
+        || b.model != a.model
+        || b.env != a.env
+        || b.system_prompt != a.system_prompt
+        || b.system_prompt_file != a.system_prompt_file
+        || b.append_system_prompt != a.append_system_prompt
+        || b.additional_dirs != a.additional_dirs
+        || b.worktree != a.worktree
+}
+
+/// Update an agent's configuration (merge-patch semantics).
+///
+/// Absent fields are left unchanged. The config is always persisted; pass
+/// `restart: true` to relaunch the process so launch-affecting changes apply
+/// immediately. Tool policy changes apply to the live connection without a
+/// restart. See [`UpdateAgentRequest`] for env redaction round-trip rules.
+async fn update_agent(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateAgentRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let before = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+    if before.built_in {
+        return Err(ApiError::Forbidden("built-in system agents cannot be modified".to_string()));
+    }
+
+    let mut agent = before.clone();
+
+    if let Some(name) = req.name {
+        if name.trim().is_empty() {
+            return Err(ApiError::InvalidInput("name must not be empty".to_string()));
+        }
+        agent.name = name.trim().to_string();
+    }
+
+    if let Some(working_dir) = req.working_dir {
+        if !std::path::Path::new(&working_dir).is_dir() {
+            return Err(ApiError::InvalidInput(format!(
+                "working_dir is not a directory or does not exist: {working_dir}"
+            )));
+        }
+        agent.config.working_dir = working_dir;
+    }
+
+    if let Some(shell) = req.shell {
+        agent.config.shell = shell;
+    }
+    if let Some(prompt) = req.prompt {
+        agent.config.prompt = if prompt.is_empty() { None } else { Some(prompt) };
+    }
+
+    // system_prompt and system_prompt_file are mutually exclusive: setting one
+    // non-empty clears the other; an empty string clears the field itself.
+    if let Some(sp) = req.system_prompt {
+        if sp.is_empty() {
+            agent.config.system_prompt = None;
+        } else {
+            agent.config.system_prompt = Some(sp);
+            agent.config.system_prompt_file = None;
+        }
+    }
+    if let Some(spf) = req.system_prompt_file {
+        if spf.is_empty() {
+            agent.config.system_prompt_file = None;
+        } else {
+            agent.config.system_prompt_file = Some(validate_system_prompt_file(spf)?);
+            agent.config.system_prompt = None;
+        }
+    }
+    if let Some(append) = req.append_system_prompt {
+        agent.config.append_system_prompt = append;
+    }
+
+    if let Some(model) = req.model {
+        agent.config.model = Some(model);
+    }
+    if let Some(policy) = req.tool_policy {
+        agent.config.tool_policy = policy;
+    }
+
+    // Env: full replacement, except the redaction sentinel keeps the stored
+    // value so clients can round-trip a redacted config (see ENV_REDACTED).
+    if let Some(env) = req.env {
+        let mut merged = HashMap::with_capacity(env.len());
+        for (key, value) in env {
+            if value == ENV_REDACTED {
+                match before.config.env.get(&key) {
+                    Some(stored) => {
+                        merged.insert(key, stored.clone());
+                    }
+                    None => {
+                        return Err(ApiError::InvalidInput(format!(
+                            "env value for key '{key}' is the redaction placeholder but the key has no stored value"
+                        )));
+                    }
+                }
+            } else {
+                merged.insert(key, value);
+            }
+        }
+        agent.config.env = merged;
+    }
+
+    if let Some(threshold) = req.auto_clear_threshold {
+        agent.config.auto_clear_threshold = Some(threshold);
+    }
+
+    if let Some(dirs) = req.additional_dirs {
+        let mut canonical_dirs = Vec::with_capacity(dirs.len());
+        for dir in dirs {
+            if !std::path::Path::new(&dir).is_dir() {
+                return Err(ApiError::InvalidInput(format!(
+                    "additional_dirs entry is not a directory or does not exist: {dir}"
+                )));
+            }
+            let canonical =
+                std::fs::canonicalize(&dir).map(|p| p.to_string_lossy().to_string()).unwrap_or(dir);
+            if !canonical_dirs.contains(&canonical) {
+                canonical_dirs.push(canonical);
+            }
+        }
+        agent.config.additional_dirs = canonical_dirs;
+    }
+
+    if let Some(rooms) = req.rooms {
+        agent.config.rooms = rooms;
+    }
+    if let Some(worktree) = req.worktree {
+        agent.config.worktree = worktree;
+    }
+
+    agent.updated_at = chrono::Utc::now();
+
+    let needs_restart = launch_affecting_changed(&before, &agent);
+    let agent = state.manager.update_agent_and_maybe_restart(agent, req.restart).await?;
+
+    info!(agent_id = %id, restarted = req.restart, "Agent updated via API");
+    metrics::counter!("agents_updated_total").increment(1);
+
+    let requires_restart = needs_restart && !req.restart && agent.status == AgentStatus::Running;
+    Ok(Json(UpdateAgentResponse {
+        agent: AgentResponse::from(agent),
+        requires_restart,
+        restarted: req.restart,
+    }))
 }
 
 /// Send a message (prompt) to a running non-interactive agent.

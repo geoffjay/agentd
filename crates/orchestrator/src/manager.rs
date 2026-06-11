@@ -673,6 +673,31 @@ impl AgentManager {
         Ok(agent)
     }
 
+    /// Persist an already-merged agent config and optionally restart the
+    /// process so launch-affecting changes take effect.
+    ///
+    /// Pushes the tool policy to the live WebSocket registry (policies apply
+    /// without a restart). When `restart` is true the agent is relaunched in
+    /// any status — a stopped or failed agent comes back up with the new
+    /// config, matching `POST /agents/{id}/restart` semantics. If the restart
+    /// fails the config is still persisted and the agent is marked Failed.
+    pub async fn update_agent_and_maybe_restart(
+        &self,
+        mut agent: Agent,
+        restart: bool,
+    ) -> anyhow::Result<Agent> {
+        self.storage.update(&agent).await?;
+
+        // Apply the tool policy to the live connection immediately.
+        self.registry.set_policy(agent.id, agent.config.tool_policy.clone()).await;
+
+        if restart {
+            agent = self.restart_agent(&agent).await?;
+        }
+
+        Ok(agent)
+    }
+
     /// Clear the agent's conversation context by ending the current session,
     /// restarting the Claude process, and opening a new session row.
     ///

@@ -83,13 +83,21 @@ impl SchedulerStorage {
         models.into_iter().map(model_to_workflow).collect()
     }
 
-    /// Updates mutable workflow fields (name, prompt_template, poll_interval_secs, enabled, tool_policy, updated_at).
+    /// Updates mutable workflow fields (name, agent_id, trigger config,
+    /// prompt_template, poll_interval_secs, enabled, tool_policy, updated_at).
     pub async fn update_workflow(&self, workflow: &WorkflowConfig) -> Result<()> {
         use sea_orm::sea_query::Expr;
+        let trigger_config_json = serde_json::to_string(&workflow.trigger_config)?;
         let tool_policy_json = serde_json::to_string(&workflow.tool_policy).unwrap_or_default();
 
         let result = workflow_entity::Entity::update_many()
             .col_expr(workflow_entity::Column::Name, Expr::value(workflow.name.clone()))
+            .col_expr(workflow_entity::Column::AgentId, Expr::value(workflow.agent_id.to_string()))
+            .col_expr(
+                workflow_entity::Column::TriggerType,
+                Expr::value(workflow.trigger_config.trigger_type().to_string()),
+            )
+            .col_expr(workflow_entity::Column::TriggerConfig, Expr::value(trigger_config_json))
             .col_expr(
                 workflow_entity::Column::PromptTemplate,
                 Expr::value(workflow.prompt_template.clone()),

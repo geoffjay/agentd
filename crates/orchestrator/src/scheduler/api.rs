@@ -42,12 +42,11 @@ pub fn workflow_routes(state: WorkflowState) -> Router {
         .with_state(state)
 }
 
-async fn create_workflow(
-    State(state): State<WorkflowState>,
-    Json(req): Json<CreateWorkflowRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    // Validate the prompt template
-    let warnings = validate_template(&req.prompt_template);
+/// Validate a workflow prompt template, rejecting hard errors (unknown
+/// variables, unclosed placeholders, empty template). Shared by the create
+/// and update handlers.
+fn validate_prompt_template(template: &str) -> Result<(), ApiError> {
+    let warnings = validate_template(template);
     let errors: Vec<&String> = warnings
         .iter()
         .filter(|w| {
@@ -60,9 +59,14 @@ async fn create_workflow(
             errors.iter().map(|e| e.as_str()).collect::<Vec<_>>().join("; ")
         )));
     }
+    Ok(())
+}
 
-    // Validate trigger configuration.
-    match &req.trigger_config {
+/// Full trigger validation: per-type required fields, cron/datetime parsing,
+/// composite depth, implementation status, and external credential checks.
+/// Shared by the create and update handlers.
+fn validate_trigger_config(trigger_config: &TriggerConfig) -> Result<(), ApiError> {
+    match trigger_config {
         TriggerConfig::GithubIssues { owner, repo, .. }
         | TriggerConfig::GithubPullRequests { owner, repo, .. } => {
             if owner.trim().is_empty() || repo.trim().is_empty() {
@@ -168,7 +172,7 @@ async fn create_workflow(
                 }
                 Ok(())
             }
-            if let Err(msg) = check_depth(&req.trigger_config, 0) {
+            if let Err(msg) = check_depth(trigger_config, 0) {
                 return Err(ApiError::InvalidInput(msg));
             }
         }
@@ -196,7 +200,7 @@ async fn create_workflow(
                     "GitLab trigger requires non-empty 'owner' and 'repo'".to_string(),
                 ));
             }
-            let valid_states: &[&str] = match &req.trigger_config {
+            let valid_states: &[&str] = match trigger_config {
                 TriggerConfig::GitlabIssues { .. } => &["opened", "closed", "all"],
                 _ => &["opened", "closed", "merged", "all"],
             };
@@ -211,10 +215,10 @@ async fn create_workflow(
     }
 
     // Reject trigger types that are not yet implemented.
-    if !req.trigger_config.is_implemented() {
+    if !trigger_config.is_implemented() {
         return Err(ApiError::InvalidInput(format!(
             "Trigger type '{}' is not yet implemented. See documentation for currently supported trigger types.",
-            req.trigger_config.trigger_type()
+            trigger_config.trigger_type()
         )));
     }
 
@@ -222,7 +226,7 @@ async fn create_workflow(
     // them here so callers get a clear error at creation time rather than a
     // silent failure on the first poll. The key value is never included in any
     // error message.
-    if matches!(req.trigger_config, TriggerConfig::LinearIssues { .. })
+    if matches!(trigger_config, TriggerConfig::LinearIssues { .. })
         && !crate::scheduler::linear::LinearConfig::is_configured()
     {
         return Err(ApiError::InvalidInput(
@@ -234,7 +238,7 @@ async fn create_workflow(
     }
 
     if matches!(
-        req.trigger_config,
+        trigger_config,
         TriggerConfig::GitlabIssues { .. } | TriggerConfig::GitlabMergeRequests { .. }
     ) && !crate::scheduler::gitlab::GitlabConfig::is_configured()
     {
@@ -246,19 +250,33 @@ async fn create_workflow(
         ));
     }
 
-    // Validate that the agent exists and is running.
-    let agent = state
-        .manager
-        .get_agent(&req.agent_id)
+    Ok(())
+}
+
+/// Validate that the agent exists and is running. Shared by the create and
+/// update handlers; both reject with 400 to match historical create behavior.
+async fn validate_agent_running(manager: &AgentManager, agent_id: &Uuid) -> Result<(), ApiError> {
+    let agent = manager
+        .get_agent(agent_id)
         .await?
         .ok_or(ApiError::InvalidInput("Agent not found".to_string()))?;
 
     if agent.status != AgentStatus::Running {
         return Err(ApiError::InvalidInput(format!(
             "Agent {} is not running (status: {})",
-            req.agent_id, agent.status
+            agent_id, agent.status
         )));
     }
+    Ok(())
+}
+
+async fn create_workflow(
+    State(state): State<WorkflowState>,
+    Json(req): Json<CreateWorkflowRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_prompt_template(&req.prompt_template)?;
+    validate_trigger_config(&req.trigger_config)?;
+    validate_agent_running(&state.manager, &req.agent_id).await?;
 
     let now = Utc::now();
     let config = WorkflowConfig {
@@ -318,7 +336,26 @@ async fn update_workflow(
     let mut workflow =
         state.scheduler.storage().get_workflow(&id).await?.ok_or(ApiError::NotFound)?;
 
+    // Validate present fields before mutating anything, so a failed update
+    // leaves the stored workflow and its runner untouched.
+    if let Some(trigger_config) = &req.trigger_config {
+        validate_trigger_config(trigger_config)?;
+    }
+    if let Some(template) = &req.prompt_template {
+        validate_prompt_template(template)?;
+    }
+    if let Some(agent_id) = &req.agent_id {
+        validate_agent_running(&state.manager, agent_id).await?;
+    }
+
     let was_enabled = workflow.enabled;
+    // Any of these fields is captured by a live runner at start time, so an
+    // enabled workflow's runner must be restarted for changes to take effect.
+    let runner_relevant_change = req.trigger_config.is_some()
+        || req.agent_id.is_some()
+        || req.prompt_template.is_some()
+        || req.poll_interval_secs.is_some()
+        || req.tool_policy.is_some();
 
     if let Some(name) = req.name {
         workflow.name = name;
@@ -335,19 +372,35 @@ async fn update_workflow(
     if let Some(policy) = req.tool_policy {
         workflow.tool_policy = policy;
     }
+    if let Some(trigger_config) = req.trigger_config {
+        workflow.trigger_config = trigger_config;
+    }
+    if let Some(agent_id) = req.agent_id {
+        workflow.agent_id = agent_id;
+    }
     workflow.updated_at = Utc::now();
 
     state.scheduler.storage().update_workflow(&workflow).await?;
 
-    // Handle enable/disable transitions.
-    if !was_enabled && workflow.enabled {
-        // Enabling: start the runner.
-        if let Err(e) = state.scheduler.start_workflow(workflow.clone()).await {
-            tracing::warn!(%e, "Failed to start workflow after enabling");
+    // Runner lifecycle. `stop_workflow` may fail when no runner is live
+    // (e.g. an earlier start failed despite enabled=true) — ignore that and
+    // proceed; start failures are logged but the update is already persisted.
+    match (was_enabled, workflow.enabled) {
+        (false, true) => {
+            if let Err(e) = state.scheduler.start_workflow(workflow.clone()).await {
+                tracing::warn!(%e, "Failed to start workflow after enabling");
+            }
         }
-    } else if was_enabled && !workflow.enabled {
-        // Disabling: stop the runner.
-        let _ = state.scheduler.stop_workflow(&id).await;
+        (true, false) => {
+            let _ = state.scheduler.stop_workflow(&id).await;
+        }
+        (true, true) if runner_relevant_change => {
+            let _ = state.scheduler.stop_workflow(&id).await;
+            if let Err(e) = state.scheduler.start_workflow(workflow.clone()).await {
+                tracing::warn!(%e, "Failed to restart workflow runner after update");
+            }
+        }
+        _ => {}
     }
 
     Ok(Json(WorkflowResponse::from(workflow)))
@@ -732,4 +785,90 @@ async fn purge_queue(
     info!(queue_name = %name, deleted, "Queue purged");
 
     Ok(Json(serde_json::json!({ "deleted": deleted })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_trigger_config_cron() {
+        assert!(validate_trigger_config(&TriggerConfig::Cron {
+            expression: "0 9 * * MON-FRI".to_string()
+        })
+        .is_ok());
+        assert!(validate_trigger_config(&TriggerConfig::Cron {
+            expression: "not a cron".to_string()
+        })
+        .is_err());
+        assert!(
+            validate_trigger_config(&TriggerConfig::Cron { expression: "  ".to_string() }).is_err()
+        );
+    }
+
+    #[test]
+    fn test_validate_trigger_config_github_requires_owner_and_repo() {
+        assert!(validate_trigger_config(&TriggerConfig::GithubIssues {
+            owner: "".to_string(),
+            repo: "agentd".to_string(),
+            labels: vec![],
+            state: "open".to_string(),
+            assignee: None,
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn test_validate_trigger_config_composite_depth_and_arity() {
+        let leaf = || TriggerConfig::Manual {};
+        // Fewer than 2 sub-triggers is rejected.
+        let single = TriggerConfig::Composite {
+            mode: "or".to_string(),
+            triggers: vec![leaf()],
+            correlation_window_secs: None,
+        };
+        assert!(validate_trigger_config(&single).is_err());
+
+        // Nesting beyond 3 levels is rejected.
+        let mut nested = TriggerConfig::Composite {
+            mode: "or".to_string(),
+            triggers: vec![leaf(), leaf()],
+            correlation_window_secs: None,
+        };
+        for _ in 0..3 {
+            nested = TriggerConfig::Composite {
+                mode: "or".to_string(),
+                triggers: vec![nested, leaf()],
+                correlation_window_secs: None,
+            };
+        }
+        assert!(validate_trigger_config(&nested).is_err());
+
+        // A flat 2-trigger composite is fine.
+        let flat = TriggerConfig::Composite {
+            mode: "and".to_string(),
+            triggers: vec![leaf(), leaf()],
+            correlation_window_secs: Some(60),
+        };
+        assert!(validate_trigger_config(&flat).is_ok());
+    }
+
+    #[test]
+    fn test_validate_trigger_config_queue_name_rules() {
+        let queue = |name: &str| TriggerConfig::Queue {
+            queue_name: name.to_string(),
+            poll_interval_secs: None,
+            visibility_timeout_secs: None,
+        };
+        assert!(validate_trigger_config(&queue("review-queue")).is_ok());
+        assert!(validate_trigger_config(&queue("")).is_err());
+        assert!(validate_trigger_config(&queue("bad name?")).is_err());
+    }
+
+    #[test]
+    fn test_validate_prompt_template() {
+        assert!(validate_prompt_template("Work on {{title}}: {{body}}").is_ok());
+        assert!(validate_prompt_template("Broken {{title").is_err());
+        assert!(validate_prompt_template("Unknown {{not_a_real_variable}}").is_err());
+    }
 }
