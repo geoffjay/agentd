@@ -465,7 +465,31 @@ async fn send_message(
     Json(req): Json<SendMessageRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Verify agent exists and is running.
-    let agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+    let mut agent = state.manager.get_agent(&id).await?.ok_or(ApiError::NotFound)?;
+
+    // Lazy built-in agents stay dormant until first contact: spawn on
+    // demand, then wait for the session to connect before delivering.
+    if agent.built_in && agent.status != AgentStatus::Running {
+        agent = state
+            .manager
+            .ensure_builtin_running(&id)
+            .await
+            .map_err(|e| ApiError::Internal(e.context("Failed to wake system agent")))?;
+
+        // SDK-mode delivery goes over the WebSocket, which needs the freshly
+        // spawned Claude process to connect back first.  Subprocess stdio
+        // backends register immediately; PTY/interactive agents bypass the
+        // registry entirely.
+        if !agent.config.interactive && !state.registry.is_connected(&id).await {
+            for _ in 0..30 {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                if state.registry.is_connected(&id).await {
+                    break;
+                }
+            }
+        }
+    }
+
     if agent.status != AgentStatus::Running {
         return Err(ApiError::Conflict(format!(
             "Agent {} is not running (status: {})",

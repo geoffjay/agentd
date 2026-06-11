@@ -311,63 +311,186 @@ impl AgentManager {
 
     /// Bootstrap built-in system agents at orchestrator startup.
     ///
-    /// Called once after [`reconcile`] so that reconciliation has already
-    /// handled any surviving user agents before we insert/restart system agents.
+    /// Called once after [`reconcile`](Self::reconcile) so that reconciliation
+    /// has already handled any surviving user agents before we insert/restart
+    /// system agents.
     ///
-    /// Behaviour:
-    /// 1. Query storage for existing built-in agents.
-    /// 2. If the system agent exists and is `Running` → skip (reconcile handled it).
-    /// 3. If it exists but is `Stopped` or `Failed` → restart it.
-    /// 4. If it doesn't exist → create it via `spawn_agent()` with `built_in: true`.
+    /// For each definition in [`builtin_agent_defs`](crate::system_agents::builtin_agent_defs):
+    /// 1. **Missing** — eager defs are spawned via `spawn_agent()`; lazy defs
+    ///    get a dormant `Pending` record and are spawned on first message
+    ///    (see [`ensure_builtin_running`](Self::ensure_builtin_running)).
+    /// 2. **Config drift** — when the stored config no longer matches the
+    ///    definition (new prompt, policy, model, ... in this release), the
+    ///    stored config is refreshed *before* any restart so a failed restart
+    ///    still retries with the new config on the next boot.  Running agents
+    ///    are restarted to pick the refresh up; dormant agents pick it up on
+    ///    their next spawn.
+    /// 3. **Stopped/failed eager agents** — restarted (lazy agents are left
+    ///    dormant).
+    ///
+    /// Stored built-ins whose name is no longer in the registry are removed
+    /// as orphans — built-ins cannot be deleted via the API, so leaving them
+    /// would create undeletable zombies.
+    ///
+    /// Per-definition errors are logged and never abort the loop.
     pub async fn bootstrap_system_agents(&self) -> anyhow::Result<()> {
-        use crate::system_agents::build_system_agent_config;
-        use crate::system_agents::SYSTEM_AGENT_NAME;
+        use crate::system_agents::{builtin_agent_defs, config_drifted, refreshed_config};
 
+        let defs = builtin_agent_defs();
         let existing = self.storage.list_system_agents().await?;
-        let system_agent = existing.into_iter().find(|a| a.name == SYSTEM_AGENT_NAME);
 
-        match system_agent {
-            Some(agent) if agent.status == AgentStatus::Running => {
-                // Reconciliation already handled it — nothing to do.
-                info!(
-                    agent_id = %agent.id,
-                    "System agent '{}' is already running, skipping bootstrap",
-                    SYSTEM_AGENT_NAME
-                );
-            }
-            Some(agent) => {
-                // Exists but stopped/failed — restart it.
-                info!(
-                    agent_id = %agent.id,
-                    status = %agent.status,
-                    "Restarting system agent '{}'",
-                    SYSTEM_AGENT_NAME
-                );
-                if let Err(e) = self.restart_agent(&agent).await {
-                    error!(
-                        agent_id = %agent.id,
-                        %e,
-                        "Failed to restart system agent '{}'",
-                        SYSTEM_AGENT_NAME
-                    );
-                }
-            }
-            None => {
-                // First run — create the system agent.
-                info!("Bootstrapping system agent '{}'", SYSTEM_AGENT_NAME);
-                let config = build_system_agent_config();
-                match self.spawn_agent(SYSTEM_AGENT_NAME.to_string(), config, true).await {
-                    Ok(agent) => {
-                        info!(agent_id = %agent.id, "System agent '{}' spawned", SYSTEM_AGENT_NAME)
+        for def in &defs {
+            let stored = existing.iter().find(|a| a.name == def.name);
+            let fresh = def.build_config();
+
+            match stored {
+                None if def.lazy => {
+                    info!("Bootstrapping dormant system agent '{}'", def.name);
+                    if let Err(e) = self.create_dormant_agent(def.name.to_string(), fresh).await {
+                        error!(%e, "Failed to create dormant system agent '{}'", def.name);
                     }
-                    Err(e) => {
-                        error!(%e, "Failed to spawn system agent '{}'", SYSTEM_AGENT_NAME)
+                }
+                None => {
+                    info!("Bootstrapping system agent '{}'", def.name);
+                    match self.spawn_agent(def.name.to_string(), fresh, true).await {
+                        Ok(agent) => {
+                            info!(agent_id = %agent.id, "System agent '{}' spawned", def.name)
+                        }
+                        Err(e) => error!(%e, "Failed to spawn system agent '{}'", def.name),
+                    }
+                }
+                Some(agent) => {
+                    let mut agent = agent.clone();
+                    let drifted = config_drifted(&agent.config, &fresh);
+
+                    if drifted {
+                        // Persist the refreshed config BEFORE restarting so a
+                        // failed restart still retries with the new config.
+                        info!(
+                            agent_id = %agent.id,
+                            "System agent '{}' definition drifted, refreshing config",
+                            def.name
+                        );
+                        agent.config = refreshed_config(&agent.config, fresh);
+                        agent.updated_at = Utc::now();
+                        if let Err(e) = self.storage.update(&agent).await {
+                            error!(
+                                agent_id = %agent.id,
+                                %e,
+                                "Failed to persist refreshed config for '{}'",
+                                def.name
+                            );
+                            continue;
+                        }
+                    }
+
+                    let should_restart = if drifted {
+                        // Running agents must restart to pick up the refresh;
+                        // dormant/stopped lazy agents pick it up on next spawn.
+                        agent.status == AgentStatus::Running || !def.lazy
+                    } else {
+                        // No drift: keep eager agents alive (current
+                        // behavior); leave lazy agents dormant.
+                        agent.status != AgentStatus::Running && !def.lazy
+                    };
+
+                    if should_restart {
+                        info!(
+                            agent_id = %agent.id,
+                            status = %agent.status,
+                            drifted,
+                            "Restarting system agent '{}'",
+                            def.name
+                        );
+                        if let Err(e) = self.restart_agent(&agent).await {
+                            error!(
+                                agent_id = %agent.id,
+                                %e,
+                                "Failed to restart system agent '{}'",
+                                def.name
+                            );
+                        }
+                    } else if agent.status == AgentStatus::Running {
+                        info!(
+                            agent_id = %agent.id,
+                            "System agent '{}' is already running, skipping bootstrap",
+                            def.name
+                        );
                     }
                 }
             }
         }
 
+        // Remove orphaned built-ins: rows whose name left the registry.
+        for agent in existing.iter().filter(|a| !defs.iter().any(|d| d.name == a.name)) {
+            info!(
+                agent_id = %agent.id,
+                name = %agent.name,
+                "Removing orphaned built-in agent (no longer in the registry)"
+            );
+            if let Err(e) = self.remove_built_in_agent(agent).await {
+                error!(agent_id = %agent.id, %e, "Failed to remove orphaned built-in agent");
+            }
+        }
+
         Ok(())
+    }
+
+    /// Create a dormant built-in agent: DB record only, no backend session.
+    ///
+    /// The record is created with status `Pending` and `built_in = true`.
+    /// Reconciliation ignores `Pending` agents, so the record stays dormant
+    /// until [`ensure_builtin_running`](Self::ensure_builtin_running) spawns
+    /// it on first message.
+    async fn create_dormant_agent(
+        &self,
+        name: String,
+        config: AgentConfig,
+    ) -> anyhow::Result<Agent> {
+        let mut agent = Agent::new(name, config);
+        agent.built_in = true;
+        self.storage.add(&agent).await?;
+        info!(agent_id = %agent.id, name = %agent.name, "Dormant system agent record created");
+        Ok(agent)
+    }
+
+    /// Remove a built-in agent: kill any session and delete the DB record.
+    ///
+    /// `terminate_agent` deliberately bails on `built_in` agents, so orphan
+    /// cleanup needs this private path.  Only ever called with rows returned
+    /// by `list_system_agents()` (`built_in = true`), never for user agents.
+    async fn remove_built_in_agent(&self, agent: &Agent) -> anyhow::Result<()> {
+        if let Some(ref session) = agent.session_id {
+            if let Err(e) = self.backend.kill_session(session).await {
+                warn!(agent_id = %agent.id, %e, "Failed to kill session for orphaned built-in");
+            }
+        }
+        self.registry.unregister(&agent.id).await;
+        self.storage.delete(&agent.id).await?;
+        Ok(())
+    }
+
+    /// Ensure a built-in agent has a live session, spawning it if dormant.
+    ///
+    /// Used by the message-delivery path to wake lazy system agents on first
+    /// contact.  Returns the (possibly freshly spawned) agent record.  For
+    /// non-built-in agents this returns the record unchanged — waking user
+    /// agents is not this method's business.
+    pub async fn ensure_builtin_running(&self, id: &Uuid) -> anyhow::Result<Agent> {
+        let agent =
+            self.storage.get(id).await?.ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+
+        if !agent.built_in || agent.status == AgentStatus::Running {
+            return Ok(agent);
+        }
+
+        info!(
+            agent_id = %agent.id,
+            name = %agent.name,
+            status = %agent.status,
+            "Waking dormant system agent"
+        );
+        self.restart_agent(&agent).await
     }
 
     /// Reconcile DB state with actual backend sessions and WebSocket connections on startup.

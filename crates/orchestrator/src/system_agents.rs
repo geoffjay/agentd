@@ -1,21 +1,23 @@
 //! Built-in system agent definitions.
 //!
 //! This module defines the programmatically-managed system agents that the
-//! orchestrator spawns automatically at startup.  System agents are always
+//! orchestrator manages automatically at startup.  System agents are always
 //! present while the service is running and cannot be deleted via the
 //! user-facing API.
 //!
 //! # Design
 //!
-//! A single omniscient agent named `agentd-system` acts as a domain expert on
-//! the full agentd platform.  It auto-joins a `system` communicate room and
-//! uses a restrictive tool policy that prevents destructive operations while
-//! still allowing read-oriented tooling for diagnostics and information
-//! gathering.
+//! Each built-in agent is described by a [`SystemAgentDef`] in the
+//! [`builtin_agent_defs`] registry.  At startup the orchestrator iterates the
+//! registry: eager agents are spawned immediately, lazy agents get a dormant
+//! database record and are spawned on first message.  When a definition
+//! changes between releases (prompt, policy, model, ...), the stored config is
+//! refreshed and the agent restarted so deployments pick up the new
+//! definition — see [`config_drifted`].
 //!
-//! The system prompt and tool policy constants defined here are embedded
-//! directly as Rust string literals so that they are version-controlled with
-//! the code and require no files on disk.
+//! The system prompts and tool policies defined here are embedded directly as
+//! Rust string literals so that they are version-controlled with the code and
+//! require no files on disk.
 
 use crate::types::{AgentConfig, ToolPolicy};
 use std::collections::HashMap;
@@ -23,24 +25,86 @@ use std::collections::HashMap;
 /// Name of the primary built-in system agent.
 pub const SYSTEM_AGENT_NAME: &str = "agentd-system";
 
-/// Build the [`AgentConfig`] for the agentd system agent.
+/// How a built-in agent's `working_dir` is derived at bootstrap time.
+#[derive(Debug, Clone, Copy)]
+pub enum WorkingDirStrategy {
+    /// The orchestrator process's current working directory.
+    ///
+    /// The value is captured when the agent record is first created and is
+    /// deliberately excluded from drift detection (see [`refreshed_config`]):
+    /// the orchestrator may be launched from a different directory on a later
+    /// boot (launchd vs. manual) and that must not restart-loop the agent.
+    CurrentDir,
+}
+
+/// Declarative definition of one built-in system agent.
 ///
-/// The configuration sets:
-/// - An inline system prompt covering the agentd architecture and services.
-///   Version/build info is interpolated at call time from `CARGO_PKG_VERSION`.
-/// - A restrictive `AllowList` tool policy (read-only tooling only).
-/// - Automatic membership in the `system` communicate room.
-/// - The `sonnet` model alias.
+/// `prompt` and `tool_policy` are function pointers (not values) so that each
+/// bootstrap evaluates them fresh — they may incorporate the crate version,
+/// loaded service configuration, or environment gates, all of which
+/// participate in drift detection.
+pub struct SystemAgentDef {
+    /// Unique agent name; doubles as the registry identity for drift and
+    /// orphan detection.
+    pub name: &'static str,
+    /// Model alias passed to the Claude session.
+    pub model: &'static str,
+    /// Communicate rooms auto-joined on connect.
+    pub rooms: &'static [&'static str],
+    /// How `working_dir` is derived when the record is first created.
+    pub working_dir: WorkingDirStrategy,
+    /// When `true`, bootstrap creates a dormant record only; the session is
+    /// spawned on the first message delivered to the agent.
+    pub lazy: bool,
+    /// Builds the full system prompt.
+    pub prompt: fn() -> String,
+    /// Builds the agent's tool policy.
+    pub tool_policy: fn() -> ToolPolicy,
+}
+
+impl SystemAgentDef {
+    /// Assemble a fresh [`AgentConfig`] from this definition.
+    pub fn build_config(&self) -> AgentConfig {
+        let working_dir = match self.working_dir {
+            WorkingDirStrategy::CurrentDir => std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "/".to_string()),
+        };
+
+        AgentConfig {
+            working_dir,
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: false,
+            system_prompt: Some((self.prompt)()),
+            system_prompt_file: None,
+            append_system_prompt: false,
+            tool_policy: (self.tool_policy)(),
+            model: Some(self.model.to_string()),
+            env: HashMap::new(),
+            auto_clear_threshold: None,
+            network_policy: None,
+            docker_image: None,
+            extra_mounts: None,
+            resource_limits: None,
+            additional_dirs: vec![],
+            rooms: self.rooms.iter().map(|r| r.to_string()).collect(),
+        }
+    }
+}
+
+/// The registry of all built-in system agents.
 ///
-/// # Prompt authorship
-///
-/// The prompt is authored to cover:
-/// - Service inventory with ports and responsibilities
-/// - Agent lifecycle (create → spawn → connect → message → terminate)
-/// - Common CLI operations (`agent list`, `agent send-message`, etc.)
-/// - Communicate room system (rooms, members, broadcasting)
-/// - Diagnostics (health checks, log locations, debug endpoints)
-/// - Tool policy rationale (why certain operations are blocked)
+/// Bootstrap iterates this list: missing agents are created, drifted configs
+/// are refreshed, and stored built-ins whose name is no longer listed here
+/// are removed as orphans.
+pub fn builtin_agent_defs() -> Vec<SystemAgentDef> {
+    vec![system_agent_def()]
+}
+
+/// Definition of the `agentd-system` domain-expert agent.
 ///
 /// # Tool policy rationale
 ///
@@ -54,34 +118,53 @@ pub const SYSTEM_AGENT_NAME: &str = "agentd-system";
 /// Notably absent: `Write`, `Edit`, `NotebookEdit`, unrestricted `Bash`.
 /// This prevents the system agent from modifying source code, configuration
 /// files, or agent state — it can explain and diagnose but not act.
-pub fn build_system_agent_config() -> AgentConfig {
-    // Include version/build metadata in the prompt so the agent can report it.
-    let version = env!("CARGO_PKG_VERSION");
-    let prompt = format!("agentd version: {version}\n\n{SYSTEM_AGENT_PROMPT}");
-
-    AgentConfig {
-        working_dir: std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "/".to_string()),
-        user: None,
-        shell: "zsh".to_string(),
-        interactive: false,
-        prompt: None,
-        worktree: false,
-        system_prompt: Some(prompt),
-        system_prompt_file: None,
-        append_system_prompt: false,
-        tool_policy: system_agent_tool_policy(),
-        model: Some("sonnet".to_string()),
-        env: HashMap::new(),
-        auto_clear_threshold: None,
-        network_policy: None,
-        docker_image: None,
-        extra_mounts: None,
-        resource_limits: None,
-        additional_dirs: vec![],
-        rooms: vec!["system".to_string()],
+fn system_agent_def() -> SystemAgentDef {
+    SystemAgentDef {
+        name: SYSTEM_AGENT_NAME,
+        model: "sonnet",
+        rooms: &["system"],
+        working_dir: WorkingDirStrategy::CurrentDir,
+        lazy: false,
+        prompt: system_agent_prompt,
+        tool_policy: system_agent_tool_policy,
     }
+}
+
+/// Full system prompt for `agentd-system`: version line + embedded body.
+fn system_agent_prompt() -> String {
+    // Include version/build metadata in the prompt so the agent can report
+    // it.  The version line also makes every release a config drift, which
+    // is how new prompt text reaches existing deployments.
+    let version = env!("CARGO_PKG_VERSION");
+    format!("agentd version: {version}\n\n{SYSTEM_AGENT_PROMPT}")
+}
+
+/// Carry runtime-derived fields from a stored config over to a freshly built
+/// one, producing the config a drifted agent should be updated to.
+///
+/// Two fields are environment- or runtime-derived rather than definitional
+/// and must never count as drift:
+/// - `working_dir` — captured from the orchestrator cwd at first creation
+///   (see [`WorkingDirStrategy::CurrentDir`]).
+/// - `interactive` — `spawn_agent` persists the *effective* interactive mode,
+///   which PTY-capable backends force to `true`.  Comparing it against the
+///   definition's `false` would restart-loop the agent on every boot.
+pub fn refreshed_config(stored: &AgentConfig, mut fresh: AgentConfig) -> AgentConfig {
+    fresh.working_dir = stored.working_dir.clone();
+    fresh.interactive = stored.interactive;
+    fresh
+}
+
+/// Whether a stored built-in agent config has drifted from its definition.
+///
+/// Compares via `serde_json::Value` so map key order is irrelevant and no
+/// `PartialEq` impls need to ripple through `wrap` types.  Runtime-derived
+/// fields are normalized out by [`refreshed_config`] first.
+pub fn config_drifted(stored: &AgentConfig, fresh: &AgentConfig) -> bool {
+    let normalized = refreshed_config(stored, fresh.clone());
+    let lhs = serde_json::to_value(&normalized).expect("AgentConfig serializes");
+    let rhs = serde_json::to_value(stored).expect("AgentConfig serializes");
+    lhs != rhs
 }
 
 /// Restrictive tool policy for the system agent.
@@ -352,3 +435,89 @@ DENIED (everything else, including):
 When you cannot complete a request due to your tool policy, say so clearly
 and provide the exact command the user should run themselves.
 ";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_has_unique_names_and_includes_system_agent() {
+        let defs = builtin_agent_defs();
+        let mut names: Vec<&str> = defs.iter().map(|d| d.name).collect();
+        assert!(names.contains(&SYSTEM_AGENT_NAME));
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), defs.len(), "registry names must be unique");
+    }
+
+    #[test]
+    fn system_agent_config_matches_previous_behavior() {
+        let config = system_agent_def().build_config();
+        assert_eq!(config.model.as_deref(), Some("sonnet"));
+        assert_eq!(config.rooms, vec!["system".to_string()]);
+        assert!(!config.interactive);
+        let prompt = config.system_prompt.expect("system prompt set");
+        assert!(prompt.starts_with("agentd version: "));
+        assert!(prompt.contains("agentd system agent"));
+    }
+
+    #[test]
+    fn config_drifted_false_for_identical_configs() {
+        let def = system_agent_def();
+        let stored = def.build_config();
+        let fresh = def.build_config();
+        assert!(!config_drifted(&stored, &fresh));
+    }
+
+    #[test]
+    fn config_drifted_ignores_interactive_flag() {
+        // spawn_agent persists effective_interactive = true on PTY backends;
+        // that must never count as drift or the agent restart-loops at boot.
+        let def = system_agent_def();
+        let mut stored = def.build_config();
+        stored.interactive = true;
+        let fresh = def.build_config();
+        assert!(!config_drifted(&stored, &fresh));
+    }
+
+    #[test]
+    fn config_drifted_ignores_working_dir() {
+        let def = system_agent_def();
+        let mut stored = def.build_config();
+        stored.working_dir = "/somewhere/else".to_string();
+        let fresh = def.build_config();
+        assert!(!config_drifted(&stored, &fresh));
+    }
+
+    #[test]
+    fn config_drifted_detects_prompt_change() {
+        let def = system_agent_def();
+        let mut stored = def.build_config();
+        stored.system_prompt = Some("an old prompt from a previous release".to_string());
+        let fresh = def.build_config();
+        assert!(config_drifted(&stored, &fresh));
+    }
+
+    #[test]
+    fn config_drifted_detects_policy_change() {
+        let def = system_agent_def();
+        let mut stored = def.build_config();
+        stored.tool_policy = ToolPolicy::AllowList { tools: vec![], sandbox_bypass: vec![] };
+        let fresh = def.build_config();
+        assert!(config_drifted(&stored, &fresh));
+    }
+
+    #[test]
+    fn refreshed_config_preserves_runtime_fields_and_takes_the_rest() {
+        let def = system_agent_def();
+        let mut stored = def.build_config();
+        stored.interactive = true;
+        stored.working_dir = "/captured/at/first/boot".to_string();
+        stored.system_prompt = Some("stale prompt".to_string());
+
+        let refreshed = refreshed_config(&stored, def.build_config());
+        assert!(refreshed.interactive, "interactive carried over from stored");
+        assert_eq!(refreshed.working_dir, "/captured/at/first/boot");
+        assert_ne!(refreshed.system_prompt.as_deref(), Some("stale prompt"));
+    }
+}
