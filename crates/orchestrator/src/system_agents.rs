@@ -130,13 +130,59 @@ fn system_agent_def() -> SystemAgentDef {
     }
 }
 
-/// Full system prompt for `agentd-system`: version line + embedded body.
+/// Full system prompt for `agentd-system`: version line + rendered body.
 fn system_agent_prompt() -> String {
+    // Ports come from the deployment's actually-loaded configuration so the
+    // prompt is correct per-deployment (env vars / TOML override defaults).
+    // A config change is a drift, so port changes roll out automatically.
+    let services = agentd_common::config::load().map(|c| c.services).unwrap_or_default();
+    system_agent_prompt_with(&services)
+}
+
+/// Render the system prompt against an explicit [`ServicesConfig`].
+///
+/// Split out from [`system_agent_prompt`] so tests can inject non-default
+/// ports and prove the prompt is generated, not hardcoded.
+fn system_agent_prompt_with(services: &agentd_common::config::ServicesConfig) -> String {
     // Include version/build metadata in the prompt so the agent can report
     // it.  The version line also makes every release a config drift, which
     // is how new prompt text reaches existing deployments.
     let version = env!("CARGO_PKG_VERSION");
-    format!("agentd version: {version}\n\n{SYSTEM_AGENT_PROMPT}")
+    let body = SYSTEM_AGENT_PROMPT_TEMPLATE
+        .replace("$SERVICE_TABLE", &render_service_table(services))
+        .replace("$ORCHESTRATOR_PORT", &services.orchestrator.port.to_string())
+        .replace("$WRAP_PORT", &services.wrap.port.to_string());
+    format!("agentd version: {version}\n\n{body}")
+}
+
+/// Render the service-inventory table from the loaded configuration.
+///
+/// Generated rather than hand-written: the previous hardcoded table had
+/// drifted from the real defaults (wrong notify/wrap ports, missing
+/// ask/hook/monitor, core/communicate collision).
+fn render_service_table(services: &agentd_common::config::ServicesConfig) -> String {
+    let rows: [(&str, u16, &str); 10] = [
+        ("core", services.core.port, "Auth gateway, API proxy"),
+        ("ask", services.ask.port, "Approval requests, human-in-the-loop gates"),
+        ("hook", services.hook.port, "Shell-event capture and forwarding"),
+        ("monitor", services.monitor.port, "System health metrics and thresholds"),
+        ("notify", services.notify.port, "Notification routing and delivery"),
+        ("wrap", services.wrap.port, "tmux/Docker execution backend"),
+        ("orchestrator", services.orchestrator.port, "Agent lifecycle, WebSocket SDK, policies"),
+        ("memory", services.memory.port, "Semantic vector memory store"),
+        ("ui", services.ui.port, "Web UI server"),
+        ("communicate", services.communicate.port, "Room-based messaging (WebSocket + REST)"),
+    ];
+
+    let mut table = String::from(
+        "| Service       | Port  | Description                              |\n\
+         |---------------|-------|------------------------------------------|\n",
+    );
+    for (name, port, description) in rows {
+        table.push_str(&format!("| {name:<13} | {port:<5} | {description:<40} |\n"));
+    }
+    table.push_str("| mcp           | —     | MCP server (stdio transport, no port)    |\n");
+    table
 }
 
 /// Carry runtime-derived fields from a stored config over to a freshly built
@@ -208,11 +254,14 @@ fn system_agent_tool_policy() -> ToolPolicy {
     }
 }
 
-/// System prompt for the agentd-system agent.
+/// System prompt template for the agentd-system agent.
 ///
 /// Embedded as a compile-time constant so it is version-controlled with the
-/// code and requires no files on disk.  The version line is prepended
-/// dynamically in [`build_system_agent_config`].
+/// code and requires no files on disk.  Rendered by
+/// [`system_agent_prompt_with`], which substitutes:
+/// - `$SERVICE_TABLE` — the service inventory generated from the loaded
+///   configuration (see [`render_service_table`])
+/// - `$ORCHESTRATOR_PORT` / `$WRAP_PORT` — ports used in example commands
 ///
 /// # Content coverage
 ///
@@ -229,7 +278,7 @@ fn system_agent_tool_policy() -> ToolPolicy {
 ///
 /// Target: under 6 000 tokens (≈ 24 000 characters). The version prefix
 /// adds ~20 tokens.  Review periodically and trim if this grows.
-const SYSTEM_AGENT_PROMPT: &str = "\
+const SYSTEM_AGENT_PROMPT_TEMPLATE: &str = "\
 You are the agentd system agent — a built-in, always-present domain expert
 on the agentd platform.
 
@@ -254,16 +303,9 @@ SERVICE INVENTORY
 
 agentd is a Rust workspace of microservices.  All expose `/health` (GET).
 
-| Service       | Dev Port | Prod Port | Description                              |
-|---------------|----------|-----------|------------------------------------------|
-| orchestrator  | 17006    | 7006      | Agent lifecycle, WebSocket SDK, policies |
-| core          | 17010    | 7010      | Auth gateway, API proxy                  |
-| communicate   | 17010    | 7010      | Room-based messaging (WebSocket + REST)  |
-| memory        | 17008    | 17008     | Semantic vector memory store             |
-| notify        | 17005    | 17005     | Notification routing and delivery        |
-| wrap          | 17007    | 7007      | Docker/tmux execution backend            |
-
-Note: `AGENTD_ENV=development` or `dev` routes to dev ports.
+$SERVICE_TABLE
+Ports reflect this deployment's loaded configuration — AGENTD_*_PORT
+environment variables and the config TOML override the defaults.
 
 ─────────────────────────────────────────────────────────────────────────────
 AGENT LIFECYCLE
@@ -321,9 +363,9 @@ COMMON CLI OPERATIONS
   agent communicate message list <room>   # read room messages
 
 ## Health checks (curl)
-  curl http://localhost:7006/health
-  curl http://localhost:7006/info         # backend type and capabilities
-  curl http://localhost:7006/debug/agents # all agents including built-in
+  curl http://localhost:$ORCHESTRATOR_PORT/health
+  curl http://localhost:$ORCHESTRATOR_PORT/info         # backend type and capabilities
+  curl http://localhost:$ORCHESTRATOR_PORT/debug/agents # all agents including built-in
 
 ─────────────────────────────────────────────────────────────────────────────
 COMMUNICATE ROOM SYSTEM
@@ -371,10 +413,10 @@ DIAGNOSING COMMON ISSUES
 1. Check the launch_command field: agent get <id>
 2. Verify working_dir exists and is accessible.
 3. Ensure ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN is set in agent env.
-4. Check wrap service health: curl http://localhost:7007/health
+4. Check wrap service health: curl http://localhost:$WRAP_PORT/health
 
 ## WebSocket never connects (agent stays 'pending' or flips to 'failed')
-1. Verify orchestrator is listening: curl http://localhost:7006/health
+1. Verify orchestrator is listening: curl http://localhost:$ORCHESTRATOR_PORT/health
 2. Check that the SDK URL in launch_command matches the listening address.
 3. Review orchestrator logs for WebSocket handshake errors.
 
@@ -386,7 +428,8 @@ DIAGNOSING COMMON ISSUES
 ## Service not reachable
 1. Check if process is running: ps aux | grep agentd
 2. Verify port binding: lsof -i :<port>
-3. Check AGENTD_ENV — dev ports differ from production ports (see table above).
+3. Check for AGENTD_*_PORT env overrides — the listening port may differ
+   from the table above if the service was started with one set.
 
 ─────────────────────────────────────────────────────────────────────────────
 METRICS AND OBSERVABILITY
@@ -401,7 +444,7 @@ Key orchestrator metrics:
   tool_approvals_total           — tool calls evaluated by policy
 
 To check metrics:
-  curl http://localhost:7006/metrics
+  curl http://localhost:$ORCHESTRATOR_PORT/metrics
 
 Logs are written to stderr in structured JSON (production) or human-readable
 format (development, when AGENTD_LOG_FORMAT=pretty).
@@ -505,6 +548,52 @@ mod tests {
         stored.tool_policy = ToolPolicy::AllowList { tools: vec![], sandbox_bypass: vec![] };
         let fresh = def.build_config();
         assert!(config_drifted(&stored, &fresh));
+    }
+
+    #[test]
+    fn service_table_is_generated_from_config_not_hardcoded() {
+        let mut services = agentd_common::config::ServicesConfig::default();
+        services.orchestrator.port = 19999;
+        let table = render_service_table(&services);
+        assert!(table.contains("19999"), "table must reflect the injected port:\n{table}");
+    }
+
+    #[test]
+    fn service_table_defaults_match_common_config() {
+        let services = agentd_common::config::ServicesConfig::default();
+        let table = render_service_table(&services);
+        // Spot-check the rows that were wrong in the hand-written table.
+        assert!(table.contains("| notify        | 17004"), "notify row:\n{table}");
+        assert!(table.contains("| wrap          | 17005"), "wrap row:\n{table}");
+        assert!(table.contains("| ask           | 17001"), "ask row:\n{table}");
+        assert!(table.contains("| monitor       | 17003"), "monitor row:\n{table}");
+        assert!(table.contains("| hook          | 17002"), "hook row:\n{table}");
+    }
+
+    #[test]
+    fn prompt_substitutes_ports_and_leaves_no_tokens() {
+        let services = agentd_common::config::ServicesConfig::default();
+        let prompt = system_agent_prompt_with(&services);
+        assert!(!prompt.contains("$SERVICE_TABLE"));
+        assert!(!prompt.contains("$ORCHESTRATOR_PORT"));
+        assert!(!prompt.contains("$WRAP_PORT"));
+        assert!(prompt.contains("curl http://localhost:17006/health"));
+        assert!(prompt.contains("curl http://localhost:17005/health"));
+        // The known-bad literals from the hand-written table must be gone.
+        assert!(!prompt.contains("17007"), "wrap was never on 17007");
+        assert!(!prompt.contains("localhost:7006"), "no prod-port fiction");
+        assert!(!prompt.contains("localhost:7007"), "no prod-port fiction");
+    }
+
+    #[test]
+    fn prompt_stays_within_token_budget() {
+        let services = agentd_common::config::ServicesConfig::default();
+        let prompt = system_agent_prompt_with(&services);
+        assert!(
+            prompt.len() < 26_000,
+            "prompt grew past the documented ~6k-token budget: {} chars",
+            prompt.len()
+        );
     }
 
     #[test]
