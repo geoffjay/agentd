@@ -267,6 +267,19 @@ pub async fn run_get_system_metrics(client: &AgentdClient) -> String {
 
 // ── get_prometheus_metrics ─────────────────────────────────────────────────
 
+/// Path serving Prometheus text-format metrics for a service.
+///
+/// The monitor service serves JSON system metrics at `/metrics` and exposes
+/// Prometheus text format at `/prom-metrics` instead (see the scrape config in
+/// `infra/prometheus/prometheus.yml`). Every other service uses `/metrics`.
+fn prometheus_metrics_path(service: &str) -> &'static str {
+    if service == "monitor" {
+        "/prom-metrics"
+    } else {
+        "/metrics"
+    }
+}
+
 /// Fetch and parse key Prometheus metrics from a service.
 pub async fn run_get_prometheus_metrics(client: &AgentdClient, service: Option<&str>) -> String {
     let svc_input = service.unwrap_or("orchestrator").to_lowercase();
@@ -287,7 +300,8 @@ pub async fn run_get_prometheus_metrics(client: &AgentdClient, service: Option<&
         }
     };
 
-    let url = format!("{base_url}/metrics");
+    let path = prometheus_metrics_path(svc_name);
+    let url = format!("{base_url}{path}");
     match client.inner.get(&url).send().await {
         Ok(resp) if resp.status().is_success() => match resp.text().await {
             Ok(text) => {
@@ -296,7 +310,7 @@ pub async fn run_get_prometheus_metrics(client: &AgentdClient, service: Option<&
             }
             Err(e) => format!("🔴 Failed to read metrics response from {svc_name}: {e}"),
         },
-        Ok(resp) => format!("🔴 {svc_name} /metrics returned HTTP {}.", resp.status().as_u16()),
+        Ok(resp) => format!("🔴 {svc_name} {path} returned HTTP {}.", resp.status().as_u16()),
         Err(e) => format!("🔴 Could not reach {svc_name} for Prometheus metrics: {e}"),
     }
 }
@@ -479,5 +493,19 @@ http_requests_total{method=\"POST\"} 8
             response_ms: None,
         }];
         assert_eq!(overall_summary(&results), "🔴 One or more services are unreachable.");
+    }
+
+    #[test]
+    fn test_prometheus_metrics_path_monitor_uses_prom_metrics() {
+        // Monitor's /metrics endpoint returns JSON; Prometheus text lives at
+        // /prom-metrics (matching infra/prometheus/prometheus.yml).
+        assert_eq!(prometheus_metrics_path("monitor"), "/prom-metrics");
+    }
+
+    #[test]
+    fn test_prometheus_metrics_path_other_services_use_metrics() {
+        for svc in ["orchestrator", "notify", "memory", "communicate", "ask", "wrap", "hook"] {
+            assert_eq!(prometheus_metrics_path(svc), "/metrics", "service {svc}");
+        }
     }
 }
