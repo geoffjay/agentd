@@ -62,13 +62,26 @@
 //! - `AGENTD_MEMORY_ALERT_THRESHOLD` - Memory usage % to trigger alert (default: 90.0)
 //! - `AGENTD_DISK_ALERT_THRESHOLD` - Disk usage % to trigger alert (default: 90.0)
 //! - `AGENTD_HISTORY_SIZE` - Number of metric snapshots to retain (default: 120)
+//! - `AGENTD_PROMETHEUS_URL` - Prometheus base URL for the named-query API
+//!   (default: http://127.0.0.1:9090)
 //! - `RUST_LOG` - Logging level (default: info)
+//!
+//! ## GET /queries and GET /queries/{name}
+//!
+//! The curated named-query API: `/queries` returns the catalog (name,
+//! description, unit, promql, default_window); `/queries/{name}` executes one
+//! against Prometheus with optional `window`, `mode=instant|range`,
+//! `range_minutes`, and `step_secs` parameters. `GET /query?promql=...` is a
+//! raw read-only passthrough. Prometheus being down yields HTTP 502 with a
+//! structured error body; the catalog endpoint never touches Prometheus.
 
 pub mod api;
 pub mod client;
 pub mod config;
 pub mod error;
 pub mod metrics_collector;
+pub mod prometheus;
+pub mod queries;
 pub mod state;
 pub mod types;
 
@@ -129,8 +142,10 @@ pub async fn run(config: config::MonitorConfig) -> Result<()> {
 
     let prom_handle = init_metrics();
 
+    let prom_client =
+        std::sync::Arc::new(prometheus::PromClient::new(config.prometheus_url.clone()));
     let app_state = state::AppState::new(config);
-    let api_state = api::ApiState { app_state: app_state.clone() };
+    let api_state = api::ApiState { app_state: app_state.clone(), prom: prom_client };
     let prom_router = axum::Router::new()
         .route("/prom-metrics", get(prom_metrics_handler))
         .with_state(prom_handle);

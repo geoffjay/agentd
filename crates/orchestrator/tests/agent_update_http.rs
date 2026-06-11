@@ -78,12 +78,15 @@ async fn build_app() -> (axum::Router, Arc<AgentStorage>, TempDir) {
     let scheduler_storage = SchedulerStorage::new(storage.db().clone());
     let registry = ConnectionRegistry::new();
     let scheduler = Arc::new(Scheduler::new(scheduler_storage, registry.clone()));
-    let manager = Arc::new(AgentManager::new(
-        storage.clone(),
-        Arc::new(NullBackend),
-        registry.clone(),
-        "ws://localhost:7006".to_string(),
-    ));
+    let manager = Arc::new(
+        AgentManager::new(
+            storage.clone(),
+            Arc::new(NullBackend),
+            registry.clone(),
+            "ws://localhost:7006".to_string(),
+        )
+        .with_mcp_config_dir(temp_dir.path().join("mcp")),
+    );
     let communicate = CommunicateClient::new("http://localhost:17010");
 
     let state =
@@ -347,4 +350,215 @@ async fn test_patch_system_prompt_mutual_exclusion_and_clearing() {
     assert_eq!(response.status(), StatusCode::OK);
     let stored = storage.get(&agent.id).await.unwrap().unwrap();
     assert_eq!(stored.config.system_prompt, None, "empty string must clear the prompt");
+}
+
+// ---------------------------------------------------------------------------
+// MCP server config (mcp_servers)
+// ---------------------------------------------------------------------------
+
+/// PATCH with mcp_servers persists the map and reports requires_restart on a
+/// running agent.
+#[tokio::test]
+async fn test_patch_mcp_servers_persists_and_requires_restart() {
+    let (app, storage, _tmp) = build_app().await;
+    let agent = insert_agent(&storage, "mcp-me", AgentStatus::Running, HashMap::new(), false).await;
+
+    let response = patch_agent(
+        app,
+        agent.id,
+        serde_json::json!({
+            "mcp_servers": {
+                "agentd": { "command": "agent", "args": ["mcp"] }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    assert_eq!(json["requires_restart"], true, "mcp_servers is launch-affecting");
+
+    let stored = storage.get(&agent.id).await.unwrap().unwrap();
+    let servers = stored.config.mcp_servers.expect("mcp_servers persisted");
+    assert_eq!(servers["agentd"].command, "agent");
+    assert_eq!(servers["agentd"].args, vec!["mcp"]);
+}
+
+/// An empty mcp_servers map clears the config.
+#[tokio::test]
+async fn test_patch_mcp_servers_empty_map_clears() {
+    let (app, storage, _tmp) = build_app().await;
+    let mut config: AgentConfig =
+        serde_json::from_value(serde_json::json!({ "working_dir": "/tmp" })).unwrap();
+    config.mcp_servers = Some(
+        serde_json::from_value(serde_json::json!({ "agentd": { "command": "agent" } })).unwrap(),
+    );
+    let mut agent = Agent::new("mcp-clear".to_string(), config);
+    agent.status = AgentStatus::Stopped;
+    storage.add(&agent).await.unwrap();
+
+    let response = patch_agent(app, agent.id, serde_json::json!({ "mcp_servers": {} })).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let stored = storage.get(&agent.id).await.unwrap().unwrap();
+    assert_eq!(stored.config.mcp_servers, None, "empty map must clear mcp_servers");
+}
+
+/// MCP server env values are redacted in responses and round-trip via "***".
+#[tokio::test]
+async fn test_mcp_servers_env_redaction_round_trip() {
+    let (app, storage, _tmp) = build_app().await;
+    let mut config: AgentConfig =
+        serde_json::from_value(serde_json::json!({ "working_dir": "/tmp" })).unwrap();
+    config.mcp_servers = Some(
+        serde_json::from_value(serde_json::json!({
+            "agentd": { "command": "agent", "env": { "SECRET_TOKEN": "hunter2" } }
+        }))
+        .unwrap(),
+    );
+    let mut agent = Agent::new("mcp-secret".to_string(), config);
+    agent.status = AgentStatus::Stopped;
+    storage.add(&agent).await.unwrap();
+
+    // GET must redact the env value.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder().uri(format!("/agents/{}", agent.id)).body(Body::empty()).unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_json(response).await;
+    assert_eq!(
+        json["config"]["mcp_servers"]["agentd"]["env"]["SECRET_TOKEN"], "***",
+        "MCP env values must be redacted in responses"
+    );
+
+    // PATCH sending the sentinel back keeps the stored secret.
+    let response = patch_agent(
+        app,
+        agent.id,
+        serde_json::json!({
+            "mcp_servers": {
+                "agentd": { "command": "agent", "env": { "SECRET_TOKEN": "***" } }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let stored = storage.get(&agent.id).await.unwrap().unwrap();
+    let servers = stored.config.mcp_servers.unwrap();
+    assert_eq!(
+        servers["agentd"].env["SECRET_TOKEN"], "hunter2",
+        "redaction sentinel must keep the stored value"
+    );
+}
+
+/// The sentinel for a key with no stored value is rejected.
+#[tokio::test]
+async fn test_mcp_servers_redaction_sentinel_without_stored_value_rejected() {
+    let (app, storage, _tmp) = build_app().await;
+    let agent =
+        insert_agent(&storage, "mcp-bad", AgentStatus::Stopped, HashMap::new(), false).await;
+
+    let response = patch_agent(
+        app,
+        agent.id,
+        serde_json::json!({
+            "mcp_servers": {
+                "agentd": { "command": "agent", "env": { "NEW_KEY": "***" } }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+/// POST /agents with mcp_servers writes the per-agent config file and bakes
+/// --mcp-config / --strict-mcp-config into the launch command; DELETE removes
+/// the file again.
+#[tokio::test]
+async fn test_create_agent_with_mcp_servers_writes_config_file() {
+    let (app, _storage, tmp) = build_app().await;
+
+    let body = serde_json::json!({
+        "name": "mcp-agent",
+        "working_dir": "/tmp",
+        "mcp_servers": {
+            "agentd": { "command": "agent", "args": ["mcp"] }
+        }
+    })
+    .to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/agents")
+                .header("Content-Type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let json = body_json(response).await;
+    let id = json["id"].as_str().unwrap().to_string();
+    let launch_command = json["launch_command"].as_str().unwrap();
+    assert!(launch_command.contains("--mcp-config"), "launch: {launch_command}");
+    assert!(launch_command.contains("--strict-mcp-config"), "launch: {launch_command}");
+
+    let config_path = tmp.path().join("mcp").join(format!("{id}.json"));
+    assert!(config_path.is_file(), "MCP config file must exist at {config_path:?}");
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    assert_eq!(written["mcpServers"]["agentd"]["command"], "agent");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&config_path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "MCP config file must be private (0600)");
+    }
+
+    // DELETE removes the file.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/agents/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(!config_path.exists(), "MCP config file must be removed on terminate");
+}
+
+/// An empty command in an mcp_servers entry is rejected at create time.
+#[tokio::test]
+async fn test_create_agent_with_empty_mcp_command_rejected() {
+    let (app, _storage, _tmp) = build_app().await;
+
+    let body = serde_json::json!({
+        "name": "mcp-bad-create",
+        "working_dir": "/tmp",
+        "mcp_servers": { "agentd": { "command": "  " } }
+    })
+    .to_string();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/agents")
+                .header("Content-Type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
