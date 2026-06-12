@@ -4,7 +4,7 @@
 
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/hooks/useMetrics", () => ({
 	useMetrics: () => ({
@@ -67,6 +67,61 @@ vi.mock("@/hooks/useServiceHealth", () => ({
 	}),
 }));
 
+const mockUseSystemMetrics = vi.fn();
+vi.mock("@/hooks/useSystemMetrics", () => ({
+	useSystemMetrics: () => mockUseSystemMetrics(),
+}));
+
+vi.mock("@/hooks/usePlatformMetrics", async (importOriginal) => {
+	// Keep the real vector helpers — only the hook itself is stubbed.
+	const original =
+		await importOriginal<typeof import("@/hooks/usePlatformMetrics")>();
+	return {
+		...original,
+		usePlatformMetrics: () => ({
+			results: {},
+			monitorDown: false,
+			prometheusDown: false,
+			loading: false,
+			refetch: vi.fn(),
+		}),
+	};
+});
+
+function systemMetricsResult(overrides?: Record<string, unknown>) {
+	const snapshot = {
+		collected_at: "2024-01-01T00:00:00Z",
+		cpu: { usage_percent: 42.5, core_count: 8, per_core: [] },
+		memory: {
+			total_bytes: 16 * 1024 ** 3,
+			used_bytes: 8 * 1024 ** 3,
+			available_bytes: 8 * 1024 ** 3,
+			usage_percent: 50,
+		},
+		disks: [
+			{
+				name: "disk0",
+				mount_point: "/",
+				total_bytes: 500 * 1024 ** 3,
+				available_bytes: 200 * 1024 ** 3,
+				used_bytes: 300 * 1024 ** 3,
+				usage_percent: 60,
+			},
+		],
+		load_average: { one: 1.5, five: 1.2, fifteen: 0.9 },
+	};
+	return {
+		history: [snapshot],
+		latest: snapshot,
+		alerts: [],
+		status: "healthy",
+		available: true,
+		loading: false,
+		refetch: vi.fn(),
+		...overrides,
+	};
+}
+
 // Mock theme hooks to avoid ThemeProvider dependency in unit tests
 vi.mock("@/hooks/useTheme", () => ({
 	useTheme: () => ({
@@ -104,17 +159,50 @@ function renderPage() {
 }
 
 describe("MonitoringDashboard", () => {
+	beforeEach(() => {
+		mockUseSystemMetrics.mockReturnValue(systemMetricsResult());
+	});
+
 	it("renders the page heading", () => {
 		renderPage();
 		expect(screen.getByText("Monitoring")).toBeInTheDocument();
 	});
 
+	it("renders the system resources section with live data", () => {
+		renderPage();
+		expect(screen.getByText("CPU Usage")).toBeInTheDocument();
+		expect(screen.getByText("Memory Usage")).toBeInTheDocument();
+		expect(screen.getByText("Disk Usage")).toBeInTheDocument();
+		expect(screen.getByText("Load Average")).toBeInTheDocument();
+		// Disk row from the latest snapshot
+		expect(screen.getByText("60%")).toBeInTheDocument();
+		// No placeholder remnants
+		expect(screen.queryByText(/coming soon/i)).toBeNull();
+		expect(screen.queryByText(/port 17003/i)).toBeNull();
+	});
+
+	it("flags the section when the monitor service is unavailable", () => {
+		mockUseSystemMetrics.mockReturnValue(
+			systemMetricsResult({
+				history: [],
+				latest: null,
+				available: false,
+			}),
+		);
+		renderPage();
+		expect(screen.getByText("monitor service unavailable")).toBeInTheDocument();
+		expect(
+			screen.getAllByText("Monitor service unavailable").length,
+		).toBeGreaterThan(0);
+	});
+
 	it("renders refresh interval options", () => {
 		renderPage();
-		expect(screen.getByText("10s")).toBeInTheDocument();
-		expect(screen.getByText("30s")).toBeInTheDocument();
-		expect(screen.getByText("1m")).toBeInTheDocument();
-		expect(screen.getByText("5m")).toBeInTheDocument();
+		// Scoped to buttons: "1m"/"5m" also appear as Load Average readouts.
+		expect(screen.getByRole("button", { name: "10s" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "30s" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "1m" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "5m" })).toBeInTheDocument();
 	});
 
 	it("renders a manual refresh button", () => {

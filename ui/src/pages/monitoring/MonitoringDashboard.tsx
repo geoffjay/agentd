@@ -7,20 +7,24 @@
  * - Service metrics cards (one per service: orchestrator, notify, ask)
  * - Agent activity chart + notification metrics chart (side-by-side)
  * - System health panel
- * - Placeholder charts for future monitor service (cpu, memory, disk, network)
+ * - System resource charts (cpu, memory, disk, load) from the monitor service
  */
 
 import { Clock, RefreshCw } from "lucide-react";
 import { AgentActivityChart } from "@/components/monitoring/AgentActivityChart";
 import { CacheEfficiencyChart } from "@/components/monitoring/CacheEfficiencyChart";
 import { CostOverviewChart } from "@/components/monitoring/CostOverviewChart";
+import { DiskUsageCard } from "@/components/monitoring/DiskUsageCard";
 import { NotificationMetricsChart } from "@/components/monitoring/NotificationMetricsChart";
-import { PlaceholderChart } from "@/components/monitoring/PlaceholderChart";
+import { PlatformMetricsSection } from "@/components/monitoring/PlatformMetricsSection";
+import { ResourceTrendCard } from "@/components/monitoring/ResourceTrendCard";
 import { ServiceMetricsCard } from "@/components/monitoring/ServiceMetricsCard";
 import { SystemHealthPanel } from "@/components/monitoring/SystemHealthPanel";
 import { TokenUsageChart } from "@/components/monitoring/TokenUsageChart";
 import type { RefreshInterval } from "@/hooks/useMetrics";
 import { useMetrics } from "@/hooks/useMetrics";
+import { usePlatformMetrics } from "@/hooks/usePlatformMetrics";
+import { useSystemMetrics } from "@/hooks/useSystemMetrics";
 import { useUsageMetrics } from "@/hooks/useUsageMetrics";
 
 // ---------------------------------------------------------------------------
@@ -65,6 +69,15 @@ export function MonitoringDashboard() {
 		aggregate: usageAggregate,
 		loading: usageLoading,
 	} = useUsageMetrics(refreshInterval);
+
+	const {
+		history: resourceHistory,
+		latest: resourceLatest,
+		available: monitorAvailable,
+		loading: resourceLoading,
+	} = useSystemMetrics();
+
+	const platformMetrics = usePlatformMetrics(refreshInterval);
 
 	// Map response times from serviceMetrics — they come from Prometheus
 	// latency data when available, otherwise undefined (SystemHealthPanel
@@ -186,6 +199,9 @@ export function MonitoringDashboard() {
 				<SystemHealthPanel serviceMetrics={serviceMetrics} loading={loading} />
 			</section>
 
+			{/* Platform metrics from the named-query catalog (Prometheus) */}
+			<PlatformMetricsSection {...platformMetrics} />
+
 			{/* Token Usage & Prompt Cache section */}
 			<section aria-label="Token usage and prompt cache metrics">
 				<h2 className="mb-3 text-sm font-semibold text-th-text-secondary">
@@ -208,39 +224,141 @@ export function MonitoringDashboard() {
 				</div>
 			</section>
 
-			{/* Placeholder charts for future monitor service */}
-			<section aria-label="System resource charts (coming soon)">
+			{/* System resource charts from the monitor service */}
+			<section aria-label="System resource charts">
 				<h2 className="mb-3 text-sm font-semibold text-th-text-secondary">
 					System Resources
-					<span className="ml-2 text-xs font-normal text-th-text-faint">
-						— requires monitor service (port 17003)
-					</span>
+					{!resourceLoading && !monitorAvailable && (
+						<span className="ml-2 rounded-full bg-th-status-warning-bg px-2 py-0.5 text-xs font-normal text-th-status-warning-text">
+							monitor service unavailable
+						</span>
+					)}
 				</h2>
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-					<PlaceholderChart
-						variant="cpu"
+					<ResourceTrendCard
 						title="CPU Usage"
-						description="User, system, and idle time"
+						description={
+							resourceLatest
+								? `${resourceLatest.cpu.core_count} cores`
+								: "Global utilisation"
+						}
+						series={[
+							{
+								id: "CPU",
+								color: "#3b82f6",
+								data: resourceHistory.map((m) => ({
+									x: new Date(m.collected_at),
+									y: m.cpu.usage_percent,
+								})),
+							},
+						]}
+						readouts={[
+							{
+								label: "CPU",
+								value: resourceLatest
+									? `${resourceLatest.cpu.usage_percent.toFixed(0)}%`
+									: "—",
+								color: "#3b82f6",
+							},
+						]}
+						yMax={100}
+						unit="%"
+						available={monitorAvailable}
+						loading={resourceLoading}
 					/>
-					<PlaceholderChart
-						variant="memory"
+					<ResourceTrendCard
 						title="Memory Usage"
-						description="Used, cached, and free"
+						description={
+							resourceLatest
+								? `${formatGib(resourceLatest.memory.used_bytes)} of ${formatGib(resourceLatest.memory.total_bytes)} used`
+								: "Used vs total"
+						}
+						series={[
+							{
+								id: "Memory",
+								color: "#8b5cf6",
+								data: resourceHistory.map((m) => ({
+									x: new Date(m.collected_at),
+									y: m.memory.usage_percent,
+								})),
+							},
+						]}
+						readouts={[
+							{
+								label: "Memory",
+								value: resourceLatest
+									? `${resourceLatest.memory.usage_percent.toFixed(0)}%`
+									: "—",
+								color: "#8b5cf6",
+							},
+						]}
+						yMax={100}
+						unit="%"
+						available={monitorAvailable}
+						loading={resourceLoading}
 					/>
-					<PlaceholderChart
-						variant="disk"
-						title="Disk Usage"
-						description="Per-mount utilisation"
+					<DiskUsageCard
+						disks={resourceLatest?.disks ?? []}
+						available={monitorAvailable}
+						loading={resourceLoading}
 					/>
-					<PlaceholderChart
-						variant="network"
-						title="Network I/O"
-						description="Inbound and outbound traffic"
+					<ResourceTrendCard
+						title="Load Average"
+						description="1m / 5m / 15m"
+						series={[
+							{
+								id: "1m",
+								color: "#22c55e",
+								data: resourceHistory.map((m) => ({
+									x: new Date(m.collected_at),
+									y: m.load_average.one,
+								})),
+							},
+							{
+								id: "5m",
+								color: "#84cc16",
+								data: resourceHistory.map((m) => ({
+									x: new Date(m.collected_at),
+									y: m.load_average.five,
+								})),
+							},
+							{
+								id: "15m",
+								color: "#eab308",
+								data: resourceHistory.map((m) => ({
+									x: new Date(m.collected_at),
+									y: m.load_average.fifteen,
+								})),
+							},
+						]}
+						readouts={[
+							{
+								label: "1m",
+								value: resourceLatest
+									? resourceLatest.load_average.one.toFixed(2)
+									: "—",
+								color: "#22c55e",
+							},
+							{
+								label: "5m",
+								value: resourceLatest
+									? resourceLatest.load_average.five.toFixed(2)
+									: "—",
+								color: "#84cc16",
+							},
+						]}
+						available={monitorAvailable}
+						loading={resourceLoading}
 					/>
 				</div>
 			</section>
 		</div>
 	);
+}
+
+/** Format bytes as whole GiB for compact readouts. */
+function formatGib(bytes: number): string {
+	return `${(bytes / 1024 ** 3).toFixed(0)} GiB`;
 }
 
 export default MonitoringDashboard;

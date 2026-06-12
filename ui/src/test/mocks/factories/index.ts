@@ -33,10 +33,16 @@ export {
 	resetMemorySeq,
 } from "./memory";
 export {
+	makeMatrixQueryResult,
+	makeMatrixSeries,
 	makeMonitorAlert,
+	makeNamedQuery,
+	makeQueryCatalog,
 	makeSystemMetrics,
 	makeSystemMetricsHistory,
 	makeSystemStatus,
+	makeVectorQueryResult,
+	makeVectorSample,
 } from "./monitor";
 export {
 	makeCountResponse,
