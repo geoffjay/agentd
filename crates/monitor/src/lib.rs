@@ -136,7 +136,11 @@ pub async fn run(config: config::MonitorConfig) -> Result<()> {
         .with_state(prom_handle);
     let router = api::create_router_with_tracing(api_state)
         .merge(prom_router)
-        .layer(agentd_common::server::metrics_layer());
+        .layer(agentd_common::server::metrics_layer())
+        // Browser-facing like the other services: the UI dashboard fetches
+        // the monitor cross-origin, which the browser blocks without CORS
+        // response headers.
+        .layer(agentd_common::server::cors_layer());
 
     // Background metrics collection task
     let bg_state = app_state.clone();
