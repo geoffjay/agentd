@@ -29,6 +29,11 @@ export interface ApiClientOptions {
 	onRequest?: (init: RequestInit) => RequestInit | Promise<RequestInit>;
 }
 
+export interface RequestOptions {
+	/** Per-request timeout override in milliseconds */
+	timeoutMs?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -78,13 +83,14 @@ export class ApiClient {
 		path: string,
 		body?: unknown,
 		queryParams?: Record<string, string | number | boolean | undefined>,
+		opts?: RequestOptions,
 	): Promise<T> {
 		const url = this.buildUrl(path, queryParams);
 		let attempt = 0;
 
 		while (true) {
 			try {
-				return await this.executeRequest<T>(method, url, body);
+				return await this.executeRequest<T>(method, url, body, opts);
 			} catch (err) {
 				attempt++;
 				if (attempt >= this.maxRetries || !isTransient(err)) {
@@ -100,9 +106,11 @@ export class ApiClient {
 		method: string,
 		url: string,
 		body?: unknown,
+		opts?: RequestOptions,
 	): Promise<T> {
+		const timeoutMs = opts?.timeoutMs ?? this.timeoutMs;
 		const controller = new AbortController();
-		const timerId = setTimeout(() => controller.abort(), this.timeoutMs);
+		const timerId = setTimeout(() => controller.abort(), timeoutMs);
 
 		let init: RequestInit = {
 			method,
@@ -130,7 +138,7 @@ export class ApiClient {
 			if (err instanceof ApiError) throw err;
 			// AbortController fires a DOMException with name 'AbortError'
 			if (err instanceof DOMException && err.name === "AbortError") {
-				throw new ApiError(408, `Request timed out after ${this.timeoutMs}ms`);
+				throw new ApiError(408, `Request timed out after ${timeoutMs}ms`);
 			}
 			throw new ApiError(0, err instanceof Error ? err.message : String(err));
 		}
@@ -215,8 +223,12 @@ export class ApiClient {
 		return this.request<T>("GET", path, undefined, params);
 	}
 
-	protected post<T>(path: string, body?: unknown): Promise<T> {
-		return this.request<T>("POST", path, body);
+	protected post<T>(
+		path: string,
+		body?: unknown,
+		opts?: RequestOptions,
+	): Promise<T> {
+		return this.request<T>("POST", path, body, undefined, opts);
 	}
 
 	protected put<T>(path: string, body?: unknown): Promise<T> {

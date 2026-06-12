@@ -29,6 +29,35 @@ describe("AgentCommandInput", () => {
 		).toBeDisabled();
 	});
 
+	it("uses the placeholder override when enabled", () => {
+		render(
+			<AgentCommandInput
+				{...defaultProps}
+				placeholder="Send a message to wake this agent (may take a moment)…"
+			/>,
+		);
+		const input = screen.getByRole("textbox", { name: /send message/i });
+		expect(input).toBeEnabled();
+		expect(input).toHaveAttribute(
+			"placeholder",
+			"Send a message to wake this agent (may take a moment)…",
+		);
+	});
+
+	it("prefers the disabled reason over the placeholder override", () => {
+		render(
+			<AgentCommandInput
+				{...defaultProps}
+				enabled={false}
+				disabledReason="Agent is not running"
+				placeholder="Send a message to wake this agent (may take a moment)…"
+			/>,
+		);
+		expect(
+			screen.getByRole("textbox", { name: /send message/i }),
+		).toHaveAttribute("placeholder", "Agent is not running");
+	});
+
 	it("calls onSend when Enter is pressed", async () => {
 		const onSend = vi.fn().mockResolvedValue(undefined);
 		render(<AgentCommandInput {...defaultProps} onSend={onSend} />);

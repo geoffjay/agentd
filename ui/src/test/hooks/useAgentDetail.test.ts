@@ -112,6 +112,35 @@ describe("useAgentDetail", () => {
 		expect(result.current.agent?.config.model).toBe("new-model");
 	});
 
+	it("sendMessage refetches the agent so a woken agent's status updates", async () => {
+		const dormant = makeAgent({ id: "agent-7", status: "pending" });
+		let woken = false;
+		server.use(
+			http.get(`${BASE}/agents/agent-7`, () =>
+				HttpResponse.json(woken ? { ...dormant, status: "running" } : dormant),
+			),
+			http.get(`${BASE}/agents/agent-7/approvals`, () =>
+				HttpResponse.json(paginatedApprovals([])),
+			),
+			http.post(`${BASE}/agents/agent-7/message`, () => {
+				woken = true;
+				return HttpResponse.json({ status: "sent", agent_id: "agent-7" });
+			}),
+		);
+
+		const { result } = renderHook(() =>
+			useAgentDetail("agent-7", { refreshInterval: 0 }),
+		);
+		await waitFor(() => expect(result.current.loading).toBe(false));
+		expect(result.current.agent?.status).toBe("pending");
+
+		await act(async () => {
+			await result.current.sendMessage("wake up");
+		});
+
+		expect(result.current.agent?.status).toBe("running");
+	});
+
 	it("approveRequest removes approval from local state", async () => {
 		const agent = makeAgent({ id: "agent-4" });
 		const approval = makePendingApproval({ agent_id: "agent-4" });

@@ -817,7 +817,12 @@ export function AgentDetail() {
 	}
 
 	const isRunning = agent.status === "running";
-	const canSendMessage = isRunning && !agent.config.interactive;
+	// Dormant built-in (lazy system) agents wake on first message: the
+	// orchestrator's send-message endpoint spawns them on demand, so the
+	// input stays enabled for them even while they aren't running.
+	const wakesOnMessage = !isRunning && agent.built_in === true;
+	const canSendMessage =
+		(isRunning || wakesOnMessage) && !agent.config.interactive;
 
 	const formattedCreated = new Date(agent.created_at).toLocaleString();
 	const formattedUpdated = new Date(agent.updated_at).toLocaleString();
@@ -1005,11 +1010,16 @@ export function AgentDetail() {
 						agentId={agentId}
 						enabled={canSendMessage}
 						disabledReason={
-							!isRunning
-								? "Agent is not running"
-								: agent.config.interactive
-									? "Interactive agents do not accept commands here"
+							agent.config.interactive
+								? "Interactive agents do not accept commands here"
+								: !isRunning && !wakesOnMessage
+									? "Agent is not running"
 									: undefined
+						}
+						placeholder={
+							wakesOnMessage
+								? "Send a message to wake this agent (may take a moment)…"
+								: undefined
 						}
 						onSend={sendMessage}
 					/>

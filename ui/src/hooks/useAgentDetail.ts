@@ -157,8 +157,11 @@ export function useAgentDetail(
 	const sendMessage = useCallback(
 		async (message: string) => {
 			await orchestratorClient.sendMessage(agentId, message);
+			// A message wakes dormant built-in agents server-side; refresh so
+			// the status badge reflects the new running state immediately.
+			await fetchAgent(false);
 		},
-		[agentId],
+		[agentId, fetchAgent],
 	);
 
 	const updateModel = useCallback(

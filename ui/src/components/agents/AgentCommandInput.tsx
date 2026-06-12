@@ -2,7 +2,8 @@
  * AgentCommandInput — message input for non-interactive running agents.
  *
  * Features:
- * - Only enabled when agent is Running + non-interactive
+ * - Enabled when the agent is Running + non-interactive, or is a dormant
+ *   built-in that wakes on first message
  * - Send on Enter key or Send button click
  * - Command history: up/down arrow navigation (stored in sessionStorage)
  * - Loading state while message is being sent
@@ -55,6 +56,8 @@ export interface AgentCommandInputProps {
 	enabled: boolean;
 	/** Reason for disabled state — shown as tooltip/hint */
 	disabledReason?: string;
+	/** Placeholder override for the enabled state (e.g. wake-on-message hint) */
+	placeholder?: string;
 	onSend: (message: string) => Promise<void>;
 }
 
@@ -62,6 +65,7 @@ export function AgentCommandInput({
 	agentId,
 	enabled,
 	disabledReason,
+	placeholder,
 	onSend,
 }: AgentCommandInputProps) {
 	const [value, setValue] = useState("");
@@ -206,7 +210,7 @@ export function AgentCommandInput({
 					placeholder={
 						!enabled
 							? (disabledReason ?? "Unavailable")
-							: "Type a message and press Enter…"
+							: (placeholder ?? "Type a message and press Enter…")
 					}
 					value={value}
 					disabled={!enabled || sending}

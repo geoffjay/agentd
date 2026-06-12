@@ -127,7 +127,12 @@ export class OrchestratorClient extends ApiClient {
 
 	sendMessage(agentId: string, message: string): Promise<SendMessageResponse> {
 		const body: SendMessageRequest = { content: message };
-		return this.post<SendMessageResponse>(`/agents/${agentId}/message`, body);
+		// Waking a dormant built-in agent holds the request server-side for up
+		// to ~30s while the spawned session connects, so use a longer timeout
+		// than the 10s client default.
+		return this.post<SendMessageResponse>(`/agents/${agentId}/message`, body, {
+			timeoutMs: 45_000,
+		});
 	}
 
 	updateModel(agentId: string, request: SetModelRequest): Promise<Agent> {
