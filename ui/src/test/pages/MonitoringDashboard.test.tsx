@@ -72,6 +72,22 @@ vi.mock("@/hooks/useSystemMetrics", () => ({
 	useSystemMetrics: () => mockUseSystemMetrics(),
 }));
 
+vi.mock("@/hooks/usePlatformMetrics", async (importOriginal) => {
+	// Keep the real vector helpers — only the hook itself is stubbed.
+	const original =
+		await importOriginal<typeof import("@/hooks/usePlatformMetrics")>();
+	return {
+		...original,
+		usePlatformMetrics: () => ({
+			results: {},
+			monitorDown: false,
+			prometheusDown: false,
+			loading: false,
+			refetch: vi.fn(),
+		}),
+	};
+});
+
 function systemMetricsResult(overrides?: Record<string, unknown>) {
 	const snapshot = {
 		collected_at: "2024-01-01T00:00:00Z",
