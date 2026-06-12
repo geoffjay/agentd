@@ -3,6 +3,38 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.7] - 2026-06-12
+
+### Added
+
+- General agent update endpoint and workflow trigger updates
+- Full TriggerConfig types and trigger_config rename
+- Dedicated agent and workflow create/edit pages
+- YAML template import/export on the form pages
+- System-agent registry with config refresh and lazy spawn
+- Generate the system prompt service table from config
+- Trailing-* glob for plain tool-name policy patterns
+- Mcp_servers agent config with --mcp-config launch support
+- Agentd-diagnostician built-in agent
+- Agent and workflow creation tools, ToolPolicy wire-shape fix
+- Agentd-architect built-in agent
+- Prometheus query client and curated named-query API
+- Query_metrics tool backed by the monitor named-query API
+- Agentd-analyst built-in agent
+- Monitor named-query client and live System Resources charts
+- Platform Metrics section from the monitor named-query catalog
+
+### Documentation
+
+- System agents expansion tracking document
+
+### Fixed
+
+- Let agent and workflow form pages fill the content width
+- Scrape monitor Prometheus metrics from /prom-metrics
+- Add the CORS layer to the HTTP router
+- Support message submit for agent in a pending state
+
 ## [0.4.6] - 2026-06-11
 
 ### Changed
