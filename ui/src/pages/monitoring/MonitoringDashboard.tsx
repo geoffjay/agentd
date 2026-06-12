@@ -16,12 +16,14 @@ import { CacheEfficiencyChart } from "@/components/monitoring/CacheEfficiencyCha
 import { CostOverviewChart } from "@/components/monitoring/CostOverviewChart";
 import { DiskUsageCard } from "@/components/monitoring/DiskUsageCard";
 import { NotificationMetricsChart } from "@/components/monitoring/NotificationMetricsChart";
+import { PlatformMetricsSection } from "@/components/monitoring/PlatformMetricsSection";
 import { ResourceTrendCard } from "@/components/monitoring/ResourceTrendCard";
 import { ServiceMetricsCard } from "@/components/monitoring/ServiceMetricsCard";
 import { SystemHealthPanel } from "@/components/monitoring/SystemHealthPanel";
 import { TokenUsageChart } from "@/components/monitoring/TokenUsageChart";
 import type { RefreshInterval } from "@/hooks/useMetrics";
 import { useMetrics } from "@/hooks/useMetrics";
+import { usePlatformMetrics } from "@/hooks/usePlatformMetrics";
 import { useSystemMetrics } from "@/hooks/useSystemMetrics";
 import { useUsageMetrics } from "@/hooks/useUsageMetrics";
 
@@ -74,6 +76,8 @@ export function MonitoringDashboard() {
 		available: monitorAvailable,
 		loading: resourceLoading,
 	} = useSystemMetrics();
+
+	const platformMetrics = usePlatformMetrics(refreshInterval);
 
 	// Map response times from serviceMetrics — they come from Prometheus
 	// latency data when available, otherwise undefined (SystemHealthPanel
@@ -194,6 +198,9 @@ export function MonitoringDashboard() {
 				<h2 className="sr-only">System Health</h2>
 				<SystemHealthPanel serviceMetrics={serviceMetrics} loading={loading} />
 			</section>
+
+			{/* Platform metrics from the named-query catalog (Prometheus) */}
+			<PlatformMetricsSection {...platformMetrics} />
 
 			{/* Token Usage & Prompt Cache section */}
 			<section aria-label="Token usage and prompt cache metrics">

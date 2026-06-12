@@ -9,6 +9,17 @@ export { DiskUsageCard } from "./DiskUsageCard";
 export type { NotificationMetricsChartProps } from "./NotificationMetricsChart";
 export { NotificationMetricsChart } from "./NotificationMetricsChart";
 export type {
+	PlatformMetricsSectionProps,
+	PlatformStatCardProps,
+	ServiceBarListProps,
+	StatTone,
+} from "./PlatformMetricsSection";
+export {
+	PlatformMetricsSection,
+	PlatformStatCard,
+	ServiceBarList,
+} from "./PlatformMetricsSection";
+export type {
 	ResourceTrendCardProps,
 	TrendReadout,
 	TrendSeries,
