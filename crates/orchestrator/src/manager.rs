@@ -1212,6 +1212,13 @@ impl AgentManager {
 
         // mpsc channel bridges ConnectionRegistry → subprocess stdin relay.
         let (ws_tx, mut ws_rx) = mpsc::unbounded_channel::<String>();
+
+        // SDK protocol handshake: claude only honours --permission-prompt-tool
+        // stdio (routing permission checks to us as `can_use_tool` control
+        // requests) after the client sends an `initialize` control_request.
+        // Queue it first so it precedes any prompt; the relay task delivers it.
+        let _ = ws_tx.send(make_initialize_request(&agent_id).to_string());
+
         self.registry.register(agent_id, AgentConnection { tx: ws_tx }).await;
 
         // Stdin relay task: forwards registry messages → subprocess stdin.
@@ -1301,6 +1308,19 @@ fn build_env_assignments(env: &std::collections::HashMap<String, String>) -> Vec
     assignments
 }
 
+/// Build the SDK-protocol `initialize` control_request for a stdio agent.
+///
+/// Claude Code requires this handshake before it routes permission checks
+/// over stdio; without it, `--permission-prompt-tool stdio` is ignored and
+/// headless mode auto-denies every tool not allowed by local settings.
+fn make_initialize_request(agent_id: &Uuid) -> serde_json::Value {
+    serde_json::json!({
+        "type": "control_request",
+        "request_id": format!("init-{agent_id}"),
+        "request": { "subtype": "initialize", "hooks": null },
+    })
+}
+
 fn build_claude_command(
     config: &AgentConfig,
     ws_url: &str,
@@ -1318,10 +1338,15 @@ fn build_claude_command(
         // Subprocess stdio mode: communicate via stdin/stdout NDJSON.
         // --print keeps claude reading stdin until EOF (graceful shutdown).
         // --verbose is required by --output-format=stream-json with --print.
+        // --permission-prompt-tool stdio routes permission checks to us as
+        // `can_use_tool` control_requests instead of headless auto-deny; it
+        // only takes effect after the `initialize` control_request that
+        // wire_subprocess_io sends on stdin.
         args.push("--print".to_string());
         args.push("--verbose".to_string());
         args.push("--output-format stream-json".to_string());
         args.push("--input-format stream-json".to_string());
+        args.push("--permission-prompt-tool stdio".to_string());
     } else {
         // WebSocket / SDK mode (tmux, Docker backends).
         args.push(format!("--sdk-url {}", ws_url));
@@ -1489,6 +1514,36 @@ mod tests {
         assert!(cmd.contains("--model sonnet"));
         assert!(cmd.contains("--system-prompt 'be helpful'"));
         assert!(cmd.contains("--mcp-config '/tmp/mcp.json'"));
+    }
+
+    #[test]
+    fn test_build_claude_command_stdio_mode_flags() {
+        let config = base_config();
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, true, None);
+        assert!(cmd.contains("--print"));
+        assert!(cmd.contains("--verbose"));
+        assert!(cmd.contains("--output-format stream-json"));
+        assert!(cmd.contains("--input-format stream-json"));
+        assert!(cmd.contains("--permission-prompt-tool stdio"));
+        assert!(!cmd.contains("--sdk-url"));
+    }
+
+    #[test]
+    fn test_build_claude_command_sdk_mode_has_no_permission_prompt_tool() {
+        let config = base_config();
+        let cmd = build_claude_command(&config, "ws://localhost:7006/ws/abc", false, false, None);
+        assert!(cmd.contains("--sdk-url ws://localhost:7006/ws/abc"));
+        assert!(!cmd.contains("--permission-prompt-tool"));
+    }
+
+    #[test]
+    fn test_make_initialize_request_shape() {
+        let agent_id = Uuid::nil();
+        let init = make_initialize_request(&agent_id);
+        assert_eq!(init["type"], "control_request");
+        assert_eq!(init["request_id"], format!("init-{agent_id}"));
+        assert_eq!(init["request"]["subtype"], "initialize");
+        assert!(init["request"]["hooks"].is_null());
     }
 
     #[test]
