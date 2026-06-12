@@ -259,18 +259,37 @@ fn agentd_mcp_servers() -> Option<HashMap<String, McpServerConfig>> {
 
 /// Resolve the command used to launch the agentd MCP server.
 ///
-/// Prefers the `agent` binary sitting next to the running orchestrator
-/// executable (installed layouts, where launchd/systemd may provide a minimal
-/// PATH), falling back to PATH resolution (`cargo run` development). The
-/// value participates in drift detection, which is correct: a moved binary is
-/// a real config change, and it is stable within one install.
+/// Prefers a CLI binary sitting next to the running orchestrator executable
+/// (installed layouts, where launchd/systemd may provide a minimal PATH),
+/// falling back to PATH resolution (`cargo run` development). The value
+/// participates in drift detection, which is correct: a moved binary is a
+/// real config change, and it is stable within one install.
 fn agentd_mcp_command() -> String {
     std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join("agent")))
-        .filter(|sibling| sibling.is_file())
-        .map(|sibling| sibling.to_string_lossy().into_owned())
+        .and_then(|exe| exe.parent().and_then(resolve_sibling_cli))
         .unwrap_or_else(|| "agent".to_string())
+}
+
+/// Find the agentd CLI binary inside an install directory, or `None` if the
+/// directory holds no recognizable CLI.
+///
+/// The CLI's name depends on the install layout, and the order here matters:
+///
+/// - **macOS app bundle** (`Agent.app/Contents/MacOS/`): the CLI ships under
+///   its cargo name `cli`; the sibling named `agent` is the *desktop app*
+///   executable, which swallows CLI arguments like `mcp` and never speaks
+///   MCP over stdio. `cli` must win or system agents get a server that
+///   hangs at "still connecting".
+/// - **Release tarball**: the CLI is staged as `agent` (renamed from `cli`
+///   by the release workflow) and no `cli` file exists.
+/// - **Cargo dev build** (`target/debug/`): the CLI builds as `cli`.
+fn resolve_sibling_cli(dir: &std::path::Path) -> Option<String> {
+    ["cli", "agent"]
+        .iter()
+        .map(|name| dir.join(name))
+        .find(|candidate| candidate.is_file())
+        .map(|candidate| candidate.to_string_lossy().into_owned())
 }
 
 /// Tool policy for the diagnostician: read-only agentd MCP tool families.
@@ -952,6 +971,33 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), defs.len(), "registry names must be unique");
+    }
+
+    #[test]
+    fn resolve_sibling_cli_prefers_cli_over_agent() {
+        // App-bundle layout: `agent` is the desktop app, `cli` is the CLI.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("agent"), b"").unwrap();
+        std::fs::write(dir.path().join("cli"), b"").unwrap();
+
+        let resolved = resolve_sibling_cli(dir.path()).expect("resolves");
+        assert!(resolved.ends_with("/cli"), "must pick `cli`, got {resolved}");
+    }
+
+    #[test]
+    fn resolve_sibling_cli_falls_back_to_agent() {
+        // Tarball layout: the CLI is staged as `agent`, no `cli` present.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("agent"), b"").unwrap();
+
+        let resolved = resolve_sibling_cli(dir.path()).expect("resolves");
+        assert!(resolved.ends_with("/agent"), "must pick `agent`, got {resolved}");
+    }
+
+    #[test]
+    fn resolve_sibling_cli_none_when_no_candidates() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(resolve_sibling_cli(dir.path()), None);
     }
 
     #[test]
