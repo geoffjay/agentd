@@ -1217,7 +1217,7 @@ impl AgentManager {
         // stdio (routing permission checks to us as `can_use_tool` control
         // requests) after the client sends an `initialize` control_request.
         // Queue it first so it precedes any prompt; the relay task delivers it.
-        let _ = ws_tx.send(make_initialize_request(&agent_id).to_string());
+        let _ = ws_tx.send(make_initialize_line(&agent_id));
 
         self.registry.register(agent_id, AgentConnection { tx: ws_tx }).await;
 
@@ -1308,17 +1308,24 @@ fn build_env_assignments(env: &std::collections::HashMap<String, String>) -> Vec
     assignments
 }
 
-/// Build the SDK-protocol `initialize` control_request for a stdio agent.
+/// Build the SDK-protocol `initialize` control_request line for a stdio agent.
 ///
 /// Claude Code requires this handshake before it routes permission checks
 /// over stdio; without it, `--permission-prompt-tool stdio` is ignored and
 /// headless mode auto-denies every tool not allowed by local settings.
-fn make_initialize_request(agent_id: &Uuid) -> serde_json::Value {
+///
+/// Returns a complete NDJSON line: senders into the stdin relay channel are
+/// responsible for the trailing newline (`write_subprocess_stdin` writes the
+/// payload verbatim). Without it, this line and the next message arrive
+/// concatenated and claude exits on the JSON parse error.
+fn make_initialize_line(agent_id: &Uuid) -> String {
     serde_json::json!({
         "type": "control_request",
         "request_id": format!("init-{agent_id}"),
         "request": { "subtype": "initialize", "hooks": null },
     })
+    .to_string()
+        + "\n"
 }
 
 fn build_claude_command(
@@ -1537,9 +1544,15 @@ mod tests {
     }
 
     #[test]
-    fn test_make_initialize_request_shape() {
+    fn test_make_initialize_line_shape() {
         let agent_id = Uuid::nil();
-        let init = make_initialize_request(&agent_id);
+        let line = make_initialize_line(&agent_id);
+        // Must be exactly one newline-terminated NDJSON line: the stdin relay
+        // writes payloads verbatim, so a missing newline concatenates this
+        // line with the next message and crashes claude's stream parser.
+        assert!(line.ends_with('\n'));
+        assert_eq!(line.matches('\n').count(), 1);
+        let init: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
         assert_eq!(init["type"], "control_request");
         assert_eq!(init["request_id"], format!("init-{agent_id}"));
         assert_eq!(init["request"]["subtype"], "initialize");
