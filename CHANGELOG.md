@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.8] - 2026-06-12
+
+### Fixed
+
+- Resolve agentd CLI as 'cli' before 'agent' for MCP server command
+- Wire permission prompts for subprocess stdio agents
+- Terminate stdio initialize handshake with a newline
+
 ## [0.4.7] - 2026-06-12
 
 ### Added
