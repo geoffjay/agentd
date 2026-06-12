@@ -8,6 +8,9 @@
 import type { HealthResponse } from "@/types/common";
 import type {
 	CollectResponse,
+	NamedQuery,
+	QueryResult,
+	RunQueryOptions,
 	SystemMetrics,
 	SystemStatus,
 } from "@/types/monitor";
@@ -49,6 +52,35 @@ export class MonitorClient extends ApiClient {
 	/** `GET /status` — current health assessment against thresholds. */
 	getStatus(): Promise<SystemStatus> {
 		return this.get<SystemStatus>("/status");
+	}
+
+	// -------------------------------------------------------------------------
+	// Named Prometheus queries
+	// -------------------------------------------------------------------------
+
+	/**
+	 * `GET /queries` — the curated PromQL catalog.
+	 *
+	 * Static on the server side: succeeds even when Prometheus is down.
+	 */
+	listQueries(): Promise<NamedQuery[]> {
+		return this.get<NamedQuery[]>("/queries");
+	}
+
+	/**
+	 * `GET /queries/{name}` — execute a named query against Prometheus.
+	 *
+	 * Fails with `ApiError(502)` when Prometheus itself is unreachable —
+	 * distinct from the monitor being down (network error / `ApiError(0)`),
+	 * so callers can render the right degraded state.
+	 */
+	runQuery(name: string, options?: RunQueryOptions): Promise<QueryResult> {
+		return this.get<QueryResult>(`/queries/${encodeURIComponent(name)}`, {
+			window: options?.window,
+			mode: options?.mode,
+			range_minutes: options?.rangeMinutes,
+			step_secs: options?.stepSecs,
+		});
 	}
 }
 

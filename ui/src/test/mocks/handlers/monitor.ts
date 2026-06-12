@@ -7,9 +7,11 @@
 
 import { HttpResponse, http } from "msw";
 import {
+	makeQueryCatalog,
 	makeSystemMetrics,
 	makeSystemMetricsHistory,
 	makeSystemStatus,
+	makeVectorQueryResult,
 } from "../factories";
 
 const BASE = "http://localhost:17003";
@@ -53,5 +55,15 @@ export const monitorHandlers = [
 				last_collected_at: DEFAULT_LATEST.collected_at,
 			}),
 		),
+	),
+
+	// -------------------------------------------------------------------------
+	// Named Prometheus queries
+	// -------------------------------------------------------------------------
+
+	http.get(`${BASE}/queries`, () => HttpResponse.json(makeQueryCatalog())),
+
+	http.get(`${BASE}/queries/:name`, ({ params }) =>
+		HttpResponse.json(makeVectorQueryResult(String(params.name))),
 	),
 ];
