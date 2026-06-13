@@ -82,6 +82,7 @@ impl QuestionStorage {
             asked_at: Set(now.to_rfc3339()),
             answered_at: Set(None),
             expires_at: Set(expires_at.map(|t| t.to_rfc3339())),
+            organization_id: Set(None),
         };
 
         question_entity::Entity::insert(model).exec(&self.db).await?;
@@ -111,11 +112,25 @@ impl QuestionStorage {
     }
 
     /// Lists questions with optional filters.
+    #[allow(dead_code)]
     pub async fn list(
         &self,
         status: Option<QuestionStatus>,
         agent_id: Option<&str>,
         category: Option<&str>,
+        limit: Option<u64>,
+        offset: Option<u64>,
+    ) -> Result<Vec<Question>> {
+        self.list_org(status, agent_id, category, None, limit, offset).await
+    }
+
+    /// Like [`list`] but also filters by `org_id` when provided.
+    pub async fn list_org(
+        &self,
+        status: Option<QuestionStatus>,
+        agent_id: Option<&str>,
+        category: Option<&str>,
+        org_id: Option<&str>,
         limit: Option<u64>,
         offset: Option<u64>,
     ) -> Result<Vec<Question>> {
@@ -130,6 +145,9 @@ impl QuestionStorage {
         }
         if let Some(c) = category {
             query = query.filter(question_entity::Column::Category.eq(c));
+        }
+        if let Some(oid) = org_id {
+            query = query.filter(question_entity::Column::OrganizationId.eq(oid));
         }
         if let Some(lim) = limit {
             query = query.limit(lim);

@@ -28,6 +28,9 @@ pub struct Model {
     /// Optional project UUID (stored as TEXT).  NULL when the workflow is not
     /// assigned to a project.
     pub project_id: Option<String>,
+    /// Optional organization UUID for tenant scoping.  NULL when not
+    /// scoped (dev/test mode without gateway).
+    pub organization_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

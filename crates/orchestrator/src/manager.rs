@@ -817,6 +817,7 @@ impl AgentManager {
     /// - `Some(false)` -- exclude system agents (use for `GET /agents`)
     /// - `Some(true)` -- only system agents (use for `GET /system-agents`)
     /// - `None` -- all agents regardless of flag (use for debug/admin views)
+    #[allow(dead_code)]
     pub async fn list_agents_paginated(
         &self,
         status: Option<AgentStatus>,
@@ -826,6 +827,21 @@ impl AgentManager {
         offset: usize,
     ) -> anyhow::Result<(Vec<Agent>, usize)> {
         self.storage.list_paginated(status, built_in_filter, project_id, limit, offset).await
+    }
+
+    /// Like [`list_agents_paginated`] but also scopes to `org_id` when present.
+    pub async fn list_agents_paginated_org(
+        &self,
+        status: Option<AgentStatus>,
+        built_in_filter: Option<bool>,
+        project_id: Option<Uuid>,
+        org_id: Option<&str>,
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<(Vec<Agent>, usize)> {
+        self.storage
+            .list_paginated_org(status, built_in_filter, project_id, org_id, limit, offset)
+            .await
     }
 
     /// List all built-in system agents (newest first).

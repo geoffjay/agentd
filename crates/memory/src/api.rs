@@ -70,6 +70,7 @@ use memory::types::{
 };
 
 pub use agentd_common::error::ApiError;
+use agentd_common::tenant::OptionalTenantId;
 pub use agentd_common::types::{clamp_limit, PaginatedResponse};
 
 // ---------------------------------------------------------------------------
@@ -227,6 +228,7 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
 /// - HTTP 400 — empty content or missing `created_by`
 /// - HTTP 500 — embedding or storage failure
 async fn create_memory(
+    OptionalTenantId(_org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Json(req): Json<CreateMemoryRequest>,
 ) -> Result<(StatusCode, Json<Memory>), ApiError> {
@@ -326,6 +328,7 @@ struct ListParams {
 ///
 /// Returns HTTP 200 with [`PaginatedResponse<Memory>`].
 async fn list_memories(
+    OptionalTenantId(_org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Query(params): Query<ListParams>,
 ) -> Result<Json<PaginatedResponse<Memory>>, ApiError> {

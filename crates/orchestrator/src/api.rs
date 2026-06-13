@@ -8,6 +8,7 @@ use crate::websocket::{
     ws_handler, ws_stream_agent_handler, ws_stream_agent_v2_handler, ws_stream_all_handler,
     ws_terminal_handler, ConnectionRegistry, TerminalRelayState,
 };
+use agentd_common::tenant::OptionalTenantId;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -158,6 +159,7 @@ async fn backend_info(State(state): State<ApiState>) -> impl IntoResponse {
 }
 
 async fn list_agents(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Query(query): Query<ListQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -181,7 +183,14 @@ async fn list_agents(
 
     let (agents, total) = state
         .manager
-        .list_agents_paginated(status_filter, built_in_filter, query.project_id, limit, offset)
+        .list_agents_paginated_org(
+            status_filter,
+            built_in_filter,
+            query.project_id,
+            org_id.as_deref(),
+            limit,
+            offset,
+        )
         .await?;
     let mut items: Vec<AgentResponse> = Vec::with_capacity(agents.len());
     for agent in agents {
@@ -227,6 +236,7 @@ fn validate_system_prompt_file(raw: String) -> Result<String, ApiError> {
 }
 
 async fn create_agent(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -267,6 +277,16 @@ async fn create_agent(
     };
 
     let agent = state.manager.spawn_agent(req.name, config, false).await?;
+
+    // Persist organization_id if the request came through the gateway.
+    if org_id.is_some() {
+        state
+            .manager
+            .agent_storage()
+            .set_agent_organization(&agent.id, org_id.as_deref())
+            .await
+            .map_err(ApiError::Internal)?;
+    }
 
     metrics::counter!("agents_created_total").increment(1);
 
@@ -1304,11 +1324,12 @@ struct ProjectListQuery {
 }
 
 async fn list_projects(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Query(query): Query<ProjectListQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let ps = state.manager.project_storage();
-    let all = ps.list().await.map_err(ApiError::Internal)?;
+    let all = ps.list_org(org_id.as_deref()).await.map_err(ApiError::Internal)?;
     let total = all.len();
     let limit = clamp_limit(query.limit);
     let offset = query.offset.unwrap_or(0);
@@ -1317,13 +1338,15 @@ async fn list_projects(
 }
 
 async fn create_project(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     if req.name.trim().is_empty() {
         return Err(ApiError::InvalidInput("project name must not be empty".to_string()));
     }
-    let project = Project::new(req.name, req.description);
+    let mut project = Project::new(req.name, req.description);
+    project.organization_id = org_id;
     let ps = state.manager.project_storage();
     let created = ps.create(&project).await.map_err(|e| {
         if e.to_string().contains("UNIQUE") {
