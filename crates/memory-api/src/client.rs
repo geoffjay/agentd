@@ -57,6 +57,7 @@ use agentd_common::types::PaginatedResponse;
 pub struct MemoryClient {
     client: reqwest::Client,
     base_url: String,
+    token: Option<String>,
 }
 
 impl MemoryClient {
@@ -66,7 +67,15 @@ impl MemoryClient {
     ///
     /// * `base_url` - The base URL for the memory service (e.g., `"http://localhost:17008"`)
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self { client: reqwest::Client::new(), base_url: base_url.into() }
+        Self { client: reqwest::Client::new(), base_url: base_url.into(), token: None }
+    }
+
+    /// Attach a bearer token to all requests made by this client.
+    ///
+    /// Returns `self` for method chaining.
+    pub fn with_token(mut self, token: impl Into<String>) -> Self {
+        self.token = Some(token.into());
+        self
     }
 
     /// `POST /memories` — create a new memory record.
@@ -101,6 +110,9 @@ impl MemoryClient {
         let url = format!("{}/memories", self.base_url);
         let mut request = self.client.get(&url);
 
+        if let Some(tok) = &self.token {
+            request = request.bearer_auth(tok);
+        }
         if let Some(t) = memory_type {
             request = request.query(&[("type", t)]);
         }
@@ -159,8 +171,11 @@ impl MemoryClient {
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response =
-            self.client.get(&url).send().await.context(format!("Failed to GET {url}"))?;
+        let mut req = self.client.get(&url);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to GET {url}"))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -173,13 +188,11 @@ impl MemoryClient {
 
     async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .post(&url)
-            .json(body)
-            .send()
-            .await
-            .context(format!("Failed to POST {url}"))?;
+        let mut req = self.client.post(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to POST {url}"))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -192,13 +205,11 @@ impl MemoryClient {
 
     async fn put<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .put(&url)
-            .json(body)
-            .send()
-            .await
-            .context(format!("Failed to PUT {url}"))?;
+        let mut req = self.client.put(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to PUT {url}"))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -211,8 +222,11 @@ impl MemoryClient {
 
     async fn delete_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response =
-            self.client.delete(&url).send().await.context(format!("Failed to DELETE {url}"))?;
+        let mut req = self.client.delete(&url);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to DELETE {url}"))?;
 
         if !response.status().is_success() {
             let status = response.status();

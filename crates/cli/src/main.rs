@@ -462,6 +462,30 @@ enum Commands {
     },
 }
 
+/// Build the gateway-routed URL for a service.
+///
+/// Returns `{AGENTD_CORE_SERVICE_URL}/api/v1/{service}` so that all CLI
+/// commands go through the core auth gateway.
+fn gateway_url(service: &str) -> String {
+    let core = env::var("AGENTD_CORE_SERVICE_URL")
+        .unwrap_or_else(|_| "http://localhost:17000".to_string());
+    format!("{}/api/v1/{}", core, service)
+}
+
+/// Load the session token from disk, printing a warning if absent.
+///
+/// Commands still work without a token (the gateway will reject unauthorized
+/// requests with a 401 and the individual error will surface to the user).
+fn load_token_or_warn() -> Option<String> {
+    match commands::auth::load_token() {
+        Some(t) => Some(t),
+        None => {
+            eprintln!("warning: no session token found — run `agent auth login` to authenticate");
+            None
+        }
+    }
+}
+
 /// Main entry point for the agent CLI.
 ///
 /// Parses command-line arguments using clap and dispatches to the appropriate
@@ -469,10 +493,8 @@ enum Commands {
 ///
 /// # Service Connections
 ///
-/// - Notify commands connect to `http://localhost:17004`
-/// - Ask commands connect to `http://localhost:17001`
-/// - Wrap commands connect to `http://localhost:17005`
-/// - Orchestrator commands connect to `http://localhost:17006`
+/// All commands are routed through the core gateway at `AGENTD_CORE_SERVICE_URL`
+/// (default: `http://localhost:17000`) using bearer token authentication.
 ///
 /// # Error Handling
 ///
@@ -484,37 +506,48 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Notify { command } => {
-            // Use AGENTD_NOTIFY_SERVICE_URL env var, default to production port
-            let url = env::var("AGENTD_NOTIFY_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17004".to_string());
-            let client = NotifyClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("notify");
+            let mut client = NotifyClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             command.execute(&client, cli.json).await?;
         }
         Commands::Ask { command } => {
-            // Use AGENTD_ASK_SERVICE_URL env var, default to production port
-            let url = env::var("AGENTD_ASK_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17001".to_string());
-            let client = AskClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("ask");
+            let mut client = AskClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             command.execute(&client, cli.json).await?;
         }
         Commands::Wrap { command } => {
-            // Use AGENTD_WRAP_SERVICE_URL env var, default to production port
-            let url = env::var("AGENTD_WRAP_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17005".to_string());
-            let client = WrapClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("wrap");
+            let mut client = WrapClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             command.execute(&client, cli.json).await?;
         }
         Commands::Orchestrator { command } => {
-            // Use AGENTD_ORCHESTRATOR_SERVICE_URL env var, default to production port
-            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17006".to_string());
-            let client = OrchestratorClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("orchestrator");
+            let mut client = OrchestratorClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             command.execute(&client, cli.json).await?;
         }
         Commands::Apply { path, dry_run, wait_timeout } => {
-            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17006".to_string());
-            let client = OrchestratorClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("orchestrator");
+            let mut client = OrchestratorClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             if path.is_dir() {
                 commands::apply::apply_directory(&client, &path, dry_run, wait_timeout, cli.json)
                     .await?;
@@ -535,9 +568,12 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Teardown { path, dry_run } => {
-            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17006".to_string());
-            let client = OrchestratorClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("orchestrator");
+            let mut client = OrchestratorClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             commands::apply::teardown_directory(&client, &path, dry_run, cli.json).await?;
         }
         Commands::Completions { shell } => {
@@ -557,26 +593,33 @@ async fn main() -> Result<()> {
             agentd_mcp::run(agentd_mcp::config::AgentdMcpConfig::load()).await?;
         }
         Commands::Memory { command } => {
-            // Use AGENTD_MEMORY_SERVICE_URL env var, default to production port
-            let url = env::var("AGENTD_MEMORY_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17008".to_string());
-            let client = MemoryClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("memory");
+            let mut client = MemoryClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             command.execute(&client, cli.json).await?;
         }
         Commands::Communicate { command } => {
-            // Use AGENTD_COMMUNICATE_SERVICE_URL env var, default to production port
-            let url = env::var("AGENTD_COMMUNICATE_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17010".to_string());
-            let client = CommunicateClient::new(&url);
+            let token = load_token_or_warn();
+            let url = gateway_url("communicate");
+            let mut client = CommunicateClient::new(&url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             command.execute(&client, &url, cli.json).await?;
         }
         Commands::Prompt { command } => {
-            let orch_url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17006".to_string());
-            let comm_url = env::var("AGENTD_COMMUNICATE_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17010".to_string());
-            let orch_client = OrchestratorClient::new(orch_url);
-            let comm_client = CommunicateClient::new(&comm_url);
+            let token = load_token_or_warn();
+            let orch_url = gateway_url("orchestrator");
+            let comm_url = gateway_url("communicate");
+            let mut orch_client = OrchestratorClient::new(orch_url);
+            let mut comm_client = CommunicateClient::new(&comm_url);
+            if let Some(t) = token {
+                orch_client = orch_client.with_token(t.clone());
+                comm_client = comm_client.with_token(t);
+            }
             command.execute(&orch_client, &comm_client, cli.json).await?;
         }
         Commands::Config { command } => {
@@ -589,9 +632,12 @@ async fn main() -> Result<()> {
             command.execute(cli.json).await?;
         }
         Commands::Project { command } => {
-            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17006".to_string());
-            let client = OrchestratorClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("orchestrator");
+            let mut client = OrchestratorClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             command.execute(&client, cli.json).await?;
         }
         Commands::Control => {
@@ -601,9 +647,12 @@ async fn main() -> Result<()> {
             agentd_tui::run_manager().await?;
         }
         Commands::SystemAgents { command } => {
-            let url = env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17006".to_string());
-            let client = OrchestratorClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("orchestrator");
+            let mut client = OrchestratorClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             command.execute(&client, cli.json).await?;
         }
         Commands::Install { bin_src, ui_dir, skip_migrations } => {
