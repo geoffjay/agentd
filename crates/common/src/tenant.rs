@@ -33,6 +33,15 @@
 //! Run `agent admin backfill-tenant --org-id <id>` to assign all NULL rows to
 //! a specific organization and end the transition period.
 //!
+//! # Security Note
+//!
+//! During the transition window, **all authenticated tenants share read access
+//! to NULL-scoped (legacy) rows**. This is intentional — unscoped data was
+//! created before multi-tenancy was in place — but it means any tenant can see
+//! any legacy record until the backfill is run. Operators should run
+//! `agent admin backfill-tenant` promptly after deploying the migration to
+//! close this window and fully scope all rows.
+//!
 //! # Configuration
 //!
 //! | Env var                  | Default | Effect                                          |

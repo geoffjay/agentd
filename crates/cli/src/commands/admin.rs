@@ -24,7 +24,7 @@ use agentd_install::migrate::DB_SERVICES;
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::*;
-use sea_orm::ConnectionTrait;
+use sea_orm::{ConnectionTrait, Statement, Value};
 
 /// Admin subcommands.
 #[derive(Debug, Subcommand)]
@@ -93,6 +93,9 @@ const SCOPED_TABLES: &[ServiceTables] = &[
 // ---------------------------------------------------------------------------
 
 /// Count rows with NULL organization_id in a table.
+///
+/// `table` must come from the hardcoded `SCOPED_TABLES` constant — it is
+/// never user-supplied and is safe to interpolate into the statement string.
 async fn count_null_org_rows(
     db: &sea_orm::DatabaseConnection,
     table: &str,
@@ -104,8 +107,8 @@ async fn count_null_org_rows(
         cnt: i64,
     }
 
-    let result = CountRow::find_by_statement(sea_orm::Statement::from_string(
-        sea_orm::DatabaseBackend::Sqlite,
+    let result = CountRow::find_by_statement(Statement::from_string(
+        db.get_database_backend(),
         format!("SELECT COUNT(*) AS cnt FROM {} WHERE organization_id IS NULL", table),
     ))
     .one(db)
@@ -115,16 +118,23 @@ async fn count_null_org_rows(
 }
 
 /// Assign `org_id` to all NULL `organization_id` rows in a table.
+///
+/// Uses a parameterized statement so that user-supplied `org_id` values
+/// (e.g. those containing single quotes) cannot inject SQL.
+///
+/// `table` must come from the hardcoded `SCOPED_TABLES` constant — it is
+/// never user-supplied and is safe to interpolate into the statement string.
 async fn update_null_org_rows(
     db: &sea_orm::DatabaseConnection,
     table: &str,
     org_id: &str,
 ) -> Result<u64, sea_orm::DbErr> {
-    let stmt = format!(
-        "UPDATE {} SET organization_id = '{}' WHERE organization_id IS NULL",
-        table, org_id
+    let stmt = Statement::from_sql_and_values(
+        db.get_database_backend(),
+        format!("UPDATE {} SET organization_id = ? WHERE organization_id IS NULL", table),
+        vec![Value::from(org_id.to_owned())],
     );
-    let result = db.execute_unprepared(&stmt).await?;
+    let result = db.execute(stmt).await?;
     Ok(result.rows_affected())
 }
 
@@ -137,6 +147,10 @@ struct BackfillResult {
 }
 
 async fn backfill_tenant(org_id: &str, dry_run: bool, json: bool) -> Result<()> {
+    if org_id.is_empty() {
+        anyhow::bail!("--org-id must not be empty");
+    }
+
     let mut results: Vec<BackfillResult> = Vec::new();
 
     for scoped in SCOPED_TABLES {
@@ -223,4 +237,128 @@ async fn backfill_tenant(org_id: &str, dry_run: bool, json: bool) -> Result<()> 
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agentd_common::storage::create_test_connection;
+    use sea_orm::ConnectionTrait;
+
+    /// Create a minimal table with an `organization_id` column in the given
+    /// in-memory connection, then insert `null_count` rows with NULL
+    /// `organization_id` and `scoped_count` rows with a known org ID.
+    async fn seed_table(
+        db: &sea_orm::DatabaseConnection,
+        table: &str,
+        null_count: usize,
+        scoped_count: usize,
+    ) {
+        db.execute_unprepared(&format!(
+            "CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY, organization_id TEXT)"
+        ))
+        .await
+        .unwrap();
+
+        for _ in 0..null_count {
+            db.execute_unprepared(&format!("INSERT INTO {table} (organization_id) VALUES (NULL)"))
+                .await
+                .unwrap();
+        }
+
+        for _ in 0..scoped_count {
+            db.execute_unprepared(&format!(
+                "INSERT INTO {table} (organization_id) VALUES ('existing-org')"
+            ))
+            .await
+            .unwrap();
+        }
+    }
+
+    /// Count all rows in a table — used to verify no extra rows were inserted.
+    async fn total_rows(db: &sea_orm::DatabaseConnection, table: &str) -> u64 {
+        use sea_orm::FromQueryResult;
+
+        #[derive(sea_orm::FromQueryResult)]
+        struct C {
+            n: i64,
+        }
+
+        let r = C::find_by_statement(Statement::from_string(
+            db.get_database_backend(),
+            format!("SELECT COUNT(*) AS n FROM {table}"),
+        ))
+        .one(db)
+        .await
+        .unwrap();
+
+        r.map(|c| c.n as u64).unwrap_or(0)
+    }
+
+    /// Count rows where organization_id IS NULL.
+    async fn null_rows(db: &sea_orm::DatabaseConnection, table: &str) -> u64 {
+        count_null_org_rows(db, table).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn count_returns_only_null_rows() {
+        let (db, _tmp) = create_test_connection().await;
+        seed_table(&db, "items", 3, 2).await;
+
+        let count = null_rows(&db, "items").await;
+        assert_eq!(count, 3, "should count only NULL organization_id rows");
+    }
+
+    #[tokio::test]
+    async fn dry_run_does_not_mutate_data() {
+        let (db, _tmp) = create_test_connection().await;
+        seed_table(&db, "items", 4, 1).await;
+
+        // Dry-run: count nulls without touching them
+        let counted = count_null_org_rows(&db, "items").await.unwrap();
+        assert_eq!(counted, 4);
+
+        // Data must be unchanged after the count
+        assert_eq!(null_rows(&db, "items").await, 4, "dry-run must not modify rows");
+        assert_eq!(total_rows(&db, "items").await, 5, "total row count must be unchanged");
+    }
+
+    #[tokio::test]
+    async fn update_assigns_org_id_to_null_rows_only() {
+        let (db, _tmp) = create_test_connection().await;
+        seed_table(&db, "items", 3, 2).await;
+
+        let affected = update_null_org_rows(&db, "items", "acme-corp").await.unwrap();
+        assert_eq!(affected, 3, "should update exactly the 3 NULL rows");
+
+        // No more NULL rows
+        assert_eq!(null_rows(&db, "items").await, 0, "no NULL rows should remain");
+
+        // Existing-org rows must be untouched
+        assert_eq!(total_rows(&db, "items").await, 5, "total row count must be unchanged");
+    }
+
+    #[tokio::test]
+    async fn update_handles_org_id_with_special_characters() {
+        let (db, _tmp) = create_test_connection().await;
+        seed_table(&db, "items", 2, 0).await;
+
+        // An org ID containing a single quote would break naive string interpolation.
+        let affected = update_null_org_rows(&db, "items", "acme's-org").await.unwrap();
+        assert_eq!(affected, 2);
+        assert_eq!(null_rows(&db, "items").await, 0);
+    }
+
+    #[tokio::test]
+    async fn update_zero_rows_when_table_already_scoped() {
+        let (db, _tmp) = create_test_connection().await;
+        seed_table(&db, "items", 0, 5).await;
+
+        let affected = update_null_org_rows(&db, "items", "acme-corp").await.unwrap();
+        assert_eq!(affected, 0, "nothing to update when all rows are already scoped");
+    }
 }
