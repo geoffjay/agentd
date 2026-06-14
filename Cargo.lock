@@ -1118,6 +1118,7 @@ dependencies = [
  "orchestrator",
  "prettytable-rs",
  "reqwest",
+ "sea-orm",
  "serde",
  "serde_json",
  "serde_yaml",

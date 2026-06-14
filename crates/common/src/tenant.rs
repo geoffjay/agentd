@@ -15,6 +15,24 @@
 //!   the header is absent). Use this for endpoints that must serve both
 //!   authenticated (gateway-routed) and local/trusted (MCP, tests) callers.
 //!
+//! # NULL Handling Policy (transition period)
+//!
+//! When the `organization_id` column was added to service databases, existing
+//! rows received `NULL` values. During the transition period, list queries
+//! that receive a tenant ID **should include rows where `organization_id`
+//! matches the tenant OR is NULL** (legacy data). This ensures unscoped legacy
+//! data remains accessible to all tenants until it is explicitly backfilled.
+//!
+//! Example SQL pattern:
+//!
+//! ```sql
+//! SELECT * FROM resources
+//!  WHERE organization_id = ? OR organization_id IS NULL
+//! ```
+//!
+//! Run `agent admin backfill-tenant --org-id <id>` to assign all NULL rows to
+//! a specific organization and end the transition period.
+//!
 //! # Configuration
 //!
 //! | Env var                  | Default | Effect                                          |

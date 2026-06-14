@@ -28,6 +28,7 @@
 //! 4. Add the module and re-export in this file
 //! 5. Add the command variant to `Commands` enum in `main.rs`
 
+pub mod admin;
 pub mod apply;
 pub mod ask;
 pub mod auth;
@@ -43,6 +44,7 @@ pub mod prompt;
 pub mod system_agents;
 pub mod wrap;
 
+pub use admin::AdminCommand;
 pub use ask::AskCommand;
 pub use auth::AuthCommand;
 pub use communicate::CommunicateCommand;
