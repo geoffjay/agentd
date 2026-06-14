@@ -82,8 +82,8 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::*;
 use commands::{
-    AskCommand, AuthCommand, CommunicateCommand, ConfigCommand, MemoryCommand, NotifyCommand,
-    OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, ServiceCommand,
+    AdminCommand, AskCommand, AuthCommand, CommunicateCommand, ConfigCommand, MemoryCommand,
+    NotifyCommand, OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, ServiceCommand,
     SystemAgentsCommand, WrapCommand,
 };
 use communicate::client::CommunicateClient;
@@ -460,6 +460,22 @@ enum Commands {
         #[arg(long)]
         service: Option<String>,
     },
+
+    /// Administrative maintenance commands.
+    ///
+    /// Privileged operations that operate directly on service databases.
+    /// Use with care in production environments.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent admin backfill-tenant --org-id acme-corp
+    /// agent admin backfill-tenant --org-id acme-corp --dry-run
+    /// ```
+    Admin {
+        #[command(subcommand)]
+        command: AdminCommand,
+    },
 }
 
 /// Build the gateway-routed URL for a service.
@@ -670,6 +686,9 @@ async fn main() -> Result<()> {
         }
         Commands::MigrateStatus { service } => {
             agentd_install::migrate::migrate_status(service.as_deref()).await?;
+        }
+        Commands::Admin { command } => {
+            command.execute(cli.json).await?;
         }
     }
 

@@ -57,6 +57,7 @@ impl SchedulerStorage {
             created_at: Set(workflow.created_at.to_rfc3339()),
             updated_at: Set(workflow.updated_at.to_rfc3339()),
             project_id: Set(workflow.project_id.map(|id| id.to_string())),
+            organization_id: Set(workflow.organization_id.clone()),
         };
 
         workflow_entity::Entity::insert(model).exec(&self.db).await?;
@@ -74,10 +75,28 @@ impl SchedulerStorage {
 
     /// Lists all workflows, optionally filtered by project (newest first).
     pub async fn list_workflows(&self, project_id: Option<Uuid>) -> Result<Vec<WorkflowConfig>> {
+        self.list_workflows_org(project_id, None).await
+    }
+
+    /// Like [`list_workflows`] but also filters by `org_id` when provided.
+    pub async fn list_workflows_org(
+        &self,
+        project_id: Option<Uuid>,
+        org_id: Option<&str>,
+    ) -> Result<Vec<WorkflowConfig>> {
         let mut query = workflow_entity::Entity::find()
             .order_by(workflow_entity::Column::CreatedAt, Order::Desc);
         if let Some(pid) = project_id {
             query = query.filter(workflow_entity::Column::ProjectId.eq(pid.to_string()));
+        }
+        if let Some(oid) = org_id {
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            query = query.filter(
+                Condition::any()
+                    .add(workflow_entity::Column::OrganizationId.eq(oid))
+                    .add(workflow_entity::Column::OrganizationId.is_null()),
+            );
         }
         let models: Vec<workflow_entity::Model> = query.all(&self.db).await?;
         models.into_iter().map(model_to_workflow).collect()
@@ -175,6 +194,7 @@ impl SchedulerStorage {
             dispatched_at: Set(record.dispatched_at.to_rfc3339()),
             completed_at: Set(record.completed_at.map(|dt| dt.to_rfc3339())),
             task_json: Set(record.task.as_ref().and_then(|t| serde_json::to_string(t).ok())),
+            organization_id: Set(None),
         };
 
         dispatch_entity::Entity::insert(model).exec(&self.db).await?;
@@ -238,9 +258,29 @@ impl SchedulerStorage {
         offset: usize,
         project_id: Option<Uuid>,
     ) -> Result<(Vec<WorkflowConfig>, usize)> {
+        self.list_workflows_paginated_org(limit, offset, project_id, None).await
+    }
+
+    /// Like [`list_workflows_paginated`] but also filters by `org_id` when provided.
+    pub async fn list_workflows_paginated_org(
+        &self,
+        limit: usize,
+        offset: usize,
+        project_id: Option<Uuid>,
+        org_id: Option<&str>,
+    ) -> Result<(Vec<WorkflowConfig>, usize)> {
         let mut base = workflow_entity::Entity::find();
         if let Some(pid) = project_id {
             base = base.filter(workflow_entity::Column::ProjectId.eq(pid.to_string()));
+        }
+        if let Some(oid) = org_id {
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            base = base.filter(
+                Condition::any()
+                    .add(workflow_entity::Column::OrganizationId.eq(oid))
+                    .add(workflow_entity::Column::OrganizationId.is_null()),
+            );
         }
 
         let total = base.clone().count(&self.db).await? as usize;
@@ -532,6 +572,7 @@ fn model_to_workflow(model: workflow_entity::Model) -> Result<WorkflowConfig> {
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
         project_id: model.project_id.map(|s| Uuid::parse_str(&s)).transpose()?,
+        organization_id: model.organization_id,
     })
 }
 
@@ -594,6 +635,7 @@ mod tests {
             created_at: now,
             updated_at: now,
             project_id: None,
+            organization_id: None,
         }
     }
 
@@ -740,6 +782,7 @@ mod tests {
             dispatched_at: Set(Utc::now().to_rfc3339()),
             completed_at: Set(None),
             task_json: Set(Some("not valid json".to_string())),
+            organization_id: Set(None),
         };
         dispatch_entity::Entity::insert(model).exec(&storage.db).await.unwrap();
 

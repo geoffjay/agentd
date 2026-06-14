@@ -5,48 +5,42 @@ use axum::response::{IntoResponse, Response};
 use reqwest::Client;
 
 /// Shared state for proxy handlers.
+///
+/// After the React SPA was updated to route directly through the core gateway,
+/// the per-service proxy handlers became redundant. The proxy now forwards all
+/// `/api/**` requests to the core gateway at `{gateway_url}/api/v1/**`, so
+/// only a single upstream URL is needed.
 #[derive(Clone)]
 pub struct ProxyState {
     pub client: Client,
-    pub ask_url: String,
-    pub notify_url: String,
-    pub orchestrator_url: String,
+    /// URL of the core gateway (e.g. `http://localhost:17000`).
+    pub gateway_url: String,
 }
 
-/// Proxy requests under `/api/ask/**` to the ask service.
-pub async fn proxy_ask(
+/// Proxy all requests under `/api/**` to the core gateway.
+///
+/// Strips the `/api/` prefix and prepends `/api/v1/` so that the gateway
+/// receives the correct service path.
+///
+/// Example: `GET /api/notify/notifications` → `GET {gateway}/api/v1/notify/notifications`
+pub async fn proxy_to_gateway(
     State(state): State<ProxyState>,
     req: Request<Body>,
 ) -> Result<Response, StatusCode> {
-    proxy_request(&state.client, &state.ask_url, "/api/ask", req).await
+    proxy_request(&state.client, &state.gateway_url, "/api", "/api/v1", req).await
 }
 
-/// Proxy requests under `/api/notify/**` to the notify service.
-pub async fn proxy_notify(
-    State(state): State<ProxyState>,
-    req: Request<Body>,
-) -> Result<Response, StatusCode> {
-    proxy_request(&state.client, &state.notify_url, "/api/notify", req).await
-}
-
-/// Proxy requests under `/api/orchestrator/**` to the orchestrator service.
-pub async fn proxy_orchestrator(
-    State(state): State<ProxyState>,
-    req: Request<Body>,
-) -> Result<Response, StatusCode> {
-    proxy_request(&state.client, &state.orchestrator_url, "/api/orchestrator", req).await
-}
-
-/// Forward an inbound request to an upstream service, stripping the prefix.
+/// Forward an inbound request to the upstream gateway, rewriting the path prefix.
 async fn proxy_request(
     client: &Client,
-    upstream_url: &str,
-    prefix: &str,
+    upstream_base: &str,
+    strip_prefix: &str,
+    add_prefix: &str,
     req: Request<Body>,
 ) -> Result<Response, StatusCode> {
-    let path = req.uri().path().strip_prefix(prefix).unwrap_or("");
+    let tail = req.uri().path().strip_prefix(strip_prefix).unwrap_or("");
     let query = req.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
-    let target_url = format!("{upstream_url}{path}{query}");
+    let target_url = format!("{upstream_base}{add_prefix}{tail}{query}");
 
     let method = req.method().clone();
     let headers = req.headers().clone();

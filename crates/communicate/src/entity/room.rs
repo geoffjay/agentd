@@ -35,6 +35,10 @@ pub struct Model {
     /// Optional project identifier (UUID string).  No FK — rooms and projects
     /// live in separate databases.  NULL when not assigned to a project.
     pub project_id: Option<String>,
+
+    /// Optional organization UUID for tenant scoping.  NULL when not
+    /// scoped (dev/test mode without gateway).
+    pub organization_id: Option<String>,
 }
 
 /// Relations from rooms to participants and messages.

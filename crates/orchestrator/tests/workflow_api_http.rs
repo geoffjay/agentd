@@ -135,6 +135,7 @@ async fn insert_workflow(
         created_at: now,
         updated_at: now,
         project_id: None,
+        organization_id: None,
     };
     scheduler.storage().add_workflow(&config).await.unwrap();
     config

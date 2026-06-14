@@ -48,6 +48,10 @@ pub struct Model {
 
     /// RFC3339 timestamp when the question expires (optional).
     pub expires_at: Option<String>,
+
+    /// Optional organization UUID for tenant scoping.  NULL when not
+    /// scoped (dev/test mode without gateway).
+    pub organization_id: Option<String>,
 }
 
 /// No foreign-key relations — questions are a self-contained table.
