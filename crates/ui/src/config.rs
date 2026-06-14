@@ -8,12 +8,12 @@ pub struct UiConfig {
     pub port: u16,
     /// Directory containing the built UI static files.
     pub ui_dir: String,
-    /// URL of the ask service.
-    pub ask_service_url: String,
-    /// URL of the notify service.
-    pub notify_service_url: String,
-    /// URL of the orchestrator service.
-    pub orchestrator_service_url: String,
+    /// URL of the core gateway. All `/api/**` requests are forwarded here.
+    ///
+    /// Previously the UI proxy maintained per-service URLs (`ask_service_url`,
+    /// `notify_service_url`, `orchestrator_service_url`). Now that the React
+    /// SPA routes through the core gateway, a single gateway URL is sufficient.
+    pub core_service_url: String,
     /// Runtime configuration document served to the SPA at `/config.json`,
     /// built from the same shared config this struct was loaded from.
     pub runtime_config: crate::runtime_config::RuntimeConfig,
@@ -27,9 +27,7 @@ impl UiConfig {
     ///
     /// - `AGENTD_PORT` — port (default: 17009 for dev, override with env)
     /// - `AGENTD_UI_DIR` — path to built UI assets (default: `./ui/dist`)
-    /// - `AGENTD_ASK_SERVICE_URL` — ask service URL (default: `http://localhost:7001`)
-    /// - `AGENTD_NOTIFY_SERVICE_URL` — notify service URL (default: `http://localhost:7004`)
-    /// - `AGENTD_ORCHESTRATOR_SERVICE_URL` — orchestrator service URL (default: `http://localhost:7006`)
+    /// - `AGENTD_CORE_SERVICE_URL` — core gateway URL (default: `http://localhost:17000`)
     pub fn load() -> Self {
         let shared = agentd_common::config::load().unwrap_or_else(|e| {
             tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
@@ -46,12 +44,8 @@ impl UiConfig {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(base.port),
             ui_dir: std::env::var("AGENTD_UI_DIR").unwrap_or(base.ui_dir),
-            ask_service_url: std::env::var("AGENTD_ASK_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17001".to_string()),
-            notify_service_url: std::env::var("AGENTD_NOTIFY_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17004".to_string()),
-            orchestrator_service_url: std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17006".to_string()),
+            core_service_url: std::env::var("AGENTD_CORE_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:17000".to_string()),
         }
     }
 
@@ -89,9 +83,7 @@ mod tests {
         UiConfig {
             port,
             ui_dir: ui_dir.to_string(),
-            ask_service_url: "http://localhost:7001".to_string(),
-            notify_service_url: "http://localhost:7004".to_string(),
-            orchestrator_service_url: "http://localhost:7006".to_string(),
+            core_service_url: "http://localhost:17000".to_string(),
             runtime_config: crate::runtime_config::build(&Default::default()),
         }
     }
