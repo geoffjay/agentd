@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
-const TOKEN_KEY = "agentd_token";
+/** localStorage key used to persist the session token. Shared across modules. */
+export const TOKEN_KEY = "agentd_token";
 
 interface AuthState {
 	token: string | null;

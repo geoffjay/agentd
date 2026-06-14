@@ -1,11 +1,14 @@
 /**
  * Client for the Core service auth endpoints (default port 17000).
  *
- * Provides login, register, and logout operations.
+ * Provides login, register, and logout operations. Intentionally does NOT use
+ * `withAuth()` — injecting a bearer token on the login/register calls would
+ * create a circular dependency (there is no valid token yet).
  */
 
-import { runtimeServiceUrl } from "../runtime-config";
+import { TOKEN_KEY } from "@/stores/authStore";
 import { ApiClient } from "./base";
+import { serviceConfig } from "./config";
 
 export interface LoginRequest {
 	username: string;
@@ -23,14 +26,9 @@ export interface AuthResponse {
 	user_id: string;
 }
 
-const coreServiceUrl =
-	runtimeServiceUrl("core") ??
-	import.meta.env.VITE_AGENTD_CORE_SERVICE_URL ??
-	"http://localhost:17000";
-
 class AuthApiClient extends ApiClient {
 	constructor() {
-		super({ baseUrl: coreServiceUrl });
+		super({ baseUrl: serviceConfig.coreServiceUrl });
 	}
 
 	login(req: LoginRequest): Promise<AuthResponse> {
@@ -42,10 +40,10 @@ class AuthApiClient extends ApiClient {
 	}
 
 	async logout(): Promise<void> {
-		const token = localStorage.getItem("agentd_token");
+		const token = localStorage.getItem(TOKEN_KEY);
 		if (token) {
 			try {
-				await fetch(`${coreServiceUrl}/auth/logout`, {
+				await fetch(`${serviceConfig.coreServiceUrl}/auth/logout`, {
 					method: "POST",
 					headers: {
 						Authorization: `Bearer ${token}`,

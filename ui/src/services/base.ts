@@ -159,10 +159,13 @@ export class ApiClient {
 		}
 
 		if (!response.ok) {
-			// Handle 401 — clear token and redirect to login
+			// Handle 401: clear token, redirect to login, and stop processing.
+			// window.location.href is asynchronous; without the early throw the
+			// code falls through and callers render an error banner before redirect.
 			if (response.status === 401) {
 				localStorage.removeItem("agentd_token");
 				window.location.href = "/login";
+				throw new ApiError(401, "Session expired");
 			}
 
 			let message = `HTTP ${response.status}`;
@@ -269,7 +272,7 @@ export class ApiClient {
 		const url = `${wsBase}${path}`;
 		const token = localStorage.getItem("agentd_token");
 		const wsUrl = token
-			? `${url}${url.includes("?") ? "&" : "?"}token=${token}`
+			? `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
 			: url;
 		return new WebSocket(wsUrl);
 	}
