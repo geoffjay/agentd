@@ -112,6 +112,7 @@ impl MemoryStorage {
             refs: Set(refs_json),
             created_at: Set(now_str.clone()),
             updated_at: Set(now_str),
+            organization_id: Set(None),
         };
 
         mem_entity::Entity::insert(model)

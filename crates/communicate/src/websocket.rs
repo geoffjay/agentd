@@ -211,6 +211,9 @@ pub struct WsConnectParams {
     pub kind: String,
     /// Human-readable display name.
     pub display_name: String,
+    /// Optional bearer token — validated against the core service when
+    /// `AGENTD_CORE_SERVICE_URL` is set.
+    pub token: Option<String>,
 }
 
 /// Messages sent from the client to the server.
@@ -260,6 +263,15 @@ pub async fn ws_handler(
     // Validate participant kind
     if params.kind != "agent" && params.kind != "human" {
         return Err(ApiError::InvalidInput("kind must be 'agent' or 'human'".to_string()));
+    }
+
+    // Validate token if provided and core service URL is configured.
+    if let Some(ref token) = params.token {
+        if let Some(result) = agentd_common::ws_auth::validate_ws_token(token).await {
+            if result.is_err() {
+                return Err(ApiError::Unauthorized("invalid or expired token".to_string()));
+            }
+        }
     }
 
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, state, params)))

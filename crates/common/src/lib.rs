@@ -56,3 +56,4 @@ pub mod server;
 pub mod storage;
 pub mod tenant;
 pub mod types;
+pub mod ws_auth;

@@ -116,6 +116,7 @@ impl AgentStorage {
                 .mcp_servers
                 .as_ref()
                 .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()))),
+            organization_id: Set(agent.organization_id.clone()),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -251,6 +252,32 @@ impl AgentStorage {
         Ok(())
     }
 
+    /// Sets or clears the `organization_id` for a single agent.
+    ///
+    /// The `create_agent` handler now sets `organization_id` atomically in the
+    /// initial INSERT via `spawn_agent`, so this method is no longer called from
+    /// production code. Kept for potential use by migrations or admin tooling.
+    #[allow(dead_code)]
+    pub async fn set_agent_organization(&self, id: &Uuid, org_id: Option<&str>) -> Result<()> {
+        use sea_orm::sea_query::Expr;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let result = agent_entity::Entity::update_many()
+            .col_expr(
+                agent_entity::Column::OrganizationId,
+                Expr::value(org_id.map(|s| s.to_string())),
+            )
+            .col_expr(agent_entity::Column::UpdatedAt, Expr::value(now))
+            .filter(agent_entity::Column::Id.eq(id.to_string()))
+            .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
+            anyhow::bail!("Agent not found");
+        }
+        Ok(())
+    }
+
     /// Sets or clears the `project_id` for a single agent.
     pub async fn set_agent_project(&self, id: &Uuid, project_id: Option<Uuid>) -> Result<()> {
         use sea_orm::sea_query::Expr;
@@ -297,6 +324,16 @@ impl AgentStorage {
         status_filter: Option<AgentStatus>,
         project_id: Option<Uuid>,
     ) -> Result<Vec<Agent>> {
+        self.list_org(status_filter, project_id, None).await
+    }
+
+    /// Like [`list`] but also filters by `org_id` when provided.
+    pub async fn list_org(
+        &self,
+        status_filter: Option<AgentStatus>,
+        project_id: Option<Uuid>,
+        org_id: Option<&str>,
+    ) -> Result<Vec<Agent>> {
         let mut query =
             agent_entity::Entity::find().order_by(agent_entity::Column::CreatedAt, Order::Desc);
 
@@ -305,6 +342,15 @@ impl AgentStorage {
         }
         if let Some(pid) = project_id {
             query = query.filter(agent_entity::Column::ProjectId.eq(pid.to_string()));
+        }
+        if let Some(oid) = org_id {
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            query = query.filter(
+                Condition::any()
+                    .add(agent_entity::Column::OrganizationId.eq(oid))
+                    .add(agent_entity::Column::OrganizationId.is_null()),
+            );
         }
 
         let models: Vec<agent_entity::Model> = query.all(&self.db).await?;
@@ -616,6 +662,20 @@ impl AgentStorage {
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<Agent>, usize)> {
+        self.list_paginated_org(status_filter, built_in_filter, project_id, None, limit, offset)
+            .await
+    }
+
+    /// Like [`list_paginated`] but also filters by `org_id` when provided.
+    pub async fn list_paginated_org(
+        &self,
+        status_filter: Option<AgentStatus>,
+        built_in_filter: Option<bool>,
+        project_id: Option<Uuid>,
+        org_id: Option<&str>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Agent>, usize)> {
         let mut condition = Condition::all();
 
         if let Some(s) = &status_filter {
@@ -629,6 +689,16 @@ impl AgentStorage {
 
         if let Some(pid) = project_id {
             condition = condition.add(agent_entity::Column::ProjectId.eq(pid.to_string()));
+        }
+
+        if let Some(oid) = org_id {
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            condition = condition.add(
+                Condition::any()
+                    .add(agent_entity::Column::OrganizationId.eq(oid))
+                    .add(agent_entity::Column::OrganizationId.is_null()),
+            );
         }
 
         let total =
@@ -1010,6 +1080,7 @@ impl ProjectStorage {
             description: Set(project.description.clone()),
             created_at: Set(project.created_at.to_rfc3339()),
             updated_at: Set(project.updated_at.to_rfc3339()),
+            organization_id: Set(project.organization_id.clone()),
         };
         project_entity::Entity::insert(model).exec(&self.db).await?;
         Ok(project.clone())
@@ -1032,11 +1103,25 @@ impl ProjectStorage {
     }
 
     /// List all projects ordered by creation time (newest first).
+    #[allow(dead_code)]
     pub async fn list(&self) -> Result<Vec<Project>> {
-        let models = project_entity::Entity::find()
-            .order_by(project_entity::Column::CreatedAt, Order::Desc)
-            .all(&self.db)
-            .await?;
+        self.list_org(None).await
+    }
+
+    /// Like [`list`] but also filters by `org_id` when provided.
+    pub async fn list_org(&self, org_id: Option<&str>) -> Result<Vec<Project>> {
+        let mut query =
+            project_entity::Entity::find().order_by(project_entity::Column::CreatedAt, Order::Desc);
+        if let Some(oid) = org_id {
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            query = query.filter(
+                Condition::any()
+                    .add(project_entity::Column::OrganizationId.eq(oid))
+                    .add(project_entity::Column::OrganizationId.is_null()),
+            );
+        }
+        let models = query.all(&self.db).await?;
         models.into_iter().map(model_to_project).collect()
     }
 
@@ -1136,6 +1221,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
         built_in: model.built_in != 0,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
+        organization_id: model.organization_id,
     })
 }
 
@@ -1171,6 +1257,7 @@ fn model_to_project(model: project_entity::Model) -> Result<Project> {
         description: model.description,
         created_at: DateTime::parse_from_rfc3339(&model.created_at)?.with_timezone(&Utc),
         updated_at: DateTime::parse_from_rfc3339(&model.updated_at)?.with_timezone(&Utc),
+        organization_id: model.organization_id,
     })
 }
 
