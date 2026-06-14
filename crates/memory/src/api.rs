@@ -227,6 +227,8 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
 ///
 /// - HTTP 400 — empty content or missing `created_by`
 /// - HTTP 500 — embedding or storage failure
+// TODO(#1119): wire org_id into memory create — store organization_id on
+// the memory_entry row so tenant-scoped list queries can filter it correctly.
 async fn create_memory(
     OptionalTenantId(_org_id): OptionalTenantId,
     State(state): State<ApiState>,
@@ -327,6 +329,8 @@ struct ListParams {
 /// # Response
 ///
 /// Returns HTTP 200 with [`PaginatedResponse<Memory>`].
+// TODO(#1119): wire org_id into memory list — filter by organization_id
+// (with OR NULL for legacy rows) once create_memory stores the org.
 async fn list_memories(
     OptionalTenantId(_org_id): OptionalTenantId,
     State(state): State<ApiState>,

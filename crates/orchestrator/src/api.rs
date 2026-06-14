@@ -276,17 +276,10 @@ async fn create_agent(
         mcp_servers: req.mcp_servers,
     };
 
-    let agent = state.manager.spawn_agent(req.name, config, false).await?;
-
-    // Persist organization_id if the request came through the gateway.
-    if org_id.is_some() {
-        state
-            .manager
-            .agent_storage()
-            .set_agent_organization(&agent.id, org_id.as_deref())
-            .await
-            .map_err(ApiError::Internal)?;
-    }
+    // Pass organization_id directly into spawn_agent so the initial DB INSERT
+    // includes the correct value — avoids a two-step INSERT then UPDATE that
+    // would briefly expose the agent as unscoped to concurrent list queries.
+    let agent = state.manager.spawn_agent(req.name, config, false, org_id).await?;
 
     metrics::counter!("agents_created_total").increment(1);
 

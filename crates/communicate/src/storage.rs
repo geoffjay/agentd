@@ -12,7 +12,9 @@ use crate::types::{
 use agentd_common::error::ApiError;
 use anyhow::Result;
 use sea_orm::prelude::*;
-use sea_orm::{ColumnTrait, DatabaseConnection, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use sea_orm_migration::prelude::MigratorTrait;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -151,7 +153,13 @@ impl CommunicateStorage {
             base = base.filter(entity::room::Column::ProjectId.eq(pid));
         }
         if let Some(oid) = org_id {
-            base = base.filter(entity::room::Column::OrganizationId.eq(oid));
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            base = base.filter(
+                Condition::any()
+                    .add(entity::room::Column::OrganizationId.eq(oid))
+                    .add(entity::room::Column::OrganizationId.is_null()),
+            );
         }
 
         let total =

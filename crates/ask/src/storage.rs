@@ -16,8 +16,8 @@ use crate::{
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter, QueryOrder,
-    QuerySelect,
+    ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use sea_orm_migration::prelude::MigratorTrait;
 use std::path::Path;
@@ -61,7 +61,21 @@ impl QuestionStorage {
     }
 
     /// Inserts a new question and returns its UUID.
+    ///
+    /// Delegates to [`Self::create_with_org`] with `org_id = None`.
+    /// Kept for backward compatibility (used by tests and internal callers).
+    #[allow(dead_code)]
     pub async fn create(&self, req: &CreateQuestionRequest) -> Result<Question> {
+        self.create_with_org(req, None).await
+    }
+
+    /// Like [`Self::create`] but also records the `organization_id` at insert
+    /// time so the question is immediately visible to tenant-scoped list queries.
+    pub async fn create_with_org(
+        &self,
+        req: &CreateQuestionRequest,
+        org_id: Option<&str>,
+    ) -> Result<Question> {
         let id = Uuid::new_v4();
         let now = Utc::now();
         let priority = req.priority.unwrap_or_default();
@@ -82,7 +96,7 @@ impl QuestionStorage {
             asked_at: Set(now.to_rfc3339()),
             answered_at: Set(None),
             expires_at: Set(expires_at.map(|t| t.to_rfc3339())),
-            organization_id: Set(None),
+            organization_id: Set(org_id.map(|s| s.to_string())),
         };
 
         question_entity::Entity::insert(model).exec(&self.db).await?;
@@ -147,7 +161,13 @@ impl QuestionStorage {
             query = query.filter(question_entity::Column::Category.eq(c));
         }
         if let Some(oid) = org_id {
-            query = query.filter(question_entity::Column::OrganizationId.eq(oid));
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            query = query.filter(
+                Condition::any()
+                    .add(question_entity::Column::OrganizationId.eq(oid))
+                    .add(question_entity::Column::OrganizationId.is_null()),
+            );
         }
         if let Some(lim) = limit {
             query = query.limit(lim);

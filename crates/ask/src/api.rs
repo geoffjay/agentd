@@ -50,7 +50,7 @@ async fn health_handler(State(_state): State<ApiState>) -> impl IntoResponse {
 
 /// `POST /questions` — agent creates a new question.
 async fn create_question_handler(
-    OptionalTenantId(_org_id): OptionalTenantId,
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Json(req): Json<CreateQuestionRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -62,7 +62,7 @@ async fn create_question_handler(
         return Err(ApiError::InvalidRequest("question text is required".to_string()));
     }
 
-    let question = state.app_state.storage.create(&req).await?;
+    let question = state.app_state.storage.create_with_org(&req, org_id.as_deref()).await?;
     info!("Question {} created by agent {}", question.id, question.agent_id);
 
     Ok((StatusCode::CREATED, Json(question)))

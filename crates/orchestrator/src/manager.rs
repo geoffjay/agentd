@@ -107,17 +107,22 @@ impl AgentManager {
     ///
     /// `built_in` — when `true`, marks the agent as a programmatically-managed
     /// system agent that cannot be deleted via the user-facing API.
+    ///
+    /// `organization_id` — when `Some`, the org is written into the initial DB
+    /// INSERT so the record is never briefly visible as unscoped.
     pub async fn spawn_agent(
         &self,
         name: String,
         config: AgentConfig,
         built_in: bool,
+        organization_id: Option<String>,
     ) -> anyhow::Result<Agent> {
         let mut agent = Agent::new(name, config);
         agent.built_in = built_in;
+        agent.organization_id = organization_id;
         let session_name = format!("{}-{}", self.backend.prefix(), agent.id);
 
-        // Persist agent record.
+        // Persist agent record — organization_id is included in this INSERT.
         self.storage.add(&agent).await?;
 
         // Create a session in the agent's working directory.
@@ -432,7 +437,7 @@ impl AgentManager {
                 }
                 None => {
                     info!("Bootstrapping system agent '{}'", def.name);
-                    match self.spawn_agent(def.name.to_string(), fresh, true).await {
+                    match self.spawn_agent(def.name.to_string(), fresh, true, None).await {
                         Ok(agent) => {
                             info!(agent_id = %agent.id, "System agent '{}' spawned", def.name)
                         }

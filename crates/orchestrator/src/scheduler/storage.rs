@@ -90,7 +90,13 @@ impl SchedulerStorage {
             query = query.filter(workflow_entity::Column::ProjectId.eq(pid.to_string()));
         }
         if let Some(oid) = org_id {
-            query = query.filter(workflow_entity::Column::OrganizationId.eq(oid));
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            query = query.filter(
+                Condition::any()
+                    .add(workflow_entity::Column::OrganizationId.eq(oid))
+                    .add(workflow_entity::Column::OrganizationId.is_null()),
+            );
         }
         let models: Vec<workflow_entity::Model> = query.all(&self.db).await?;
         models.into_iter().map(model_to_workflow).collect()
@@ -268,7 +274,13 @@ impl SchedulerStorage {
             base = base.filter(workflow_entity::Column::ProjectId.eq(pid.to_string()));
         }
         if let Some(oid) = org_id {
-            base = base.filter(workflow_entity::Column::OrganizationId.eq(oid));
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            base = base.filter(
+                Condition::any()
+                    .add(workflow_entity::Column::OrganizationId.eq(oid))
+                    .add(workflow_entity::Column::OrganizationId.is_null()),
+            );
         }
 
         let total = base.clone().count(&self.db).await? as usize;

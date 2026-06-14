@@ -253,6 +253,11 @@ impl AgentStorage {
     }
 
     /// Sets or clears the `organization_id` for a single agent.
+    ///
+    /// The `create_agent` handler now sets `organization_id` atomically in the
+    /// initial INSERT via `spawn_agent`, so this method is no longer called from
+    /// production code. Kept for potential use by migrations or admin tooling.
+    #[allow(dead_code)]
     pub async fn set_agent_organization(&self, id: &Uuid, org_id: Option<&str>) -> Result<()> {
         use sea_orm::sea_query::Expr;
         let now = chrono::Utc::now().to_rfc3339();
@@ -339,7 +344,13 @@ impl AgentStorage {
             query = query.filter(agent_entity::Column::ProjectId.eq(pid.to_string()));
         }
         if let Some(oid) = org_id {
-            query = query.filter(agent_entity::Column::OrganizationId.eq(oid));
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            query = query.filter(
+                Condition::any()
+                    .add(agent_entity::Column::OrganizationId.eq(oid))
+                    .add(agent_entity::Column::OrganizationId.is_null()),
+            );
         }
 
         let models: Vec<agent_entity::Model> = query.all(&self.db).await?;
@@ -681,7 +692,13 @@ impl AgentStorage {
         }
 
         if let Some(oid) = org_id {
-            condition = condition.add(agent_entity::Column::OrganizationId.eq(oid));
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            condition = condition.add(
+                Condition::any()
+                    .add(agent_entity::Column::OrganizationId.eq(oid))
+                    .add(agent_entity::Column::OrganizationId.is_null()),
+            );
         }
 
         let total =
@@ -1096,7 +1113,13 @@ impl ProjectStorage {
         let mut query =
             project_entity::Entity::find().order_by(project_entity::Column::CreatedAt, Order::Desc);
         if let Some(oid) = org_id {
-            query = query.filter(project_entity::Column::OrganizationId.eq(oid));
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            query = query.filter(
+                Condition::any()
+                    .add(project_entity::Column::OrganizationId.eq(oid))
+                    .add(project_entity::Column::OrganizationId.is_null()),
+            );
         }
         let models = query.all(&self.db).await?;
         models.into_iter().map(model_to_project).collect()

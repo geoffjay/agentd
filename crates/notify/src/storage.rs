@@ -230,7 +230,13 @@ impl NotificationStorage {
             None => Condition::all(),
         };
         if let Some(oid) = org_id {
-            condition = condition.add(notif_entity::Column::OrganizationId.eq(oid));
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            condition = condition.add(
+                Condition::any()
+                    .add(notif_entity::Column::OrganizationId.eq(oid))
+                    .add(notif_entity::Column::OrganizationId.is_null()),
+            );
         }
 
         let total =
