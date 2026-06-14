@@ -43,6 +43,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "clap",
  "http-body-util",
  "hyper",
  "metrics",
