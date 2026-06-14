@@ -40,6 +40,7 @@ fn make_workflow(trigger_config: TriggerConfig) -> WorkflowConfig {
         created_at: now,
         updated_at: now,
         project_id: None,
+        organization_id: None,
     }
 }
 

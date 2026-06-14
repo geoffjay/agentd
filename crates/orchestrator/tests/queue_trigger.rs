@@ -54,6 +54,7 @@ fn queue_workflow(agent_id: Uuid, queue_name: &str) -> WorkflowConfig {
         created_at: now,
         updated_at: now,
         project_id: None,
+        organization_id: None,
     }
 }
 

@@ -106,7 +106,17 @@ impl NotificationStorage {
     }
 
     /// Inserts a notification and returns its UUID.
+    #[allow(dead_code)]
     pub async fn add(&self, notification: &Notification) -> Result<Uuid> {
+        self.add_with_org(notification, None).await
+    }
+
+    /// Like [`add`] but also sets `organization_id` for tenant scoping.
+    pub async fn add_with_org(
+        &self,
+        notification: &Notification,
+        org_id: Option<&str>,
+    ) -> Result<Uuid> {
         let model = notif_entity::ActiveModel {
             id: Set(notification.id.to_string()),
             source_type: Set(format!("{:?}", notification.source)),
@@ -127,6 +137,7 @@ impl NotificationStorage {
             response: Set(notification.response.clone()),
             created_at: Set(notification.created_at.to_rfc3339()),
             updated_at: Set(notification.updated_at.to_rfc3339()),
+            organization_id: Set(org_id.map(|s| s.to_string())),
         };
 
         notif_entity::Entity::insert(model).exec(&self.db).await?;
@@ -196,16 +207,37 @@ impl NotificationStorage {
     }
 
     /// Lists notifications with pagination; returns `(items, total_count)`.
+    #[allow(dead_code)]
     pub async fn list_paginated(
         &self,
         status_filter: Option<NotificationStatus>,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<Notification>, usize)> {
-        let condition = match &status_filter {
+        self.list_paginated_org(status_filter, None, limit, offset).await
+    }
+
+    /// Like [`list_paginated`] but also filters by `org_id` when provided.
+    pub async fn list_paginated_org(
+        &self,
+        status_filter: Option<NotificationStatus>,
+        org_id: Option<&str>,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Notification>, usize)> {
+        let mut condition = match &status_filter {
             Some(s) => Condition::all().add(notif_entity::Column::Status.eq(format!("{:?}", s))),
             None => Condition::all(),
         };
+        if let Some(oid) = org_id {
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            condition = condition.add(
+                Condition::any()
+                    .add(notif_entity::Column::OrganizationId.eq(oid))
+                    .add(notif_entity::Column::OrganizationId.is_null()),
+            );
+        }
 
         let total =
             notif_entity::Entity::find().filter(condition.clone()).count(&self.db).await? as usize;

@@ -15,7 +15,7 @@ import type {
 	SearchResponse,
 	UpdateVisibilityRequest,
 } from "@/types/memory";
-import { ApiClient } from "./base";
+import { ApiClient, withAuth } from "./base";
 import { serviceConfig } from "./config";
 
 export class MemoryClient extends ApiClient {
@@ -78,6 +78,6 @@ export class MemoryClient extends ApiClient {
 }
 
 /** Singleton client instance using the configured service URL */
-export const memoryClient = new MemoryClient({
-	baseUrl: serviceConfig.memoryServiceUrl,
-});
+export const memoryClient = new MemoryClient(
+	withAuth({ baseUrl: serviceConfig.memoryServiceUrl }),
+);

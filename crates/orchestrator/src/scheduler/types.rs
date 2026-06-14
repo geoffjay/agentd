@@ -46,6 +46,9 @@ pub struct WorkflowConfig {
     /// Optional project this workflow belongs to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project_id: Option<Uuid>,
+    /// Optional organization UUID for tenant scoping.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<String>,
 }
 
 fn default_poll_interval() -> u64 {

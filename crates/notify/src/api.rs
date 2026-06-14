@@ -68,6 +68,7 @@
 //! ```
 
 use crate::{storage::NotificationStorage, types::*};
+use agentd_common::tenant::OptionalTenantId;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -220,6 +221,7 @@ async fn health_check() -> impl IntoResponse {
 /// curl "http://localhost:17004/notifications?status=pending"
 /// ```
 async fn list_notifications(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     axum::extract::Query(params): axum::extract::Query<ListParams>,
 ) -> Result<Json<PaginatedResponse<Notification>>, ApiError> {
@@ -230,7 +232,8 @@ async fn list_notifications(
     let limit = clamp_limit(params.limit);
     let offset = params.offset.unwrap_or(0);
 
-    let (items, total) = state.storage.list_paginated(status, limit, offset).await?;
+    let (items, total) =
+        state.storage.list_paginated_org(status, org_id.as_deref(), limit, offset).await?;
     Ok(Json(PaginatedResponse { items, total, limit, offset }))
 }
 
@@ -391,6 +394,7 @@ async fn count_notifications(
 ///   }'
 /// ```
 async fn create_notification(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Json(req): Json<CreateNotificationRequest>,
 ) -> Result<(StatusCode, Json<Notification>), ApiError> {
@@ -403,7 +407,7 @@ async fn create_notification(
         req.requires_response,
     );
 
-    state.storage.add(&notification).await?;
+    state.storage.add_with_org(&notification, org_id.as_deref()).await?;
 
     metrics::counter!("notifications_created_total",
         "priority" => format!("{:?}", notification.priority).to_lowercase()

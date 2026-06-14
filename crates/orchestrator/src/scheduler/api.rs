@@ -6,6 +6,7 @@ use crate::scheduler::types::{WebhookSource, *};
 use crate::scheduler::webhook;
 use crate::scheduler::Scheduler;
 use crate::types::{clamp_limit, AgentStatus, PaginatedResponse};
+use agentd_common::tenant::OptionalTenantId;
 use axum::{
     body::Bytes,
     extract::{Path, Query, State},
@@ -271,6 +272,7 @@ async fn validate_agent_running(manager: &AgentManager, agent_id: &Uuid) -> Resu
 }
 
 async fn create_workflow(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<WorkflowState>,
     Json(req): Json<CreateWorkflowRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -291,6 +293,7 @@ async fn create_workflow(
         created_at: now,
         updated_at: now,
         project_id: None,
+        organization_id: org_id,
     };
 
     state.scheduler.storage().add_workflow(&config).await?;
@@ -304,6 +307,7 @@ async fn create_workflow(
 }
 
 async fn list_workflows(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<WorkflowState>,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -313,7 +317,7 @@ async fn list_workflows(
     let (workflows, total) = state
         .scheduler
         .storage()
-        .list_workflows_paginated(limit, offset, params.project_id)
+        .list_workflows_paginated_org(limit, offset, params.project_id, org_id.as_deref())
         .await?;
     let items: Vec<WorkflowResponse> = workflows.into_iter().map(WorkflowResponse::from).collect();
     Ok(Json(PaginatedResponse { items, total, limit, offset }))

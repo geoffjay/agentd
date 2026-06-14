@@ -524,12 +524,22 @@ pub struct Project {
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Optional organization UUID for tenant scoping.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<String>,
 }
 
 impl Project {
     pub fn new(name: String, description: Option<String>) -> Self {
         let now = Utc::now();
-        Self { id: Uuid::new_v4(), name, description, created_at: now, updated_at: now }
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            description,
+            created_at: now,
+            updated_at: now,
+            organization_id: None,
+        }
     }
 }
 
@@ -609,6 +619,9 @@ pub struct Agent {
     pub built_in: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Optional organization UUID for tenant scoping.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub organization_id: Option<String>,
 }
 
 impl Agent {
@@ -627,6 +640,7 @@ impl Agent {
             built_in: false,
             created_at: now,
             updated_at: now,
+            organization_id: None,
         }
     }
 }

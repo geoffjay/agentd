@@ -12,7 +12,9 @@ use crate::types::{
 use agentd_common::error::ApiError;
 use anyhow::Result;
 use sea_orm::prelude::*;
-use sea_orm::{ColumnTrait, DatabaseConnection, QueryFilter, QueryOrder, QuerySelect, Set};
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use sea_orm_migration::prelude::MigratorTrait;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -51,7 +53,17 @@ impl CommunicateStorage {
     ///
     /// Returns a `409 Conflict` (`ApiError::Conflict`) if a room with the same
     /// name already exists.
+    #[allow(dead_code)]
     pub async fn create_room(&self, req: &CreateRoomRequest) -> Result<Room, ApiError> {
+        self.create_room_with_org(req, None).await
+    }
+
+    /// Like [`create_room`] but also sets `organization_id` for tenant scoping.
+    pub async fn create_room_with_org(
+        &self,
+        req: &CreateRoomRequest,
+        org_id: Option<&str>,
+    ) -> Result<Room, ApiError> {
         if req.name.trim().is_empty() {
             return Err(ApiError::InvalidInput("room name must not be empty".to_string()));
         }
@@ -80,6 +92,7 @@ impl CommunicateStorage {
             created_at: Set(now.to_rfc3339()),
             updated_at: Set(now.to_rfc3339()),
             project_id: Set(req.project_id.clone()),
+            organization_id: Set(org_id.map(|s| s.to_string())),
         };
 
         model.insert(&self.db).await.map_err(|e| ApiError::Internal(e.into()))?;
@@ -117,15 +130,36 @@ impl CommunicateStorage {
 
     /// Returns a paginated list of all rooms and the total count,
     /// optionally filtered by project_id.
+    #[allow(dead_code)]
     pub async fn list_rooms(
         &self,
         limit: usize,
         offset: usize,
         project_id: Option<&str>,
     ) -> Result<(Vec<Room>, usize), ApiError> {
+        self.list_rooms_org(limit, offset, project_id, None).await
+    }
+
+    /// Like [`list_rooms`] but also filters by `org_id` when provided.
+    pub async fn list_rooms_org(
+        &self,
+        limit: usize,
+        offset: usize,
+        project_id: Option<&str>,
+        org_id: Option<&str>,
+    ) -> Result<(Vec<Room>, usize), ApiError> {
         let mut base = entity::room::Entity::find();
         if let Some(pid) = project_id {
             base = base.filter(entity::room::Column::ProjectId.eq(pid));
+        }
+        if let Some(oid) = org_id {
+            // Include legacy NULL rows so pre-migration data is still visible
+            // to authenticated tenants until backfill-tenant is run.
+            base = base.filter(
+                Condition::any()
+                    .add(entity::room::Column::OrganizationId.eq(oid))
+                    .add(entity::room::Column::OrganizationId.is_null()),
+            );
         }
 
         let total =

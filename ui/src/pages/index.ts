@@ -1,4 +1,6 @@
 export { AgentsPage } from "./AgentsPage";
+export { LoginPage } from "./LoginPage";
+export { RegisterPage } from "./RegisterPage";
 export { ApprovalQueuePage } from "./approvals/ApprovalQueue";
 export { CommunicatePage } from "./communicate/CommunicatePage";
 export { DashboardPage } from "./DashboardPage";

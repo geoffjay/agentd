@@ -34,7 +34,7 @@ import type {
 	UpdateWorkflowRequest,
 	Workflow,
 } from "@/types/orchestrator";
-import { ApiClient } from "./base";
+import { ApiClient, withAuth } from "./base";
 import { serviceConfig } from "./config";
 
 /**
@@ -316,6 +316,6 @@ export class OrchestratorClient extends ApiClient {
 }
 
 /** Singleton client instance using the configured service URL */
-export const orchestratorClient = new OrchestratorClient({
-	baseUrl: serviceConfig.orchestratorServiceUrl,
-});
+export const orchestratorClient = new OrchestratorClient(
+	withAuth({ baseUrl: serviceConfig.orchestratorServiceUrl }),
+);
