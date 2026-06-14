@@ -70,6 +70,8 @@ pub struct UserResponse {
     pub email: String,
     pub display_name: Option<String>,
     pub role: String,
+    /// Product-level superuser flag — grants access to the `/admin` area.
+    pub is_superuser: bool,
     pub active_organization_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -83,6 +85,7 @@ impl From<user::Model> for UserResponse {
             email: u.email,
             display_name: u.display_name,
             role: u.role,
+            is_superuser: u.is_superuser,
             active_organization_id: u.active_organization_id,
             created_at: u.created_at,
             updated_at: u.updated_at,

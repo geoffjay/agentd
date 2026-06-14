@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuthStore } from "@/stores/authStore";
 import { authApi } from "@/services/auth";
+import { useAuthStore } from "@/stores/authStore";
 
 export function RegisterPage() {
 	const [username, setUsername] = useState("");
@@ -22,7 +22,7 @@ export function RegisterPage() {
 		setError(null);
 		try {
 			const resp = await authApi.register({ username, email, password });
-			login(resp.token);
+			login(resp.token, resp.user);
 			navigate(from, { replace: true });
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Registration failed");

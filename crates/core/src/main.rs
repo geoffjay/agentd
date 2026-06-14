@@ -11,6 +11,8 @@
 //! agentd-core migrate up          # apply all pending migrations
 //! agentd-core migrate down        # roll back latest migration (requires --yes or TTY)
 //! agentd-core migrate down --all  # roll back all migrations (requires --yes or TTY)
+//! agentd-core set-superuser <email>          # grant product-admin (superuser) access
+//! agentd-core set-superuser <email> --unset  # revoke superuser access
 //! ```
 //!
 //! # Environment Variables
@@ -56,6 +58,14 @@ enum Command {
     Migrate {
         #[command(subcommand)]
         action: MigrateAction,
+    },
+    /// Grant or revoke product-level superuser (product-admin) access for a user
+    SetSuperuser {
+        /// Email address of the registered user to modify
+        email: String,
+        /// Revoke superuser access instead of granting it
+        #[arg(long)]
+        unset: bool,
     },
 }
 
@@ -249,6 +259,34 @@ async fn run_migrate_down(all: bool, yes: bool, db_path_override: Option<PathBuf
 }
 
 // ---------------------------------------------------------------------------
+// Superuser bootstrap
+// ---------------------------------------------------------------------------
+
+/// Grant or revoke the product-level superuser flag for an existing user,
+/// operating directly on the core database. Running against the DB (rather than
+/// an authenticated endpoint) avoids the chicken-and-egg of needing a superuser
+/// to create the first one.
+async fn run_set_superuser(email: String, unset: bool) -> Result<()> {
+    let db_path = agentd_common::storage::get_db_path("agentd-core", "core.db")?;
+    let db = agentd_common::storage::create_connection(&db_path).await?;
+    let storage = agentd_core::storage::Storage::new(db).await?;
+
+    let user = storage
+        .users()
+        .get_by_email(&email)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("no registered user with email: {email}"))?;
+
+    let updated = storage.users().set_superuser(&user.id, !unset).await?;
+    if updated.is_superuser {
+        println!("\u{2713} {} is now a superuser (product-admin access granted)", updated.email);
+    } else {
+        println!("\u{2713} {} is no longer a superuser", updated.email);
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -265,5 +303,6 @@ async fn main() -> Result<()> {
             MigrateAction::Up { db_path } => run_migrate_up(db_path).await,
             MigrateAction::Down { all, yes, db_path } => run_migrate_down(all, yes, db_path).await,
         },
+        Some(Command::SetSuperuser { email, unset }) => run_set_superuser(email, unset).await,
     }
 }

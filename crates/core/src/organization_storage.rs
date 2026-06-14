@@ -6,7 +6,8 @@
 
 use anyhow::{anyhow, Result};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, Set,
 };
 use uuid::Uuid;
 
@@ -51,6 +52,27 @@ impl OrganizationStorage {
     /// Return all organizations ordered by name.
     pub async fn list(&self) -> Result<Vec<organization::Model>> {
         Ok(organization::Entity::find().order_by_asc(Column::Name).all(&self.db).await?)
+    }
+
+    /// Return a paginated list of all organizations (product-wide) ordered by name.
+    ///
+    /// Intended for product-admin use — not tenant-scoped.
+    pub async fn list_paginated(
+        &self,
+        limit: u64,
+        offset: u64,
+    ) -> Result<agentd_common::types::PaginatedResponse<organization::Model>> {
+        let paginator =
+            organization::Entity::find().order_by_asc(Column::Name).paginate(&self.db, limit);
+        let total = paginator.num_items().await?;
+        let page = offset.checked_div(limit).unwrap_or(0);
+        let items = paginator.fetch_page(page).await?;
+        Ok(agentd_common::types::PaginatedResponse {
+            items,
+            total: total as usize,
+            limit: limit as usize,
+            offset: offset as usize,
+        })
     }
 
     /// Update name and/or slug for the given organization.

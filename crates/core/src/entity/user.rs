@@ -21,6 +21,9 @@ pub struct Model {
     pub display_name: Option<String>,
     /// Role string — `"admin"` or `"user"`.
     pub role: String,
+    /// Product-level superuser flag — grants access to the product admin area
+    /// (`/admin`). Orthogonal to `role` and to organization membership roles.
+    pub is_superuser: bool,
     /// The organization the user is currently operating as (nullable).
     pub active_organization_id: Option<String>,
     pub created_at: String,
@@ -92,6 +95,7 @@ mod tests {
             password_hash: Set("hashed_password".to_string()),
             display_name: Set(Some("Alice".to_string())),
             role: Set("user".to_string()),
+            is_superuser: Set(false),
             active_organization_id: Set(None),
             created_at: Set(now.clone()),
             updated_at: Set(now),
