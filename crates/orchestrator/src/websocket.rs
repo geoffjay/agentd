@@ -452,11 +452,29 @@ impl ConnectionRegistry {
 /// agent is allowed — a second connection would replace the first, severing
 /// communication with the real agent. Use /stream/{agent_id} for read-only
 /// monitoring.
+/// Query parameters for the agent WebSocket endpoint.
+#[derive(serde::Deserialize, Default)]
+pub struct WsAgentParams {
+    /// Optional bearer token — validated against the core service when
+    /// `AGENTD_CORE_SERVICE_URL` is set.
+    pub token: Option<String>,
+}
+
 pub async fn ws_handler(
     Path(agent_id): Path<Uuid>,
     ws: WebSocketUpgrade,
+    axum::extract::Query(params): axum::extract::Query<WsAgentParams>,
     State(registry): State<ConnectionRegistry>,
 ) -> impl IntoResponse {
+    // Validate token if provided and core service URL is configured.
+    if let Some(ref token) = params.token {
+        if let Some(result) = agentd_common::ws_auth::validate_ws_token(token).await {
+            if result.is_err() {
+                return axum::http::StatusCode::UNAUTHORIZED.into_response();
+            }
+        }
+    }
+
     if registry.is_connected(&agent_id).await {
         warn!(%agent_id, "Rejected WebSocket upgrade: agent already connected. Use /stream/{agent_id} for monitoring.");
         return axum::http::StatusCode::CONFLICT.into_response();

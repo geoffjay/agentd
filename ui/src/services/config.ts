@@ -11,6 +11,10 @@
 import { runtimeServiceUrl } from "../runtime-config";
 
 export const serviceConfig = {
+	coreServiceUrl:
+		runtimeServiceUrl("core") ??
+		import.meta.env.VITE_AGENTD_CORE_SERVICE_URL ??
+		"http://localhost:17000",
 	askServiceUrl:
 		runtimeServiceUrl("ask") ??
 		import.meta.env.VITE_AGENTD_ASK_SERVICE_URL ??

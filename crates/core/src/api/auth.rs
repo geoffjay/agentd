@@ -54,6 +54,14 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+/// Response for `POST /auth/validate`.
+#[derive(Debug, Serialize)]
+pub struct ValidateResponse {
+    pub valid: bool,
+    pub user_id: String,
+    pub organization_id: Option<String>,
+}
+
 /// Public representation of a user — never includes `password_hash`.
 #[derive(Debug, Serialize)]
 pub struct UserResponse {
@@ -127,6 +135,7 @@ pub fn router() -> Router<AppState> {
         .route("/login", post(login_handler))
         .route("/logout", post(logout_handler))
         .route("/me", get(me_handler))
+        .route("/validate", post(validate_handler))
 }
 
 // ---------------------------------------------------------------------------
@@ -299,6 +308,23 @@ async fn logout_handler(
     state.storage.sessions().delete_by_token_hash(&auth.token).await.map_err(ApiError::Internal)?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /auth/validate`
+///
+/// Accepts `Authorization: Bearer <token>`. Validates the token and returns
+/// the resolved `user_id` and `organization_id` without touching session
+/// expiry. Designed for use by WebSocket endpoints that need a lightweight
+/// token check at connection-upgrade time.
+///
+/// Returns `200 OK` with `{ valid: true, user_id, organization_id }` on
+/// success, or `401 Unauthorized` if the token is missing, unknown, or expired.
+async fn validate_handler(auth: AuthUser) -> Result<impl IntoResponse, ApiError> {
+    Ok(Json(ValidateResponse {
+        valid: true,
+        user_id: auth.user.id,
+        organization_id: auth.user.active_organization_id,
+    }))
 }
 
 /// `GET /auth/me`
@@ -744,6 +770,73 @@ mod tests {
                     .method("GET")
                     .uri("/auth/me")
                     .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // -----------------------------------------------------------------------
+    // Validate
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_validate_success() {
+        let (app, _tmp) = test_app().await;
+        let reg = register_user(&app, "kate", "kate@example.com", "pass").await;
+        let token = reg["token"].as_str().unwrap().to_string();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/validate")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_json(response).await;
+        assert_eq!(body["valid"], true);
+        assert!(body["user_id"].as_str().is_some());
+        // registration creates a personal org and sets it as active
+        assert!(body["organization_id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_validate_invalid_token() {
+        let (app, _tmp) = test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/validate")
+                    .header(header::AUTHORIZATION, "Bearer notarealtoken")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_validate_missing_token() {
+        let (app, _tmp) = test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/validate")
                     .body(Body::empty())
                     .unwrap(),
             )

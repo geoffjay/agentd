@@ -21,6 +21,9 @@
 //! | wrap          | `WRAP_URL`                     | `http://localhost:17005`   |
 //! | hook          | `HOOK_URL`                     | `http://localhost:17002`   |
 //! | monitor       | `MONITOR_URL`                  | `http://localhost:17003`   |
+//! | memory        | `MEMORY_URL`                   | `http://localhost:17008`   |
+//! | communicate   | `COMMUNICATE_URL`              | `http://localhost:17010`   |
+//! | index         | `INDEX_URL`                    | `http://localhost:17012`   |
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -48,6 +51,9 @@ impl ProxyConfig {
             ("wrap", "WRAP_URL", "http://localhost:17005"),
             ("hook", "HOOK_URL", "http://localhost:17002"),
             ("monitor", "MONITOR_URL", "http://localhost:17003"),
+            ("memory", "MEMORY_URL", "http://localhost:17008"),
+            ("communicate", "COMMUNICATE_URL", "http://localhost:17010"),
+            ("index", "INDEX_URL", "http://localhost:17012"),
         ]
         .into_iter()
         .map(|(name, env, default)| {
@@ -203,7 +209,18 @@ mod tests {
         assert!(cfg.url_for("wrap").is_some());
         assert!(cfg.url_for("hook").is_some());
         assert!(cfg.url_for("monitor").is_some());
+        assert!(cfg.url_for("memory").is_some());
+        assert!(cfg.url_for("communicate").is_some());
+        assert!(cfg.url_for("index").is_some());
         assert!(cfg.url_for("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_proxy_config_new_service_defaults() {
+        let cfg = ProxyConfig::from_env();
+        assert_eq!(cfg.url_for("memory"), Some("http://localhost:17008"));
+        assert_eq!(cfg.url_for("communicate"), Some("http://localhost:17010"));
+        assert_eq!(cfg.url_for("index"), Some("http://localhost:17012"));
     }
 
     #[test]

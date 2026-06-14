@@ -60,6 +60,7 @@ fn make_workflow(agent_id: Uuid, trigger_config: TriggerConfig) -> WorkflowConfi
         created_at: now,
         updated_at: now,
         project_id: None,
+        organization_id: None,
     }
 }
 

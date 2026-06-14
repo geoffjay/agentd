@@ -17,6 +17,7 @@ use crate::{
         QuestionStatus, QuestionsListResponse,
     },
 };
+use agentd_common::tenant::OptionalTenantId;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -49,6 +50,7 @@ async fn health_handler(State(_state): State<ApiState>) -> impl IntoResponse {
 
 /// `POST /questions` — agent creates a new question.
 async fn create_question_handler(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Json(req): Json<CreateQuestionRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -60,7 +62,7 @@ async fn create_question_handler(
         return Err(ApiError::InvalidRequest("question text is required".to_string()));
     }
 
-    let question = state.app_state.storage.create(&req).await?;
+    let question = state.app_state.storage.create_with_org(&req, org_id.as_deref()).await?;
     info!("Question {} created by agent {}", question.id, question.agent_id);
 
     Ok((StatusCode::CREATED, Json(question)))
@@ -110,6 +112,7 @@ async fn dismiss_question_handler(
 
 /// `GET /questions` — list questions with optional filters.
 async fn list_questions_handler(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Query(query): Query<ListQuestionsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -123,10 +126,11 @@ async fn list_questions_handler(
     let questions: Vec<Question> = state
         .app_state
         .storage
-        .list(
+        .list_org(
             status,
             query.agent_id.as_deref(),
             query.category.as_deref(),
+            org_id.as_deref(),
             query.limit,
             query.offset,
         )

@@ -40,6 +40,7 @@ use crate::types::{
 use crate::websocket::{ws_handler, ConnectionManager, RoomEvent};
 
 pub use agentd_common::error::ApiError;
+use agentd_common::tenant::OptionalTenantId;
 
 /// Shared application state injected into all route handlers.
 #[derive(Clone)]
@@ -135,10 +136,11 @@ fn clamp_limit(limit: Option<usize>) -> usize {
 
 /// `POST /rooms` — create a new room.
 async fn create_room(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Json(req): Json<CreateRoomRequest>,
 ) -> Result<(StatusCode, Json<RoomResponse>), ApiError> {
-    let room = state.storage.create_room(&req).await?;
+    let room = state.storage.create_room_with_org(&req, org_id.as_deref()).await?;
 
     metrics::counter!("rooms_created_total").increment(1);
 
@@ -150,6 +152,7 @@ async fn create_room(
 
 /// `GET /rooms` — list all rooms, with optional type filter and pagination.
 async fn list_rooms(
+    OptionalTenantId(org_id): OptionalTenantId,
     State(state): State<ApiState>,
     Query(params): Query<ListRoomsParams>,
 ) -> Result<Json<PaginatedResponse<RoomResponse>>, ApiError> {
@@ -160,7 +163,10 @@ async fn list_rooms(
         let rt = type_str.parse::<RoomType>().map_err(|e| ApiError::InvalidInput(e.to_string()))?;
         state.storage.list_rooms_by_type(&rt, limit, offset).await?
     } else {
-        state.storage.list_rooms(limit, offset, params.project_id.as_deref()).await?
+        state
+            .storage
+            .list_rooms_org(limit, offset, params.project_id.as_deref(), org_id.as_deref())
+            .await?
     };
 
     let items = rooms.into_iter().map(RoomResponse::from).collect();

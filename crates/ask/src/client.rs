@@ -40,12 +40,21 @@ use uuid::Uuid;
 pub struct AskClient {
     client: reqwest::Client,
     pub base_url: String,
+    token: Option<String>,
 }
 
 impl AskClient {
     /// Create a new ask service client.
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self { client: reqwest::Client::new(), base_url: base_url.into() }
+        Self { client: reqwest::Client::new(), base_url: base_url.into(), token: None }
+    }
+
+    /// Attach a bearer token to all requests made by this client.
+    ///
+    /// Returns `self` for method chaining.
+    pub fn with_token(mut self, token: impl Into<String>) -> Self {
+        self.token = Some(token.into());
+        self
     }
 
     /// Create a new question (called by agents during workflow execution).
@@ -108,20 +117,21 @@ impl AskClient {
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response =
-            self.client.get(&url).send().await.context(format!("Failed to GET {url}"))?;
+        let mut req = self.client.get(&url);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to GET {url}"))?;
         self.handle_response(response).await
     }
 
     async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .post(&url)
-            .json(body)
-            .send()
-            .await
-            .context(format!("Failed to POST {url}"))?;
+        let mut req = self.client.post(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to POST {url}"))?;
         self.handle_response(response).await
     }
 
@@ -132,13 +142,11 @@ impl AskClient {
         expected: reqwest::StatusCode,
     ) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .post(&url)
-            .json(body)
-            .send()
-            .await
-            .context(format!("Failed to POST {url}"))?;
+        let mut req = self.client.post(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to POST {url}"))?;
 
         let status = response.status();
         if status == expected || status.is_success() {

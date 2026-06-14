@@ -58,6 +58,7 @@ use crate::types::{
 pub struct OrchestratorClient {
     client: reqwest::Client,
     base_url: String,
+    token: Option<String>,
 }
 
 impl OrchestratorClient {
@@ -71,7 +72,15 @@ impl OrchestratorClient {
     /// let client = OrchestratorClient::new("http://localhost:7006");
     /// ```
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self { client: reqwest::Client::new(), base_url: base_url.into() }
+        Self { client: reqwest::Client::new(), base_url: base_url.into(), token: None }
+    }
+
+    /// Attach a bearer token to all requests made by this client.
+    ///
+    /// Returns `self` for method chaining.
+    pub fn with_token(mut self, token: impl Into<String>) -> Self {
+        self.token = Some(token.into());
+        self
     }
 
     /// Create a client using the `AGENTD_ORCHESTRATOR_SERVICE_URL` environment
@@ -423,8 +432,11 @@ impl OrchestratorClient {
     /// Associate an agent with a project.
     pub async fn associate_project_agent(&self, project_id: &Uuid, agent_id: &Uuid) -> Result<()> {
         let url = format!("{}/projects/{project_id}/agents/{agent_id}", self.base_url);
-        let response =
-            self.client.post(&url).send().await.context(format!("Failed to POST {url}"))?;
+        let mut req = self.client.post(&url);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to POST {url}"))?;
         if response.status().is_success() {
             Ok(())
         } else {
@@ -454,8 +466,11 @@ impl OrchestratorClient {
         workflow_id: &Uuid,
     ) -> Result<()> {
         let url = format!("{}/projects/{project_id}/workflows/{workflow_id}", self.base_url);
-        let response =
-            self.client.post(&url).send().await.context(format!("Failed to POST {url}"))?;
+        let mut req = self.client.post(&url);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to POST {url}"))?;
         if response.status().is_success() {
             Ok(())
         } else {
@@ -525,51 +540,51 @@ impl OrchestratorClient {
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response =
-            self.client.get(&url).send().await.context(format!("Failed to GET {url}"))?;
+        let mut req = self.client.get(&url);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to GET {url}"))?;
         Self::handle_response(response).await
     }
 
     async fn post<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .post(&url)
-            .json(body)
-            .send()
-            .await
-            .context(format!("Failed to POST {url}"))?;
+        let mut req = self.client.post(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to POST {url}"))?;
         Self::handle_response(response).await
     }
 
     async fn put<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .put(&url)
-            .json(body)
-            .send()
-            .await
-            .context(format!("Failed to PUT {url}"))?;
+        let mut req = self.client.put(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to PUT {url}"))?;
         Self::handle_response(response).await
     }
 
     async fn patch<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .patch(&url)
-            .json(body)
-            .send()
-            .await
-            .context(format!("Failed to PATCH {url}"))?;
+        let mut req = self.client.patch(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to PATCH {url}"))?;
         Self::handle_response(response).await
     }
 
     async fn delete(&self, path: &str) -> Result<()> {
         let url = format!("{}{}", self.base_url, path);
-        let response =
-            self.client.delete(&url).send().await.context(format!("Failed to DELETE {url}"))?;
+        let mut req = self.client.delete(&url);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to DELETE {url}"))?;
         if response.status().is_success() {
             Ok(())
         } else {
@@ -585,20 +600,21 @@ impl OrchestratorClient {
         body: &T,
     ) -> Result<R> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .client
-            .delete(&url)
-            .json(body)
-            .send()
-            .await
-            .context(format!("Failed to DELETE {url}"))?;
+        let mut req = self.client.delete(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to DELETE {url}"))?;
         Self::handle_response(response).await
     }
 
     async fn delete_with_response<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
-        let response =
-            self.client.delete(&url).send().await.context(format!("Failed to DELETE {url}"))?;
+        let mut req = self.client.delete(&url);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to DELETE {url}"))?;
         Self::handle_response(response).await
     }
 
