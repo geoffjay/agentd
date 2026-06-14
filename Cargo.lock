@@ -47,6 +47,7 @@ dependencies = [
  "hyper",
  "metrics",
  "metrics-exporter-prometheus",
+ "notify",
  "rand 0.8.5",
  "reqwest",
  "sea-orm",
