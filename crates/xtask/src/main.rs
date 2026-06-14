@@ -146,6 +146,18 @@ fn print_help() {
 /// directories (used only by `generate-entities`).
 const DB_SERVICES: &[DbService] = &[
     DbService {
+        name: "communicate",
+        project: "agentd-communicate",
+        db_file: "communicate.db",
+        entity_dir: "crates/communicate/src/entity",
+    },
+    DbService {
+        name: "core",
+        project: "agentd-core",
+        db_file: "core.db",
+        entity_dir: "crates/core/src/entity",
+    },
+    DbService {
         name: "memory",
         project: "agentd-memory",
         db_file: "memory.db",
@@ -162,12 +174,6 @@ const DB_SERVICES: &[DbService] = &[
         project: "agentd-orchestrator",
         db_file: "orchestrator.db",
         entity_dir: "crates/orchestrator/src/entity",
-    },
-    DbService {
-        name: "communicate",
-        project: "agentd-communicate",
-        db_file: "communicate.db",
-        entity_dir: "crates/communicate/src/entity",
     },
 ];
 
@@ -264,6 +270,110 @@ fn generate_entities(service: Option<&str>) -> Result<()> {
         "{}",
         "Note: Generated files are a scaffold — review before committing.".bright_black()
     );
+    Ok(())
+}
+
+/// `cargo xtask migrate [--service <name>]`
+///
+/// Applies all pending SeaORM migrations for the specified service (or all
+/// services if `--service` is omitted). Creates the database file if it does
+/// not exist.
+async fn migrate(service: Option<&str>) -> Result<()> {
+    check_in_project_root()?;
+
+    let services = resolve_services(service)?;
+
+    println!("{}", "Applying migrations...".blue().bold());
+    println!();
+
+    for svc in services {
+        let db_path = agentd_common::storage::get_db_path(svc.project, svc.db_file)?;
+        print!("  {} {} … ", "→".cyan(), svc.name.green());
+
+        let result = match svc.name {
+            "communicate" => communicate::apply_migrations_for_path(&db_path).await,
+            "core" => agentd_core::apply_migrations_for_path(&db_path).await,
+            "memory" => memory::apply_migrations_for_path(&db_path).await,
+            "notify" => notify::apply_migrations_for_path(&db_path).await,
+            "orchestrator" => orchestrator::apply_migrations_for_path(&db_path).await,
+            _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
+        };
+
+        match result {
+            Ok(()) => println!("{}", "✓ up to date".green()),
+            Err(e) => {
+                println!("{}", "✗ failed".red());
+                eprintln!("    {}", e);
+            }
+        }
+    }
+
+    println!();
+    println!("{}", "Migration complete.".green().bold());
+    Ok(())
+}
+
+/// `cargo xtask migrate-status [--service <name>]`
+///
+/// Prints the current migration status (applied / pending) for each known
+/// migration of the specified service (or all services).
+async fn migrate_status(service: Option<&str>) -> Result<()> {
+    check_in_project_root()?;
+
+    let services = resolve_services(service)?;
+
+    println!("{}", "Migration Status:".blue().bold());
+    println!();
+
+    for svc in services {
+        println!("  {} {}:", "◆".cyan(), svc.name.green().bold());
+
+        let db_path = agentd_common::storage::get_db_path(svc.project, svc.db_file)?;
+
+        if !db_path.exists() {
+            println!("    {} database not found — no migrations applied", "⚠".yellow());
+            println!("    path: {}", db_path.display().to_string().bright_black());
+            continue;
+        }
+
+        let result = match svc.name {
+            "communicate" => communicate::migration_status_for_path(&db_path).await,
+            "core" => agentd_core::migration_status_for_path(&db_path).await,
+            "memory" => memory::migration_status_for_path(&db_path).await,
+            "notify" => notify::migration_status_for_path(&db_path).await,
+            "orchestrator" => orchestrator::migration_status_for_path(&db_path).await,
+            _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
+        };
+
+        match result {
+            Ok(statuses) => {
+                for (name, applied) in &statuses {
+                    let (icon, label) = if *applied {
+                        ("✓".green(), "applied".green())
+                    } else {
+                        ("○".yellow(), "pending".yellow())
+                    };
+                    println!("    {} {} {}", icon, label, name.bright_black());
+                }
+                let applied_count = statuses.iter().filter(|(_, a)| *a).count();
+                let pending_count = statuses.len() - applied_count;
+                println!(
+                    "    {} applied, {} pending",
+                    applied_count.to_string().green(),
+                    if pending_count > 0 {
+                        pending_count.to_string().yellow()
+                    } else {
+                        pending_count.to_string().green()
+                    }
+                );
+            }
+            Err(e) => {
+                eprintln!("    {} failed to read status: {}", "✗".red(), e);
+            }
+        }
+        println!();
+    }
+
     Ok(())
 }
 
