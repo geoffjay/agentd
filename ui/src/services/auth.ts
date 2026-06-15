@@ -77,6 +77,9 @@ class AuthApiClient extends ApiClient {
 	async me(): Promise<MeResponse> {
 		const token = localStorage.getItem(TOKEN_KEY);
 		const resp = await fetch(`${serviceConfig.coreServiceUrl}/auth/me`, {
+			// `no-store` so a cached/304 response can never mask a freshly changed
+			// role (e.g. a just-granted superuser) when re-validating the session.
+			cache: "no-store",
 			headers: {
 				Authorization: `Bearer ${token ?? ""}`,
 				Accept: "application/json",
