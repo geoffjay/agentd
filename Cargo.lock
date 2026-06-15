@@ -8440,9 +8440,14 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "agentd-common",
+ "agentd-core",
  "agentd-install",
  "anyhow",
  "colored 2.2.0",
+ "communicate",
+ "memory",
+ "notify",
+ "orchestrator",
  "tokio",
 ]
 
