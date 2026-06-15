@@ -285,4 +285,100 @@ mod tests {
             "superuser should see all users across the product"
         );
     }
+
+    #[tokio::test]
+    async fn admin_organizations_lists_all_orgs_for_superuser() {
+        let (app, storage, _tmp) = setup().await;
+        let token = user_with_token(&storage, "root@example.com", true).await;
+        storage.organizations().create("Acme Inc", "acme").await.unwrap();
+
+        let resp = get(app, "/api/v1/admin/organizations", Some(&token)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let items = body["items"].as_array().unwrap();
+        assert!(items.iter().any(|o| o["slug"] == "acme" && o["name"] == "Acme Inc"));
+    }
+
+    #[tokio::test]
+    async fn admin_organizations_forbidden_for_non_superuser() {
+        let (app, storage, _tmp) = setup().await;
+        let token = user_with_token(&storage, "normal@example.com", false).await;
+        let resp = get(app, "/api/v1/admin/organizations", Some(&token)).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn admin_memberships_lists_all_memberships_for_superuser() {
+        let (app, storage, _tmp) = setup().await;
+        let token = user_with_token(&storage, "root@example.com", true).await;
+        let user = storage
+            .users()
+            .create(Some("member@example.com"), "member@example.com", None, "pw", "user")
+            .await
+            .unwrap();
+        let org = storage.organizations().create("Beta Org", "beta").await.unwrap();
+        storage.memberships().add_member(&user.id, &org.id, "owner").await.unwrap();
+
+        let resp = get(app, "/api/v1/admin/memberships", Some(&token)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let items = body["items"].as_array().unwrap();
+        let found = items
+            .iter()
+            .find(|m| m["user_id"] == user.id && m["organization_id"] == org.id)
+            .expect("the created membership should be listed");
+        assert_eq!(found["role"], "owner");
+    }
+
+    #[tokio::test]
+    async fn admin_memberships_forbidden_for_non_superuser() {
+        let (app, storage, _tmp) = setup().await;
+        let token = user_with_token(&storage, "normal@example.com", false).await;
+        let resp = get(app, "/api/v1/admin/memberships", Some(&token)).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn admin_sessions_flags_expired_sessions() {
+        let (app, storage, _tmp) = setup().await;
+        let token = user_with_token(&storage, "root@example.com", true).await;
+
+        // Seed a second user with an already-expired session.
+        let stale_user = storage
+            .users()
+            .create(Some("stale@example.com"), "stale@example.com", None, "pw", "user")
+            .await
+            .unwrap();
+        let stale_token = SessionStorage::generate_token();
+        let past = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        storage.sessions().create(&stale_user.id, &stale_token, &past).await.unwrap();
+
+        let resp = get(app, "/api/v1/admin/sessions", Some(&token)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let items = body["items"].as_array().unwrap();
+        // The superuser's own session is active; the seeded one is expired.
+        assert!(items.iter().any(|s| s["is_expired"] == false));
+        assert!(items.iter().any(|s| s["is_expired"] == true));
+    }
+
+    #[tokio::test]
+    async fn admin_users_honours_limit_and_offset() {
+        let (app, storage, _tmp) = setup().await;
+        let token = user_with_token(&storage, "root@example.com", true).await;
+        for i in 0..3 {
+            user_with_token(&storage, &format!("user{i}@example.com"), false).await;
+        }
+
+        let resp = get(app, "/api/v1/admin/users?limit=1&offset=0", Some(&token)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["items"].as_array().unwrap().len(), 1);
+        assert_eq!(body["limit"].as_u64().unwrap(), 1);
+        assert!(body["total"].as_u64().unwrap() >= 4);
+    }
 }

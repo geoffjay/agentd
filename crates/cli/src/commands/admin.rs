@@ -361,4 +361,15 @@ mod tests {
         let affected = update_null_org_rows(&db, "items", "acme-corp").await.unwrap();
         assert_eq!(affected, 0, "nothing to update when all rows are already scoped");
     }
+
+    #[tokio::test]
+    async fn backfill_rejects_empty_org_id() {
+        // The guard must fire before any database is touched, so this is safe to
+        // run regardless of which service DBs exist in the environment.
+        let err = backfill_tenant("", false, true).await.unwrap_err();
+        assert!(
+            err.to_string().contains("must not be empty"),
+            "expected an empty-org-id error, got: {err}"
+        );
+    }
 }
