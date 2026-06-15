@@ -78,9 +78,24 @@ describe("Header", () => {
 		).toBeInTheDocument();
 	});
 
-	it("renders settings link", () => {
+	it("renders the user menu button", () => {
 		renderHeader();
+		expect(
+			screen.getByRole("button", { name: /user menu/i }),
+		).toBeInTheDocument();
+	});
+
+	it("reveals settings and logout when the user menu is opened", () => {
+		renderHeader();
+		// Settings/logout live inside the dropdown, hidden until opened.
+		expect(
+			screen.queryByRole("link", { name: /settings/i }),
+		).not.toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /user menu/i }));
 		expect(screen.getByRole("link", { name: /settings/i })).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /log out/i }),
+		).toBeInTheDocument();
 	});
 
 	it("shows notification badge when unreadCount > 0", () => {

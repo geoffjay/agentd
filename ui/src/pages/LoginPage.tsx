@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuthStore } from "@/stores/authStore";
 import { authApi } from "@/services/auth";
+import { useAuthStore } from "@/stores/authStore";
 
 export function LoginPage() {
 	const [username, setUsername] = useState("");
@@ -21,7 +21,7 @@ export function LoginPage() {
 		setError(null);
 		try {
 			const resp = await authApi.login({ username, password });
-			login(resp.token);
+			login(resp.token, resp.user);
 			navigate(from, { replace: true });
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Login failed");

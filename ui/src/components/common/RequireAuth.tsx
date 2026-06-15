@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -16,8 +17,17 @@ import { useAuthStore } from "@/stores/authStore";
  *   </Route>
  */
 export function RequireAuth() {
-	const { isAuthenticated } = useAuthStore();
+	const { isAuthenticated, sessionChecked, checkSession } = useAuthStore();
 	const location = useLocation();
+
+	// Populate the current user (and role) from the stored token on first mount,
+	// so downstream guards like RequireSuperuser have the user available.
+	useEffect(() => {
+		if (!sessionChecked) {
+			void checkSession();
+		}
+	}, [sessionChecked, checkSession]);
+
 	if (!isAuthenticated) {
 		return <Navigate to="/login" state={{ from: location }} replace />;
 	}

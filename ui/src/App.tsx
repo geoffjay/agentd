@@ -1,6 +1,7 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { RequireAuth } from "@/components/common/RequireAuth";
+import { RequireSuperuser } from "@/components/common/RequireSuperuser";
 import { AppShell } from "@/layouts";
 import {
 	AgentsPage,
@@ -18,6 +19,11 @@ import {
 	SettingsPage,
 	WorkflowsPage,
 } from "@/pages";
+import { AdminLayout } from "@/pages/admin/AdminLayout";
+import { MembershipsAdminPage } from "@/pages/admin/MembershipsAdminPage";
+import { OrganizationsAdminPage } from "@/pages/admin/OrganizationsAdminPage";
+import { SessionsAdminPage } from "@/pages/admin/SessionsAdminPage";
+import { UsersAdminPage } from "@/pages/admin/UsersAdminPage";
 import { AgentDetail } from "@/pages/agents/AgentDetail";
 import { AgentFormPage } from "@/pages/agents/AgentFormPage";
 import { QuestionDetail } from "@/pages/questions/QuestionDetail";
@@ -57,6 +63,26 @@ function App() {
 							<Route path="/approvals" element={<ApprovalQueuePage />} />
 							<Route path="/memories" element={<MemoriesPage />} />
 							<Route path="/communicate" element={<CommunicatePage />} />
+
+							{/* Product-admin section — superuser only (backend-enforced) */}
+							<Route element={<RequireSuperuser />}>
+								<Route path="/admin" element={<AdminLayout />}>
+									<Route
+										index
+										element={<Navigate to="/admin/users" replace />}
+									/>
+									<Route path="users" element={<UsersAdminPage />} />
+									<Route
+										path="organizations"
+										element={<OrganizationsAdminPage />}
+									/>
+									<Route
+										path="memberships"
+										element={<MembershipsAdminPage />}
+									/>
+									<Route path="sessions" element={<SessionsAdminPage />} />
+								</Route>
+							</Route>
 						</Route>
 					</Route>
 
