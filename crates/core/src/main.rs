@@ -13,6 +13,7 @@
 //! agentd-core migrate down --all  # roll back all migrations (requires --yes or TTY)
 //! agentd-core set-superuser <email>          # grant product-admin (superuser) access
 //! agentd-core set-superuser <email> --unset  # revoke superuser access
+//! agentd-core set-password <email>           # reset a user's password (prompts on stdin)
 //! ```
 //!
 //! # Environment Variables
@@ -66,6 +67,11 @@ enum Command {
         /// Revoke superuser access instead of granting it
         #[arg(long)]
         unset: bool,
+    },
+    /// Reset a user's password (prompts for the new password on stdin)
+    SetPassword {
+        /// Email address of the registered user to modify
+        email: String,
     },
 }
 
@@ -286,6 +292,34 @@ async fn run_set_superuser(email: String, unset: bool) -> Result<()> {
     Ok(())
 }
 
+/// Reset an existing user's password, operating directly on the core database.
+/// Prompts for the new password on stdin so it does not land in shell history.
+async fn run_set_password(email: String) -> Result<()> {
+    let db_path = agentd_common::storage::get_db_path("agentd-core", "core.db")?;
+    let db = agentd_common::storage::create_connection(&db_path).await?;
+    let storage = agentd_core::storage::Storage::new(db).await?;
+
+    let user = storage
+        .users()
+        .get_by_email(&email)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("no registered user with email: {email}"))?;
+
+    print!("New password for {}: ", user.email);
+    use std::io::Write;
+    std::io::stdout().flush()?;
+    let mut password = String::new();
+    std::io::stdin().read_line(&mut password)?;
+    let password = password.trim();
+    if password.is_empty() {
+        anyhow::bail!("password must not be empty");
+    }
+
+    storage.users().update_password(&user.id, password).await?;
+    println!("\u{2713} password updated for {}", user.email);
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -304,5 +338,6 @@ async fn main() -> Result<()> {
             MigrateAction::Down { all, yes, db_path } => run_migrate_down(all, yes, db_path).await,
         },
         Some(Command::SetSuperuser { email, unset }) => run_set_superuser(email, unset).await,
+        Some(Command::SetPassword { email }) => run_set_password(email).await,
     }
 }
