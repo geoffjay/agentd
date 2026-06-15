@@ -17,7 +17,7 @@ import type {
 	TriggerResponse,
 } from "@/types/ask";
 import type { HealthResponse, PaginatedResponse } from "@/types/common";
-import { ApiClient } from "./base";
+import { ApiClient, withAuth } from "./base";
 import { serviceConfig } from "./config";
 
 export class AskClient extends ApiClient {
@@ -95,6 +95,6 @@ export class AskClient extends ApiClient {
 }
 
 /** Singleton client instance using the configured service URL */
-export const askClient = new AskClient({
-	baseUrl: serviceConfig.askServiceUrl,
-});
+export const askClient = new AskClient(
+	withAuth({ baseUrl: serviceConfig.askServiceUrl }),
+);

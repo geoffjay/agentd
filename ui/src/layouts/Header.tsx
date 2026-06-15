@@ -1,16 +1,17 @@
 /**
  * Header — fixed top bar with sidebar toggle, search, theme toggle,
- * connection status, notifications, and settings.
+ * connection status, notifications, and a user menu (settings + logout).
  *
  * Positioned to the right of the sidebar. Logo/branding lives in the Sidebar.
  * The search button opens the global SearchPalette (managed by AppShell).
  * Ctrl+K / Cmd+K is handled at the AppShell level.
  */
 
-import { Bell, Menu, Search, Settings } from "lucide-react";
+import { Bell, Menu, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ConnectionStatus } from "@/components/common/ConnectionStatus";
 import { ThemeToggle } from "@/components/common/ThemeToggle";
+import { UserMenu } from "@/components/common/UserMenu";
 import { useAllAgentsStream } from "@/hooks/useAllAgentsStream";
 import { useNotificationCount } from "@/hooks/useNotificationCount";
 import { useLayout } from "./context";
@@ -127,14 +128,8 @@ export function Header({ unreadCount }: HeaderProps) {
 				<NotificationBadge count={displayCount} />
 			</Link>
 
-			{/* Settings */}
-			<Link
-				to="/settings"
-				aria-label="Settings"
-				className="rounded-md p-2 text-th-text-muted transition-colors hover:bg-th-surface-hover hover:text-th-text"
-			>
-				<Settings size={20} />
-			</Link>
+			{/* User menu (settings + logout) */}
+			<UserMenu />
 		</header>
 	);
 }

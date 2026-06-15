@@ -21,6 +21,10 @@ pub struct Model {
     /// JSON-serialized `Task` whose variables were rendered into `prompt_sent`.
     /// NULL for records created before task persistence was added.
     pub task_json: Option<String>,
+
+    /// Optional organization UUID for tenant scoping.  NULL when not
+    /// scoped (dev/test mode without gateway).
+    pub organization_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

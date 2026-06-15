@@ -32,9 +32,11 @@ async-trait = "0.1"
 argon2 = "0.5"
 rand = "0.8"
 reqwest = { workspace = true, features = ["json", "stream"] }
+clap = { workspace = true }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 hyper = "1.0"
 tempfile = "3.14"
+notify = { path = "../notify" }

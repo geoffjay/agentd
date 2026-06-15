@@ -146,6 +146,18 @@ fn print_help() {
 /// directories (used only by `generate-entities`).
 const DB_SERVICES: &[DbService] = &[
     DbService {
+        name: "communicate",
+        project: "agentd-communicate",
+        db_file: "communicate.db",
+        entity_dir: "crates/communicate/src/entity",
+    },
+    DbService {
+        name: "core",
+        project: "agentd-core",
+        db_file: "core.db",
+        entity_dir: "crates/core/src/entity",
+    },
+    DbService {
         name: "memory",
         project: "agentd-memory",
         db_file: "memory.db",
@@ -162,12 +174,6 @@ const DB_SERVICES: &[DbService] = &[
         project: "agentd-orchestrator",
         db_file: "orchestrator.db",
         entity_dir: "crates/orchestrator/src/entity",
-    },
-    DbService {
-        name: "communicate",
-        project: "agentd-communicate",
-        db_file: "communicate.db",
-        entity_dir: "crates/communicate/src/entity",
     },
 ];
 

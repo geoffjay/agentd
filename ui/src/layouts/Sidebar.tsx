@@ -17,6 +17,7 @@ import {
 	Hexagon,
 	Home,
 	MessageSquare,
+	ShieldAlert,
 	Webhook,
 	X,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { ApprovalBadge } from "@/components/approvals/ApprovalBadge";
 import { NotificationBadge } from "@/components/notifications/NotificationBadge";
 import { useApprovals } from "@/hooks/useApprovals";
 import { useNotificationCount } from "@/hooks/useNotificationCount";
+import { useAuthStore } from "@/stores/authStore";
 import { useLayout } from "./context";
 
 // ---------------------------------------------------------------------------
@@ -40,6 +42,8 @@ interface NavItem {
 	showApprovalBadge?: boolean;
 	/** Whether to render a NotificationBadge for this item */
 	showNotificationBadge?: boolean;
+	/** Only show this item to product-level superusers */
+	superuserOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -67,6 +71,12 @@ const NAV_ITEMS: NavItem[] = [
 	},
 	{ label: "Monitoring", path: "/monitoring", icon: <BarChart2 size={20} /> },
 	{ label: "Hooks", path: "/hooks", icon: <Webhook size={20} /> },
+	{
+		label: "Admin",
+		path: "/admin",
+		icon: <ShieldAlert size={20} />,
+		superuserOnly: true,
+	},
 ];
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "0.2.0";
@@ -147,6 +157,13 @@ export function Sidebar() {
 	const { pending: notificationPending } = useNotificationCount({
 		refreshInterval: 15_000,
 	});
+	const isSuperuser = useAuthStore((s) => s.user?.is_superuser ?? false);
+
+	// Hide superuser-only items (e.g. Admin) from non-superusers. The backend
+	// independently enforces access, so this is purely a UX/visibility filter.
+	const navItems = NAV_ITEMS.filter(
+		(item) => !item.superuserOnly || isSuperuser,
+	);
 
 	// Close sidebar on Escape key (mobile overlay behaviour)
 	useEffect(() => {
@@ -207,7 +224,7 @@ export function Sidebar() {
 				{/* Nav items */}
 				<nav className="flex-1 overflow-y-auto px-2 py-2">
 					<ul role="list" className="space-y-1">
-						{NAV_ITEMS.map((item) => (
+						{navItems.map((item) => (
 							<li key={item.path}>
 								<NavLink
 									item={item}

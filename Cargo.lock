@@ -43,10 +43,12 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "clap",
  "http-body-util",
  "hyper",
  "metrics",
  "metrics-exporter-prometheus",
+ "notify",
  "rand 0.8.5",
  "reqwest",
  "sea-orm",
@@ -1118,6 +1120,7 @@ dependencies = [
  "orchestrator",
  "prettytable-rs",
  "reqwest",
+ "sea-orm",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -8437,9 +8440,14 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "agentd-common",
+ "agentd-core",
  "agentd-install",
  "anyhow",
  "colored 2.2.0",
+ "communicate",
+ "memory",
+ "notify",
+ "orchestrator",
  "tokio",
 ]
 

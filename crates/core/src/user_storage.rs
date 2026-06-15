@@ -60,6 +60,7 @@ impl UserStorage {
             password_hash: Set(Self::hash_password(password)?),
             display_name: Set(display_name.map(str::to_string)),
             role: Set(role.to_string()),
+            is_superuser: Set(false),
             active_organization_id: Set(None),
             created_at: Set(now.clone()),
             updated_at: Set(now),
@@ -199,6 +200,21 @@ impl UserStorage {
         Ok(active.update(&self.db).await?)
     }
 
+    /// Set (or clear) the product-level superuser flag on a user.
+    ///
+    /// Returns an error if the user does not exist.
+    pub async fn set_superuser(&self, id: &str, is_superuser: bool) -> Result<user::Model> {
+        let user = user::Entity::find_by_id(id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| anyhow!("user not found: {}", id))?;
+
+        let mut active: user::ActiveModel = user.into();
+        active.is_superuser = Set(is_superuser);
+        active.updated_at = Set(chrono::Utc::now().to_rfc3339());
+        Ok(active.update(&self.db).await?)
+    }
+
     /// Return a paginated list of users ordered by email.
     pub async fn list_paginated(
         &self,
@@ -333,6 +349,26 @@ mod tests {
 
         let cleared = storage.set_active_organization(&user.id, None).await.unwrap();
         assert!(cleared.active_organization_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_set_superuser() {
+        let (storage, _tmp) = setup().await;
+        let user =
+            storage.create(Some("root"), "root@example.com", None, "pass", "user").await.unwrap();
+        assert!(!user.is_superuser, "new users are not superusers");
+
+        let promoted = storage.set_superuser(&user.id, true).await.unwrap();
+        assert!(promoted.is_superuser);
+
+        let demoted = storage.set_superuser(&user.id, false).await.unwrap();
+        assert!(!demoted.is_superuser);
+    }
+
+    #[tokio::test]
+    async fn test_set_superuser_not_found() {
+        let (storage, _tmp) = setup().await;
+        assert!(storage.set_superuser("nonexistent", true).await.is_err());
     }
 
     #[tokio::test]

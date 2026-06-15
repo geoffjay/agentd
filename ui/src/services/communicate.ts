@@ -17,7 +17,7 @@ import type {
 	Room,
 	UpdateRoomRequest,
 } from "@/types/communicate";
-import { ApiClient } from "./base";
+import { ApiClient, withAuth } from "./base";
 import { serviceConfig } from "./config";
 
 export class CommunicateClient extends ApiClient {
@@ -153,6 +153,6 @@ export class CommunicateClient extends ApiClient {
 }
 
 /** Singleton client instance using the configured service URL. */
-export const communicateClient = new CommunicateClient({
-	baseUrl: serviceConfig.communicateServiceUrl,
-});
+export const communicateClient = new CommunicateClient(
+	withAuth({ baseUrl: serviceConfig.communicateServiceUrl }),
+);

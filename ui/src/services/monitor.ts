@@ -14,7 +14,7 @@ import type {
 	SystemMetrics,
 	SystemStatus,
 } from "@/types/monitor";
-import { ApiClient } from "./base";
+import { ApiClient, withAuth } from "./base";
 import { serviceConfig } from "./config";
 
 export class MonitorClient extends ApiClient {
@@ -85,6 +85,6 @@ export class MonitorClient extends ApiClient {
 }
 
 /** Singleton client instance using the configured service URL */
-export const monitorClient = new MonitorClient({
-	baseUrl: serviceConfig.monitorServiceUrl,
-});
+export const monitorClient = new MonitorClient(
+	withAuth({ baseUrl: serviceConfig.monitorServiceUrl }),
+);

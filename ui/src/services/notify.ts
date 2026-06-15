@@ -12,7 +12,7 @@ import type {
 	Notification,
 	UpdateNotificationRequest,
 } from "@/types/notify";
-import { ApiClient } from "./base";
+import { ApiClient, withAuth } from "./base";
 import { serviceConfig } from "./config";
 
 export class NotifyClient extends ApiClient {
@@ -93,6 +93,6 @@ export class NotifyClient extends ApiClient {
 }
 
 /** Singleton client instance using the configured service URL */
-export const notifyClient = new NotifyClient({
-	baseUrl: serviceConfig.notifyServiceUrl,
-});
+export const notifyClient = new NotifyClient(
+	withAuth({ baseUrl: serviceConfig.notifyServiceUrl }),
+);

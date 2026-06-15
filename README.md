@@ -20,15 +20,17 @@ A modular daemon system for managing AI agents, notifications, interactive quest
 
 **agentd** is a suite of services and tools designed to orchestrate AI agents and provide intelligent, context-aware notifications and interactions. It consists of:
 
-- **agent** — Command-line interface for interacting with all services
-- **agentd-orchestrator** — Agent lifecycle management, WebSocket SDK server, workflow scheduler, and tool policy enforcement
-- **agentd-notify** — Notification service with REST API and SQLite storage
-- **agentd-ask** — Interactive question service with tmux integration
-- **agentd-wrap** — Tmux session management for launching and managing agents
-- **agentd-mcp** — MCP server exposing agent management, diagnostics, and self-healing tools for Claude and other MCP clients
-- **agentd-common** — Shared types, error handling, and utilities
-- **agentd-hook** — Shell hook integration service (planned)
-- **agentd-monitor** — System monitoring service (planned)
+- **agent** - Command-line interface for interacting with all services
+- **agentd-core** - Core service providing user and organization management
+- **agentd-orchestrator** - Agent lifecycle management, WebSocket SDK server, workflow scheduler, and tool policy enforcement
+- **agentd-notify** - Notification service with REST API and SQLite storage
+- **agentd-ask** - Interactive question service with tmux integration
+- **agentd-wrap** - Tmux session management for launching and managing agents
+- **agentd-index** - Semantic code search service: tree-sitter chunking, LanceDB vector storage, BM25 hybrid search, and repository watcher
+- **agentd-mcp** - MCP server exposing agent management, diagnostics, and self-healing tools for Claude and other MCP clients
+- **agentd-common** - Shared types, error handling, and utilities
+- **agentd-hook** - Shell hook integration service (planned)
+- **agentd-monitor** - System monitoring service (planned)
 
 ## Quick Start
 
@@ -78,27 +80,27 @@ agent teardown .agentd/               # delete in reverse order
 
 ### Orchestrator Service (agentd-orchestrator)
 
-- **Agent lifecycle management** — Create, monitor, attach, and terminate AI agents in tmux sessions
-- **WebSocket SDK server** — Implements the Claude Code SDK protocol for programmatic agent control
-- **Autonomous workflows** — Schedule workflows that poll GitHub Issues and dispatch tasks to agents
-- **Tool policies** — Control which tools agents can use: `AllowAll`, `DenyAll`, `AllowList`, `DenyList`, `RequireApproval`
-- **Human-in-the-loop approvals** — Hold tool requests for human review with configurable timeout
-- **Real-time streaming** — Watch agent output via `agent orchestrator stream`
-- **Interactive attach** — Connect to agent tmux sessions via `agent orchestrator attach`
-- **Prompt template validation** — Validate `{{variable}}` placeholders before creating workflows
-- **SQLite persistence** — Agent and workflow state survives restarts with automatic reconciliation
-- **Prometheus metrics** — `/metrics` endpoint for observability
+- **Agent lifecycle management** - Create, monitor, attach, and terminate AI agents in tmux sessions
+- **WebSocket SDK server** - Implements the Claude Code SDK protocol for programmatic agent control
+- **Autonomous workflows** - Schedule workflows that poll GitHub Issues and dispatch tasks to agents
+- **Tool policies** - Control which tools agents can use: `AllowAll`, `DenyAll`, `AllowList`, `DenyList`, `RequireApproval`
+- **Human-in-the-loop approvals** - Hold tool requests for human review with configurable timeout
+- **Real-time streaming** - Watch agent output via `agent orchestrator stream`
+- **Interactive attach** - Connect to agent tmux sessions via `agent orchestrator attach`
+- **Prompt template validation** - Validate `{{variable}}` placeholders before creating workflows
+- **SQLite persistence** - Agent and workflow state survives restarts with automatic reconciliation
+- **Prometheus metrics** - `/metrics` endpoint for observability
 
 ### CLI (agent)
 
 - **Rich terminal output** with colors and formatted tables
-- **Declarative templates** — `agent apply` / `agent teardown` for YAML-based agent and workflow management
-- **Agent management** — create, list, get, delete, attach, send-message, stream
-- **Workflow management** — create, list, get, update, delete, history, validate-template
-- **Tool policies** — get-policy, set-policy, `--tool-policy` flag on create-agent
-- **Approval management** — list-approvals, approve, deny (for RequireApproval policy)
-- **Health monitoring** — `agent status` checks all services concurrently; per-service `health` commands
-- **Shell completions** — `agent completions bash/zsh/fish/powershell`
+- **Declarative templates** - `agent apply` / `agent teardown` for YAML-based agent and workflow management
+- **Agent management** - create, list, get, delete, attach, send-message, stream
+- **Workflow management** - create, list, get, update, delete, history, validate-template
+- **Tool policies** - get-policy, set-policy, `--tool-policy` flag on create-agent
+- **Approval management** - list-approvals, approve, deny (for RequireApproval policy)
+- **Health monitoring** - `agent status` checks all services concurrently; per-service `health` commands
+- **Shell completions** - `agent completions bash/zsh/fish/powershell`
 - **`--json` flag** on all commands for scripting
 
 ### Notification System (agentd-notify)
@@ -108,23 +110,23 @@ agent teardown .agentd/               # delete in reverse order
 - **Ephemeral and persistent** notifications
 - **Response handling** for interactive notifications
 - **SQLite storage** for persistence
-- **Prometheus metrics** — notifications_created_total by priority
+- **Prometheus metrics** - notifications_created_total by priority
 
 ### Wrap Service (agentd-wrap)
 
-- **Tmux session management** — Launch and manage agent CLI sessions
-- **Docker execution backend** — Run agents in isolated containers with resource limits and network policies
-- **Multi-agent support** — Claude Code, OpenCode, Gemini, and other agent types
-- **Configurable layouts** — Custom tmux pane layouts via JSON
+- **Tmux session management** - Launch and manage agent CLI sessions
+- **Docker execution backend** - Run agents in isolated containers with resource limits and network policies
+- **Multi-agent support** - Claude Code, OpenCode, Gemini, and other agent types
+- **Configurable layouts** - Custom tmux pane layouts via JSON
 - **REST API** for launching, listing, and killing sessions
 
 > **Docker backend docs:** See [`docs/docker-backend.md`](docs/docker-backend.md) for setup, configuration, platform notes, and troubleshooting.
 
 ### Ask Service (agentd-ask)
 
-- **tmux integration** — Detects when no tmux sessions are running
-- **Smart notifications** — Creates notifications based on system state
-- **Cooldown logic** — Prevents notification spam
+- **tmux integration** - Detects when no tmux sessions are running
+- **Smart notifications** - Creates notifications based on system state
+- **Cooldown logic** - Prevents notification spam
 - **REST API** for triggering checks and answering questions
 
 ## Local Observability Stack
@@ -134,7 +136,7 @@ local observability stack (Prometheus + Grafana with pre-built dashboards) is
 included in `infra/`:
 
 ```bash
-# One-command install — configures and starts Prometheus + Grafana
+# One-command install - configures and starts Prometheus + Grafana
 ./infra/setup.sh
 
 # Open dashboards (default credentials: admin / admin)
@@ -294,7 +296,7 @@ websocat ws://localhost:17006/stream  # or raw WebSocket
                       │     │                 │
                 ┌─────┴─────┴─────────────────┴────────────────────┐
                 │                  agentd-mcp                       │
-                │  MCP server (stdio) — diagnostics, management,   │
+                │  MCP server (stdio) - diagnostics, management,   │
                 │  self-healing tools for Claude & MCP clients      │
                 └──────────────────────────────────────────────────┘
 ```
@@ -366,14 +368,16 @@ For the complete configuration reference including all environment variables, da
 | agentd-notify | 17004 | 7004 | Notification service |
 | agentd-wrap | 17005 | 7005 | Tmux session management |
 | agentd-orchestrator | 17006 | 7006 | Agent orchestration |
-| agentd-mcp | — | — | MCP server (stdio transport, no HTTP port) |
+| agentd-index | 17012 | 17012 | Semantic code search and indexing |
+| agentd-mcp | - | - | MCP server (stdio transport, no HTTP port) |
 
 ### Environment Variables
 
-- `RUST_LOG` — Log level filter (default: `info`)
-- `AGENTD_LOG_FORMAT` — Set to `json` for structured JSON output
-- `AGENTD_PORT` — Override the default port for any service
-- `AGENTD_ORCHESTRATOR_SERVICE_URL` — Override orchestrator URL for CLI (default: `http://localhost:7006`)
+- `RUST_LOG` - Log level filter (default: `info`)
+- `AGENTD_LOG_FORMAT` - Set to `json` for structured JSON output
+- `AGENTD_PORT` - Override the default port for any service
+- `AGENTD_ORCHESTRATOR_SERVICE_URL` - Override orchestrator URL for CLI (default: `http://localhost:7006`)
+- `AGENTD_INDEX_SERVICE_URL` - Override index service URL for CLI (default: `http://localhost:17012`)
 
 ## Project Status
 

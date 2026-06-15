@@ -159,6 +159,15 @@ export class ApiClient {
 		}
 
 		if (!response.ok) {
+			// Handle 401: clear token, redirect to login, and stop processing.
+			// window.location.href is asynchronous; without the early throw the
+			// code falls through and callers render an error banner before redirect.
+			if (response.status === 401) {
+				localStorage.removeItem("agentd_token");
+				window.location.href = "/login";
+				throw new ApiError(401, "Session expired");
+			}
+
 			let message = `HTTP ${response.status}`;
 			let errorBody: unknown;
 
@@ -254,9 +263,48 @@ export class ApiClient {
 	/**
 	 * Opens a WebSocket connection, converting the base URL scheme if needed:
 	 * http → ws, https → wss
+	 *
+	 * Appends `?token=<token>` (or `&token=<token>`) when an auth token is
+	 * present in localStorage so the server can authenticate the connection.
 	 */
 	protected openWebSocket(path: string): WebSocket {
 		const wsBase = this.baseUrl.replace(/^http/, "ws");
-		return new WebSocket(`${wsBase}${path}`);
+		const url = `${wsBase}${path}`;
+		const token = localStorage.getItem("agentd_token");
+		const wsUrl = token
+			? `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`
+			: url;
+		return new WebSocket(wsUrl);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates ApiClientOptions with the stored bearer token injected into every
+ * request via the `onRequest` hook.  Pass to a service client constructor:
+ *
+ *   class MyClient extends ApiClient {
+ *     constructor() { super(withAuth({ baseUrl: "..." })); }
+ *   }
+ */
+export function withAuth(
+	options: Omit<ApiClientOptions, "onRequest">,
+): ApiClientOptions {
+	return {
+		...options,
+		onRequest: (init: RequestInit) => {
+			const token = localStorage.getItem("agentd_token");
+			if (!token) return init;
+			return {
+				...init,
+				headers: {
+					...(init.headers as Record<string, string>),
+					Authorization: `Bearer ${token}`,
+				},
+			};
+		},
+	};
 }

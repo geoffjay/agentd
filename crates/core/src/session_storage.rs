@@ -7,7 +7,10 @@
 //! RFC 3339 string compared lexicographically.
 
 use anyhow::Result;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, Set,
+};
 use uuid::Uuid;
 
 use crate::entity::session;
@@ -69,6 +72,30 @@ impl SessionStorage {
         Ok(result.rows_affected > 0)
     }
 
+    /// Return a paginated list of ALL sessions across every user (product-wide),
+    /// ordered by creation time (newest first). Intended for product-admin use.
+    ///
+    /// Note: rows include `token_hash` — callers MUST map to a response type that
+    /// excludes it before returning to clients (it is the raw bearer token).
+    pub async fn list_all_paginated(
+        &self,
+        limit: u64,
+        offset: u64,
+    ) -> Result<agentd_common::types::PaginatedResponse<session::Model>> {
+        let paginator = session::Entity::find()
+            .order_by_desc(session::Column::CreatedAt)
+            .paginate(&self.db, limit);
+        let total = paginator.num_items().await?;
+        let page = offset.checked_div(limit).unwrap_or(0);
+        let items = paginator.fetch_page(page).await?;
+        Ok(agentd_common::types::PaginatedResponse {
+            items,
+            total: total as usize,
+            limit: limit as usize,
+            offset: offset as usize,
+        })
+    }
+
     /// Delete all sessions that have passed their `expires_at` timestamp.
     ///
     /// Returns the number of rows deleted.
@@ -120,6 +147,7 @@ mod tests {
             password_hash: Set("hash".to_string()),
             display_name: Set(None),
             role: Set("user".to_string()),
+            is_superuser: Set(false),
             active_organization_id: Set(None),
             created_at: Set(now.clone()),
             updated_at: Set(now),
