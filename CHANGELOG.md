@@ -3,6 +3,47 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.9] - 2026-06-15
+
+### Added
+
+- Auth integration foundation — gateway completeness, tenant extractor, token validation
+- Gateway completeness, TenantId extractor, POST /auth/validate, Procfile
+- Route all commands through core gateway with bearer tokens
+- Route all commands through core gateway with bearer tokens
+- Add login page, auth store, gateway routing, WebSocket auth
+- Add auth store, login/register pages, gateway routing, WebSocket auth
+- Downstream service tenant scoping with organization_id and WebSocket auth
+- Add organization_id tenant scoping to downstream services with WS auth
+- Add admin backfill-tenant command for organization_id migration
+- Add admin backfill-tenant command for organization_id migration
+- Auth cleanup - proxy simplification, tenant propagation, MCP docs
+- Simplify proxy to single gateway route
+- Add rollback_migrations helper to agentd_common storage
+- Add rollback_migrations helper to agentd_common::storage
+- Expose migration helpers from agentd-core lib.rs
+- Expose apply/status/rollback migration helpers from lib.rs
+- Register agentd-core in xtask DB_SERVICES for migration management
+- Register agentd-core in DB_SERVICES for migration management
+- Add clap CLI with migrate subcommand to agentd-core binary
+- Add clap CLI with migrate subcommand to agentd-core binary
+- Add product superuser role and admin entity views
+- Add set-password subcommand
+
+### Fixed
+
+- Address PR #1288 review feedback
+- Address review feedback on org_id scoping
+- Address review feedback on backfill-tenant command
+- Replace atty with std::io::IsTerminal, use workspace clap
+- Change install resolution function
+- Prevent session masking invalid login
+- Allow superuser role to access admin
+- Update ui tests
+- Add zustand as dep
+- Drop intel darwin from cache warm job
+- Improve test coverage
+
 ## [0.4.8] - 2026-06-12
 
 ### Fixed
