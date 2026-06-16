@@ -19,13 +19,9 @@ import { DocumentToolbar, CreateDocumentDialog } from "@/components/knowledge/Do
 import { ProjectPicker } from "@/components/knowledge/ProjectPicker";
 
 export function KnowledgebaseView() {
-	const { projectId, "*": splat } = useParams<{
-		projectId?: string;
-		"*": string;
-	}>();
+	const { projectId } = useParams<{ projectId?: string }>();
 	const navigate = useNavigate();
 
-	const [project, setProject] = useState<Project | null>(null);
 	const [tree, setTree] = useState<TreeNode[]>([]);
 	const [treeLoading, setTreeLoading] = useState(false);
 	const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -161,7 +157,6 @@ export function KnowledgebaseView() {
 	// ------------------------------------------------------------------
 
 	function handleSelectProject(p: Project) {
-		setProject(p);
 		setSelectedDocId(null);
 		setDocContent(null);
 		navigate(`/knowledge/${p.id}`);
@@ -180,6 +175,7 @@ export function KnowledgebaseView() {
 					<ProjectPicker
 						selectedId={projectId ?? null}
 						onSelect={handleSelectProject}
+						onError={setError}
 					/>
 				</div>
 

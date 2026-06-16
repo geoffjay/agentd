@@ -11,9 +11,14 @@ import { orchestratorClient } from "@/services/orchestrator";
 interface ProjectPickerProps {
 	selectedId: string | null;
 	onSelect: (project: Project) => void;
+	onError?: (message: string) => void;
 }
 
-export function ProjectPicker({ selectedId, onSelect }: ProjectPickerProps) {
+export function ProjectPicker({
+	selectedId,
+	onSelect,
+	onError,
+}: ProjectPickerProps) {
 	const [projects, setProjects] = useState<Project[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [open, setOpen] = useState(false);
@@ -27,14 +32,16 @@ export function ProjectPicker({ selectedId, onSelect }: ProjectPickerProps) {
 			.then((page) => {
 				if (!cancelled) setProjects(page.items);
 			})
-			.catch(console.error)
+			.catch((e) => {
+				if (!cancelled) onError?.(`Failed to load projects: ${e}`);
+			})
 			.finally(() => {
 				if (!cancelled) setLoading(false);
 			});
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [onError]);
 
 	// Close on outside click
 	useEffect(() => {
