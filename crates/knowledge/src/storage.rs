@@ -137,12 +137,17 @@ impl KnowledgeStorage {
     // -----------------------------------------------------------------------
 
     /// Fetch document metadata by ID.
+    ///
+    /// When `org` is `Some`, the lookup is additionally scoped to that
+    /// organization (gateway traffic); when `None`, only `project_id` is
+    /// enforced (trusted/local access).
     pub async fn get_document(
         &self,
         project_id: &str,
         doc_id: &str,
+        org: Option<&str>,
     ) -> std::result::Result<Document, KnowledgeError> {
-        let model = self.find_by_id(project_id, doc_id).await?;
+        let model = self.find_by_id(project_id, doc_id, org).await?;
         Ok(model_to_document(model))
     }
 
@@ -151,8 +156,9 @@ impl KnowledgeStorage {
         &self,
         project_id: &str,
         doc_id: &str,
+        org: Option<&str>,
     ) -> std::result::Result<DocumentContent, KnowledgeError> {
-        let model = self.find_by_id(project_id, doc_id).await?;
+        let model = self.find_by_id(project_id, doc_id, org).await?;
         let abs_path = safe_doc_path(&self.root, project_id, &model.rel_path)?;
         let content = std::fs::read_to_string(&abs_path)
             .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("read failed: {e}")))?;
@@ -160,15 +166,22 @@ impl KnowledgeStorage {
     }
 
     /// List documents for `project_id` with pagination.
+    ///
+    /// When `org` is `Some`, results are additionally scoped to that
+    /// organization; when `None`, only `project_id` is enforced.
     pub async fn list_documents(
         &self,
         project_id: &str,
+        org: Option<&str>,
         limit: u64,
         offset: u64,
     ) -> std::result::Result<PaginatedResponse<Document>, KnowledgeError> {
-        let base_query = document::Entity::find()
-            .filter(document::Column::ProjectId.eq(project_id))
-            .order_by_asc(document::Column::RelPath);
+        let mut base_query =
+            document::Entity::find().filter(document::Column::ProjectId.eq(project_id));
+        if let Some(o) = org {
+            base_query = base_query.filter(document::Column::OrganizationId.eq(o));
+        }
+        let base_query = base_query.order_by_asc(document::Column::RelPath);
 
         let total = base_query
             .clone()
@@ -202,9 +215,10 @@ impl KnowledgeStorage {
         &self,
         project_id: &str,
         doc_id: &str,
+        org: Option<&str>,
         req: UpdateDocumentRequest,
     ) -> std::result::Result<Document, KnowledgeError> {
-        let model = self.find_by_id(project_id, doc_id).await?;
+        let model = self.find_by_id(project_id, doc_id, org).await?;
 
         // Optimistic concurrency check.
         if let Some(ref expected) = req.expected_updated_at {
@@ -265,8 +279,9 @@ impl KnowledgeStorage {
         &self,
         project_id: &str,
         doc_id: &str,
+        org: Option<&str>,
     ) -> std::result::Result<(), KnowledgeError> {
-        let model = self.find_by_id(project_id, doc_id).await?;
+        let model = self.find_by_id(project_id, doc_id, org).await?;
         let abs_path = safe_doc_path(&self.root, project_id, &model.rel_path)?;
 
         // Delete DB row first — orphaned file is harmless.
@@ -281,20 +296,32 @@ impl KnowledgeStorage {
     }
 
     /// Delete ALL documents for `project_id` (called on project deletion).
+    ///
+    /// When `org` is `Some`, only that organization's documents under the
+    /// project are removed; when `None`, all documents for the project are.
     pub async fn bulk_delete_project(
         &self,
         project_id: &str,
+        org: Option<&str>,
     ) -> std::result::Result<(), KnowledgeError> {
         // Load all documents so we can clean up files too.
-        let models = document::Entity::find()
-            .filter(document::Column::ProjectId.eq(project_id))
+        let mut find_query =
+            document::Entity::find().filter(document::Column::ProjectId.eq(project_id));
+        if let Some(o) = org {
+            find_query = find_query.filter(document::Column::OrganizationId.eq(o));
+        }
+        let models = find_query
             .all(&self.db)
             .await
             .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("list for bulk delete: {e}")))?;
 
         // Delete all DB rows.
-        document::Entity::delete_many()
-            .filter(document::Column::ProjectId.eq(project_id))
+        let mut delete_query =
+            document::Entity::delete_many().filter(document::Column::ProjectId.eq(project_id));
+        if let Some(o) = org {
+            delete_query = delete_query.filter(document::Column::OrganizationId.eq(o));
+        }
+        delete_query
             .exec(&self.db)
             .await
             .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("bulk delete failed: {e}")))?;
@@ -320,9 +347,14 @@ impl KnowledgeStorage {
         &self,
         project_id: &str,
         doc_id: &str,
+        org: Option<&str>,
     ) -> std::result::Result<document::Model, KnowledgeError> {
-        document::Entity::find_by_id(doc_id.to_string())
-            .filter(document::Column::ProjectId.eq(project_id))
+        let mut query = document::Entity::find_by_id(doc_id.to_string())
+            .filter(document::Column::ProjectId.eq(project_id));
+        if let Some(o) = org {
+            query = query.filter(document::Column::OrganizationId.eq(o));
+        }
+        query
             .one(&self.db)
             .await
             .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("db error: {e}")))?
@@ -394,7 +426,7 @@ mod tests {
         assert_eq!(doc.title, "hello");
         assert_eq!(doc.size_bytes, 7);
 
-        let fetched = s.get_document(PROJ, &doc.id).await.unwrap();
+        let fetched = s.get_document(PROJ, &doc.id, None).await.unwrap();
         assert_eq!(fetched.id, doc.id);
     }
 
@@ -407,7 +439,7 @@ mod tests {
             .await
             .unwrap();
 
-        let with_content = s.get_document_content(PROJ, &doc.id).await.unwrap();
+        let with_content = s.get_document_content(PROJ, &doc.id, None).await.unwrap();
         assert_eq!(with_content.content, "# Notes\ncontent here");
     }
 
@@ -424,7 +456,8 @@ mod tests {
     async fn test_not_found() {
         let tmp = tempfile::tempdir().unwrap();
         let s = make_storage(&tmp).await;
-        let err = s.get_document(PROJ, "00000000-0000-0000-0000-000000000000").await.unwrap_err();
+        let err =
+            s.get_document(PROJ, "00000000-0000-0000-0000-000000000000", None).await.unwrap_err();
         assert!(matches!(err, KnowledgeError::NotFound(_)));
     }
 
@@ -436,11 +469,11 @@ mod tests {
         s.create_document(PROJ, create_req("b.md", "beta"), None).await.unwrap();
         s.create_document(PROJ, create_req("c.md", "gamma"), None).await.unwrap();
 
-        let page = s.list_documents(PROJ, 2, 0).await.unwrap();
+        let page = s.list_documents(PROJ, None, 2, 0).await.unwrap();
         assert_eq!(page.total, 3);
         assert_eq!(page.items.len(), 2);
 
-        let page2 = s.list_documents(PROJ, 2, 2).await.unwrap();
+        let page2 = s.list_documents(PROJ, None, 2, 2).await.unwrap();
         assert_eq!(page2.items.len(), 1);
     }
 
@@ -454,6 +487,7 @@ mod tests {
             .update_document(
                 PROJ,
                 &doc.id,
+                None,
                 UpdateDocumentRequest {
                     content: Some("updated content".to_string()),
                     title: Some("Updated Title".to_string()),
@@ -466,7 +500,7 @@ mod tests {
         assert_eq!(updated.title, "Updated Title");
         assert_eq!(updated.size_bytes, 15); // "updated content".len()
 
-        let with_content = s.get_document_content(PROJ, &doc.id).await.unwrap();
+        let with_content = s.get_document_content(PROJ, &doc.id, None).await.unwrap();
         assert_eq!(with_content.content, "updated content");
     }
 
@@ -480,6 +514,7 @@ mod tests {
             .update_document(
                 PROJ,
                 &doc.id,
+                None,
                 UpdateDocumentRequest {
                     content: Some("v2".to_string()),
                     title: None,
@@ -498,9 +533,9 @@ mod tests {
         let s = make_storage(&tmp).await;
         let doc = s.create_document(PROJ, create_req("del.md", "bye"), None).await.unwrap();
 
-        s.delete_document(PROJ, &doc.id).await.unwrap();
+        s.delete_document(PROJ, &doc.id, None).await.unwrap();
 
-        let err = s.get_document(PROJ, &doc.id).await.unwrap_err();
+        let err = s.get_document(PROJ, &doc.id, None).await.unwrap_err();
         assert!(matches!(err, KnowledgeError::NotFound(_)));
     }
 
@@ -511,10 +546,44 @@ mod tests {
         s.create_document(PROJ, create_req("x.md", "x"), None).await.unwrap();
         s.create_document(PROJ, create_req("y.md", "y"), None).await.unwrap();
 
-        s.bulk_delete_project(PROJ).await.unwrap();
+        s.bulk_delete_project(PROJ, None).await.unwrap();
 
-        let page = s.list_documents(PROJ, 100, 0).await.unwrap();
+        let page = s.list_documents(PROJ, None, 100, 0).await.unwrap();
         assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn test_org_scoping_isolates_documents() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        // Same project, two different organizations.
+        let a = s
+            .create_document(PROJ, create_req("a.md", "owned by org-a"), Some("org-a".to_string()))
+            .await
+            .unwrap();
+        s.create_document(PROJ, create_req("b.md", "owned by org-b"), Some("org-b".to_string()))
+            .await
+            .unwrap();
+
+        // org-a sees only its own document.
+        let page_a = s.list_documents(PROJ, Some("org-a"), 100, 0).await.unwrap();
+        assert_eq!(page_a.total, 1);
+        assert_eq!(page_a.items[0].rel_path, "a.md");
+
+        // org-b cannot fetch org-a's document by id.
+        let err = s.get_document(PROJ, &a.id, Some("org-b")).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)));
+
+        // Unscoped (trusted/local) access sees everything in the project.
+        let page_all = s.list_documents(PROJ, None, 100, 0).await.unwrap();
+        assert_eq!(page_all.total, 2);
+
+        // Bulk delete scoped to org-a leaves org-b's document intact.
+        s.bulk_delete_project(PROJ, Some("org-a")).await.unwrap();
+        let remaining = s.list_documents(PROJ, None, 100, 0).await.unwrap();
+        assert_eq!(remaining.total, 1);
+        assert_eq!(remaining.items[0].rel_path, "b.md");
     }
 
     #[tokio::test]
