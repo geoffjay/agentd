@@ -60,11 +60,26 @@
 //!
 //! # Service URLs
 //!
-//! The CLI connects to services running on localhost (default dev ports):
-//! - Notification service: `http://localhost:17004` (override with `AGENTD_NOTIFY_SERVICE_URL`)
-//! - Ask service: `http://localhost:17001` (override with `AGENTD_ASK_SERVICE_URL`)
-//! - Wrap service: `http://localhost:17005` (override with `AGENTD_WRAP_SERVICE_URL`)
-//! - Orchestrator service: `http://localhost:17006` (override with `AGENTD_ORCHESTRATOR_SERVICE_URL`)
+//! Every command is routed through a single core auth gateway, which
+//! reverse-proxies to the individual services as `<core_url>/api/v1/<service>`.
+//! The CLI does not connect to per-service ports directly. The core URL is
+//! resolved in this order (highest precedence first):
+//!
+//! 1. The `AGENTD_CORE_SERVICE_URL` environment variable
+//! 2. The `[apps.cli].core_url` key in the config file (see `agent config`)
+//! 3. The compiled default, `http://localhost:17000`
+//!
+//! To point the CLI at a remote deployment once, set `core_url` in the config
+//! file rather than exporting the environment variable in every shell:
+//!
+//! ```toml
+//! [apps.cli]
+//! core_url = "https://agentd.example.com"
+//! ```
+//!
+//! The per-service `AGENTD_*_SERVICE_URL` variables only affect what the
+//! `agent status` health check probes — they do not change where commands
+//! connect.
 //!
 //! # Architecture
 //!
@@ -520,12 +535,10 @@ enum Commands {
 
 /// Build the gateway-routed URL for a service.
 ///
-/// Returns `{AGENTD_CORE_SERVICE_URL}/api/v1/{service}` so that all CLI
-/// commands go through the core auth gateway.
+/// Returns `{core_url}/api/v1/{service}` so that all CLI commands go through
+/// the core auth gateway. The core URL is resolved via [`client::core_url`].
 fn gateway_url(service: &str) -> String {
-    let core = env::var("AGENTD_CORE_SERVICE_URL")
-        .unwrap_or_else(|_| "http://localhost:17000".to_string());
-    format!("{}/api/v1/{}", core, service)
+    format!("{}/api/v1/{}", client::core_url(), service)
 }
 
 /// Load the session token from disk, printing a warning if absent.

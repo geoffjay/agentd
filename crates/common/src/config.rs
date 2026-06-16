@@ -61,6 +61,7 @@
 //! | `AGENTD_MCP_WRAP_URL`                | `services.mcp.wrap_url`                       |
 //! | `AGENTD_MCP_MONITOR_URL`             | `services.mcp.monitor_url`                    |
 //! | `AGENTD_MCP_HOOK_URL`                | `services.mcp.hook_url`                       |
+//! | `AGENTD_CORE_SERVICE_URL`            | `apps.cli.core_url`                           |
 //! | `AGENTD_RECONCILE_INTERVAL_SECS`     | `services.orchestrator.reconcile_interval_secs` |
 //! | `AGENTD_UI_PORT`                     | `services.ui.port`                            |
 //! | `AGENTD_UI_DIR`                      | `services.ui.ui_dir`                          |
@@ -440,6 +441,45 @@ impl Default for UiConfig {
 }
 
 // ---------------------------------------------------------------------------
+// App (client) config structs
+// ---------------------------------------------------------------------------
+
+/// Configuration for the `agent` command-line interface.
+///
+/// Unlike the `[services.*]` sections, which configure servers when they bind,
+/// this section configures a *client*: where the CLI sends its requests.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct CliConfig {
+    /// Base URL of the core auth gateway that fronts all services.
+    ///
+    /// Every `agent` subcommand is routed through this gateway as
+    /// `<core_url>/api/v1/<service>`. Defaults to `"http://localhost:17000"`.
+    ///
+    /// Overridden at runtime by the `AGENTD_CORE_SERVICE_URL` environment
+    /// variable when set.
+    pub core_url: String,
+}
+
+impl Default for CliConfig {
+    fn default() -> Self {
+        Self { core_url: "http://localhost:17000".to_string() }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AppsConfig
+// ---------------------------------------------------------------------------
+
+/// Container for client-application configuration sections (as opposed to the
+/// server `[services.*]` sections).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AppsConfig {
+    pub cli: CliConfig,
+}
+
+// ---------------------------------------------------------------------------
 // ServicesConfig
 // ---------------------------------------------------------------------------
 
@@ -490,6 +530,8 @@ pub struct AgentdConfig {
     pub general: GeneralConfig,
     /// Per-service configuration sections.
     pub services: ServicesConfig,
+    /// Client-application configuration sections (e.g. the CLI).
+    pub apps: AppsConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -639,6 +681,12 @@ impl ValidateConfig for CommunicateConfig {
     }
 }
 
+impl ValidateConfig for CliConfig {
+    fn validate(&self) -> Result<()> {
+        validate_url(&self.core_url, "apps.cli.core_url")
+    }
+}
+
 impl AgentdConfig {
     /// Validate all service configuration sections.
     ///
@@ -665,6 +713,7 @@ impl AgentdConfig {
             ("[services.ui]", self.services.ui.validate()),
             ("[services.core]", self.services.core.validate()),
             ("[services.communicate]", self.services.communicate.validate()),
+            ("[apps.cli]", self.apps.cli.validate()),
         ];
 
         for (section, result) in checks {
@@ -996,6 +1045,15 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                 },
             },
         },
+        apps: AppsConfig {
+            cli: CliConfig {
+                core_url: pick(
+                    &base.apps.cli.core_url,
+                    &file.apps.cli.core_url,
+                    &d.apps.cli.core_url,
+                ),
+            },
+        },
     }
 }
 
@@ -1156,6 +1214,13 @@ fn apply_env_overrides(cfg: &mut AgentdConfig) {
     }
     if let Ok(v) = env::var("AGENTD_UI_DIR") {
         cfg.services.ui.ui_dir = v;
+    }
+
+    // ── Apps: CLI ─────────────────────────────────────────────────────────
+    if let Ok(v) = env::var("AGENTD_CORE_SERVICE_URL") {
+        if !v.is_empty() {
+            cfg.apps.cli.core_url = v;
+        }
     }
 }
 
@@ -1450,6 +1515,39 @@ history_size = 1000
         assert_eq!(cfg.services.core.port, 19000);
         // Other ports untouched
         assert_eq!(cfg.services.ask.port, 17001);
+    }
+
+    // ── apps.cli.core_url ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_default_cli_core_url() {
+        let cfg = AgentdConfig::default();
+        assert_eq!(cfg.apps.cli.core_url, "http://localhost:17000");
+    }
+
+    #[test]
+    fn test_cli_core_url_file_beats_default() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::remove_var("AGENTD_CORE_SERVICE_URL");
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[apps.cli]\ncore_url = \"https://agentd.example.com\"").unwrap();
+
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+
+        assert_eq!(cfg.apps.cli.core_url, "https://agentd.example.com");
+    }
+
+    #[test]
+    fn test_cli_core_url_env_beats_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(f, "[apps.cli]\ncore_url = \"https://from-file.example.com\"").unwrap();
+        env::set_var("AGENTD_CORE_SERVICE_URL", "https://from-env.example.com");
+
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        env::remove_var("AGENTD_CORE_SERVICE_URL");
+
+        assert_eq!(cfg.apps.cli.core_url, "https://from-env.example.com");
     }
 
     // ── Config file path discovery (uses ENV_LOCK for env var access) ──────

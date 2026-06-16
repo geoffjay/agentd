@@ -325,6 +325,27 @@ impl ApiClient {
     }
 }
 
+/// Resolve the base URL of the core auth gateway that fronts all services.
+///
+/// Every CLI command is routed through this gateway as
+/// `<core_url>/api/v1/<service>`. The URL is resolved with this precedence
+/// (highest first):
+///
+/// 1. The `AGENTD_CORE_SERVICE_URL` environment variable
+/// 2. The `[apps.cli].core_url` key in the config file
+/// 3. The compiled default, `http://localhost:17000`
+///
+/// The env-var and default fallbacks are baked into
+/// [`agentd_common::config`], so a failure to load the config file degrades
+/// gracefully to the environment variable or the default.
+pub fn core_url() -> String {
+    match agentd_common::config::load() {
+        Ok(cfg) => cfg.apps.cli.core_url,
+        Err(_) => std::env::var("AGENTD_CORE_SERVICE_URL")
+            .unwrap_or_else(|_| "http://localhost:17000".to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

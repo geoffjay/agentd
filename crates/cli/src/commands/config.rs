@@ -348,6 +348,19 @@ port = 17009
 # Directory containing compiled frontend assets
 # Environment variable: AGENTD_UI_DIR
 ui_dir = "./ui/dist"
+
+# ---------------------------------------------------------------------------
+# [apps.cli] — the `agent` command-line interface (this tool)
+# ---------------------------------------------------------------------------
+
+[apps.cli]
+
+# Base URL of the core auth gateway that fronts all services. Every `agent`
+# command is routed through it as <core_url>/api/v1/<service>, so set this once
+# to point the CLI at a remote deployment instead of exporting the environment
+# variable in every shell.
+# Environment variable (takes precedence): AGENTD_CORE_SERVICE_URL
+core_url = "http://localhost:17000"
 "#;
 
 #[cfg(test)]
@@ -373,6 +386,7 @@ mod tests {
         assert_eq!(cfg.services.notify.port, 17004);
         assert_eq!(cfg.services.hook.history_size, 500);
         assert_eq!(cfg.general.log_level, "info");
+        assert_eq!(cfg.apps.cli.core_url, "http://localhost:17000");
     }
 
     #[test]

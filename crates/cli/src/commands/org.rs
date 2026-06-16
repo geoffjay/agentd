@@ -29,8 +29,7 @@ use super::auth::load_token;
 // ---------------------------------------------------------------------------
 
 fn core_base_url() -> String {
-    std::env::var("AGENTD_CORE_SERVICE_URL")
-        .unwrap_or_else(|_| "http://localhost:17000".to_string())
+    crate::client::core_url()
 }
 
 async fn get_json_auth<T: for<'de> Deserialize<'de>>(path: &str, token: &str) -> Result<T> {
