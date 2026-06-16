@@ -54,6 +54,7 @@ impl ProxyConfig {
             ("memory", "MEMORY_URL", "http://localhost:17008"),
             ("communicate", "COMMUNICATE_URL", "http://localhost:17010"),
             ("index", "INDEX_URL", "http://localhost:17012"),
+            ("knowledge", "KNOWLEDGE_URL", "http://localhost:17011"),
         ]
         .into_iter()
         .map(|(name, env, default)| {
@@ -212,6 +213,7 @@ mod tests {
         assert!(cfg.url_for("memory").is_some());
         assert!(cfg.url_for("communicate").is_some());
         assert!(cfg.url_for("index").is_some());
+        assert!(cfg.url_for("knowledge").is_some());
         assert!(cfg.url_for("nonexistent").is_none());
     }
 
@@ -221,6 +223,7 @@ mod tests {
         assert_eq!(cfg.url_for("memory"), Some("http://localhost:17008"));
         assert_eq!(cfg.url_for("communicate"), Some("http://localhost:17010"));
         assert_eq!(cfg.url_for("index"), Some("http://localhost:17012"));
+        assert_eq!(cfg.url_for("knowledge"), Some("http://localhost:17011"));
     }
 
     #[test]

@@ -250,6 +250,25 @@ impl Default for MemoryConfig {
     }
 }
 
+/// Configuration for the `agentd-knowledge` service (port 17011).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct KnowledgeConfig {
+    /// HTTP listen port. Defaults to `17011`.
+    pub port: u16,
+    /// Root directory for markdown document storage.
+    ///
+    /// Each project gets a subdirectory `<root>/<project_uuid>/`.
+    /// Defaults to XDG data dir for `agentd-knowledge`.
+    pub root: String,
+}
+
+impl Default for KnowledgeConfig {
+    fn default() -> Self {
+        Self { port: 17011, root: default_knowledge_docs_path() }
+    }
+}
+
 /// Configuration for the `agentd-hook` service (port 17002).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -427,6 +446,7 @@ pub struct ServicesConfig {
     pub orchestrator: OrchestratorConfig,
     pub wrap: WrapConfig,
     pub memory: MemoryConfig,
+    pub knowledge: KnowledgeConfig,
     pub hook: HookConfig,
     pub monitor: MonitorConfig,
     pub communicate: CommunicateConfig,
@@ -540,6 +560,16 @@ impl ValidateConfig for MemoryConfig {
     }
 }
 
+impl ValidateConfig for KnowledgeConfig {
+    fn validate(&self) -> Result<()> {
+        validate_port(self.port, "knowledge")?;
+        if self.root.is_empty() {
+            bail!("knowledge.root must not be empty");
+        }
+        Ok(())
+    }
+}
+
 impl ValidateConfig for HookConfig {
     fn validate(&self) -> Result<()> {
         validate_port(self.port, "hook")?;
@@ -622,6 +652,7 @@ impl AgentdConfig {
             ("[services.orchestrator]", self.services.orchestrator.validate()),
             ("[services.wrap]", self.services.wrap.validate()),
             ("[services.memory]", self.services.memory.validate()),
+            ("[services.knowledge]", self.services.knowledge.validate()),
             ("[services.hook]", self.services.hook.validate()),
             ("[services.monitor]", self.services.monitor.validate()),
             ("[services.mcp]", self.services.mcp.validate()),
@@ -807,6 +838,18 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     &base.services.memory.lance_path,
                     &file.services.memory.lance_path,
                     &d.services.memory.lance_path,
+                ),
+            },
+            knowledge: KnowledgeConfig {
+                port: pick_u16(
+                    base.services.knowledge.port,
+                    file.services.knowledge.port,
+                    d.services.knowledge.port,
+                ),
+                root: pick(
+                    &base.services.knowledge.root,
+                    &file.services.knowledge.root,
+                    &d.services.knowledge.root,
                 ),
             },
             hook: HookConfig {
@@ -1015,6 +1058,14 @@ fn apply_env_overrides(cfg: &mut AgentdConfig) {
         cfg.services.memory.lance_path = v;
     }
 
+    // ── Knowledge ───────────────────────────────────────────────────────────
+    if let Some(p) = parse_port("AGENTD_KNOWLEDGE_PORT") {
+        cfg.services.knowledge.port = p;
+    }
+    if let Ok(v) = env::var("AGENTD_KNOWLEDGE_ROOT") {
+        cfg.services.knowledge.root = v;
+    }
+
     // ── Hook ──────────────────────────────────────────────────────────────
     if let Some(p) = parse_port("AGENTD_HOOK_PORT") {
         cfg.services.hook.port = p;
@@ -1182,6 +1233,12 @@ fn default_memory_lance_path() -> String {
         .unwrap_or_else(|| "lancedb".to_string())
 }
 
+fn default_knowledge_docs_path() -> String {
+    ProjectDirs::from("", "", "agentd-knowledge")
+        .map(|d| d.data_dir().join("docs").to_string_lossy().to_string())
+        .unwrap_or_else(|| "docs".to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1214,6 +1271,7 @@ mod tests {
         assert_eq!(cfg.services.orchestrator.port, 17006);
         assert_eq!(cfg.services.wrap.port, 17005);
         assert_eq!(cfg.services.memory.port, 17008);
+        assert_eq!(cfg.services.knowledge.port, 17011);
         assert_eq!(cfg.services.hook.port, 17002);
         assert_eq!(cfg.services.monitor.port, 17003);
         assert_eq!(cfg.services.communicate.port, 17010);
@@ -1584,6 +1642,7 @@ port = 13003
             ("memory", cfg.services.memory.port, 17008),
             ("ui", cfg.services.ui.port, 17009),
             ("communicate", cfg.services.communicate.port, 17010),
+            ("knowledge", cfg.services.knowledge.port, 17011),
         ];
         for (name, actual, expected) in ports {
             assert_eq!(actual, expected, "{} port mismatch", name);
