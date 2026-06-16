@@ -8,6 +8,7 @@ members = [
     "crates/core",
     "crates/hook",
     "crates/install",
+    "crates/knowledge",
     "crates/mcp",
     "crates/memory",
     "crates/memory-api",

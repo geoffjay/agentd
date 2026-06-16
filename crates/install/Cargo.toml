@@ -17,6 +17,7 @@ memory-api = { path = "../memory-api" }
 notify = { path = "../notify" }
 orchestrator = { path = "../orchestrator" }
 communicate = { path = "../communicate" }
+knowledge = { path = "../knowledge" }
 
 [features]
 default = []
