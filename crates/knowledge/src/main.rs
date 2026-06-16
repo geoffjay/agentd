@@ -26,12 +26,13 @@
 mod api;
 mod config;
 mod entity;
+mod error;
+mod fs;
 mod migration;
 mod storage;
 mod types;
-// client and error are pub in lib.rs; reference them to avoid dead-code in binary
+// client is pub in lib.rs; reference it to avoid dead-code warnings in binary
 mod client;
-mod error;
 
 use agentd_common::config::ValidateConfig;
 use axum::{extract::State, response::IntoResponse, routing::get};

@@ -20,9 +20,9 @@ pub mod types;
 pub(crate) mod api;
 #[allow(dead_code)]
 pub(crate) mod entity;
+pub(crate) mod fs;
 #[allow(dead_code)]
 pub(crate) mod migration;
-#[allow(dead_code)]
 pub(crate) mod storage;
 
 // ---------------------------------------------------------------------------

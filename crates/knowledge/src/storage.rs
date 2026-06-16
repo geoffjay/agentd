@@ -1,16 +1,43 @@
-//! Storage layer stub for KB-1.
+//! Storage layer for the knowledge service.
+#![allow(dead_code)]
 //!
-//! Full implementation lives in KB-2.
+//! [`KnowledgeStorage`] coordinates filesystem document files with SQLite
+//! metadata via SeaORM. All path access goes through [`crate::fs::safe_doc_path`].
+//!
+//! ## Consistency model
+//!
+//! - **Create**: write file atomically → insert DB row (rollback = delete file).
+//! - **Update**: write file atomically → update DB row (rollback = restore old content).
+//! - **Delete**: delete DB row → delete file (orphaned file is harmless).
+//! - **Conflict detection**: unique index `idx_documents_project_rel_path` bubbles
+//!   up as `KnowledgeError::Conflict`.
 
 use anyhow::Result;
-use std::path::{Path, PathBuf};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use crate::{
+    entity::document,
+    error::KnowledgeError,
+    fs::{atomic_write, safe_doc_path},
+    types::{
+        CreateDocumentRequest, Document, DocumentContent, PaginatedResponse, UpdateDocumentRequest,
+    },
+};
+
+/// Wraps `Arc<KnowledgeStorage>` so handlers can share a single instance cheaply.
+pub type SharedStorage = Arc<KnowledgeStorage>;
 
 /// Persistent storage backend for the knowledge service.
 pub struct KnowledgeStorage {
-    #[allow(dead_code)]
-    pub(crate) db: sea_orm::DatabaseConnection,
+    pub(crate) db: DatabaseConnection,
     /// Root directory for document files.
-    #[allow(dead_code)]
     pub(crate) root: PathBuf,
 }
 
@@ -21,7 +48,6 @@ impl KnowledgeStorage {
     }
 
     /// Creates a new storage instance with the default database path.
-    #[allow(dead_code)]
     pub async fn new(root: &Path) -> Result<Self> {
         let db_path = Self::get_db_path()?;
         Self::with_path(&db_path, root).await
@@ -35,5 +61,475 @@ impl KnowledgeStorage {
         Migrator::up(&db, None).await?;
         std::fs::create_dir_all(root)?;
         Ok(Self { db, root: root.to_path_buf() })
+    }
+
+    // -----------------------------------------------------------------------
+    // Create
+    // -----------------------------------------------------------------------
+
+    /// Create a new document for `project_id`.
+    ///
+    /// # Errors
+    ///
+    /// - [`KnowledgeError::InvalidPath`] if `req.rel_path` fails safety checks.
+    /// - [`KnowledgeError::Conflict`] if a document at that path already exists.
+    /// - [`KnowledgeError::Other`] for I/O or DB errors.
+    pub async fn create_document(
+        &self,
+        project_id: &str,
+        req: CreateDocumentRequest,
+        organization_id: Option<String>,
+    ) -> std::result::Result<Document, KnowledgeError> {
+        let abs_path = safe_doc_path(&self.root, project_id, &req.rel_path)?;
+
+        // Derive title: explicit override or stem of the filename.
+        let title = req.title.unwrap_or_else(|| {
+            abs_path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| req.rel_path.clone())
+        });
+
+        let content_bytes = req.content.as_bytes();
+        let size_bytes = content_bytes.len() as i64;
+        let now = chrono::Utc::now().to_rfc3339();
+        let id = uuid::Uuid::new_v4().to_string();
+
+        // 1. Write file atomically.
+        atomic_write(&abs_path, content_bytes)
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("write failed: {e}")))?;
+
+        // 2. Insert DB row.
+        let active = document::ActiveModel {
+            id: Set(id.clone()),
+            project_id: Set(project_id.to_string()),
+            rel_path: Set(req.rel_path.clone()),
+            title: Set(title.clone()),
+            size_bytes: Set(size_bytes),
+            created_at: Set(now.clone()),
+            updated_at: Set(now.clone()),
+            organization_id: Set(organization_id.clone()),
+        };
+
+        let result = document::Entity::insert(active).exec(&self.db).await;
+
+        match result {
+            Ok(_) => Ok(Document {
+                id,
+                project_id: project_id.to_string(),
+                rel_path: req.rel_path,
+                title,
+                size_bytes,
+                created_at: now.clone(),
+                updated_at: now,
+                organization_id,
+            }),
+            Err(e) => {
+                // Attempt cleanup — best effort.
+                let _ = std::fs::remove_file(&abs_path);
+                Err(map_db_error(e, &req.rel_path))
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Read
+    // -----------------------------------------------------------------------
+
+    /// Fetch document metadata by ID.
+    pub async fn get_document(
+        &self,
+        project_id: &str,
+        doc_id: &str,
+    ) -> std::result::Result<Document, KnowledgeError> {
+        let model = self.find_by_id(project_id, doc_id).await?;
+        Ok(model_to_document(model))
+    }
+
+    /// Fetch document metadata + markdown content by ID.
+    pub async fn get_document_content(
+        &self,
+        project_id: &str,
+        doc_id: &str,
+    ) -> std::result::Result<DocumentContent, KnowledgeError> {
+        let model = self.find_by_id(project_id, doc_id).await?;
+        let abs_path = safe_doc_path(&self.root, project_id, &model.rel_path)?;
+        let content = std::fs::read_to_string(&abs_path)
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("read failed: {e}")))?;
+        Ok(DocumentContent { document: model_to_document(model), content })
+    }
+
+    /// List documents for `project_id` with pagination.
+    pub async fn list_documents(
+        &self,
+        project_id: &str,
+        limit: u64,
+        offset: u64,
+    ) -> std::result::Result<PaginatedResponse<Document>, KnowledgeError> {
+        let base_query = document::Entity::find()
+            .filter(document::Column::ProjectId.eq(project_id))
+            .order_by_asc(document::Column::RelPath);
+
+        let total = base_query
+            .clone()
+            .count(&self.db)
+            .await
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("count failed: {e}")))?;
+
+        let models = base_query
+            .limit(Some(limit))
+            .offset(Some(offset))
+            .all(&self.db)
+            .await
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("list failed: {e}")))?;
+
+        Ok(PaginatedResponse {
+            items: models.into_iter().map(model_to_document).collect(),
+            total,
+            limit,
+            offset,
+        })
+    }
+
+    // -----------------------------------------------------------------------
+    // Update
+    // -----------------------------------------------------------------------
+
+    /// Update an existing document.
+    ///
+    /// Supports optimistic concurrency via `req.expected_updated_at`.
+    pub async fn update_document(
+        &self,
+        project_id: &str,
+        doc_id: &str,
+        req: UpdateDocumentRequest,
+    ) -> std::result::Result<Document, KnowledgeError> {
+        let model = self.find_by_id(project_id, doc_id).await?;
+
+        // Optimistic concurrency check.
+        if let Some(ref expected) = req.expected_updated_at {
+            if &model.updated_at != expected {
+                return Err(KnowledgeError::Conflict(format!(
+                    "document {doc_id} was modified (expected updated_at={expected}, \
+                     actual={})",
+                    model.updated_at
+                )));
+            }
+        }
+
+        let abs_path = safe_doc_path(&self.root, project_id, &model.rel_path)?;
+
+        // Capture old content for rollback.
+        let old_content = std::fs::read(&abs_path)
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("read for backup failed: {e}")))?;
+
+        let new_content = req.content.as_deref().unwrap_or("");
+        let new_size = new_content.len() as i64;
+        let now = chrono::Utc::now().to_rfc3339();
+        let new_title = req.title.clone().unwrap_or_else(|| model.title.clone());
+
+        // Write new content.
+        if req.content.is_some() {
+            atomic_write(&abs_path, new_content.as_bytes())
+                .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("write failed: {e}")))?;
+        }
+
+        // Update DB row.
+        let mut active: document::ActiveModel = model.clone().into();
+        active.title = Set(new_title.clone());
+        if req.content.is_some() {
+            active.size_bytes = Set(new_size);
+        }
+        active.updated_at = Set(now.clone());
+
+        let result = active.update(&self.db).await;
+
+        match result {
+            Ok(updated) => Ok(model_to_document(updated)),
+            Err(e) => {
+                // Rollback filesystem write.
+                if req.content.is_some() {
+                    let _ = atomic_write(&abs_path, &old_content);
+                }
+                Err(KnowledgeError::Other(anyhow::anyhow!("update failed: {e}")))
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Delete
+    // -----------------------------------------------------------------------
+
+    /// Delete a document by ID (removes both DB row and file).
+    pub async fn delete_document(
+        &self,
+        project_id: &str,
+        doc_id: &str,
+    ) -> std::result::Result<(), KnowledgeError> {
+        let model = self.find_by_id(project_id, doc_id).await?;
+        let abs_path = safe_doc_path(&self.root, project_id, &model.rel_path)?;
+
+        // Delete DB row first — orphaned file is harmless.
+        model
+            .delete(&self.db)
+            .await
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("delete failed: {e}")))?;
+
+        // Best-effort file removal.
+        let _ = std::fs::remove_file(&abs_path);
+        Ok(())
+    }
+
+    /// Delete ALL documents for `project_id` (called on project deletion).
+    pub async fn bulk_delete_project(
+        &self,
+        project_id: &str,
+    ) -> std::result::Result<(), KnowledgeError> {
+        // Load all documents so we can clean up files too.
+        let models = document::Entity::find()
+            .filter(document::Column::ProjectId.eq(project_id))
+            .all(&self.db)
+            .await
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("list for bulk delete: {e}")))?;
+
+        // Delete all DB rows.
+        document::Entity::delete_many()
+            .filter(document::Column::ProjectId.eq(project_id))
+            .exec(&self.db)
+            .await
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("bulk delete failed: {e}")))?;
+
+        // Best-effort cleanup of files.
+        for model in &models {
+            if let Ok(abs_path) = safe_doc_path(&self.root, project_id, &model.rel_path) {
+                let _ = std::fs::remove_file(&abs_path);
+            }
+        }
+
+        // Remove the project directory if empty.
+        let project_dir = self.root.join(project_id);
+        let _ = std::fs::remove_dir(&project_dir); // only removes if empty
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    async fn find_by_id(
+        &self,
+        project_id: &str,
+        doc_id: &str,
+    ) -> std::result::Result<document::Model, KnowledgeError> {
+        document::Entity::find_by_id(doc_id.to_string())
+            .filter(document::Column::ProjectId.eq(project_id))
+            .one(&self.db)
+            .await
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("db error: {e}")))?
+            .ok_or_else(|| KnowledgeError::NotFound(format!("document {doc_id}")))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Conversions
+// ---------------------------------------------------------------------------
+
+fn model_to_document(m: document::Model) -> Document {
+    Document {
+        id: m.id,
+        project_id: m.project_id,
+        rel_path: m.rel_path,
+        title: m.title,
+        size_bytes: m.size_bytes,
+        created_at: m.created_at,
+        updated_at: m.updated_at,
+        organization_id: m.organization_id,
+    }
+}
+
+/// Map a SeaORM database error to a `KnowledgeError`.
+///
+/// Detects unique constraint violations and surfaces them as `Conflict`.
+fn map_db_error(e: sea_orm::DbErr, rel_path: &str) -> KnowledgeError {
+    let msg = e.to_string();
+    if msg.contains("UNIQUE constraint failed") {
+        KnowledgeError::Conflict(format!("document at '{rel_path}' already exists"))
+    } else {
+        KnowledgeError::Other(anyhow::anyhow!("{e}"))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    const PROJ: &str = "550e8400-e29b-41d4-a716-446655440001";
+
+    async fn make_storage(tmp: &TempDir) -> KnowledgeStorage {
+        let db_path = tmp.path().join("test.db");
+        let root = tmp.path().join("docs");
+        KnowledgeStorage::with_path(&db_path, &root).await.expect("storage init")
+    }
+
+    fn create_req(rel_path: &str, content: &str) -> CreateDocumentRequest {
+        CreateDocumentRequest {
+            rel_path: rel_path.to_string(),
+            title: None,
+            content: content.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_and_get() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let doc = s.create_document(PROJ, create_req("hello.md", "# Hello"), None).await.unwrap();
+
+        assert_eq!(doc.rel_path, "hello.md");
+        assert_eq!(doc.title, "hello");
+        assert_eq!(doc.size_bytes, 7);
+
+        let fetched = s.get_document(PROJ, &doc.id).await.unwrap();
+        assert_eq!(fetched.id, doc.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let doc = s
+            .create_document(PROJ, create_req("notes.md", "# Notes\ncontent here"), None)
+            .await
+            .unwrap();
+
+        let with_content = s.get_document_content(PROJ, &doc.id).await.unwrap();
+        assert_eq!(with_content.content, "# Notes\ncontent here");
+    }
+
+    #[tokio::test]
+    async fn test_unique_constraint_conflict() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        s.create_document(PROJ, create_req("dup.md", "first"), None).await.unwrap();
+        let err = s.create_document(PROJ, create_req("dup.md", "second"), None).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::Conflict(_)), "expected Conflict, got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn test_not_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let err = s.get_document(PROJ, "00000000-0000-0000-0000-000000000000").await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_list_documents() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        s.create_document(PROJ, create_req("a.md", "alpha"), None).await.unwrap();
+        s.create_document(PROJ, create_req("b.md", "beta"), None).await.unwrap();
+        s.create_document(PROJ, create_req("c.md", "gamma"), None).await.unwrap();
+
+        let page = s.list_documents(PROJ, 2, 0).await.unwrap();
+        assert_eq!(page.total, 3);
+        assert_eq!(page.items.len(), 2);
+
+        let page2 = s.list_documents(PROJ, 2, 2).await.unwrap();
+        assert_eq!(page2.items.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_update_document() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let doc = s.create_document(PROJ, create_req("update.md", "initial"), None).await.unwrap();
+
+        let updated = s
+            .update_document(
+                PROJ,
+                &doc.id,
+                UpdateDocumentRequest {
+                    content: Some("updated content".to_string()),
+                    title: Some("Updated Title".to_string()),
+                    expected_updated_at: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(updated.title, "Updated Title");
+        assert_eq!(updated.size_bytes, 15); // "updated content".len()
+
+        let with_content = s.get_document_content(PROJ, &doc.id).await.unwrap();
+        assert_eq!(with_content.content, "updated content");
+    }
+
+    #[tokio::test]
+    async fn test_update_optimistic_concurrency() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let doc = s.create_document(PROJ, create_req("oc.md", "v1"), None).await.unwrap();
+
+        let err = s
+            .update_document(
+                PROJ,
+                &doc.id,
+                UpdateDocumentRequest {
+                    content: Some("v2".to_string()),
+                    title: None,
+                    expected_updated_at: Some("1970-01-01T00:00:00+00:00".to_string()),
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, KnowledgeError::Conflict(_)));
+    }
+
+    #[tokio::test]
+    async fn test_delete_document() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let doc = s.create_document(PROJ, create_req("del.md", "bye"), None).await.unwrap();
+
+        s.delete_document(PROJ, &doc.id).await.unwrap();
+
+        let err = s.get_document(PROJ, &doc.id).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_bulk_delete_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        s.create_document(PROJ, create_req("x.md", "x"), None).await.unwrap();
+        s.create_document(PROJ, create_req("y.md", "y"), None).await.unwrap();
+
+        s.bulk_delete_project(PROJ).await.unwrap();
+
+        let page = s.list_documents(PROJ, 100, 0).await.unwrap();
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn test_atomic_write_no_partial_file() {
+        // Ensure the file is written only if the full content is available.
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("atomic_test.md");
+        atomic_write(&target, b"complete content").unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "complete content");
+        // No leftover temp files.
+        let entries: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with(".tmp-"))
+            .collect();
+        assert!(entries.is_empty(), "leftover temp files found");
     }
 }
