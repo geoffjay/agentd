@@ -57,12 +57,6 @@ pub struct ApiState {
     pub storage: Arc<KnowledgeStorage>,
 }
 
-/// Create the Axum router (no persistent state — health only).
-#[allow(dead_code)]
-pub fn create_router() -> Router {
-    Router::new().route("/health", get(health_handler))
-}
-
 /// Create the Axum router with shared storage state.
 pub fn create_router_with_state(storage: Arc<KnowledgeStorage>) -> Router {
     let state = ApiState { storage };

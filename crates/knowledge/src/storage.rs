@@ -355,7 +355,7 @@ impl KnowledgeStorage {
     /// - Deletes DB rows for missing files.
     /// - Deletes orphaned disk files.
     ///
-    /// Emits the `knowledge_missing_file_total` gauge metric with the number
+    /// Emits the `knowledge_missing_files` gauge metric with the number
     /// of missing-file divergences detected (before any fixing).
     pub async fn doctor(
         &self,
@@ -394,8 +394,11 @@ impl KnowledgeStorage {
             }
         }
 
-        // Emit metric.
-        metrics::gauge!("knowledge_missing_file_total").set(missing_files.len() as f64);
+        // Emit metric. Gauge tracks the current snapshot count, so it uses a
+        // plain noun (no Prometheus-reserved `_total` suffix, which is for
+        // monotonic counters — see the distinct `knowledge_missing_file_total`
+        // counter in api.rs that increments on each missing-file read).
+        metrics::gauge!("knowledge_missing_files").set(missing_files.len() as f64);
 
         let mut fixed = 0u32;
 
@@ -476,7 +479,10 @@ fn collect_md_files_inner(root: &Path, current: &Path, out: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(current) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_dir() {
+        // `is_dir()` follows symlinks; guarding on `!is_symlink()` prevents a
+        // circular symlink under the user-configurable knowledge root from
+        // recursing infinitely (stack overflow).
+        if path.is_dir() && !path.is_symlink() {
             collect_md_files_inner(root, &path, out);
         } else if path.extension().is_some_and(|e| e == "md") {
             if let Ok(rel) = path.strip_prefix(root) {
