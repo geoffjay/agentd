@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.11] - 2026-06-16
+
+### Added
+
+- Add install method to CLI install
+
+### Fixed
+
+- Handle ws connections through core
+
 ## [0.4.10] - 2026-06-16
 
 ### Fixed
