@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.10] - 2026-06-16
+
+### Fixed
+
+- Expose core service in runtime /config.json
+
 ## [0.4.9] - 2026-06-15
 
 ### Added

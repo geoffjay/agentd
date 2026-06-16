@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agentd-common"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "anyhow",
  "axum",
@@ -35,7 +35,7 @@ dependencies = [
 
 [[package]]
 name = "agentd-core"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -66,7 +66,7 @@ dependencies = [
 
 [[package]]
 name = "agentd-install"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "agentd-mcp"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -102,7 +102,7 @@ dependencies = [
 
 [[package]]
 name = "agentd-tui"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -508,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "ask"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -1094,7 +1094,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cli"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "agentd-install",
@@ -1171,7 +1171,7 @@ dependencies = [
 
 [[package]]
 name = "communicate"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -2908,7 +2908,7 @@ dependencies = [
 
 [[package]]
 name = "hook"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -4252,7 +4252,7 @@ dependencies = [
 
 [[package]]
 name = "memory"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -4283,7 +4283,7 @@ dependencies = [
 
 [[package]]
 name = "memory-api"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -4434,7 +4434,7 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -4517,7 +4517,7 @@ dependencies = [
 
 [[package]]
 name = "notify"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -4667,7 +4667,7 @@ dependencies = [
 
 [[package]]
 name = "ollama"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "anyhow",
  "serde",
@@ -4707,7 +4707,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orchestrator"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -7509,7 +7509,7 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 
 [[package]]
 name = "ui"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
@@ -8394,7 +8394,7 @@ dependencies = [
 
 [[package]]
 name = "wrap"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "agentd-common",
  "anyhow",
