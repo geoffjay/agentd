@@ -69,22 +69,17 @@ impl IntoResponse for TenantError {
     }
 }
 
-impl FromRequestParts<AppState> for TenantContext {
-    type Rejection = TenantError;
-
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &AppState,
-    ) -> Result<Self, Self::Rejection> {
-        // Extract bearer token
-        let token = parts
-            .headers
-            .get(axum::http::header::AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "))
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .ok_or(TenantError::MissingToken)?;
+impl TenantContext {
+    /// Resolve a tenant context from a raw bearer token.
+    ///
+    /// Shared by the [`FromRequestParts`] extractor (which reads the token from
+    /// the `Authorization` header) and the API gateway's WebSocket proxy (which
+    /// reads it from a `token` query parameter, since browsers cannot set
+    /// headers on a WebSocket handshake).
+    pub async fn resolve(state: &AppState, token: String) -> Result<Self, TenantError> {
+        if token.is_empty() {
+            return Err(TenantError::MissingToken);
+        }
 
         // Look up session and check expiry
         let session = state
@@ -113,5 +108,26 @@ impl FromRequestParts<AppState> for TenantContext {
             user.active_organization_id.ok_or(TenantError::NoActiveOrganization)?;
 
         Ok(TenantContext { user_id: user.id, organization_id, session_token: token })
+    }
+}
+
+impl FromRequestParts<AppState> for TenantContext {
+    type Rejection = TenantError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        // Extract bearer token from the Authorization header
+        let token = parts
+            .headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .ok_or(TenantError::MissingToken)?;
+
+        Self::resolve(state, token).await
     }
 }
