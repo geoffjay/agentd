@@ -33,7 +33,7 @@ pub struct ServiceEntry {
 /// (`/auth/register`, `/auth/login`), so it must be exposed here; `hook` and
 /// `wrap` are backend-only and intentionally not exposed.
 const BROWSER_SERVICES: &[&str] =
-    &["core", "ask", "notify", "orchestrator", "memory", "monitor", "communicate"];
+    &["core", "ask", "notify", "orchestrator", "memory", "monitor", "communicate", "knowledge"];
 
 /// Build the runtime configuration from the shared agentd config.
 pub fn build(shared: &agentd_common::config::AgentdConfig) -> RuntimeConfig {
@@ -50,6 +50,7 @@ pub fn build(shared: &agentd_common::config::AgentdConfig) -> RuntimeConfig {
             "memory" => s.memory.port,
             "monitor" => s.monitor.port,
             "communicate" => s.communicate.port,
+            "knowledge" => s.knowledge.port,
             _ => unreachable!("unknown browser service {name}"),
         };
         services.insert(name, ServiceEntry { port, url: overrides.get(name).cloned() });
@@ -74,6 +75,7 @@ mod tests {
         assert_eq!(runtime.services["ask"].port, 17001);
         assert_eq!(runtime.services["orchestrator"].port, 17006);
         assert_eq!(runtime.services["communicate"].port, 17010);
+        assert_eq!(runtime.services["knowledge"].port, 17011);
         assert!(runtime.services.values().all(|s| s.url.is_none()));
     }
 
