@@ -31,8 +31,6 @@ mod fs;
 mod migration;
 mod storage;
 mod types;
-// client is pub in lib.rs; reference it to avoid dead-code warnings in binary
-mod client;
 
 use agentd_common::config::ValidateConfig;
 use axum::{extract::State, response::IntoResponse, routing::get};

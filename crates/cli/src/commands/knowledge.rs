@@ -228,13 +228,17 @@ impl KnowledgeCommand {
                 from_file,
                 expected_updated_at,
             } => {
+                let body = if content.is_some() || from_file.is_some() {
+                    Some(resolve_content(content.as_deref(), from_file.as_ref())?)
+                } else {
+                    None
+                };
                 cmd_update(
                     client,
                     project_id,
                     doc_id,
                     title.as_deref(),
-                    content.as_deref(),
-                    from_file.as_ref(),
+                    body,
                     expected_updated_at.as_deref(),
                     json,
                 )
@@ -379,16 +383,10 @@ async fn cmd_update(
     project_id: &str,
     doc_id: &str,
     title: Option<&str>,
-    content: Option<&str>,
-    from_file: Option<&std::path::PathBuf>,
+    body: Option<String>,
     expected_updated_at: Option<&str>,
     json: bool,
 ) -> Result<()> {
-    let body = if content.is_some() || from_file.is_some() {
-        Some(resolve_content(content, from_file)?)
-    } else {
-        None
-    };
     let req = UpdateDocumentRequest {
         content: body,
         title: title.map(str::to_string),
