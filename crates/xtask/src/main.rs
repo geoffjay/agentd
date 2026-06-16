@@ -158,6 +158,12 @@ const DB_SERVICES: &[DbService] = &[
         entity_dir: "crates/core/src/entity",
     },
     DbService {
+        name: "knowledge",
+        project: "agentd-knowledge",
+        db_file: "knowledge.db",
+        entity_dir: "crates/knowledge/src/entity",
+    },
+    DbService {
         name: "memory",
         project: "agentd-memory",
         db_file: "memory.db",

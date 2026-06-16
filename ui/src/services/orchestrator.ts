@@ -33,6 +33,8 @@ import type {
 	UpdatePolicyRequest,
 	UpdateWorkflowRequest,
 	Workflow,
+	Project,
+	ListProjectsParams,
 } from "@/types/orchestrator";
 import { ApiClient, withAuth } from "./base";
 import { serviceConfig } from "./config";
@@ -312,6 +314,20 @@ export class OrchestratorClient extends ApiClient {
 	 */
 	connectAgentMonitor(agentId: string): WebSocket {
 		return this.openWebSocket(`/stream/${agentId}`);
+	}
+
+	// -------------------------------------------------------------------------
+	// Projects
+	// -------------------------------------------------------------------------
+
+	/** `GET /projects` — list all projects. */
+	listProjects(
+		params?: ListProjectsParams,
+	): Promise<PaginatedResponse<Project>> {
+		return this.get<PaginatedResponse<Project>>(
+			"/projects",
+			params as Record<string, string | number | boolean | undefined>,
+		);
 	}
 }
 
