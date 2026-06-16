@@ -29,10 +29,11 @@ pub struct ServiceEntry {
     pub url: Option<String>,
 }
 
-/// Services the SPA talks to directly. `hook`, `wrap`, and `core` are
-/// backend-only and intentionally not exposed.
+/// Services the SPA talks to directly. The browser calls `core` for auth
+/// (`/auth/register`, `/auth/login`), so it must be exposed here; `hook` and
+/// `wrap` are backend-only and intentionally not exposed.
 const BROWSER_SERVICES: &[&str] =
-    &["ask", "notify", "orchestrator", "memory", "monitor", "communicate"];
+    &["core", "ask", "notify", "orchestrator", "memory", "monitor", "communicate"];
 
 /// Build the runtime configuration from the shared agentd config.
 pub fn build(shared: &agentd_common::config::AgentdConfig) -> RuntimeConfig {
@@ -42,6 +43,7 @@ pub fn build(shared: &agentd_common::config::AgentdConfig) -> RuntimeConfig {
     let mut services = BTreeMap::new();
     for &name in BROWSER_SERVICES {
         let port = match name {
+            "core" => s.core.port,
             "ask" => s.ask.port,
             "notify" => s.notify.port,
             "orchestrator" => s.orchestrator.port,
@@ -67,10 +69,24 @@ mod tests {
         let runtime = build(&cfg);
 
         assert_eq!(runtime.services.len(), BROWSER_SERVICES.len());
+        // `core` must be exposed: the SPA talks to it directly for auth.
+        assert_eq!(runtime.services["core"].port, 17000);
         assert_eq!(runtime.services["ask"].port, 17001);
         assert_eq!(runtime.services["orchestrator"].port, 17006);
         assert_eq!(runtime.services["communicate"].port, 17010);
         assert!(runtime.services.values().all(|s| s.url.is_none()));
+    }
+
+    #[test]
+    fn test_core_public_url_override() {
+        let mut cfg = AgentdConfig::default();
+        cfg.services
+            .ui
+            .public_urls
+            .insert("core".to_string(), "https://agentd.example.com".to_string());
+        let runtime = build(&cfg);
+
+        assert_eq!(runtime.services["core"].url.as_deref(), Some("https://agentd.example.com"));
     }
 
     #[test]
