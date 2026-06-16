@@ -1,7 +1,8 @@
 //! Knowledgebase service command implementations.
 //!
 //! Provides CLI subcommands for managing per-project markdown documents via
-//! the agentd-knowledge service. The service runs on port 17011 by default.
+//! the agentd-knowledge service, routed through the core gateway
+//! (`AGENTD_CORE_SERVICE_URL`) with bearer-token authentication.
 //!
 //! # Available Commands
 //!

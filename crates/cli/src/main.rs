@@ -379,7 +379,8 @@ enum Commands {
     /// Interact with the knowledge service
     ///
     /// Manage per-project markdown documents stored on disk with SQLite metadata.
-    /// The knowledge service runs on port 17011 by default.
+    /// Requests are routed through the core gateway (`AGENTD_CORE_SERVICE_URL`,
+    /// default `http://localhost:17000`) using bearer-token authentication.
     ///
     /// # Examples
     ///
@@ -712,9 +713,12 @@ async fn main() -> Result<()> {
             agentd_tui::run_manager().await?;
         }
         Commands::Knowledge { command } => {
-            let url = env::var("AGENTD_KNOWLEDGE_SERVICE_URL")
-                .unwrap_or_else(|_| "http://localhost:17011".to_string());
-            let client = KnowledgeClient::new(url);
+            let token = load_token_or_warn();
+            let url = gateway_url("knowledge");
+            let mut client = KnowledgeClient::new(url);
+            if let Some(t) = token {
+                client = client.with_token(t);
+            }
             command.execute(&client, cli.json).await?;
         }
         Commands::SystemAgents { command } => {
