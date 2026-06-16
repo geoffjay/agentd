@@ -1,20 +1,19 @@
 # Storage Patterns and Conventions
 
 This document describes how agentd services persist data to SQLite using
-[SeaORM](https://www.sea-ql.org/SeaORM/).  Read this before writing any
-storage code.
+[SeaORM](https://www.sea-ql.org/SeaORM/).  Read this before writing any storage code.
 
 ---
 
 ## Overview
 
-agentd uses **SeaORM 1.1** with the `sqlx-sqlite` + `runtime-tokio-rustls`
-feature set.  Every service that persists state follows the same pattern:
+agentd uses **SeaORM 1.1** with the `sqlx-sqlite` + `runtime-tokio-rustls` feature set.  Every
+service that persists state follows the same pattern:
 
 1. **Entity** - a `DeriveEntityModel` struct that maps directly to a table row.
 2. **Migration** - a `MigrationTrait` implementation that creates / alters tables.
-3. **Storage struct** - a `Clone`-able wrapper around `DatabaseConnection` that
-   exposes typed CRUD methods to the rest of the crate.
+3. **Storage struct** - a `Clone`-able wrapper around `DatabaseConnection` that exposes typed CRUD
+   methods to the rest of the crate.
 
 The workspace dependencies are declared once in the root `Cargo.toml`:
 
