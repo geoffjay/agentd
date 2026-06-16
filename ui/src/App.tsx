@@ -9,6 +9,7 @@ import {
 	CommunicatePage,
 	DashboardPage,
 	HooksPage,
+	KnowledgebasePage,
 	LoginPage,
 	MemoriesPage,
 	MonitoringPage,
@@ -63,6 +64,11 @@ function App() {
 							<Route path="/approvals" element={<ApprovalQueuePage />} />
 							<Route path="/memories" element={<MemoriesPage />} />
 							<Route path="/communicate" element={<CommunicatePage />} />
+							<Route path="/knowledge" element={<KnowledgebasePage />} />
+							<Route
+								path="/knowledge/:projectId/*"
+								element={<KnowledgebasePage />}
+							/>
 
 							{/* Product-admin section — superuser only (backend-enforced) */}
 							<Route element={<RequireSuperuser />}>
