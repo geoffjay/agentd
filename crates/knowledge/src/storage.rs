@@ -27,7 +27,8 @@ use crate::{
     error::KnowledgeError,
     fs::{atomic_write, safe_doc_path},
     types::{
-        CreateDocumentRequest, Document, DocumentContent, PaginatedResponse, UpdateDocumentRequest,
+        CreateDocumentRequest, DoctorReport, Document, DocumentContent, PaginatedResponse,
+        UpdateDocumentRequest,
     },
 };
 
@@ -340,6 +341,90 @@ impl KnowledgeStorage {
     }
 
     // -----------------------------------------------------------------------
+    // Doctor / reconciliation
+    // -----------------------------------------------------------------------
+
+    /// Reconcile the DB vs the filesystem for `project_id`.
+    ///
+    /// Returns a [`DoctorReport`] describing:
+    /// - `missing_files` — DB rows whose markdown file is absent from disk.
+    /// - `orphaned_files` — disk files under the project directory that have
+    ///   no matching DB row.
+    ///
+    /// When `fix = true` the method also:
+    /// - Deletes DB rows for missing files.
+    /// - Deletes orphaned disk files.
+    ///
+    /// Emits the `knowledge_missing_file_total` gauge metric with the number
+    /// of missing-file divergences detected (before any fixing).
+    pub async fn doctor(
+        &self,
+        project_id: &str,
+        fix: bool,
+    ) -> std::result::Result<DoctorReport, KnowledgeError> {
+        // 1. Collect all DB rows for the project.
+        let models = document::Entity::find()
+            .filter(document::Column::ProjectId.eq(project_id))
+            .all(&self.db)
+            .await
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("doctor db list: {e}")))?;
+
+        // 2. Build the set of rel_paths known to the DB.
+        let db_paths: std::collections::HashMap<String, String> =
+            models.iter().map(|m| (m.rel_path.clone(), m.id.clone())).collect();
+
+        // 3. Scan disk for all .md files under <root>/<project_id>/.
+        let project_dir = self.root.join(project_id);
+        let disk_paths = collect_md_files(&project_dir);
+
+        // 4. Find DB rows whose files are missing from disk.
+        let mut missing_files: Vec<String> = Vec::new();
+        for rel_path in db_paths.keys() {
+            let abs = project_dir.join(rel_path.replace('/', std::path::MAIN_SEPARATOR_STR));
+            if !abs.exists() {
+                missing_files.push(rel_path.clone());
+            }
+        }
+
+        // 5. Find disk files that have no DB row.
+        let mut orphaned_files: Vec<String> = Vec::new();
+        for disk_rel in &disk_paths {
+            if !db_paths.contains_key(disk_rel) {
+                orphaned_files.push(disk_rel.clone());
+            }
+        }
+
+        // Emit metric.
+        metrics::gauge!("knowledge_missing_file_total").set(missing_files.len() as f64);
+
+        let mut fixed = 0u32;
+
+        if fix {
+            // Remove DB rows for missing files.
+            for rel_path in &missing_files {
+                let affected = document::Entity::delete_many()
+                    .filter(document::Column::ProjectId.eq(project_id))
+                    .filter(document::Column::RelPath.eq(rel_path.as_str()))
+                    .exec(&self.db)
+                    .await
+                    .map(|r| r.rows_affected)
+                    .unwrap_or(0);
+                fixed += affected as u32;
+            }
+
+            // Remove orphaned disk files.
+            for rel_path in &orphaned_files {
+                let abs = project_dir.join(rel_path.replace('/', std::path::MAIN_SEPARATOR_STR));
+                if std::fs::remove_file(&abs).is_ok() {
+                    fixed += 1;
+                }
+            }
+        }
+
+        Ok(DoctorReport { missing_files, orphaned_files, fixed })
+    }
+
+    // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
 
@@ -376,6 +461,30 @@ fn model_to_document(m: document::Model) -> Document {
         created_at: m.created_at,
         updated_at: m.updated_at,
         organization_id: m.organization_id,
+    }
+}
+
+/// Recursively collect all `.md` file paths under `dir`, returning them as
+/// relative path strings (using `/` separators, matching `rel_path` in the DB).
+fn collect_md_files(dir: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_md_files_inner(dir, dir, &mut out);
+    out
+}
+
+fn collect_md_files_inner(root: &Path, current: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(current) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_md_files_inner(root, &path, out);
+        } else if path.extension().is_some_and(|e| e == "md") {
+            if let Ok(rel) = path.strip_prefix(root) {
+                // Normalise to forward-slash separators.
+                let rel_str = rel.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/");
+                out.push(rel_str);
+            }
+        }
     }
 }
 
@@ -584,6 +693,161 @@ mod tests {
         let remaining = s.list_documents(PROJ, None, 100, 0).await.unwrap();
         assert_eq!(remaining.total, 1);
         assert_eq!(remaining.items[0].rel_path, "b.md");
+    }
+
+    // -----------------------------------------------------------------------
+    // Doctor tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_doctor_clean_project_reports_no_divergences() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        s.create_document(PROJ, create_req("docs/a.md", "alpha"), None).await.unwrap();
+        s.create_document(PROJ, create_req("docs/b.md", "beta"), None).await.unwrap();
+
+        let report = s.doctor(PROJ, false).await.unwrap();
+        assert!(report.missing_files.is_empty(), "expected no missing files");
+        assert!(report.orphaned_files.is_empty(), "expected no orphaned files");
+        assert_eq!(report.fixed, 0);
+    }
+
+    #[tokio::test]
+    async fn test_doctor_detects_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let doc = s.create_document(PROJ, create_req("orphan.md", "x"), None).await.unwrap();
+
+        // Delete the file on disk directly (simulates a lost file).
+        let file_path = tmp.path().join("docs").join(PROJ).join("orphan.md");
+        std::fs::remove_file(&file_path).unwrap();
+
+        let report = s.doctor(PROJ, false).await.unwrap();
+        assert_eq!(report.missing_files, vec![doc.rel_path]);
+        assert!(report.orphaned_files.is_empty());
+        assert_eq!(report.fixed, 0, "fix=false should not repair");
+    }
+
+    #[tokio::test]
+    async fn test_doctor_detects_orphaned_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        // Write a file that has no DB row.
+        let project_dir = tmp.path().join("docs").join(PROJ);
+        std::fs::create_dir_all(&project_dir).unwrap();
+        std::fs::write(project_dir.join("stray.md"), b"orphan").unwrap();
+
+        let report = s.doctor(PROJ, false).await.unwrap();
+        assert!(report.missing_files.is_empty());
+        assert_eq!(report.orphaned_files, vec!["stray.md".to_string()]);
+        assert_eq!(report.fixed, 0);
+    }
+
+    #[tokio::test]
+    async fn test_doctor_fix_removes_missing_db_row() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let doc = s.create_document(PROJ, create_req("gone.md", "bye"), None).await.unwrap();
+
+        // Remove file on disk.
+        let file_path = tmp.path().join("docs").join(PROJ).join("gone.md");
+        std::fs::remove_file(&file_path).unwrap();
+
+        let report = s.doctor(PROJ, true).await.unwrap();
+        assert_eq!(report.missing_files.len(), 1);
+        assert!(report.fixed >= 1, "expected at least one fix");
+
+        // DB row should now be gone.
+        let err = s.get_document(PROJ, &doc.id, None).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_doctor_fix_removes_orphaned_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        // Write an orphaned file with no DB row.
+        let project_dir = tmp.path().join("docs").join(PROJ);
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let orphan = project_dir.join("ghost.md");
+        std::fs::write(&orphan, b"ghost").unwrap();
+
+        let report = s.doctor(PROJ, true).await.unwrap();
+        assert_eq!(report.orphaned_files.len(), 1);
+        assert!(report.fixed >= 1, "expected at least one fix");
+        assert!(!orphan.exists(), "orphaned file should have been deleted");
+    }
+
+    // -----------------------------------------------------------------------
+    // End-to-end lifecycle test
+    // -----------------------------------------------------------------------
+
+    /// Full round-trip: create → list → confirm on disk → update → delete.
+    #[tokio::test]
+    async fn test_full_lifecycle_e2e() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let proj = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+        // Create a document.
+        let doc = s
+            .create_document(proj, create_req("guide.md", "# Guide\n\nInitial content."), None)
+            .await
+            .unwrap();
+        assert_eq!(doc.rel_path, "guide.md");
+        assert_eq!(doc.title, "guide");
+
+        // File must exist on disk.
+        let disk_path = tmp.path().join("docs").join(proj).join("guide.md");
+        assert!(disk_path.exists(), "file should exist after create");
+        assert_eq!(std::fs::read_to_string(&disk_path).unwrap(), "# Guide\n\nInitial content.");
+
+        // List returns the new document.
+        let page = s.list_documents(proj, None, 100, 0).await.unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].id, doc.id);
+
+        // Get metadata.
+        let fetched = s.get_document(proj, &doc.id, None).await.unwrap();
+        assert_eq!(fetched.rel_path, "guide.md");
+
+        // Get with content.
+        let with_content = s.get_document_content(proj, &doc.id, None).await.unwrap();
+        assert_eq!(with_content.content, "# Guide\n\nInitial content.");
+
+        // Update content.
+        let updated = s
+            .update_document(
+                proj,
+                &doc.id,
+                None,
+                UpdateDocumentRequest {
+                    content: Some("# Guide\n\nUpdated content.".to_string()),
+                    title: Some("Guide (revised)".to_string()),
+                    expected_updated_at: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.title, "Guide (revised)");
+        assert_eq!(std::fs::read_to_string(&disk_path).unwrap(), "# Guide\n\nUpdated content.");
+
+        // Doctor with no divergences.
+        let report = s.doctor(proj, false).await.unwrap();
+        assert!(report.missing_files.is_empty());
+        assert!(report.orphaned_files.is_empty());
+
+        // Delete.
+        s.delete_document(proj, &doc.id, None).await.unwrap();
+        assert!(!disk_path.exists(), "file should be gone after delete");
+        let err = s.get_document(proj, &doc.id, None).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)));
+
+        // List is now empty.
+        let empty = s.list_documents(proj, None, 100, 0).await.unwrap();
+        assert_eq!(empty.total, 0);
     }
 
     #[tokio::test]

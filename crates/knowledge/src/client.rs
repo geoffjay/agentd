@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::env;
 
 use crate::types::{
-    CreateDocumentRequest, Document, DocumentContent, PaginatedResponse, TreeNode,
+    CreateDocumentRequest, DoctorReport, Document, DocumentContent, PaginatedResponse, TreeNode,
     UpdateDocumentRequest,
 };
 
@@ -261,6 +261,45 @@ impl KnowledgeClient {
             let status = res.status();
             let body: Value = res.json().await.unwrap_or(Value::Null);
             anyhow::bail!("get_tree failed ({status}): {body}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Doctor / reconciliation
+    // -----------------------------------------------------------------------
+
+    /// Run a read-only reconciliation report for `project_id`.
+    ///
+    /// Returns lists of missing files (DB rows with no corresponding file on
+    /// disk) and orphaned files (disk files with no DB row), without making
+    /// any changes.
+    pub async fn doctor(&self, project_id: &str) -> Result<DoctorReport> {
+        let url = format!("{}/projects/{project_id}/doctor", self.base_url);
+        let res = self.auth(self.client.get(&url)).send().await.context("doctor request failed")?;
+        if res.status().is_success() {
+            res.json().await.context("failed to parse doctor response")
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("doctor failed ({status}): {body}");
+        }
+    }
+
+    /// Run a reconciliation pass and automatically fix divergences.
+    ///
+    /// Deletes DB rows whose files are missing from disk, and removes disk
+    /// files that have no corresponding DB row. Returns a report of what was
+    /// found and how many issues were fixed.
+    pub async fn doctor_fix(&self, project_id: &str) -> Result<DoctorReport> {
+        let url = format!("{}/projects/{project_id}/doctor?fix=true", self.base_url);
+        let res =
+            self.auth(self.client.post(&url)).send().await.context("doctor_fix request failed")?;
+        if res.status().is_success() {
+            res.json().await.context("failed to parse doctor_fix response")
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("doctor_fix failed ({status}): {body}");
         }
     }
 }

@@ -251,15 +251,21 @@ impl Default for MemoryConfig {
 }
 
 /// Configuration for the `agentd-knowledge` service (port 17011).
+///
+/// | Field  | Env var                   | Default                                |
+/// |--------|---------------------------|----------------------------------------|
+/// | `port` | `AGENTD_KNOWLEDGE_PORT`   | `17011`                                |
+/// | `root` | `AGENTD_KNOWLEDGE_ROOT`   | XDG data dir for `agentd-knowledge`    |
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct KnowledgeConfig {
-    /// HTTP listen port. Defaults to `17011`.
+    /// HTTP listen port. Override with `AGENTD_KNOWLEDGE_PORT`. Defaults to `17011`.
     pub port: u16,
     /// Root directory for markdown document storage.
     ///
     /// Each project gets a subdirectory `<root>/<project_uuid>/`.
-    /// Defaults to XDG data dir for `agentd-knowledge`.
+    /// Override with `AGENTD_KNOWLEDGE_ROOT`. Defaults to the XDG data dir
+    /// for `agentd-knowledge` (e.g. `~/.local/share/agentd-knowledge/docs`).
     pub root: String,
 }
 

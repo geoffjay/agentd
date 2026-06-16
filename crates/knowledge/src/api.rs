@@ -13,6 +13,8 @@
 //! | `DELETE` | `/projects/:project_id/documents/:doc_id`     | Delete (204)             |
 //! | `DELETE` | `/projects/:project_id/documents`             | Bulk delete (204)        |
 //! | `GET`    | `/projects/:project_id/tree`                  | Virtual folder/file tree |
+//! | `GET`    | `/projects/:project_id/doctor`                | Reconciliation report    |
+//! | `POST`   | `/projects/:project_id/doctor`                | Reconcile and fix        |
 
 use axum::{
     extract::{Path, Query, State},
@@ -33,7 +35,7 @@ use agentd_common::types::clamp_limit;
 use crate::{
     error::KnowledgeError,
     storage::KnowledgeStorage,
-    types::{CreateDocumentRequest, TreeNode, UpdateDocumentRequest},
+    types::{CreateDocumentRequest, DoctorReport, TreeNode, UpdateDocumentRequest},
 };
 
 /// Maximum request body size: 5 MiB.
@@ -80,6 +82,8 @@ pub fn create_router_with_state(storage: Arc<KnowledgeStorage>) -> Router {
         .route("/projects/{project_id}/documents/{doc_id}/content", get(get_document_content))
         // Virtual tree
         .route("/projects/{project_id}/tree", get(get_tree))
+        // Doctor / reconciliation
+        .route("/projects/{project_id}/doctor", get(get_doctor).post(post_doctor))
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(BODY_LIMIT_BYTES))
 }
@@ -328,6 +332,36 @@ fn build_level(docs: &[crate::types::Document], prefix: &str) -> Vec<TreeNode> {
 
     nodes.append(&mut files);
     nodes
+}
+
+// ---------------------------------------------------------------------------
+// Doctor / reconciliation
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct DoctorQuery {
+    /// When `true`, delete orphaned disk files and stale DB rows automatically.
+    fix: Option<bool>,
+}
+
+/// `GET /projects/{project_id}/doctor` — report divergences, no changes.
+async fn get_doctor(
+    State(state): State<ApiState>,
+    Path(project_id): Path<String>,
+) -> Result<Json<DoctorReport>, ApiError> {
+    let report = state.storage.doctor(&project_id, false).await.map_err(knowledge_to_api)?;
+    Ok(Json(report))
+}
+
+/// `POST /projects/{project_id}/doctor[?fix=true]` — reconcile and optionally fix.
+async fn post_doctor(
+    State(state): State<ApiState>,
+    Path(project_id): Path<String>,
+    Query(params): Query<DoctorQuery>,
+) -> Result<Json<DoctorReport>, ApiError> {
+    let fix = params.fix.unwrap_or(true);
+    let report = state.storage.doctor(&project_id, fix).await.map_err(knowledge_to_api)?;
+    Ok(Json(report))
 }
 
 // ---------------------------------------------------------------------------
