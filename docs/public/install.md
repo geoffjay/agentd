@@ -290,6 +290,25 @@ PREFIX=/opt cargo xtask install-user
 
 **Note:** When using a custom PREFIX, you may need to update plist files to use the correct binary paths.
 
+### Choosing user vs system install
+
+By default `agent install` picks the layout from the platform and privileges
+(system-wide on macOS or when running as root, per-user otherwise). Force the
+choice explicitly with `--user` or `--system`:
+
+```bash
+# Per-user install: ~/.local/bin, systemd --user units on Linux
+# (equivalent to `cargo xtask install-user`)
+agent install --user
+
+# System-wide install: /usr/local/bin, system systemd units on Linux
+# (equivalent to `cargo xtask install`; requires root on Linux)
+sudo agent install --system
+```
+
+`$PREFIX` still takes precedence over the scope when set. The flags are mutually
+exclusive.
+
 ### Log Files
 
 Service logs are written to:
@@ -393,6 +412,15 @@ To completely remove agentd:
 
 ```bash
 cargo xtask uninstall
+```
+
+On an installed host (no source tree), use the shipped binary. Like `install`,
+the layout is auto-detected unless you force it with `--user` / `--system`:
+
+```bash
+agent uninstall              # auto-detect
+agent uninstall --user       # remove a per-user install
+sudo agent uninstall --system  # remove a system-wide install
 ```
 
 This will:

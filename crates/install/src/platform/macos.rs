@@ -8,7 +8,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub struct MacOSPlatform;
+pub struct MacOSPlatform {
+    pub scope: crate::InstallScope,
+}
+
+impl MacOSPlatform {
+    /// Install prefix for this platform's scope (honours `$PREFIX`).
+    fn prefix(&self) -> PathBuf {
+        crate::get_prefix_for(self.scope)
+    }
+}
 
 impl Platform for MacOSPlatform {
     fn install(&self, paths: &InstallPaths) -> Result<()> {
@@ -29,7 +38,7 @@ impl Platform for MacOSPlatform {
         crate::install_config::write_install_config(SERVICES)?;
 
         // Setup log directory
-        setup_log_directory()?;
+        setup_log_directory(&self.prefix())?;
 
         Ok(())
     }
@@ -46,7 +55,7 @@ impl Platform for MacOSPlatform {
         }
 
         // Remove symlink
-        let prefix = crate::get_prefix();
+        let prefix = self.prefix();
         let bin_dir = prefix.join("bin");
         let symlink_path = bin_dir.join("agent");
         if symlink_path.exists() {
@@ -206,8 +215,9 @@ impl Platform for MacOSPlatform {
 
     fn print_install_summary(&self) -> Result<()> {
         let plist_dir = crate::home_dir()?.join("Library/LaunchAgents");
+        let symlink = self.prefix().join("bin/agent");
         println!("App bundle: {}", "/Applications/Agent.app".yellow());
-        println!("CLI symlink: {}", "/usr/local/bin/agent".yellow());
+        println!("CLI symlink: {}", symlink.display().to_string().yellow());
         println!("Services: {}", plist_dir.display().to_string().yellow());
         Ok(())
     }
@@ -461,11 +471,10 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-fn setup_log_directory() -> Result<()> {
+fn setup_log_directory(prefix: &Path) -> Result<()> {
     println!();
     println!("{}", "Setting up log directory...".blue());
 
-    let prefix = crate::get_prefix();
     let log_dir = prefix.join("var/log");
 
     let dir_created = if !log_dir.exists() {

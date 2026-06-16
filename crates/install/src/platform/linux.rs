@@ -33,6 +33,15 @@ impl LinuxPlatform {
         cmd
     }
 
+    /// Install prefix for this platform's scope (honours `$PREFIX`).
+    fn prefix(&self) -> PathBuf {
+        crate::get_prefix_for(if self.system {
+            crate::InstallScope::System
+        } else {
+            crate::InstallScope::User
+        })
+    }
+
     fn systemd_dir(&self) -> PathBuf {
         if self.system {
             PathBuf::from("/etc/systemd/system")
@@ -111,7 +120,7 @@ impl Platform for LinuxPlatform {
         let _ = self.stop_services();
 
         // Remove binaries
-        let prefix = crate::get_prefix();
+        let prefix = self.prefix();
         let bin_dir = prefix.join("bin");
 
         for service in SERVICES {
@@ -272,7 +281,7 @@ impl Platform for LinuxPlatform {
     }
 
     fn print_install_summary(&self) -> Result<()> {
-        let prefix = crate::get_prefix();
+        let prefix = self.prefix();
         let unit_dir = self.systemd_dir();
         println!("Binaries: {}", prefix.join("bin").display().to_string().yellow());
         println!("CLI symlink: {}", prefix.join("bin/agent").display().to_string().yellow());

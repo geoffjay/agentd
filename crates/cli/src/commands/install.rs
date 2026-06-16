@@ -15,7 +15,10 @@
 //! agent migrate                       # apply pending DB migrations
 //! ```
 
-use agentd_install::{detect_platform, migrate, validate_service_name, InstallPaths};
+use agentd_install::{
+    detect_platform, detect_platform_for, migrate, validate_service_name, InstallPaths,
+    InstallScope,
+};
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use clap_complete::Shell;
@@ -91,13 +94,19 @@ impl ServiceCommand {
 ///
 /// `bin_src` defaults to the directory containing the running `agent` binary,
 /// which is where the installer places the downloaded service binaries.
+///
+/// `scope` selects the install layout: [`InstallScope::User`] for a per-user
+/// install, [`InstallScope::System`] for a system-wide one, or
+/// [`InstallScope::Auto`] to derive it from the platform and privileges.
 pub async fn run_install(
     bin_src: Option<PathBuf>,
     ui_dir: Option<PathBuf>,
     skip_migrations: bool,
+    scope: InstallScope,
     mut cmd: clap::Command,
 ) -> Result<()> {
-    println!("{}", "Installing agentd...".blue().bold());
+    let mode = if scope.is_system() { "system" } else { "user" };
+    println!("{}", format!("Installing agentd ({mode} mode)...").blue().bold());
     println!();
 
     let bin_src = match bin_src {
@@ -105,12 +114,12 @@ pub async fn run_install(
         None => current_exe_dir().context("Could not determine the agent binary directory")?,
     };
 
-    let prefix = agentd_install::get_prefix();
+    let prefix = agentd_install::get_prefix_for(scope);
     let bin_dir = prefix.join("bin");
     fs::create_dir_all(&bin_dir)
         .with_context(|| format!("Failed to create bin directory: {}", bin_dir.display()))?;
 
-    let plat = detect_platform();
+    let plat = detect_platform_for(scope);
     plat.install(&InstallPaths {
         bin_src: &bin_src,
         bin_dir: &bin_dir,
@@ -143,9 +152,13 @@ pub async fn run_install(
 }
 
 /// Run `agent uninstall`.
-pub fn run_uninstall() -> Result<()> {
-    println!("{}", "Uninstalling agentd...".blue().bold());
-    detect_platform().uninstall()?;
+///
+/// `scope` selects which layout to remove, mirroring `agent install`:
+/// [`InstallScope::Auto`] derives it from the platform and privileges.
+pub fn run_uninstall(scope: InstallScope) -> Result<()> {
+    let mode = if scope.is_system() { "system" } else { "user" };
+    println!("{}", format!("Uninstalling agentd ({mode} mode)...").blue().bold());
+    detect_platform_for(scope).uninstall()?;
     println!();
     println!("{}", "✓ Uninstallation complete!".green().bold());
     Ok(())

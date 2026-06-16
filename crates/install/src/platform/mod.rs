@@ -110,13 +110,18 @@ pub trait Platform {
     fn print_install_summary(&self) -> Result<()>;
 }
 
-/// Detect the current platform and return the appropriate implementation.
-pub fn detect_platform() -> Box<dyn Platform> {
+/// Detect the current platform, resolving `scope` to a system-vs-user layout.
+pub fn detect_platform_for(scope: crate::InstallScope) -> Box<dyn Platform> {
     if cfg!(target_os = "macos") {
-        Box::new(macos::MacOSPlatform)
+        Box::new(macos::MacOSPlatform { scope })
     } else {
-        Box::new(linux::LinuxPlatform { system: crate::is_root() })
+        Box::new(linux::LinuxPlatform { system: scope.is_system() })
     }
+}
+
+/// Detect the current platform using the automatic scope.
+pub fn detect_platform() -> Box<dyn Platform> {
+    detect_platform_for(crate::InstallScope::Auto)
 }
 
 #[cfg(test)]

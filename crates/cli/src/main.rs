@@ -406,6 +406,8 @@ enum Commands {
     ///
     /// ```bash
     /// agent install
+    /// agent install --user
+    /// agent install --system
     /// agent install --ui-dir ./ui/dist
     /// agent install --skip-migrations
     /// ```
@@ -420,10 +422,28 @@ enum Commands {
         /// Skip applying database migrations.
         #[arg(long)]
         skip_migrations: bool,
+        /// Install for the current user only (`~/.local`; systemd `--user`
+        /// units on Linux). Equivalent to `cargo xtask install-user`.
+        #[arg(long, conflicts_with = "system")]
+        user: bool,
+        /// Install system-wide (`/usr/local`; system systemd units on Linux,
+        /// which requires root). Equivalent to `cargo xtask install`.
+        #[arg(long)]
+        system: bool,
     },
 
     /// Remove agentd services and binaries from this host.
-    Uninstall,
+    ///
+    /// Like `install`, the layout is auto-detected from the platform and
+    /// privileges unless `--user` or `--system` is given.
+    Uninstall {
+        /// Remove a per-user install (`~/.local`; systemd `--user` units on Linux).
+        #[arg(long, conflicts_with = "system")]
+        user: bool,
+        /// Remove a system-wide install (`/usr/local`; system systemd units on Linux).
+        #[arg(long)]
+        system: bool,
+    },
 
     /// Manage agentd service lifecycle (start/stop/restart/status).
     ///
@@ -499,6 +519,16 @@ fn load_token_or_warn() -> Option<String> {
             eprintln!("warning: no session token found — run `agent auth login` to authenticate");
             None
         }
+    }
+}
+
+/// Resolve the mutually-exclusive `--user` / `--system` flags into an
+/// [`InstallScope`]; neither flag means [`InstallScope::Auto`].
+fn install_scope(user: bool, system: bool) -> agentd_install::InstallScope {
+    match (user, system) {
+        (true, _) => agentd_install::InstallScope::User,
+        (_, true) => agentd_install::InstallScope::System,
+        _ => agentd_install::InstallScope::Auto,
     }
 }
 
@@ -671,12 +701,13 @@ async fn main() -> Result<()> {
             }
             command.execute(&client, cli.json).await?;
         }
-        Commands::Install { bin_src, ui_dir, skip_migrations } => {
-            commands::install::run_install(bin_src, ui_dir, skip_migrations, Cli::command())
+        Commands::Install { bin_src, ui_dir, skip_migrations, user, system } => {
+            let scope = install_scope(user, system);
+            commands::install::run_install(bin_src, ui_dir, skip_migrations, scope, Cli::command())
                 .await?;
         }
-        Commands::Uninstall => {
-            commands::install::run_uninstall()?;
+        Commands::Uninstall { user, system } => {
+            commands::install::run_uninstall(install_scope(user, system))?;
         }
         Commands::Service { command } => {
             command.execute()?;

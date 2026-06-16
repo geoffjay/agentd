@@ -19,7 +19,9 @@ pub mod install_config;
 pub mod migrate;
 pub mod platform;
 
-pub use platform::{detect_platform, Platform, ServiceInfo, SERVICES, SERVICE_NAMES};
+pub use platform::{
+    detect_platform, detect_platform_for, Platform, ServiceInfo, SERVICES, SERVICE_NAMES,
+};
 
 use anyhow::{Context, Result};
 use std::env;
@@ -56,18 +58,59 @@ pub fn set_executable(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Resolve the install prefix.
+/// Whether to install for the current user or system-wide.
 ///
-/// Honours `$PREFIX`; otherwise `/usr/local` on macOS or when running as root,
-/// and `~/.local` for an unprivileged Linux install.
-pub fn get_prefix() -> PathBuf {
+/// This is the explicit form of the historical, privilege-derived behaviour:
+/// `--user` maps to [`InstallScope::User`], `--system` to
+/// [`InstallScope::System`], and the absence of either flag to
+/// [`InstallScope::Auto`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum InstallScope {
+    /// Decide automatically: system-wide on macOS or when running as root,
+    /// per-user otherwise. Preserves the historical default.
+    #[default]
+    Auto,
+    /// Per-user install (`~/.local`; systemd `--user` units on Linux).
+    User,
+    /// System-wide install (`/usr/local`; system systemd units on Linux,
+    /// which requires root).
+    System,
+}
+
+impl InstallScope {
+    /// Resolve to a concrete system-vs-user decision.
+    ///
+    /// [`InstallScope::Auto`] mirrors the legacy logic: system-wide on macOS or
+    /// when running as root, per-user otherwise.
+    pub fn is_system(self) -> bool {
+        match self {
+            InstallScope::User => false,
+            InstallScope::System => true,
+            InstallScope::Auto => cfg!(target_os = "macos") || is_root(),
+        }
+    }
+}
+
+/// Resolve the install prefix for an explicit [`InstallScope`].
+///
+/// Honours `$PREFIX`; otherwise `/usr/local` for a system install and
+/// `~/.local` for a per-user install.
+pub fn get_prefix_for(scope: InstallScope) -> PathBuf {
     env::var("PREFIX").map(PathBuf::from).unwrap_or_else(|_| {
-        if cfg!(target_os = "macos") || is_root() {
+        if scope.is_system() {
             PathBuf::from("/usr/local")
         } else {
             home_dir().unwrap_or_else(|_| PathBuf::from("/usr/local")).join(".local")
         }
     })
+}
+
+/// Resolve the install prefix using the automatic scope.
+///
+/// Honours `$PREFIX`; otherwise `/usr/local` on macOS or when running as root,
+/// and `~/.local` for an unprivileged Linux install.
+pub fn get_prefix() -> PathBuf {
+    get_prefix_for(InstallScope::Auto)
 }
 
 /// Returns true when the effective user ID is 0 (root).
@@ -104,4 +147,39 @@ pub fn validate_service_name(service: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_scope_ignores_privileges_and_platform() {
+        assert!(!InstallScope::User.is_system());
+        assert!(InstallScope::System.is_system());
+    }
+
+    #[test]
+    fn auto_scope_is_system_on_macos_or_root() {
+        let expected = cfg!(target_os = "macos") || is_root();
+        assert_eq!(InstallScope::Auto.is_system(), expected);
+    }
+
+    #[test]
+    fn get_prefix_for_user_is_under_home() {
+        // $PREFIX takes precedence and would mask the scope-based branch.
+        if env::var_os("PREFIX").is_some() {
+            return;
+        }
+        let prefix = get_prefix_for(InstallScope::User);
+        assert!(prefix.ends_with(".local"), "user prefix should be ~/.local, got {prefix:?}");
+    }
+
+    #[test]
+    fn get_prefix_for_system_is_usr_local() {
+        if env::var_os("PREFIX").is_some() {
+            return;
+        }
+        assert_eq!(get_prefix_for(InstallScope::System), PathBuf::from("/usr/local"));
+    }
 }
