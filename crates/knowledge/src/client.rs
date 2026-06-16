@@ -1,10 +1,18 @@
 //! HTTP client for the agentd-knowledge service.
 #![allow(dead_code)]
 //!
-//! Populated fully in KB-4.
+//! [`KnowledgeClient`] covers all REST endpoints and is reusable from the
+//! CLI and (later) the orchestrator. It is intentionally thin — no caching,
+//! no retry, just a typed facade over `reqwest`.
 
 use anyhow::{Context, Result};
+use serde_json::Value;
 use std::env;
+
+use crate::types::{
+    CreateDocumentRequest, Document, DocumentContent, PaginatedResponse, TreeNode,
+    UpdateDocumentRequest,
+};
 
 /// HTTP client for the agentd-knowledge REST API.
 #[derive(Debug, Clone)]
@@ -31,8 +39,12 @@ impl KnowledgeClient {
         Self::new(url)
     }
 
+    // -----------------------------------------------------------------------
+    // Health
+    // -----------------------------------------------------------------------
+
     /// Check service health.
-    pub async fn health(&self) -> Result<serde_json::Value> {
+    pub async fn health(&self) -> Result<Value> {
         let url = format!("{}/health", self.base_url);
         self.client
             .get(&url)
@@ -42,5 +54,199 @@ impl KnowledgeClient {
             .json()
             .await
             .context("failed to parse health response")
+    }
+
+    // -----------------------------------------------------------------------
+    // Documents — collection
+    // -----------------------------------------------------------------------
+
+    /// List documents for `project_id` with optional prefix filter and pagination.
+    pub async fn list_documents(
+        &self,
+        project_id: &str,
+        prefix: Option<&str>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+    ) -> Result<PaginatedResponse<Document>> {
+        let mut url = format!("{}/projects/{project_id}/documents", self.base_url);
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(p) = prefix {
+            params.push(("prefix", p.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        if let Some(o) = offset {
+            params.push(("offset", o.to_string()));
+        }
+        if !params.is_empty() {
+            use std::fmt::Write;
+            url.push('?');
+            for (i, (k, v)) in params.iter().enumerate() {
+                if i > 0 {
+                    url.push('&');
+                }
+                let _ = write!(url, "{k}={}", urlencoding::encode(v));
+            }
+        }
+        self.client
+            .get(&url)
+            .send()
+            .await
+            .context("list_documents request failed")?
+            .json()
+            .await
+            .context("failed to parse list_documents response")
+    }
+
+    /// Create a new document.
+    pub async fn create_document(
+        &self,
+        project_id: &str,
+        req: CreateDocumentRequest,
+    ) -> Result<Document> {
+        let url = format!("{}/projects/{project_id}/documents", self.base_url);
+        let res = self
+            .client
+            .post(&url)
+            .json(&req)
+            .send()
+            .await
+            .context("create_document request failed")?;
+        if res.status().is_success() {
+            res.json().await.context("failed to parse create_document response")
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("create_document failed ({status}): {body}");
+        }
+    }
+
+    /// Bulk-delete all documents for `project_id` (project cleanup).
+    pub async fn bulk_delete_documents(&self, project_id: &str) -> Result<()> {
+        let url = format!("{}/projects/{project_id}/documents", self.base_url);
+        let res = self
+            .client
+            .delete(&url)
+            .send()
+            .await
+            .context("bulk_delete_documents request failed")?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("bulk_delete_documents failed ({status}): {body}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Documents — instance
+    // -----------------------------------------------------------------------
+
+    /// Get document metadata by ID.
+    pub async fn get_document(&self, project_id: &str, doc_id: &str) -> Result<Document> {
+        let url = format!("{}/projects/{project_id}/documents/{doc_id}", self.base_url);
+        let res = self.client.get(&url).send().await.context("get_document request failed")?;
+        if res.status().is_success() {
+            res.json().await.context("failed to parse get_document response")
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("get_document failed ({status}): {body}");
+        }
+    }
+
+    /// Get document metadata + content by ID.
+    pub async fn get_document_content(
+        &self,
+        project_id: &str,
+        doc_id: &str,
+    ) -> Result<DocumentContent> {
+        let url = format!("{}/projects/{project_id}/documents/{doc_id}/content", self.base_url);
+        let res =
+            self.client.get(&url).send().await.context("get_document_content request failed")?;
+        if res.status().is_success() {
+            res.json().await.context("failed to parse get_document_content response")
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("get_document_content failed ({status}): {body}");
+        }
+    }
+
+    /// Update a document.
+    pub async fn update_document(
+        &self,
+        project_id: &str,
+        doc_id: &str,
+        req: UpdateDocumentRequest,
+    ) -> Result<Document> {
+        let url = format!("{}/projects/{project_id}/documents/{doc_id}", self.base_url);
+        let res = self
+            .client
+            .put(&url)
+            .json(&req)
+            .send()
+            .await
+            .context("update_document request failed")?;
+        if res.status().is_success() {
+            res.json().await.context("failed to parse update_document response")
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("update_document failed ({status}): {body}");
+        }
+    }
+
+    /// Delete a document by ID.
+    pub async fn delete_document(&self, project_id: &str, doc_id: &str) -> Result<()> {
+        let url = format!("{}/projects/{project_id}/documents/{doc_id}", self.base_url);
+        let res =
+            self.client.delete(&url).send().await.context("delete_document request failed")?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("delete_document failed ({status}): {body}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tree
+    // -----------------------------------------------------------------------
+
+    /// Get the virtual folder/file tree for `project_id`.
+    pub async fn get_tree(&self, project_id: &str) -> Result<Vec<TreeNode>> {
+        let url = format!("{}/projects/{project_id}/tree", self.base_url);
+        self.client
+            .get(&url)
+            .send()
+            .await
+            .context("get_tree request failed")?
+            .json()
+            .await
+            .context("failed to parse get_tree response")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// URL encoding helper
+// ---------------------------------------------------------------------------
+
+mod urlencoding {
+    /// Percent-encode a string for use in a query parameter value.
+    pub fn encode(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        for b in s.bytes() {
+            if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+                out.push(b as char);
+            } else {
+                use std::fmt::Write;
+                let _ = write!(out, "%{b:02X}");
+            }
+        }
+        out
     }
 }

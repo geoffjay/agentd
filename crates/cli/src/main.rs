@@ -82,11 +82,12 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::*;
 use commands::{
-    AdminCommand, AskCommand, AuthCommand, CommunicateCommand, ConfigCommand, MemoryCommand,
-    NotifyCommand, OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand, ServiceCommand,
-    SystemAgentsCommand, WrapCommand,
+    AdminCommand, AskCommand, AuthCommand, CommunicateCommand, ConfigCommand, KnowledgeCommand,
+    MemoryCommand, NotifyCommand, OrchestratorCommand, OrgCommand, ProjectCommand, PromptCommand,
+    ServiceCommand, SystemAgentsCommand, WrapCommand,
 };
 use communicate::client::CommunicateClient;
+use knowledge::client::KnowledgeClient;
 use memory_api::client::MemoryClient;
 use notify::client::NotifyClient;
 use orchestrator::client::OrchestratorClient;
@@ -374,6 +375,24 @@ enum Commands {
     /// Opens a full-screen TUI for monitoring service health, tailing logs,
     /// editing configuration, and querying Prometheus metrics.
     Manager,
+
+    /// Interact with the knowledge service
+    ///
+    /// Manage per-project markdown documents stored on disk with SQLite metadata.
+    /// The knowledge service runs on port 17011 by default.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent knowledge list <project_id>
+    /// agent knowledge create <project_id> readme.md --content "# Hello"
+    /// agent knowledge get <project_id> <doc_id>
+    /// agent knowledge tree <project_id>
+    /// ```
+    Knowledge {
+        #[command(subcommand)]
+        command: Box<KnowledgeCommand>,
+    },
 
     /// Interact with built-in system agents.
     ///
@@ -691,6 +710,12 @@ async fn main() -> Result<()> {
         }
         Commands::Manager => {
             agentd_tui::run_manager().await?;
+        }
+        Commands::Knowledge { command } => {
+            let url = env::var("AGENTD_KNOWLEDGE_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:17011".to_string());
+            let client = KnowledgeClient::new(url);
+            command.execute(&client, cli.json).await?;
         }
         Commands::SystemAgents { command } => {
             let token = load_token_or_warn();
