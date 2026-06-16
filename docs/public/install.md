@@ -68,10 +68,13 @@ service is reached at the page's own hostname with the service's configured
 port, which works for direct access to the host.
 
 Deployments that front services with a reverse proxy or TLS can override the
-full URL per service:
+full URL per service. `core` handles login/registration (`/auth/*`), so it must
+resolve to a host the browser can reach — override it too when the default
+hostname + port derivation does not apply:
 
 ```toml
 [services.ui.public_urls]
+core = "https://agentd.example.com"
 orchestrator = "https://agentd.example.com/orchestrator"
 notify = "https://agentd.example.com/notify"
 ```
