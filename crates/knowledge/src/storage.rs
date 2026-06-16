@@ -14,8 +14,8 @@
 
 use anyhow::Result;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
+    ModelTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use std::{
     path::{Path, PathBuf},
@@ -179,8 +179,8 @@ impl KnowledgeStorage {
     ) -> std::result::Result<PaginatedResponse<Document>, KnowledgeError> {
         let mut base_query =
             document::Entity::find().filter(document::Column::ProjectId.eq(project_id));
-        if let Some(o) = org {
-            base_query = base_query.filter(document::Column::OrganizationId.eq(o));
+        if let Some(cond) = tenant_read_condition(org) {
+            base_query = base_query.filter(cond);
         }
         let base_query = base_query.order_by_asc(document::Column::RelPath);
 
@@ -436,8 +436,8 @@ impl KnowledgeStorage {
     ) -> std::result::Result<document::Model, KnowledgeError> {
         let mut query = document::Entity::find_by_id(doc_id.to_string())
             .filter(document::Column::ProjectId.eq(project_id));
-        if let Some(o) = org {
-            query = query.filter(document::Column::OrganizationId.eq(o));
+        if let Some(cond) = tenant_read_condition(org) {
+            query = query.filter(cond);
         }
         query
             .one(&self.db)
@@ -486,6 +486,29 @@ fn collect_md_files_inner(root: &Path, current: &Path, out: &mut Vec<String>) {
             }
         }
     }
+}
+
+/// Build the org-scoping [`Condition`] for read queries.
+///
+/// When `org` is `Some`, the condition is:
+///
+/// ```sql
+/// WHERE organization_id = <org> OR organization_id IS NULL
+/// ```
+///
+/// The `OR IS NULL` arm implements the NULL-row transition policy documented in
+/// `agentd-common::tenant`: rows created before multi-tenancy have a `NULL`
+/// `organization_id` and must remain readable by every authenticated tenant
+/// until an operator runs the backfill command.
+///
+/// When `org` is `None` (trusted/local access), no org filter is added and the
+/// caller sees all rows for the project.
+fn tenant_read_condition(org: Option<&str>) -> Option<Condition> {
+    org.map(|o| {
+        Condition::any()
+            .add(document::Column::OrganizationId.eq(o))
+            .add(document::Column::OrganizationId.is_null())
+    })
 }
 
 /// Map a SeaORM database error to a `KnowledgeError`.
@@ -693,6 +716,131 @@ mod tests {
         let remaining = s.list_documents(PROJ, None, 100, 0).await.unwrap();
         assert_eq!(remaining.total, 1);
         assert_eq!(remaining.items[0].rel_path, "b.md");
+    }
+
+    // -----------------------------------------------------------------------
+    // KB-7: tenant scoping and NULL-row transition policy
+    // -----------------------------------------------------------------------
+
+    /// Docs with `organization_id = NULL` (pre-tenancy / legacy) must be
+    /// visible to any tenant-scoped request during the transition window.
+    #[tokio::test]
+    async fn test_null_org_doc_visible_to_any_tenant() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        // Legacy doc: no org assigned (NULL).
+        let legacy =
+            s.create_document(PROJ, create_req("legacy.md", "old content"), None).await.unwrap();
+        assert!(legacy.organization_id.is_none());
+
+        // Any authenticated tenant can list it.
+        let page_a = s.list_documents(PROJ, Some("org-a"), 100, 0).await.unwrap();
+        assert_eq!(page_a.total, 1, "org-a should see the NULL-org legacy doc");
+        assert_eq!(page_a.items[0].rel_path, "legacy.md");
+
+        let page_b = s.list_documents(PROJ, Some("org-b"), 100, 0).await.unwrap();
+        assert_eq!(page_b.total, 1, "org-b should also see the NULL-org legacy doc");
+    }
+
+    /// Any tenant can fetch a NULL-org doc by ID (transition period access).
+    #[tokio::test]
+    async fn test_null_org_doc_get_by_any_tenant() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        let legacy =
+            s.create_document(PROJ, create_req("shared.md", "# Shared"), None).await.unwrap();
+
+        // Both orgs can fetch it by ID.
+        let fetched_a = s.get_document(PROJ, &legacy.id, Some("org-a")).await.unwrap();
+        assert_eq!(fetched_a.id, legacy.id);
+
+        let fetched_b = s.get_document(PROJ, &legacy.id, Some("org-b")).await.unwrap();
+        assert_eq!(fetched_b.id, legacy.id);
+    }
+
+    /// Org-scoped docs are NOT visible to another org (strict cross-tenant isolation).
+    #[tokio::test]
+    async fn test_cross_tenant_isolation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        let doc_a = s
+            .create_document(PROJ, create_req("a.md", "a"), Some("org-a".to_string()))
+            .await
+            .unwrap();
+        let doc_b = s
+            .create_document(PROJ, create_req("b.md", "b"), Some("org-b".to_string()))
+            .await
+            .unwrap();
+
+        // org-a list sees only its own doc (no NULL-org docs here).
+        let page_a = s.list_documents(PROJ, Some("org-a"), 100, 0).await.unwrap();
+        assert_eq!(page_a.total, 1);
+        assert_eq!(page_a.items[0].rel_path, "a.md");
+
+        // org-b list sees only its own doc.
+        let page_b = s.list_documents(PROJ, Some("org-b"), 100, 0).await.unwrap();
+        assert_eq!(page_b.total, 1);
+        assert_eq!(page_b.items[0].rel_path, "b.md");
+
+        // org-b cannot fetch org-a's doc by ID.
+        let err = s.get_document(PROJ, &doc_a.id, Some("org-b")).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)), "org-b must not see org-a's doc");
+
+        // org-a cannot fetch org-b's doc by ID.
+        let err = s.get_document(PROJ, &doc_b.id, Some("org-a")).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)), "org-a must not see org-b's doc");
+    }
+
+    /// An org-scoped `list` returns both its own docs AND legacy NULL-org docs,
+    /// but NOT docs owned by another org.
+    #[tokio::test]
+    async fn test_tenant_list_mixes_own_and_null_org_docs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        // One legacy doc (NULL org) and one from each org.
+        s.create_document(PROJ, create_req("legacy.md", "legacy"), None).await.unwrap();
+        s.create_document(PROJ, create_req("a.md", "a"), Some("org-a".to_string())).await.unwrap();
+        s.create_document(PROJ, create_req("b.md", "b"), Some("org-b".to_string())).await.unwrap();
+
+        // org-a sees: legacy.md + a.md (not b.md).
+        let page_a = s.list_documents(PROJ, Some("org-a"), 100, 0).await.unwrap();
+        assert_eq!(page_a.total, 2);
+        let paths_a: Vec<&str> = page_a.items.iter().map(|d| d.rel_path.as_str()).collect();
+        assert!(paths_a.contains(&"legacy.md"), "org-a must see the legacy doc");
+        assert!(paths_a.contains(&"a.md"), "org-a must see its own doc");
+        assert!(!paths_a.contains(&"b.md"), "org-a must NOT see org-b's doc");
+
+        // org-b sees: legacy.md + b.md (not a.md).
+        let page_b = s.list_documents(PROJ, Some("org-b"), 100, 0).await.unwrap();
+        assert_eq!(page_b.total, 2);
+        let paths_b: Vec<&str> = page_b.items.iter().map(|d| d.rel_path.as_str()).collect();
+        assert!(paths_b.contains(&"legacy.md"), "org-b must see the legacy doc");
+        assert!(paths_b.contains(&"b.md"), "org-b must see its own doc");
+        assert!(!paths_b.contains(&"a.md"), "org-b must NOT see org-a's doc");
+    }
+
+    /// Org-scoped `bulk_delete_project` (gc) removes only that org's docs;
+    /// NULL-org (legacy) docs are left untouched.
+    #[tokio::test]
+    async fn test_bulk_delete_org_scoped_leaves_null_org_docs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        let legacy =
+            s.create_document(PROJ, create_req("legacy.md", "legacy"), None).await.unwrap();
+        s.create_document(PROJ, create_req("a.md", "a"), Some("org-a".to_string())).await.unwrap();
+
+        // GC scoped to org-a.
+        s.bulk_delete_project(PROJ, Some("org-a")).await.unwrap();
+
+        // The legacy (NULL-org) doc must survive.
+        let remaining = s.list_documents(PROJ, None, 100, 0).await.unwrap();
+        assert_eq!(remaining.total, 1);
+        assert_eq!(remaining.items[0].id, legacy.id, "legacy doc must survive org-scoped gc");
     }
 
     // -----------------------------------------------------------------------
