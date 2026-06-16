@@ -27,6 +27,7 @@ use std::sync::Arc;
 use tower_http::limit::RequestBodyLimitLayer;
 
 use agentd_common::error::ApiError;
+use agentd_common::tenant::OptionalTenantId;
 use agentd_common::types::clamp_limit;
 
 use crate::{
@@ -37,6 +38,16 @@ use crate::{
 
 /// Maximum request body size: 5 MiB.
 const BODY_LIMIT_BYTES: usize = 5 * 1024 * 1024;
+
+/// Normalize the `X-Tenant-ID` header into an organization scope.
+///
+/// The core gateway injects `X-Tenant-ID` (the caller's active organization).
+/// When present, every storage operation is scoped to that organization; when
+/// absent or empty (trusted/local access without the gateway), operations fall
+/// back to project-only scoping.
+fn org_scope(tenant: &OptionalTenantId) -> Option<&str> {
+    tenant.0.as_deref().filter(|s| !s.is_empty())
+}
 
 /// Shared API state.
 #[derive(Clone)]
@@ -95,13 +106,17 @@ struct ListParams {
 async fn list_documents(
     State(state): State<ApiState>,
     Path(project_id): Path<String>,
+    tenant: OptionalTenantId,
     Query(params): Query<ListParams>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let limit = clamp_limit(params.limit) as u64;
     let offset = params.offset.unwrap_or(0) as u64;
 
-    let mut page =
-        state.storage.list_documents(&project_id, limit, offset).await.map_err(knowledge_to_api)?;
+    let mut page = state
+        .storage
+        .list_documents(&project_id, org_scope(&tenant), limit, offset)
+        .await
+        .map_err(knowledge_to_api)?;
 
     // Apply optional prefix filter client-side (the column is already indexed
     // by rel_path, so a small result set is expected).
@@ -124,6 +139,7 @@ async fn list_documents(
 async fn create_document(
     State(state): State<ApiState>,
     Path(project_id): Path<String>,
+    tenant: OptionalTenantId,
     Json(req): Json<CreateDocumentRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Reject non-markdown before even touching storage.
@@ -131,8 +147,9 @@ async fn create_document(
         return Err(ApiError::InvalidInput("rel_path must have a .md extension".to_string()));
     }
 
+    let org = org_scope(&tenant).map(|s| s.to_string());
     let doc =
-        state.storage.create_document(&project_id, req, None).await.map_err(knowledge_to_api)?;
+        state.storage.create_document(&project_id, req, org).await.map_err(knowledge_to_api)?;
 
     metrics::counter!("knowledge_documents_created_total").increment(1);
     Ok((StatusCode::CREATED, Json(doc)))
@@ -145,8 +162,13 @@ async fn create_document(
 async fn get_document(
     State(state): State<ApiState>,
     Path((project_id, doc_id)): Path<(String, String)>,
+    tenant: OptionalTenantId,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let doc = state.storage.get_document(&project_id, &doc_id).await.map_err(knowledge_to_api)?;
+    let doc = state
+        .storage
+        .get_document(&project_id, &doc_id, org_scope(&tenant))
+        .await
+        .map_err(knowledge_to_api)?;
 
     Ok(Json(serde_json::to_value(&doc).unwrap()))
 }
@@ -158,9 +180,13 @@ async fn get_document(
 async fn get_document_content(
     State(state): State<ApiState>,
     Path((project_id, doc_id)): Path<(String, String)>,
+    tenant: OptionalTenantId,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let doc_content =
-        state.storage.get_document_content(&project_id, &doc_id).await.map_err(|e| {
+    let doc_content = state
+        .storage
+        .get_document_content(&project_id, &doc_id, org_scope(&tenant))
+        .await
+        .map_err(|e| {
             // If the DB row exists but the file is missing, emit a metric.
             if let KnowledgeError::Other(ref inner) = e {
                 if inner.to_string().contains("read failed") {
@@ -180,10 +206,14 @@ async fn get_document_content(
 async fn update_document(
     State(state): State<ApiState>,
     Path((project_id, doc_id)): Path<(String, String)>,
+    tenant: OptionalTenantId,
     Json(req): Json<UpdateDocumentRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let updated =
-        state.storage.update_document(&project_id, &doc_id, req).await.map_err(knowledge_to_api)?;
+    let updated = state
+        .storage
+        .update_document(&project_id, &doc_id, org_scope(&tenant), req)
+        .await
+        .map_err(knowledge_to_api)?;
 
     Ok(Json(serde_json::to_value(&updated).unwrap()))
 }
@@ -195,8 +225,13 @@ async fn update_document(
 async fn delete_document(
     State(state): State<ApiState>,
     Path((project_id, doc_id)): Path<(String, String)>,
+    tenant: OptionalTenantId,
 ) -> Result<StatusCode, ApiError> {
-    state.storage.delete_document(&project_id, &doc_id).await.map_err(knowledge_to_api)?;
+    state
+        .storage
+        .delete_document(&project_id, &doc_id, org_scope(&tenant))
+        .await
+        .map_err(knowledge_to_api)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -208,8 +243,13 @@ async fn delete_document(
 async fn bulk_delete_documents(
     State(state): State<ApiState>,
     Path(project_id): Path<String>,
+    tenant: OptionalTenantId,
 ) -> Result<StatusCode, ApiError> {
-    state.storage.bulk_delete_project(&project_id).await.map_err(knowledge_to_api)?;
+    state
+        .storage
+        .bulk_delete_project(&project_id, org_scope(&tenant))
+        .await
+        .map_err(knowledge_to_api)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -221,10 +261,14 @@ async fn bulk_delete_documents(
 async fn get_tree(
     State(state): State<ApiState>,
     Path(project_id): Path<String>,
+    tenant: OptionalTenantId,
 ) -> Result<Json<Vec<TreeNode>>, ApiError> {
     // Fetch all docs — tree is built from the full set.
-    let page =
-        state.storage.list_documents(&project_id, 10_000, 0).await.map_err(knowledge_to_api)?;
+    let page = state
+        .storage
+        .list_documents(&project_id, org_scope(&tenant), 10_000, 0)
+        .await
+        .map_err(knowledge_to_api)?;
 
     let tree = build_tree(&page.items);
     Ok(Json(tree))
@@ -387,6 +431,44 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+        let list = body_json(res.into_body()).await;
+        assert_eq!(list["total"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_tenant_scoping_via_header() {
+        let tmp = tempfile::tempdir().unwrap();
+        let st = make_storage(&tmp).await;
+
+        // Create a document as org-a (gateway injects X-Tenant-ID).
+        let mut req = json_req(
+            Method::POST,
+            &format!("/projects/{PROJ}/documents"),
+            json!({ "rel_path": "secret.md", "content": "# Secret" }),
+        );
+        req.headers_mut().insert("X-Tenant-ID", "org-a".parse().unwrap());
+        let res = app(Arc::clone(&st)).oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+
+        // org-b must not see it.
+        let mut req = get_req(&format!("/projects/{PROJ}/documents"));
+        req.headers_mut().insert("X-Tenant-ID", "org-b".parse().unwrap());
+        let res = app(Arc::clone(&st)).oneshot(req).await.unwrap();
+        let list = body_json(res.into_body()).await;
+        assert_eq!(list["total"], 0, "org-b leaked org-a's document");
+
+        // org-a sees it.
+        let mut req = get_req(&format!("/projects/{PROJ}/documents"));
+        req.headers_mut().insert("X-Tenant-ID", "org-a".parse().unwrap());
+        let res = app(Arc::clone(&st)).oneshot(req).await.unwrap();
+        let list = body_json(res.into_body()).await;
+        assert_eq!(list["total"], 1);
+
+        // Unscoped (no header) trusted access sees it too.
+        let res = app(Arc::clone(&st))
+            .oneshot(get_req(&format!("/projects/{PROJ}/documents")))
+            .await
+            .unwrap();
         let list = body_json(res.into_body()).await;
         assert_eq!(list["total"], 1);
     }
