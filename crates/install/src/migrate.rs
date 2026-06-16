@@ -13,6 +13,7 @@ pub const DB_SERVICES: &[DbService] = &[
     DbService { name: "notify", project: "agentd-notify", db_file: "notify.db" },
     DbService { name: "orchestrator", project: "agentd-orchestrator", db_file: "orchestrator.db" },
     DbService { name: "communicate", project: "agentd-communicate", db_file: "communicate.db" },
+    DbService { name: "knowledge", project: "agentd-knowledge", db_file: "knowledge.db" },
 ];
 
 pub struct DbService {
@@ -60,6 +61,7 @@ pub async fn migrate(service: Option<&str>) -> Result<()> {
             "notify" => notify::apply_migrations_for_path(&db_path).await,
             "orchestrator" => orchestrator::apply_migrations_for_path(&db_path).await,
             "communicate" => communicate::apply_migrations_for_path(&db_path).await,
+            "knowledge" => knowledge::apply_migrations_for_path(&db_path).await,
             _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
         };
 
@@ -101,6 +103,7 @@ pub async fn migrate_status(service: Option<&str>) -> Result<()> {
             "notify" => notify::migration_status_for_path(&db_path).await,
             "orchestrator" => orchestrator::migration_status_for_path(&db_path).await,
             "communicate" => communicate::migration_status_for_path(&db_path).await,
+            "knowledge" => knowledge::migration_status_for_path(&db_path).await,
             _ => anyhow::bail!("No migration runner registered for service '{}'", svc.name),
         };
 

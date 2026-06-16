@@ -9,6 +9,7 @@
 import {
 	BarChart2,
 	Bell,
+	BookOpen,
 	Bot,
 	Brain,
 	CheckSquare,
@@ -64,6 +65,7 @@ const NAV_ITEMS: NavItem[] = [
 	{ label: "Questions", path: "/questions", icon: <HelpCircle size={20} /> },
 	{ label: "Workflows", path: "/workflows", icon: <GitBranch size={20} /> },
 	{ label: "Memories", path: "/memories", icon: <Brain size={20} /> },
+	{ label: "Knowledge", path: "/knowledge", icon: <BookOpen size={20} /> },
 	{
 		label: "Communicate",
 		path: "/communicate",
