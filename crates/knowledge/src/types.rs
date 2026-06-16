@@ -81,3 +81,14 @@ pub struct PaginatedResponse<T> {
     pub limit: u64,
     pub offset: u64,
 }
+
+/// Result of a `doctor` reconciliation pass for a single project.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DoctorReport {
+    /// DB rows whose markdown file is absent from disk.
+    pub missing_files: Vec<String>,
+    /// Disk files that have no corresponding DB row.
+    pub orphaned_files: Vec<String>,
+    /// Number of issues automatically repaired (set when `fix = true`).
+    pub fixed: u32,
+}

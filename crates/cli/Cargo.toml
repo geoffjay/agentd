@@ -42,6 +42,7 @@ monitor = { path = "../monitor" }
 hook = { path = "../hook" }
 memory-api = { path = "../memory-api" }
 communicate = { path = "../communicate" }
+knowledge = { path = "../knowledge" }
 agentd-mcp = { path = "../mcp" }
 agentd-tui = { path = "../tui" }
 

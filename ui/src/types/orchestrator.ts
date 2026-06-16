@@ -643,3 +643,23 @@ export interface ListApprovalsParams {
 	limit?: number;
 	offset?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+/** A project as returned by the orchestrator API. */
+export interface Project {
+	id: string;
+	name: string;
+	description: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+/** Query parameters for `GET /projects`. */
+export interface ListProjectsParams {
+	limit?: number;
+	offset?: number;
+}
+
