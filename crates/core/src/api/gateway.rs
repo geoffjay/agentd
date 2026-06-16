@@ -17,6 +17,9 @@
 //! | `/api/v1/wrap/*`                    | agentd-wrap               |
 //! | `/api/v1/hook/*`                    | agentd-hook               |
 //! | `/api/v1/monitor/*`                 | agentd-monitor            |
+//! | `/api/v1/memory/*`                  | agentd-memory             |
+//! | `/api/v1/communicate/*`             | agentd-communicate        |
+//! | `/api/v1/knowledge/*`               | agentd-knowledge          |
 //!
 //! # WebSocket proxying
 //!

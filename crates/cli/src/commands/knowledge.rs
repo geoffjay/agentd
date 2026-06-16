@@ -14,6 +14,7 @@
 //! - **delete**: Delete a document by ID
 //! - **gc**: Bulk-delete all documents for a project (garbage collect)
 //! - **tree**: Display the virtual folder/file tree for a project
+//! - **doctor**: Reconcile DB rows vs disk files; optionally fix divergences
 //!
 //! # Examples
 //!
@@ -28,6 +29,8 @@
 //! agent knowledge delete <project_id> <doc_id>
 //! agent knowledge gc <project_id>
 //! agent knowledge tree <project_id>
+//! agent knowledge doctor <project_id>
+//! agent knowledge doctor <project_id> --fix
 //! ```
 
 use anyhow::Result;
@@ -193,6 +196,26 @@ pub enum KnowledgeCommand {
         /// Project UUID
         project_id: String,
     },
+
+    /// Reconcile DB rows vs disk files for a project.
+    ///
+    /// Reports missing files (DB rows whose markdown file is absent from disk)
+    /// and orphaned files (disk files with no DB row). Pass `--fix` to
+    /// automatically delete the divergent entries.
+    ///
+    /// # Examples
+    ///
+    /// ```bash
+    /// agent knowledge doctor <project_id>
+    /// agent knowledge doctor <project_id> --fix
+    /// ```
+    Doctor {
+        /// Project UUID
+        project_id: String,
+        /// Automatically fix divergences (delete stale DB rows + orphaned files).
+        #[arg(long)]
+        fix: bool,
+    },
 }
 
 impl KnowledgeCommand {
@@ -251,6 +274,9 @@ impl KnowledgeCommand {
                 cmd_gc(client, project_id, *yes, json).await
             }
             KnowledgeCommand::Tree { project_id } => cmd_tree(client, project_id, json).await,
+            KnowledgeCommand::Doctor { project_id, fix } => {
+                cmd_doctor(client, project_id, *fix, json).await
+            }
         }
     }
 }
@@ -446,6 +472,42 @@ async fn cmd_tree(client: &KnowledgeClient, project_id: &str, json: bool) -> Res
         return Ok(());
     }
     print_tree_nodes(&tree, "");
+    Ok(())
+}
+
+async fn cmd_doctor(
+    client: &KnowledgeClient,
+    project_id: &str,
+    fix: bool,
+    json: bool,
+) -> Result<()> {
+    let report =
+        if fix { client.doctor_fix(project_id).await? } else { client.doctor(project_id).await? };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+    if report.missing_files.is_empty() && report.orphaned_files.is_empty() {
+        println!("{}", "No divergences found.".green());
+        return Ok(());
+    }
+    if !report.missing_files.is_empty() {
+        println!("{} (DB rows with no file on disk):", "Missing files".bold().yellow());
+        for f in &report.missing_files {
+            println!("  - {f}");
+        }
+    }
+    if !report.orphaned_files.is_empty() {
+        println!("{} (disk files with no DB row):", "Orphaned files".bold().yellow());
+        for f in &report.orphaned_files {
+            println!("  - {f}");
+        }
+    }
+    if fix {
+        println!("\n{} {} issue(s) fixed.", "Doctor:".bold().green(), report.fixed);
+    } else {
+        println!("\n{} Run with --fix to repair automatically.", "Hint:".bold());
+    }
     Ok(())
 }
 

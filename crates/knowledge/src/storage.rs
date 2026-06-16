@@ -14,8 +14,8 @@
 
 use anyhow::Result;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
+    ModelTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use std::{
     path::{Path, PathBuf},
@@ -27,7 +27,8 @@ use crate::{
     error::KnowledgeError,
     fs::{atomic_write, safe_doc_path},
     types::{
-        CreateDocumentRequest, Document, DocumentContent, PaginatedResponse, UpdateDocumentRequest,
+        CreateDocumentRequest, DoctorReport, Document, DocumentContent, PaginatedResponse,
+        UpdateDocumentRequest,
     },
 };
 
@@ -178,8 +179,8 @@ impl KnowledgeStorage {
     ) -> std::result::Result<PaginatedResponse<Document>, KnowledgeError> {
         let mut base_query =
             document::Entity::find().filter(document::Column::ProjectId.eq(project_id));
-        if let Some(o) = org {
-            base_query = base_query.filter(document::Column::OrganizationId.eq(o));
+        if let Some(cond) = tenant_read_condition(org) {
+            base_query = base_query.filter(cond);
         }
         let base_query = base_query.order_by_asc(document::Column::RelPath);
 
@@ -340,6 +341,90 @@ impl KnowledgeStorage {
     }
 
     // -----------------------------------------------------------------------
+    // Doctor / reconciliation
+    // -----------------------------------------------------------------------
+
+    /// Reconcile the DB vs the filesystem for `project_id`.
+    ///
+    /// Returns a [`DoctorReport`] describing:
+    /// - `missing_files` — DB rows whose markdown file is absent from disk.
+    /// - `orphaned_files` — disk files under the project directory that have
+    ///   no matching DB row.
+    ///
+    /// When `fix = true` the method also:
+    /// - Deletes DB rows for missing files.
+    /// - Deletes orphaned disk files.
+    ///
+    /// Emits the `knowledge_missing_file_total` gauge metric with the number
+    /// of missing-file divergences detected (before any fixing).
+    pub async fn doctor(
+        &self,
+        project_id: &str,
+        fix: bool,
+    ) -> std::result::Result<DoctorReport, KnowledgeError> {
+        // 1. Collect all DB rows for the project.
+        let models = document::Entity::find()
+            .filter(document::Column::ProjectId.eq(project_id))
+            .all(&self.db)
+            .await
+            .map_err(|e| KnowledgeError::Other(anyhow::anyhow!("doctor db list: {e}")))?;
+
+        // 2. Build the set of rel_paths known to the DB.
+        let db_paths: std::collections::HashMap<String, String> =
+            models.iter().map(|m| (m.rel_path.clone(), m.id.clone())).collect();
+
+        // 3. Scan disk for all .md files under <root>/<project_id>/.
+        let project_dir = self.root.join(project_id);
+        let disk_paths = collect_md_files(&project_dir);
+
+        // 4. Find DB rows whose files are missing from disk.
+        let mut missing_files: Vec<String> = Vec::new();
+        for rel_path in db_paths.keys() {
+            let abs = project_dir.join(rel_path.replace('/', std::path::MAIN_SEPARATOR_STR));
+            if !abs.exists() {
+                missing_files.push(rel_path.clone());
+            }
+        }
+
+        // 5. Find disk files that have no DB row.
+        let mut orphaned_files: Vec<String> = Vec::new();
+        for disk_rel in &disk_paths {
+            if !db_paths.contains_key(disk_rel) {
+                orphaned_files.push(disk_rel.clone());
+            }
+        }
+
+        // Emit metric.
+        metrics::gauge!("knowledge_missing_file_total").set(missing_files.len() as f64);
+
+        let mut fixed = 0u32;
+
+        if fix {
+            // Remove DB rows for missing files.
+            for rel_path in &missing_files {
+                let affected = document::Entity::delete_many()
+                    .filter(document::Column::ProjectId.eq(project_id))
+                    .filter(document::Column::RelPath.eq(rel_path.as_str()))
+                    .exec(&self.db)
+                    .await
+                    .map(|r| r.rows_affected)
+                    .unwrap_or(0);
+                fixed += affected as u32;
+            }
+
+            // Remove orphaned disk files.
+            for rel_path in &orphaned_files {
+                let abs = project_dir.join(rel_path.replace('/', std::path::MAIN_SEPARATOR_STR));
+                if std::fs::remove_file(&abs).is_ok() {
+                    fixed += 1;
+                }
+            }
+        }
+
+        Ok(DoctorReport { missing_files, orphaned_files, fixed })
+    }
+
+    // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
 
@@ -351,8 +436,8 @@ impl KnowledgeStorage {
     ) -> std::result::Result<document::Model, KnowledgeError> {
         let mut query = document::Entity::find_by_id(doc_id.to_string())
             .filter(document::Column::ProjectId.eq(project_id));
-        if let Some(o) = org {
-            query = query.filter(document::Column::OrganizationId.eq(o));
+        if let Some(cond) = tenant_read_condition(org) {
+            query = query.filter(cond);
         }
         query
             .one(&self.db)
@@ -377,6 +462,53 @@ fn model_to_document(m: document::Model) -> Document {
         updated_at: m.updated_at,
         organization_id: m.organization_id,
     }
+}
+
+/// Recursively collect all `.md` file paths under `dir`, returning them as
+/// relative path strings (using `/` separators, matching `rel_path` in the DB).
+fn collect_md_files(dir: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_md_files_inner(dir, dir, &mut out);
+    out
+}
+
+fn collect_md_files_inner(root: &Path, current: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(current) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_md_files_inner(root, &path, out);
+        } else if path.extension().is_some_and(|e| e == "md") {
+            if let Ok(rel) = path.strip_prefix(root) {
+                // Normalise to forward-slash separators.
+                let rel_str = rel.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/");
+                out.push(rel_str);
+            }
+        }
+    }
+}
+
+/// Build the org-scoping [`Condition`] for read queries.
+///
+/// When `org` is `Some`, the condition is:
+///
+/// ```sql
+/// WHERE organization_id = <org> OR organization_id IS NULL
+/// ```
+///
+/// The `OR IS NULL` arm implements the NULL-row transition policy documented in
+/// `agentd-common::tenant`: rows created before multi-tenancy have a `NULL`
+/// `organization_id` and must remain readable by every authenticated tenant
+/// until an operator runs the backfill command.
+///
+/// When `org` is `None` (trusted/local access), no org filter is added and the
+/// caller sees all rows for the project.
+fn tenant_read_condition(org: Option<&str>) -> Option<Condition> {
+    org.map(|o| {
+        Condition::any()
+            .add(document::Column::OrganizationId.eq(o))
+            .add(document::Column::OrganizationId.is_null())
+    })
 }
 
 /// Map a SeaORM database error to a `KnowledgeError`.
@@ -584,6 +716,286 @@ mod tests {
         let remaining = s.list_documents(PROJ, None, 100, 0).await.unwrap();
         assert_eq!(remaining.total, 1);
         assert_eq!(remaining.items[0].rel_path, "b.md");
+    }
+
+    // -----------------------------------------------------------------------
+    // KB-7: tenant scoping and NULL-row transition policy
+    // -----------------------------------------------------------------------
+
+    /// Docs with `organization_id = NULL` (pre-tenancy / legacy) must be
+    /// visible to any tenant-scoped request during the transition window.
+    #[tokio::test]
+    async fn test_null_org_doc_visible_to_any_tenant() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        // Legacy doc: no org assigned (NULL).
+        let legacy =
+            s.create_document(PROJ, create_req("legacy.md", "old content"), None).await.unwrap();
+        assert!(legacy.organization_id.is_none());
+
+        // Any authenticated tenant can list it.
+        let page_a = s.list_documents(PROJ, Some("org-a"), 100, 0).await.unwrap();
+        assert_eq!(page_a.total, 1, "org-a should see the NULL-org legacy doc");
+        assert_eq!(page_a.items[0].rel_path, "legacy.md");
+
+        let page_b = s.list_documents(PROJ, Some("org-b"), 100, 0).await.unwrap();
+        assert_eq!(page_b.total, 1, "org-b should also see the NULL-org legacy doc");
+    }
+
+    /// Any tenant can fetch a NULL-org doc by ID (transition period access).
+    #[tokio::test]
+    async fn test_null_org_doc_get_by_any_tenant() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        let legacy =
+            s.create_document(PROJ, create_req("shared.md", "# Shared"), None).await.unwrap();
+
+        // Both orgs can fetch it by ID.
+        let fetched_a = s.get_document(PROJ, &legacy.id, Some("org-a")).await.unwrap();
+        assert_eq!(fetched_a.id, legacy.id);
+
+        let fetched_b = s.get_document(PROJ, &legacy.id, Some("org-b")).await.unwrap();
+        assert_eq!(fetched_b.id, legacy.id);
+    }
+
+    /// Org-scoped docs are NOT visible to another org (strict cross-tenant isolation).
+    #[tokio::test]
+    async fn test_cross_tenant_isolation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        let doc_a = s
+            .create_document(PROJ, create_req("a.md", "a"), Some("org-a".to_string()))
+            .await
+            .unwrap();
+        let doc_b = s
+            .create_document(PROJ, create_req("b.md", "b"), Some("org-b".to_string()))
+            .await
+            .unwrap();
+
+        // org-a list sees only its own doc (no NULL-org docs here).
+        let page_a = s.list_documents(PROJ, Some("org-a"), 100, 0).await.unwrap();
+        assert_eq!(page_a.total, 1);
+        assert_eq!(page_a.items[0].rel_path, "a.md");
+
+        // org-b list sees only its own doc.
+        let page_b = s.list_documents(PROJ, Some("org-b"), 100, 0).await.unwrap();
+        assert_eq!(page_b.total, 1);
+        assert_eq!(page_b.items[0].rel_path, "b.md");
+
+        // org-b cannot fetch org-a's doc by ID.
+        let err = s.get_document(PROJ, &doc_a.id, Some("org-b")).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)), "org-b must not see org-a's doc");
+
+        // org-a cannot fetch org-b's doc by ID.
+        let err = s.get_document(PROJ, &doc_b.id, Some("org-a")).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)), "org-a must not see org-b's doc");
+    }
+
+    /// An org-scoped `list` returns both its own docs AND legacy NULL-org docs,
+    /// but NOT docs owned by another org.
+    #[tokio::test]
+    async fn test_tenant_list_mixes_own_and_null_org_docs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        // One legacy doc (NULL org) and one from each org.
+        s.create_document(PROJ, create_req("legacy.md", "legacy"), None).await.unwrap();
+        s.create_document(PROJ, create_req("a.md", "a"), Some("org-a".to_string())).await.unwrap();
+        s.create_document(PROJ, create_req("b.md", "b"), Some("org-b".to_string())).await.unwrap();
+
+        // org-a sees: legacy.md + a.md (not b.md).
+        let page_a = s.list_documents(PROJ, Some("org-a"), 100, 0).await.unwrap();
+        assert_eq!(page_a.total, 2);
+        let paths_a: Vec<&str> = page_a.items.iter().map(|d| d.rel_path.as_str()).collect();
+        assert!(paths_a.contains(&"legacy.md"), "org-a must see the legacy doc");
+        assert!(paths_a.contains(&"a.md"), "org-a must see its own doc");
+        assert!(!paths_a.contains(&"b.md"), "org-a must NOT see org-b's doc");
+
+        // org-b sees: legacy.md + b.md (not a.md).
+        let page_b = s.list_documents(PROJ, Some("org-b"), 100, 0).await.unwrap();
+        assert_eq!(page_b.total, 2);
+        let paths_b: Vec<&str> = page_b.items.iter().map(|d| d.rel_path.as_str()).collect();
+        assert!(paths_b.contains(&"legacy.md"), "org-b must see the legacy doc");
+        assert!(paths_b.contains(&"b.md"), "org-b must see its own doc");
+        assert!(!paths_b.contains(&"a.md"), "org-b must NOT see org-a's doc");
+    }
+
+    /// Org-scoped `bulk_delete_project` (gc) removes only that org's docs;
+    /// NULL-org (legacy) docs are left untouched.
+    #[tokio::test]
+    async fn test_bulk_delete_org_scoped_leaves_null_org_docs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        let legacy =
+            s.create_document(PROJ, create_req("legacy.md", "legacy"), None).await.unwrap();
+        s.create_document(PROJ, create_req("a.md", "a"), Some("org-a".to_string())).await.unwrap();
+
+        // GC scoped to org-a.
+        s.bulk_delete_project(PROJ, Some("org-a")).await.unwrap();
+
+        // The legacy (NULL-org) doc must survive.
+        let remaining = s.list_documents(PROJ, None, 100, 0).await.unwrap();
+        assert_eq!(remaining.total, 1);
+        assert_eq!(remaining.items[0].id, legacy.id, "legacy doc must survive org-scoped gc");
+    }
+
+    // -----------------------------------------------------------------------
+    // Doctor tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_doctor_clean_project_reports_no_divergences() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        s.create_document(PROJ, create_req("docs/a.md", "alpha"), None).await.unwrap();
+        s.create_document(PROJ, create_req("docs/b.md", "beta"), None).await.unwrap();
+
+        let report = s.doctor(PROJ, false).await.unwrap();
+        assert!(report.missing_files.is_empty(), "expected no missing files");
+        assert!(report.orphaned_files.is_empty(), "expected no orphaned files");
+        assert_eq!(report.fixed, 0);
+    }
+
+    #[tokio::test]
+    async fn test_doctor_detects_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let doc = s.create_document(PROJ, create_req("orphan.md", "x"), None).await.unwrap();
+
+        // Delete the file on disk directly (simulates a lost file).
+        let file_path = tmp.path().join("docs").join(PROJ).join("orphan.md");
+        std::fs::remove_file(&file_path).unwrap();
+
+        let report = s.doctor(PROJ, false).await.unwrap();
+        assert_eq!(report.missing_files, vec![doc.rel_path]);
+        assert!(report.orphaned_files.is_empty());
+        assert_eq!(report.fixed, 0, "fix=false should not repair");
+    }
+
+    #[tokio::test]
+    async fn test_doctor_detects_orphaned_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        // Write a file that has no DB row.
+        let project_dir = tmp.path().join("docs").join(PROJ);
+        std::fs::create_dir_all(&project_dir).unwrap();
+        std::fs::write(project_dir.join("stray.md"), b"orphan").unwrap();
+
+        let report = s.doctor(PROJ, false).await.unwrap();
+        assert!(report.missing_files.is_empty());
+        assert_eq!(report.orphaned_files, vec!["stray.md".to_string()]);
+        assert_eq!(report.fixed, 0);
+    }
+
+    #[tokio::test]
+    async fn test_doctor_fix_removes_missing_db_row() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let doc = s.create_document(PROJ, create_req("gone.md", "bye"), None).await.unwrap();
+
+        // Remove file on disk.
+        let file_path = tmp.path().join("docs").join(PROJ).join("gone.md");
+        std::fs::remove_file(&file_path).unwrap();
+
+        let report = s.doctor(PROJ, true).await.unwrap();
+        assert_eq!(report.missing_files.len(), 1);
+        assert!(report.fixed >= 1, "expected at least one fix");
+
+        // DB row should now be gone.
+        let err = s.get_document(PROJ, &doc.id, None).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_doctor_fix_removes_orphaned_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+
+        // Write an orphaned file with no DB row.
+        let project_dir = tmp.path().join("docs").join(PROJ);
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let orphan = project_dir.join("ghost.md");
+        std::fs::write(&orphan, b"ghost").unwrap();
+
+        let report = s.doctor(PROJ, true).await.unwrap();
+        assert_eq!(report.orphaned_files.len(), 1);
+        assert!(report.fixed >= 1, "expected at least one fix");
+        assert!(!orphan.exists(), "orphaned file should have been deleted");
+    }
+
+    // -----------------------------------------------------------------------
+    // End-to-end lifecycle test
+    // -----------------------------------------------------------------------
+
+    /// Full round-trip: create → list → confirm on disk → update → delete.
+    #[tokio::test]
+    async fn test_full_lifecycle_e2e() {
+        let tmp = tempfile::tempdir().unwrap();
+        let s = make_storage(&tmp).await;
+        let proj = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+        // Create a document.
+        let doc = s
+            .create_document(proj, create_req("guide.md", "# Guide\n\nInitial content."), None)
+            .await
+            .unwrap();
+        assert_eq!(doc.rel_path, "guide.md");
+        assert_eq!(doc.title, "guide");
+
+        // File must exist on disk.
+        let disk_path = tmp.path().join("docs").join(proj).join("guide.md");
+        assert!(disk_path.exists(), "file should exist after create");
+        assert_eq!(std::fs::read_to_string(&disk_path).unwrap(), "# Guide\n\nInitial content.");
+
+        // List returns the new document.
+        let page = s.list_documents(proj, None, 100, 0).await.unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].id, doc.id);
+
+        // Get metadata.
+        let fetched = s.get_document(proj, &doc.id, None).await.unwrap();
+        assert_eq!(fetched.rel_path, "guide.md");
+
+        // Get with content.
+        let with_content = s.get_document_content(proj, &doc.id, None).await.unwrap();
+        assert_eq!(with_content.content, "# Guide\n\nInitial content.");
+
+        // Update content.
+        let updated = s
+            .update_document(
+                proj,
+                &doc.id,
+                None,
+                UpdateDocumentRequest {
+                    content: Some("# Guide\n\nUpdated content.".to_string()),
+                    title: Some("Guide (revised)".to_string()),
+                    expected_updated_at: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.title, "Guide (revised)");
+        assert_eq!(std::fs::read_to_string(&disk_path).unwrap(), "# Guide\n\nUpdated content.");
+
+        // Doctor with no divergences.
+        let report = s.doctor(proj, false).await.unwrap();
+        assert!(report.missing_files.is_empty());
+        assert!(report.orphaned_files.is_empty());
+
+        // Delete.
+        s.delete_document(proj, &doc.id, None).await.unwrap();
+        assert!(!disk_path.exists(), "file should be gone after delete");
+        let err = s.get_document(proj, &doc.id, None).await.unwrap_err();
+        assert!(matches!(err, KnowledgeError::NotFound(_)));
+
+        // List is now empty.
+        let empty = s.list_documents(proj, None, 100, 0).await.unwrap();
+        assert_eq!(empty.total, 0);
     }
 
     #[tokio::test]
