@@ -166,16 +166,19 @@ pub enum KnowledgeCommand {
     /// Bulk-delete all documents for a project (garbage collect).
     ///
     /// Removes every document and file associated with the given project ID.
-    /// This is irreversible.
+    /// This is irreversible. Pass `--yes` to skip the confirmation guard.
     ///
     /// # Examples
     ///
     /// ```bash
-    /// agent knowledge gc <project_id>
+    /// agent knowledge gc <project_id> --yes
     /// ```
     Gc {
         /// Project UUID
         project_id: String,
+        /// Skip the confirmation guard. Required for non-interactive / scripted use.
+        #[arg(long)]
+        yes: bool,
     },
 
     /// Display the virtual folder/file tree for a project.
@@ -239,7 +242,9 @@ impl KnowledgeCommand {
             KnowledgeCommand::Delete { project_id, doc_id } => {
                 cmd_delete(client, project_id, doc_id, json).await
             }
-            KnowledgeCommand::Gc { project_id } => cmd_gc(client, project_id, json).await,
+            KnowledgeCommand::Gc { project_id, yes } => {
+                cmd_gc(client, project_id, *yes, json).await
+            }
             KnowledgeCommand::Tree { project_id } => cmd_tree(client, project_id, json).await,
         }
     }
@@ -286,13 +291,14 @@ async fn cmd_list(
         Cell::new("Updated").style_spec("b"),
     ]));
     for doc in &page.items {
-        let short_id = &doc.id[..8];
+        let short_id = doc.id.get(..8).unwrap_or(&doc.id);
+        let updated = doc.updated_at.get(..19).unwrap_or(&doc.updated_at);
         table.add_row(Row::new(vec![
             Cell::new(short_id),
             Cell::new(&doc.rel_path),
             Cell::new(&doc.title),
             Cell::new(&format!("{} B", doc.size_bytes)),
-            Cell::new(&doc.updated_at[..19]),
+            Cell::new(updated),
         ]));
     }
     table.printstd();
@@ -315,8 +321,8 @@ async fn cmd_get(
     println!("{}: {}", "Path".bold(), doc.rel_path);
     println!("{}: {}", "Title".bold(), doc.title);
     println!("{}: {} bytes", "Size".bold(), doc.size_bytes);
-    println!("{}: {}", "Created".bold(), &doc.created_at[..19]);
-    println!("{}: {}", "Updated".bold(), &doc.updated_at[..19]);
+    println!("{}: {}", "Created".bold(), doc.created_at.get(..19).unwrap_or(&doc.created_at));
+    println!("{}: {}", "Updated".bold(), doc.updated_at.get(..19).unwrap_or(&doc.updated_at));
     Ok(())
 }
 
@@ -414,7 +420,13 @@ async fn cmd_delete(
     Ok(())
 }
 
-async fn cmd_gc(client: &KnowledgeClient, project_id: &str, json: bool) -> Result<()> {
+async fn cmd_gc(client: &KnowledgeClient, project_id: &str, yes: bool, json: bool) -> Result<()> {
+    if !yes {
+        anyhow::bail!(
+            "This will permanently delete all documents for project {project_id}. \
+             Pass --yes to confirm."
+        );
+    }
     client.bulk_delete_documents(project_id).await?;
     if json {
         println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "gc": project_id }))?);

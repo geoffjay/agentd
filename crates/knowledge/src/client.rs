@@ -1,5 +1,4 @@
 //! HTTP client for the agentd-knowledge service.
-#![allow(dead_code)]
 //!
 //! [`KnowledgeClient`] covers all REST endpoints and is reusable from the
 //! CLI and (later) the orchestrator. It is intentionally thin — no caching,
@@ -46,14 +45,14 @@ impl KnowledgeClient {
     /// Check service health.
     pub async fn health(&self) -> Result<Value> {
         let url = format!("{}/health", self.base_url);
-        self.client
-            .get(&url)
-            .send()
-            .await
-            .context("health request failed")?
-            .json()
-            .await
-            .context("failed to parse health response")
+        let res = self.client.get(&url).send().await.context("health request failed")?;
+        if res.status().is_success() {
+            res.json().await.context("failed to parse health response")
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("health failed ({status}): {body}");
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -89,14 +88,16 @@ impl KnowledgeClient {
                 let _ = write!(url, "{k}={}", urlencoding::encode(v));
             }
         }
-        self.client
-            .get(&url)
-            .send()
-            .await
-            .context("list_documents request failed")?
-            .json()
-            .await
-            .context("failed to parse list_documents response")
+        // NOTE: project_id and doc_id are UUIDs in practice; path-segment
+        // encoding is not applied here but would be required for arbitrary IDs.
+        let res = self.client.get(&url).send().await.context("list_documents request failed")?;
+        if res.status().is_success() {
+            res.json().await.context("failed to parse list_documents response")
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("list_documents failed ({status}): {body}");
+        }
     }
 
     /// Create a new document.
@@ -220,14 +221,14 @@ impl KnowledgeClient {
     /// Get the virtual folder/file tree for `project_id`.
     pub async fn get_tree(&self, project_id: &str) -> Result<Vec<TreeNode>> {
         let url = format!("{}/projects/{project_id}/tree", self.base_url);
-        self.client
-            .get(&url)
-            .send()
-            .await
-            .context("get_tree request failed")?
-            .json()
-            .await
-            .context("failed to parse get_tree response")
+        let res = self.client.get(&url).send().await.context("get_tree request failed")?;
+        if res.status().is_success() {
+            res.json().await.context("failed to parse get_tree response")
+        } else {
+            let status = res.status();
+            let body: Value = res.json().await.unwrap_or(Value::Null);
+            anyhow::bail!("get_tree failed ({status}): {body}");
+        }
     }
 }
 
