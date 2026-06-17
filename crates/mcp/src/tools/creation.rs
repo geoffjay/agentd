@@ -135,6 +135,24 @@ pub async fn run_create_agent(
 
 // ── create_workflow ────────────────────────────────────────────────────────
 
+/// Coerce a JSON-object parameter that may have arrived as a JSON *string*.
+///
+/// Some MCP clients — notably the Claude Code harness — serialize object- or
+/// array-typed tool parameters as a JSON string (e.g. the literal text
+/// `{"type":"cron"}`) rather than a nested JSON value. Because these params are
+/// declared as untyped `serde_json::Value`, the schema gives the client no
+/// signal to send a real object, so the string form is common.
+///
+/// If `value` is a string that parses as JSON, return the parsed value;
+/// otherwise return it unchanged so the caller's validation surfaces a clear
+/// error against the original input.
+fn coerce_json_value(value: Value) -> Value {
+    match value {
+        Value::String(s) => serde_json::from_str(&s).unwrap_or(Value::String(s)),
+        other => other,
+    }
+}
+
 /// Validate trigger_config client-side: must be an object whose `type` is a
 /// known variant name. Full structural validation stays server-side.
 fn validate_trigger_config(trigger_config: &Value) -> Result<(), String> {
@@ -228,6 +246,7 @@ pub async fn run_create_workflow(
     tool_policy_mode: Option<&str>,
     tool_policy_tools: Option<Vec<String>>,
 ) -> String {
+    let trigger_config = coerce_json_value(trigger_config);
     let body = match build_create_workflow_body(
         name,
         agent_id,
@@ -321,6 +340,7 @@ pub async fn run_update_workflow(
     tool_policy_mode: Option<&str>,
     tool_policy_tools: Option<Vec<String>>,
 ) -> String {
+    let trigger_config = trigger_config.map(coerce_json_value);
     let body = match build_update_workflow_body(
         name,
         agent_id,
@@ -391,6 +411,7 @@ pub async fn run_trigger_workflow(
         body["labels"] = json!(labels);
     }
     if let Some(metadata) = metadata {
+        let metadata = coerce_json_value(metadata);
         if !metadata.is_object() {
             return "🔴 `metadata` must be a JSON object (string keys/values).".to_string();
         }
@@ -527,6 +548,49 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(cron, TriggerConfig::Cron { .. }));
+    }
+
+    #[test]
+    fn coerce_json_value_parses_stringified_object() {
+        // The Claude Code harness passes object params as JSON strings.
+        let coerced = coerce_json_value(serde_json::json!("{\"type\":\"cron\"}"));
+        assert!(coerced.is_object(), "stringified JSON should be parsed to an object");
+        assert_eq!(coerced["type"], "cron");
+    }
+
+    #[test]
+    fn coerce_json_value_passes_through_real_object() {
+        let original = serde_json::json!({"type": "manual"});
+        assert_eq!(coerce_json_value(original.clone()), original);
+    }
+
+    #[test]
+    fn coerce_json_value_keeps_unparseable_string() {
+        // A non-JSON string is returned unchanged so validation can complain
+        // about the actual input rather than a parse error.
+        let coerced = coerce_json_value(serde_json::json!("not json"));
+        assert_eq!(coerced, serde_json::json!("not json"));
+    }
+
+    #[test]
+    fn create_workflow_accepts_stringified_trigger_config() {
+        // End-to-end at the body-builder level: a stringified trigger_config
+        // is coerced and validated like a real object.
+        let coerced = coerce_json_value(serde_json::json!(
+            "{\"type\":\"cron\",\"expression\":\"0 9 * * MON-FRI\"}"
+        ));
+        let body = build_create_workflow_body(
+            "wf",
+            "01234567-89ab-cdef-0123-456789abcdef",
+            &coerced,
+            "do the thing",
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("stringified trigger_config should be accepted after coercion");
+        assert_eq!(body["trigger_config"]["type"], "cron");
     }
 
     #[test]
