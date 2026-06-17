@@ -43,7 +43,8 @@ export function DocumentEditor({
 		viewRef.current?.destroy();
 		if (debounceRef.current) clearTimeout(debounceRef.current);
 
-		if (!docContent) {
+		// Treat a missing/malformed document the same as "nothing selected"
+		if (!docContent?.document) {
 			viewRef.current = null;
 			return;
 		}
@@ -89,16 +90,16 @@ export function DocumentEditor({
 			viewRef.current?.destroy();
 			viewRef.current = null;
 		};
-	}, [docContent?.document.id]); // recreate only when the doc ID changes
+	}, [docContent?.document?.id]); // recreate only when the doc ID changes
 
 	// Update the updatedAt ref whenever the server confirms a save
 	useEffect(() => {
-		if (docContent) {
+		if (docContent?.document) {
 			updatedAtRef.current = docContent.document.updated_at;
 		}
-	}, [docContent?.document.updated_at]);
+	}, [docContent?.document?.updated_at]);
 
-	if (!docContent) {
+	if (!docContent?.document) {
 		return (
 			<div className="flex h-full items-center justify-center text-sm text-th-text-muted">
 				Select a document from the tree to edit it.

@@ -179,7 +179,7 @@ When running with `cargo run`, all log output goes to the terminal's stderr (con
 
 ## LaunchAgent Plist Configuration (macOS)
 
-LaunchAgent plist files are installed to `~/Library/LaunchAgents/` and define how macOS manages each service. The source files live in `contrib/plists/`.
+LaunchAgent plist files are installed to `~/Library/LaunchAgents/` and define how macOS manages each service. They are generated at install time by the `agentd-install` crate (`generate_plist` in `crates/install/src/platform/macos.rs`) — one per service in the canonical `SERVICES` list — so there is no separate source file to edit.
 
 ### Plist Structure
 

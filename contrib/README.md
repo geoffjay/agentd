@@ -6,46 +6,18 @@ This directory contains contributed files and utilities for agentd installation 
 
 ```
 contrib/
-├── plists/          # macOS LaunchAgent/LaunchDaemon plist files
-│   ├── com.geoffjay.agentd-notify.plist
-│   ├── com.geoffjay.agentd-ask.plist
-│   ├── com.geoffjay.agentd-hook.plist
-│   └── com.geoffjay.agentd-monitor.plist
 └── scripts/         # Installation and utility scripts
     └── install.sh   # Interactive installation script
 ```
 
+> **macOS LaunchAgent plists** are no longer shipped here. They are generated
+> at install time by the `agentd-install` crate (`generate_plist` in
+> `crates/install/src/platform/macos.rs`), one per service in the canonical
+> `SERVICES` list, and written straight to `~/Library/LaunchAgents/`. Use
+> `cargo xtask install-user` (or the release installer) rather than copying
+> plist files by hand.
+
 ## Contents
-
-### plists/
-
-macOS service configuration files for running agentd services via `launchd`.
-
-**Features:**
-- Auto-start on boot (`RunAtLoad`)
-- Auto-restart on crash (`KeepAlive`)
-- Logging to `/usr/local/var/log/`
-- Environment variable configuration
-
-**Installation:**
-```bash
-# User installation (recommended)
-cp contrib/plists/*.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.geoffjay.agentd-notify.plist
-
-# Or use cargo xtask
-cargo xtask install-user
-```
-
-**Service Configuration:**
-
-Each service is configured with a production port (set via `AGENTD_PORT` env var in the plist):
-- **ask** - Port 7001
-- **hook** - Port 7002
-- **monitor** - Port 7003
-- **notify** - Port 7004
-- **wrap** - Port 7005
-- **orchestrator** - Port 7006
 
 ### scripts/
 

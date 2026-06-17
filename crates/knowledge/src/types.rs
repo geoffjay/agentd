@@ -30,7 +30,6 @@ pub struct Document {
 /// Document metadata plus markdown body content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentContent {
-    #[serde(flatten)]
     pub document: Document,
     /// Raw markdown body.
     pub content: String,
