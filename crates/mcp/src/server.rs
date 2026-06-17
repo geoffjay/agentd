@@ -687,7 +687,55 @@ impl AgentdMcp {
         .await
     }
 
-    // ── Memory: search, list, get ───────────────────────────────────────
+    // ── Memory: remember, search, list, get ─────────────────────────────
+
+    /// Store a new memory.
+    #[tool(
+        description = "Store a new memory in the shared agent memory service. The content is embedded for later semantic search. Use this to persist a fact, decision, open question, or request so it survives across sessions and is discoverable by other agents. `created_by` should be your own agent identity. Defaults: type=information, visibility=public."
+    )]
+    #[allow(clippy::too_many_arguments)]
+    async fn remember(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "The natural-language content to store (required, non-empty)")]
+        content: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Identity of the actor storing this memory, e.g. your agent name (required)"
+        )]
+        created_by: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Memory type: information | question | request (default: information)"
+        )]
+        memory_type: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Free-form tags for later filtering")]
+        tags: Option<Vec<String>>,
+        #[tool(param)]
+        #[schemars(description = "Visibility: public | private | shared (default: public)")]
+        visibility: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "Actors allowed to read this memory; required when visibility is `shared`"
+        )]
+        shared_with: Option<Vec<String>>,
+        #[tool(param)]
+        #[schemars(description = "IDs of related memories this one references")]
+        references: Option<Vec<String>>,
+    ) -> String {
+        memory::run_create_memory(
+            &self.client,
+            &content,
+            &created_by,
+            memory_type.as_deref(),
+            tags,
+            visibility.as_deref(),
+            shared_with,
+            references,
+        )
+        .await
+    }
 
     /// Semantic search across stored memories.
     #[tool(

@@ -117,3 +117,14 @@ agent memory forget <memory-id>
 ```bash
 agent memory health
 ```
+
+## MCP equivalents
+
+When running as an agent with the agentd MCP server connected, the core operations are
+also available as tools (no CLI needed): `remember` (store a memory), `search_memories`,
+`list_memories`, and `get_memory`. Prefer these during autonomous execution; use the CLI
+for interactive/human use, visibility changes, and deletion.
+
+`remember` takes `content` and `created_by` (your agent identity) plus optional
+`memory_type` (information | question | request), `tags`, `visibility`
+(public | private | shared), `shared_with`, and `references`.

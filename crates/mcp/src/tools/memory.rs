@@ -90,8 +90,129 @@ fn format_memory_row(m: &Memory) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+/// Memory type values accepted by the service (`MemoryType`, lowercase).
+const MEMORY_TYPES: &[&str] = &["information", "question", "request"];
+/// Visibility values accepted by the service (`VisibilityLevel`, lowercase).
+const VISIBILITY_LEVELS: &[&str] = &["public", "private", "shared"];
+
+/// Validate create-memory inputs client-side, mirroring the service's own
+/// checks so callers get a clear error before the round-trip. Returns the
+/// resolved visibility (defaulting to `public`).
+fn validate_create_memory<'a>(
+    content: &str,
+    created_by: &str,
+    mem_type: Option<&str>,
+    visibility: Option<&'a str>,
+    shared_with: &[String],
+) -> Result<&'a str, String> {
+    if content.trim().is_empty() {
+        return Err("🔴 `content` must not be empty.".to_string());
+    }
+    if created_by.trim().is_empty() {
+        return Err("🔴 `created_by` must not be empty — pass the storing actor's identity \
+                    (e.g. your agent name)."
+            .to_string());
+    }
+    if let Some(t) = mem_type {
+        if !MEMORY_TYPES.contains(&t) {
+            return Err(format!(
+                "🔴 Unknown memory type `{t}`. Valid types: {}.",
+                MEMORY_TYPES.join(", ")
+            ));
+        }
+    }
+    let visibility = visibility.unwrap_or("public");
+    if !VISIBILITY_LEVELS.contains(&visibility) {
+        return Err(format!(
+            "🔴 Unknown visibility `{visibility}`. Valid levels: {}.",
+            VISIBILITY_LEVELS.join(", ")
+        ));
+    }
+    if visibility == "shared" && shared_with.is_empty() {
+        return Err("🔴 `visibility` is `shared` but `shared_with` is empty — list the actors \
+                    allowed to read this memory."
+            .to_string());
+    }
+    Ok(visibility)
+}
+
+// ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
+
+/// Create (store) a new memory via `POST /memories`.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_create_memory(
+    client: &AgentdClient,
+    content: &str,
+    created_by: &str,
+    mem_type: Option<&str>,
+    tags: Option<Vec<String>>,
+    visibility: Option<&str>,
+    shared_with: Option<Vec<String>>,
+    references: Option<Vec<String>>,
+) -> String {
+    let shared = shared_with.unwrap_or_default();
+    let visibility =
+        match validate_create_memory(content, created_by, mem_type, visibility, &shared) {
+            Ok(v) => v,
+            Err(msg) => return msg,
+        };
+
+    let base = client.memory_url();
+    let url = format!("{base}/memories");
+
+    let mut body = json!({
+        "content": content,
+        "created_by": created_by,
+        "visibility": visibility,
+    });
+    if let Some(t) = mem_type {
+        body["type"] = json!(t);
+    }
+    if let Some(tags) = tags {
+        body["tags"] = json!(tags);
+    }
+    if !shared.is_empty() {
+        body["shared_with"] = json!(shared);
+    }
+    if let Some(refs) = references {
+        body["references"] = json!(refs);
+    }
+
+    let resp = match client.inner.post(&url).json(&body).send().await {
+        Ok(r) => r,
+        Err(e) => return format!("Error: memory service unreachable at {base}: {e}"),
+    };
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return format!("🔴 Failed to store memory (HTTP {status}): {text}");
+    }
+    let m: Memory = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => return format!("Error parsing create response: {e}"),
+    };
+
+    let tags = if m.tags.is_empty() { "-".to_string() } else { m.tags.join(", ") };
+    format!(
+        "✅ Stored memory `{}`.\n\
+         - **Type**: {} {}\n\
+         - **Visibility**: {} {}\n\
+         - **Created by**: {}\n\
+         - **Tags**: {}",
+        m.id,
+        type_icon(&m.mem_type),
+        m.mem_type,
+        visibility_icon(&m.visibility),
+        m.visibility,
+        m.created_by,
+        tags,
+    )
+}
 
 pub async fn run_search_memories(
     client: &AgentdClient,
@@ -239,4 +360,57 @@ pub async fn run_get_memory(client: &AgentdClient, memory_id: &str) -> String {
     out.push_str(&m.content);
     out.push('\n');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_create_memory_defaults_visibility_to_public() {
+        let v = validate_create_memory("hello", "agent-1", None, None, &[]).unwrap();
+        assert_eq!(v, "public");
+    }
+
+    #[test]
+    fn validate_create_memory_rejects_empty_content() {
+        let err = validate_create_memory("  ", "agent-1", None, None, &[]).unwrap_err();
+        assert!(err.contains("content"), "{err}");
+    }
+
+    #[test]
+    fn validate_create_memory_rejects_empty_created_by() {
+        let err = validate_create_memory("hello", "", None, None, &[]).unwrap_err();
+        assert!(err.contains("created_by"), "{err}");
+    }
+
+    #[test]
+    fn validate_create_memory_rejects_unknown_type() {
+        let err = validate_create_memory("hello", "agent-1", Some("rumor"), None, &[]).unwrap_err();
+        assert!(err.contains("rumor"), "{err}");
+        assert!(err.contains("information"), "lists valid types: {err}");
+    }
+
+    #[test]
+    fn validate_create_memory_rejects_unknown_visibility() {
+        let err =
+            validate_create_memory("hello", "agent-1", None, Some("secret"), &[]).unwrap_err();
+        assert!(err.contains("secret"), "{err}");
+    }
+
+    #[test]
+    fn validate_create_memory_requires_shared_with_when_shared() {
+        let err =
+            validate_create_memory("hello", "agent-1", None, Some("shared"), &[]).unwrap_err();
+        assert!(err.contains("shared_with"), "{err}");
+
+        let ok = validate_create_memory(
+            "hello",
+            "agent-1",
+            Some("information"),
+            Some("shared"),
+            &["ops-agent".to_string()],
+        );
+        assert_eq!(ok.unwrap(), "shared");
+    }
 }
