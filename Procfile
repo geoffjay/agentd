@@ -2,7 +2,7 @@ ask: watchexec -r -e rs -w crates/ask -w crates/common cargo run -p ask
 communicate: watchexec -r -e rs -w crates/communicate -w crates/common cargo run -p communicate
 core: watchexec -r -e rs -w crates/core -w crates/common cargo run -p agentd-core
 hook: watchexec -r -e rs -w crates/hook -w crates/common cargo run -p hook
-index: watchexec -r -e rs -w crates/index -w crates/common cargo run -p agentd-index
+knowledge: watchexec -r -e rs -w crates/knowledge -w crates/common cargo run -p knowledge
 memory: watchexec -r -e rs -w crates/memory -w crates/common cargo run -p memory
 monitor: watchexec -r -e rs -w crates/monitor -w crates/common cargo run -p monitor
 notify: watchexec -r -e rs -w crates/notify -w crates/common cargo run -p notify
