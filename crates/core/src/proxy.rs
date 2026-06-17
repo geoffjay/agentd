@@ -265,9 +265,11 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Guard against an ambient ORCHESTRATOR_URL leaking from another test.
         std::env::remove_var("ORCHESTRATOR_URL");
-        let mut core = agentd_common::config::CoreConfig::default();
-        core.orchestrator_url = "http://localhost:7006".to_string();
-        core.memory_url = "http://localhost:7008".to_string();
+        let core = agentd_common::config::CoreConfig {
+            orchestrator_url: "http://localhost:7006".to_string(),
+            memory_url: "http://localhost:7008".to_string(),
+            ..Default::default()
+        };
 
         let cfg = ProxyConfig::from_config(&core);
 
@@ -281,8 +283,10 @@ mod tests {
     fn test_proxy_config_env_overrides_config() {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("ORCHESTRATOR_URL", "http://from-env:9999");
-        let mut core = agentd_common::config::CoreConfig::default();
-        core.orchestrator_url = "http://from-config:7006".to_string();
+        let core = agentd_common::config::CoreConfig {
+            orchestrator_url: "http://from-config:7006".to_string(),
+            ..Default::default()
+        };
 
         let cfg = ProxyConfig::from_config(&core);
         std::env::remove_var("ORCHESTRATOR_URL");
