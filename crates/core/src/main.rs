@@ -142,7 +142,15 @@ async fn run_serve() -> Result<()> {
 
     let state = agentd_core::api::AppState { storage };
 
-    let app = agentd_core::api::create_router(state)
+    // Build the gateway's upstream map from the shared `[services.core]`
+    // config (with bare `*_URL` env vars still overriding for compatibility).
+    let shared = agentd_common::config::load().unwrap_or_else(|e| {
+        tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
+        agentd_common::config::AgentdConfig::default()
+    });
+    let proxy = agentd_core::proxy::ProxyConfig::from_config(&shared.services.core);
+
+    let app = agentd_core::api::create_router_with_proxy(state, proxy)
         .merge(metrics_router)
         .layer(agentd_common::server::metrics_layer())
         .layer(agentd_common::server::trace_layer())

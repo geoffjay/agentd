@@ -354,16 +354,54 @@ impl Default for CommunicateConfig {
 }
 
 /// Configuration for the `agentd-core` service (port 17000).
+///
+/// The core service is also the API gateway: it reverse-proxies
+/// `/api/v1/<service>/*` to the upstream services listed below. Each
+/// `*_url` is the base URL the gateway forwards to. Set these when the
+/// upstream services do not listen on their default `127.0.0.1:17xxx`
+/// addresses.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct CoreConfig {
     /// HTTP listen port. Defaults to `17000`.
     pub port: u16,
+    /// Upstream URL for the orchestrator service. Defaults to `"http://localhost:17006"`.
+    pub orchestrator_url: String,
+    /// Upstream URL for the notify service. Defaults to `"http://localhost:17004"`.
+    pub notify_url: String,
+    /// Upstream URL for the ask service. Defaults to `"http://localhost:17001"`.
+    pub ask_url: String,
+    /// Upstream URL for the wrap service. Defaults to `"http://localhost:17005"`.
+    pub wrap_url: String,
+    /// Upstream URL for the hook service. Defaults to `"http://localhost:17002"`.
+    pub hook_url: String,
+    /// Upstream URL for the monitor service. Defaults to `"http://localhost:17003"`.
+    pub monitor_url: String,
+    /// Upstream URL for the memory service. Defaults to `"http://localhost:17008"`.
+    pub memory_url: String,
+    /// Upstream URL for the communicate service. Defaults to `"http://localhost:17010"`.
+    pub communicate_url: String,
+    /// Upstream URL for the knowledge service. Defaults to `"http://localhost:17011"`.
+    pub knowledge_url: String,
+    /// Upstream URL for the index service. Defaults to `"http://localhost:17012"`.
+    pub index_url: String,
 }
 
 impl Default for CoreConfig {
     fn default() -> Self {
-        Self { port: 17000 }
+        Self {
+            port: 17000,
+            orchestrator_url: "http://localhost:17006".to_string(),
+            notify_url: "http://localhost:17004".to_string(),
+            ask_url: "http://localhost:17001".to_string(),
+            wrap_url: "http://localhost:17005".to_string(),
+            hook_url: "http://localhost:17002".to_string(),
+            monitor_url: "http://localhost:17003".to_string(),
+            memory_url: "http://localhost:17008".to_string(),
+            communicate_url: "http://localhost:17010".to_string(),
+            knowledge_url: "http://localhost:17011".to_string(),
+            index_url: "http://localhost:17012".to_string(),
+        }
     }
 }
 
@@ -671,7 +709,22 @@ impl ValidateConfig for UiConfig {
 
 impl ValidateConfig for CoreConfig {
     fn validate(&self) -> Result<()> {
-        validate_port(self.port, "core")
+        validate_port(self.port, "core")?;
+        for (name, url) in [
+            ("core.orchestrator_url", self.orchestrator_url.as_str()),
+            ("core.notify_url", self.notify_url.as_str()),
+            ("core.ask_url", self.ask_url.as_str()),
+            ("core.wrap_url", self.wrap_url.as_str()),
+            ("core.hook_url", self.hook_url.as_str()),
+            ("core.monitor_url", self.monitor_url.as_str()),
+            ("core.memory_url", self.memory_url.as_str()),
+            ("core.communicate_url", self.communicate_url.as_str()),
+            ("core.knowledge_url", self.knowledge_url.as_str()),
+            ("core.index_url", self.index_url.as_str()),
+        ] {
+            validate_url(url, name)?;
+        }
+        Ok(())
     }
 }
 
@@ -987,6 +1040,56 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     base.services.core.port,
                     file.services.core.port,
                     d.services.core.port,
+                ),
+                orchestrator_url: pick(
+                    &base.services.core.orchestrator_url,
+                    &file.services.core.orchestrator_url,
+                    &d.services.core.orchestrator_url,
+                ),
+                notify_url: pick(
+                    &base.services.core.notify_url,
+                    &file.services.core.notify_url,
+                    &d.services.core.notify_url,
+                ),
+                ask_url: pick(
+                    &base.services.core.ask_url,
+                    &file.services.core.ask_url,
+                    &d.services.core.ask_url,
+                ),
+                wrap_url: pick(
+                    &base.services.core.wrap_url,
+                    &file.services.core.wrap_url,
+                    &d.services.core.wrap_url,
+                ),
+                hook_url: pick(
+                    &base.services.core.hook_url,
+                    &file.services.core.hook_url,
+                    &d.services.core.hook_url,
+                ),
+                monitor_url: pick(
+                    &base.services.core.monitor_url,
+                    &file.services.core.monitor_url,
+                    &d.services.core.monitor_url,
+                ),
+                memory_url: pick(
+                    &base.services.core.memory_url,
+                    &file.services.core.memory_url,
+                    &d.services.core.memory_url,
+                ),
+                communicate_url: pick(
+                    &base.services.core.communicate_url,
+                    &file.services.core.communicate_url,
+                    &d.services.core.communicate_url,
+                ),
+                knowledge_url: pick(
+                    &base.services.core.knowledge_url,
+                    &file.services.core.knowledge_url,
+                    &d.services.core.knowledge_url,
+                ),
+                index_url: pick(
+                    &base.services.core.index_url,
+                    &file.services.core.index_url,
+                    &d.services.core.index_url,
                 ),
             },
             mcp: McpConfig {
@@ -1515,6 +1618,36 @@ history_size = 1000
         assert_eq!(cfg.services.core.port, 19000);
         // Other ports untouched
         assert_eq!(cfg.services.ask.port, 17001);
+    }
+
+    // ── core upstream URLs ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_default_core_upstream_urls() {
+        let cfg = AgentdConfig::default();
+        assert_eq!(cfg.services.core.orchestrator_url, "http://localhost:17006");
+        assert_eq!(cfg.services.core.memory_url, "http://localhost:17008");
+        assert_eq!(cfg.services.core.knowledge_url, "http://localhost:17011");
+    }
+
+    #[test]
+    fn test_core_upstream_urls_from_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::remove_var("AGENTD_CORE_SERVICE_URL");
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            "[services.core]\nport = 7000\norchestrator_url = \"http://localhost:7006\"\nmemory_url = \"http://localhost:7008\""
+        )
+        .unwrap();
+
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+
+        assert_eq!(cfg.services.core.port, 7000);
+        assert_eq!(cfg.services.core.orchestrator_url, "http://localhost:7006");
+        assert_eq!(cfg.services.core.memory_url, "http://localhost:7008");
+        // Unspecified upstreams stay at their defaults.
+        assert_eq!(cfg.services.core.notify_url, "http://localhost:17004");
     }
 
     // ── apps.cli.core_url ──────────────────────────────────────────────────

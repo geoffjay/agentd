@@ -1,8 +1,8 @@
 //! HTTP reverse proxy for the core service API gateway.
 //!
-//! [`ProxyConfig`] maps service names to their base URLs (resolved from
-//! environment variables). [`proxy_request`] forwards an incoming Axum request
-//! to a downstream service, injecting `X-Tenant-ID` and `X-Request-ID` headers.
+//! [`ProxyConfig`] maps service names to their upstream base URLs.
+//! [`proxy_request`] forwards an incoming Axum request to a downstream service,
+//! injecting `X-Tenant-ID` and `X-Request-ID` headers.
 //!
 //! # Streaming
 //!
@@ -11,19 +11,23 @@
 //!
 //! # Configuration
 //!
-//! Each service URL is read from an environment variable:
+//! Each upstream URL is taken from the shared `[services.core]` config section
+//! (see [`agentd_common::config::CoreConfig`]) via [`ProxyConfig::from_config`].
+//! For backward compatibility, a matching bare environment variable still
+//! overrides the configured value when set:
 //!
-//! | Service       | Env var                        | Default                    |
-//! |---------------|--------------------------------|----------------------------|
-//! | orchestrator  | `ORCHESTRATOR_URL`             | `http://localhost:17006`   |
-//! | notify        | `NOTIFY_URL`                   | `http://localhost:17004`   |
-//! | ask           | `ASK_URL`                      | `http://localhost:17001`   |
-//! | wrap          | `WRAP_URL`                     | `http://localhost:17005`   |
-//! | hook          | `HOOK_URL`                     | `http://localhost:17002`   |
-//! | monitor       | `MONITOR_URL`                  | `http://localhost:17003`   |
-//! | memory        | `MEMORY_URL`                   | `http://localhost:17008`   |
-//! | communicate   | `COMMUNICATE_URL`              | `http://localhost:17010`   |
-//! | index         | `INDEX_URL`                    | `http://localhost:17012`   |
+//! | Service       | Config key (`[services.core]`) | Env override        | Default                    |
+//! |---------------|--------------------------------|---------------------|----------------------------|
+//! | orchestrator  | `orchestrator_url`             | `ORCHESTRATOR_URL`  | `http://localhost:17006`   |
+//! | notify        | `notify_url`                   | `NOTIFY_URL`        | `http://localhost:17004`   |
+//! | ask           | `ask_url`                      | `ASK_URL`           | `http://localhost:17001`   |
+//! | wrap          | `wrap_url`                     | `WRAP_URL`          | `http://localhost:17005`   |
+//! | hook          | `hook_url`                     | `HOOK_URL`          | `http://localhost:17002`   |
+//! | monitor       | `monitor_url`                  | `MONITOR_URL`       | `http://localhost:17003`   |
+//! | memory        | `memory_url`                   | `MEMORY_URL`        | `http://localhost:17008`   |
+//! | communicate   | `communicate_url`              | `COMMUNICATE_URL`   | `http://localhost:17010`   |
+//! | index         | `index_url`                    | `INDEX_URL`         | `http://localhost:17012`   |
+//! | knowledge     | `knowledge_url`                | `KNOWLEDGE_URL`     | `http://localhost:17011`   |
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -42,23 +46,29 @@ pub struct ProxyConfig {
 }
 
 impl ProxyConfig {
-    /// Build a [`ProxyConfig`] from environment variables, using sensible defaults.
-    pub fn from_env() -> Self {
+    /// Build a [`ProxyConfig`] from the shared `[services.core]` configuration.
+    ///
+    /// Each upstream URL is taken from the corresponding `core.*_url` config
+    /// value (which itself layers config-file values over compiled defaults).
+    /// For backward compatibility, a matching bare `*_URL` environment variable
+    /// — `ORCHESTRATOR_URL`, `NOTIFY_URL`, etc. — still overrides the config
+    /// value when set.
+    pub fn from_config(core: &agentd_common::config::CoreConfig) -> Self {
         let services = [
-            ("orchestrator", "ORCHESTRATOR_URL", "http://localhost:17006"),
-            ("notify", "NOTIFY_URL", "http://localhost:17004"),
-            ("ask", "ASK_URL", "http://localhost:17001"),
-            ("wrap", "WRAP_URL", "http://localhost:17005"),
-            ("hook", "HOOK_URL", "http://localhost:17002"),
-            ("monitor", "MONITOR_URL", "http://localhost:17003"),
-            ("memory", "MEMORY_URL", "http://localhost:17008"),
-            ("communicate", "COMMUNICATE_URL", "http://localhost:17010"),
-            ("index", "INDEX_URL", "http://localhost:17012"),
-            ("knowledge", "KNOWLEDGE_URL", "http://localhost:17011"),
+            ("orchestrator", "ORCHESTRATOR_URL", core.orchestrator_url.as_str()),
+            ("notify", "NOTIFY_URL", core.notify_url.as_str()),
+            ("ask", "ASK_URL", core.ask_url.as_str()),
+            ("wrap", "WRAP_URL", core.wrap_url.as_str()),
+            ("hook", "HOOK_URL", core.hook_url.as_str()),
+            ("monitor", "MONITOR_URL", core.monitor_url.as_str()),
+            ("memory", "MEMORY_URL", core.memory_url.as_str()),
+            ("communicate", "COMMUNICATE_URL", core.communicate_url.as_str()),
+            ("index", "INDEX_URL", core.index_url.as_str()),
+            ("knowledge", "KNOWLEDGE_URL", core.knowledge_url.as_str()),
         ]
         .into_iter()
-        .map(|(name, env, default)| {
-            let url = std::env::var(env).unwrap_or_else(|_| default.to_string());
+        .map(|(name, env, configured)| {
+            let url = std::env::var(env).unwrap_or_else(|_| configured.to_string());
             (name, url)
         })
         .collect();
@@ -74,6 +84,16 @@ impl ProxyConfig {
             .expect("failed to build proxy HTTP client");
 
         Self { services, client }
+    }
+
+    /// Build a [`ProxyConfig`] from compiled defaults overlaid with bare
+    /// `*_URL` environment variables.
+    ///
+    /// Equivalent to [`from_config`](Self::from_config) with the default
+    /// [`agentd_common::config::CoreConfig`]; used in tests and when no shared
+    /// config is available.
+    pub fn from_env() -> Self {
+        Self::from_config(&agentd_common::config::CoreConfig::default())
     }
 
     /// Look up the base URL for a service name.
@@ -200,6 +220,11 @@ pub async fn proxy_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Serialises tests that mutate the process-global `ORCHESTRATOR_URL` env
+    /// var so they don't race when the harness runs them concurrently.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_proxy_config_defaults() {
@@ -228,9 +253,40 @@ mod tests {
 
     #[test]
     fn test_proxy_config_env_override() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("ORCHESTRATOR_URL", "http://custom-host:9999");
         let cfg = ProxyConfig::from_env();
         assert_eq!(cfg.url_for("orchestrator"), Some("http://custom-host:9999"));
         std::env::remove_var("ORCHESTRATOR_URL");
+    }
+
+    #[test]
+    fn test_proxy_config_from_config() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Guard against an ambient ORCHESTRATOR_URL leaking from another test.
+        std::env::remove_var("ORCHESTRATOR_URL");
+        let mut core = agentd_common::config::CoreConfig::default();
+        core.orchestrator_url = "http://localhost:7006".to_string();
+        core.memory_url = "http://localhost:7008".to_string();
+
+        let cfg = ProxyConfig::from_config(&core);
+
+        assert_eq!(cfg.url_for("orchestrator"), Some("http://localhost:7006"));
+        assert_eq!(cfg.url_for("memory"), Some("http://localhost:7008"));
+        // Untouched services keep the configured defaults.
+        assert_eq!(cfg.url_for("notify"), Some("http://localhost:17004"));
+    }
+
+    #[test]
+    fn test_proxy_config_env_overrides_config() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("ORCHESTRATOR_URL", "http://from-env:9999");
+        let mut core = agentd_common::config::CoreConfig::default();
+        core.orchestrator_url = "http://from-config:7006".to_string();
+
+        let cfg = ProxyConfig::from_config(&core);
+        std::env::remove_var("ORCHESTRATOR_URL");
+
+        assert_eq!(cfg.url_for("orchestrator"), Some("http://from-env:9999"));
     }
 }

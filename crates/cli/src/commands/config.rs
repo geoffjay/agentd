@@ -309,7 +309,7 @@ collection_interval_secs = 15
 port = 17010
 
 # ---------------------------------------------------------------------------
-# [services.core] — agentd core API service (port 17000)
+# [services.core] — agentd core API service / gateway (port 17000)
 # ---------------------------------------------------------------------------
 
 [services.core]
@@ -317,6 +317,21 @@ port = 17010
 # HTTP listen port
 # Environment variable: AGENTD_CORE_PORT
 port = 17000
+
+# Upstream URLs the gateway reverse-proxies to. Set these when the upstream
+# services do not listen on their default 127.0.0.1:17xxx addresses (e.g. when
+# you run the whole stack on a different port range). A matching bare env var
+# (ORCHESTRATOR_URL, NOTIFY_URL, ...) still overrides the value here when set.
+orchestrator_url = "http://localhost:17006"
+notify_url       = "http://localhost:17004"
+ask_url          = "http://localhost:17001"
+wrap_url         = "http://localhost:17005"
+hook_url         = "http://localhost:17002"
+monitor_url      = "http://localhost:17003"
+memory_url       = "http://localhost:17008"
+communicate_url  = "http://localhost:17010"
+knowledge_url    = "http://localhost:17011"
+index_url        = "http://localhost:17012"
 
 # ---------------------------------------------------------------------------
 # [services.mcp] — MCP server (no dedicated port — uses stdio transport)
