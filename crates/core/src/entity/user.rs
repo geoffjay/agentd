@@ -17,6 +17,9 @@ pub struct Model {
     pub username: Option<String>,
     #[sea_orm(unique)]
     pub email: String,
+    /// argon2id PHC hash for `'local'` users. For `'pam'` users this holds a
+    /// non-parseable sentinel (`"!"`) so [`crate::user_storage::UserStorage::verify_password`]
+    /// fails closed if ever called on them.
     pub password_hash: String,
     pub display_name: Option<String>,
     /// Role string — `"admin"` or `"user"`.
@@ -24,6 +27,13 @@ pub struct Model {
     /// Product-level superuser flag — grants access to the product admin area
     /// (`/admin`). Orthogonal to `role` and to organization membership roles.
     pub is_superuser: bool,
+    /// Authentication backend for this user: `"local"` (argon2 password, the
+    /// default) or `"pam"` (host PAM stack, verified against `system_username`).
+    pub auth_provider: String,
+    /// For `'pam'` users, the immutable OS account name authenticated against
+    /// (kept distinct from the editable app `username`). `None` for `'local'`.
+    #[sea_orm(unique)]
+    pub system_username: Option<String>,
     /// The organization the user is currently operating as (nullable).
     pub active_organization_id: Option<String>,
     pub created_at: String,
@@ -96,6 +106,8 @@ mod tests {
             display_name: Set(Some("Alice".to_string())),
             role: Set("user".to_string()),
             is_superuser: Set(false),
+            auth_provider: Set("local".to_string()),
+            system_username: Set(None),
             active_organization_id: Set(None),
             created_at: Set(now.clone()),
             updated_at: Set(now),

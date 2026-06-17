@@ -36,6 +36,18 @@ rand = "0.8"
 reqwest = { workspace = true, features = ["json", "stream"] }
 clap = { workspace = true }
 
+# PAM (system-user) authentication backend. Off by default; enabling it links
+# system libpam (`libpam0g-dev` on Debian/Ubuntu, `pam-devel` on RHEL). Gated to
+# Linux: `pam-client2`'s FFI assumes Linux-PAM's `const` message pointers and
+# does not build against macOS PAM. macOS dev and CI build without the feature;
+# even `--features pam` on macOS falls back to the fail-closed stub.
+[target.'cfg(target_os = "linux")'.dependencies]
+pam-client2 = { version = "0.5", optional = true }
+
+[features]
+# Enable PAM-based login (`auth_provider = 'pam'`).
+pam = ["dep:pam-client2"]
+
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

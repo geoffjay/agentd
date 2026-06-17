@@ -73,7 +73,7 @@ async fn start_notify(tmp: &tempfile::TempDir) -> SocketAddr {
 async fn start_core(notify_addr: SocketAddr) -> (SocketAddr, tempfile::TempDir) {
     let (conn, tmp) = create_test_connection().await;
     let storage = Storage::new(conn).await.unwrap();
-    let state = AppState { storage };
+    let state = AppState::new(storage);
 
     let mut services: HashMap<&'static str, String> = HashMap::new();
     services.insert("notify", format!("http://{notify_addr}"));

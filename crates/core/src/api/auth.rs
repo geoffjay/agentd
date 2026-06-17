@@ -27,6 +27,7 @@ use agentd_common::error::ApiError;
 use crate::{
     entity::{organization, user},
     middleware::auth::AuthUser,
+    pam_auth::PamError,
     session_storage::SessionStorage,
     user_storage::UserStorage,
 };
@@ -72,6 +73,8 @@ pub struct UserResponse {
     pub role: String,
     /// Product-level superuser flag — grants access to the `/admin` area.
     pub is_superuser: bool,
+    /// Authentication backend: `"local"` (password) or `"pam"` (system user).
+    pub auth_provider: String,
     pub active_organization_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -86,6 +89,7 @@ impl From<user::Model> for UserResponse {
             display_name: u.display_name,
             role: u.role,
             is_superuser: u.is_superuser,
+            auth_provider: u.auth_provider,
             active_organization_id: u.active_organization_id,
             created_at: u.created_at,
             updated_at: u.updated_at,
@@ -246,51 +250,181 @@ async fn register_handler(
 
 /// `POST /auth/login`
 ///
-/// Accepts `{ username, password }` or `{ email, password }`. Verifies the
-/// password against the stored argon2 hash. Cleans up expired sessions for
-/// the user, then issues a fresh session token.
+/// Accepts `{ username, password }` or `{ email, password }`. The credential
+/// check depends on the resolved user's `auth_provider`:
 ///
+/// - `'local'` — verify against the stored argon2 hash (the default).
+/// - `'pam'` — verify against the host PAM stack for `system_username`.
+///
+/// When PAM is enabled and a login arrives by **username** for an account that
+/// has no app-user row yet, the username is treated as a system account: if PAM
+/// authenticates it, the app user is just-in-time provisioned (mirroring
+/// registration) and login proceeds.
+///
+/// On success, cleans up expired sessions and issues a fresh session token.
 /// Returns `200 OK` with `{ token, user, active_organization }`.
 async fn login_handler(
     State(state): State<AppState>,
     Json(body): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let users = state.storage.users();
-    let sessions = state.storage.sessions();
 
-    // Resolve user by username or email
-    let user = match (body.username.as_deref(), body.email.as_deref()) {
-        (Some(u), _) => users
-            .get_by_username(u)
-            .await
-            .map_err(ApiError::Internal)?
-            .ok_or_else(|| ApiError::Unauthorized("invalid credentials".into()))?,
-        (_, Some(e)) => users
-            .get_by_email(e)
-            .await
-            .map_err(ApiError::Internal)?
-            .ok_or_else(|| ApiError::Unauthorized("invalid credentials".into()))?,
+    // Resolve the identifier; remember whether it was a username (the JIT path
+    // uses the username as the system account name).
+    let (by_username, identifier) = match (body.username.as_deref(), body.email.as_deref()) {
+        (Some(u), _) => (true, u),
+        (_, Some(e)) => (false, e),
         _ => {
             return Err(ApiError::InvalidInput("one of `username` or `email` is required".into()));
         }
     };
 
-    // Verify password
-    let ok = UserStorage::verify_password(&body.password, &user.password_hash)
-        .map_err(ApiError::Internal)?;
-    if !ok {
-        return Err(ApiError::Unauthorized("invalid credentials".into()));
+    // Look up the existing user without failing yet — a missing row may be a
+    // first-time PAM login to be provisioned below.
+    let existing = if by_username {
+        users.get_by_username(identifier).await.map_err(ApiError::Internal)?
+    } else {
+        users.get_by_email(identifier).await.map_err(ApiError::Internal)?
+    };
+
+    let user = match existing {
+        Some(u) => match u.auth_provider.as_str() {
+            "pam" => {
+                let system_username = u.system_username.as_deref().ok_or_else(|| {
+                    ApiError::Internal(anyhow::anyhow!(
+                        "pam user {} is missing system_username",
+                        u.id
+                    ))
+                })?;
+                authenticate_pam(&state, system_username, &body.password).await?;
+                u
+            }
+            // "local" and any unknown provider fall back to password auth.
+            _ => {
+                let ok = UserStorage::verify_password(&body.password, &u.password_hash)
+                    .map_err(ApiError::Internal)?;
+                if !ok {
+                    return Err(ApiError::Unauthorized("invalid credentials".into()));
+                }
+                u
+            }
+        },
+        None => {
+            // No app-user row. The only way this becomes a successful login is a
+            // first-time PAM-by-username. Keep the error uniform with a bad
+            // password to avoid username enumeration.
+            if !state.pam_config.enabled || !by_username {
+                return Err(ApiError::Unauthorized("invalid credentials".into()));
+            }
+            authenticate_pam(&state, identifier, &body.password).await?;
+            provision_pam_user(&state, identifier).await?
+        }
+    };
+
+    issue_session(&state, user).await
+}
+
+/// Verify a system user's password against the configured PAM stack, mapping
+/// the outcome to an [`ApiError`]. Runs the blocking PAM FFI on a blocking
+/// thread so the async runtime is not stalled.
+async fn authenticate_pam(
+    state: &AppState,
+    system_username: &str,
+    password: &str,
+) -> Result<(), ApiError> {
+    let verifier = state.pam_verifier.clone();
+    let username = system_username.to_string();
+    let password = password.to_string();
+
+    let result =
+        tokio::task::spawn_blocking(move || verifier.verify(&username, &password)).await.map_err(
+            |e| ApiError::Internal(anyhow::anyhow!("pam verification task failed: {e}")),
+        )?;
+
+    match result {
+        Ok(()) => Ok(()),
+        // Credential / account-state rejections look identical to a bad password.
+        Err(PamError::AuthFailed) | Err(PamError::AccountInvalid) => {
+            Err(ApiError::Unauthorized("invalid credentials".into()))
+        }
+        // An unreachable/misconfigured stack is an operational fault, not a
+        // credential rejection — surface it as 500 and log it.
+        Err(PamError::Unavailable(e)) => {
+            tracing::error!("PAM stack unavailable during login for {system_username}: {e:#}");
+            Err(ApiError::Internal(e))
+        }
+    }
+}
+
+/// Just-in-time provisioning for a first-time PAM login. Mirrors
+/// [`register_handler`]: creates the user, a default personal organization, an
+/// owner membership, and sets the org active. Reuses existing storage helpers.
+///
+/// Concurrency: two simultaneous first-logins can both pass the existence
+/// check. The unique constraints on `system_username` / `email` make the loser
+/// fail; we then re-fetch and treat the row as already provisioned.
+async fn provision_pam_user(
+    state: &AppState,
+    system_username: &str,
+) -> Result<user::Model, ApiError> {
+    let users = state.storage.users();
+
+    // Race guard: someone may have just provisioned this account.
+    if let Some(existing) =
+        users.get_by_system_username(system_username).await.map_err(ApiError::Internal)?
+    {
+        return Ok(existing);
     }
 
-    // Clean up expired sessions for this user
+    let email = format!("{}@{}", system_username, state.pam_config.email_domain);
+
+    let user = match users.create_pam(system_username, &email).await {
+        Ok(u) => u,
+        // Lost a provisioning race (or a colliding email/username) — adopt the
+        // existing row rather than failing the login.
+        Err(_) => users
+            .get_by_system_username(system_username)
+            .await
+            .map_err(ApiError::Internal)?
+            .ok_or_else(|| {
+                ApiError::Internal(anyhow::anyhow!(
+                    "failed to provision pam user {system_username}"
+                ))
+            })?,
+    };
+
+    // If we adopted an already-provisioned row, it already has an org.
+    if user.active_organization_id.is_some() {
+        return Ok(user);
+    }
+
+    let orgs = state.storage.organizations();
+    let memberships = state.storage.memberships();
+
+    let org_name = format!("{system_username}'s workspace");
+    let org_slug = slugify(&format!("{system_username}-workspace"));
+    let org = orgs.create(&org_name, &org_slug).await.map_err(ApiError::Internal)?;
+    memberships.add_member(&user.id, &org.id, "owner").await.map_err(ApiError::Internal)?;
+
+    let user =
+        users.set_active_organization(&user.id, Some(&org.id)).await.map_err(ApiError::Internal)?;
+    Ok(user)
+}
+
+/// Shared post-authentication tail: clean up expired sessions, mint a new token,
+/// and build the `LoginResponse`. Used by every login path (local, PAM, JIT).
+async fn issue_session(
+    state: &AppState,
+    user: user::Model,
+) -> Result<Json<LoginResponse>, ApiError> {
+    let sessions = state.storage.sessions();
     sessions.delete_expired_for_user(&user.id).await.map_err(ApiError::Internal)?;
 
-    // Issue a new session token
     let token = SessionStorage::generate_token();
     let expires_at = session_expires_at();
     sessions.create(&user.id, &token, &expires_at).await.map_err(ApiError::Internal)?;
 
-    let active_org = fetch_active_org(&state, user.active_organization_id.as_deref()).await?;
+    let active_org = fetch_active_org(state, user.active_organization_id.as_deref()).await?;
 
     Ok(Json(LoginResponse {
         token,
@@ -358,10 +492,13 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
+    use crate::pam_auth::{PamConfig, PamError, PasswordVerifier};
+    use std::sync::Arc;
+
     async fn test_app() -> (Router, tempfile::TempDir) {
         let (conn, tmp) = create_test_connection().await;
         let storage = crate::storage::Storage::new(conn).await.unwrap();
-        let state = AppState { storage };
+        let state = AppState::new(storage);
         let app = crate::api::create_router(state);
         (app, tmp)
     }
@@ -369,6 +506,130 @@ mod tests {
     async fn body_json(response: axum::response::Response) -> serde_json::Value {
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         serde_json::from_slice(&bytes).unwrap()
+    }
+
+    /// Scripted verifier standing in for a real PAM stack in tests.
+    struct MockPamVerifier {
+        result: fn() -> Result<(), PamError>,
+    }
+    impl PasswordVerifier for MockPamVerifier {
+        fn verify(&self, _username: &str, _password: &str) -> Result<(), PamError> {
+            (self.result)()
+        }
+    }
+
+    /// Build a PAM-enabled app whose verifier returns `result()`.
+    async fn pam_app(result: fn() -> Result<(), PamError>) -> (Router, tempfile::TempDir) {
+        let (conn, tmp) = create_test_connection().await;
+        let storage = crate::storage::Storage::new(conn).await.unwrap();
+        let mut state = AppState::new(storage);
+        state.pam_config = PamConfig { enabled: true, ..PamConfig::disabled() };
+        state.pam_verifier = Arc::new(MockPamVerifier { result });
+        (crate::api::create_router(state), tmp)
+    }
+
+    async fn login(app: &Router, payload: serde_json::Value) -> axum::response::Response {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/login")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    }
+
+    // -----------------------------------------------------------------------
+    // PAM login + JIT provisioning
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_pam_login_jit_provisions_user_and_org() {
+        let (app, _tmp) = pam_app(|| Ok(())).await;
+
+        let response =
+            login(&app, serde_json::json!({ "username": "deploy", "password": "syspass" })).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_json(response).await;
+        assert!(body["token"].as_str().is_some());
+        assert_eq!(body["user"]["username"], "deploy");
+        assert_eq!(body["user"]["auth_provider"], "pam");
+        // JIT creates a personal org and sets it active.
+        assert!(body["active_organization"]["name"].as_str().is_some());
+        assert!(body["user"]["active_organization_id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_pam_login_is_idempotent_on_second_login() {
+        let (app, _tmp) = pam_app(|| Ok(())).await;
+
+        let first =
+            login(&app, serde_json::json!({ "username": "deploy", "password": "syspass" })).await;
+        let first_id = body_json(first).await["user"]["id"].as_str().unwrap().to_string();
+
+        let second =
+            login(&app, serde_json::json!({ "username": "deploy", "password": "syspass" })).await;
+        assert_eq!(second.status(), StatusCode::OK);
+        let second_id = body_json(second).await["user"]["id"].as_str().unwrap().to_string();
+
+        // No duplicate user is provisioned on the second login.
+        assert_eq!(first_id, second_id);
+    }
+
+    #[tokio::test]
+    async fn test_pam_login_rejected_returns_401() {
+        let (app, _tmp) = pam_app(|| Err(PamError::AuthFailed)).await;
+
+        let response =
+            login(&app, serde_json::json!({ "username": "deploy", "password": "wrong" })).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_pam_stack_unavailable_returns_500() {
+        let (app, _tmp) = pam_app(|| Err(PamError::Unavailable(anyhow::anyhow!("no pam")))).await;
+
+        let response =
+            login(&app, serde_json::json!({ "username": "deploy", "password": "syspass" })).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_pam_disabled_does_not_provision() {
+        // PAM compiled/available but operationally disabled → unknown user 401.
+        let (app, _tmp) = test_app().await;
+        let response =
+            login(&app, serde_json::json!({ "username": "deploy", "password": "syspass" })).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_pam_login_by_email_does_not_provision() {
+        // JIT only triggers by username (the system account name), never email.
+        let (app, _tmp) = pam_app(|| Ok(())).await;
+        let response =
+            login(&app, serde_json::json!({ "email": "deploy@pam.local", "password": "x" })).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_local_user_unaffected_when_pam_enabled() {
+        // A registered local user still authenticates by password even when PAM
+        // is enabled (the escape hatch stays intact).
+        let (app, _tmp) = pam_app(|| Err(PamError::AuthFailed)).await;
+        register_user(&app, "alice", "alice@example.com", "secret123").await;
+
+        let ok =
+            login(&app, serde_json::json!({ "username": "alice", "password": "secret123" })).await;
+        assert_eq!(ok.status(), StatusCode::OK);
+        assert_eq!(body_json(ok).await["user"]["auth_provider"], "local");
+
+        let bad = login(&app, serde_json::json!({ "username": "alice", "password": "nope" })).await;
+        assert_eq!(bad.status(), StatusCode::UNAUTHORIZED);
     }
 
     // -----------------------------------------------------------------------

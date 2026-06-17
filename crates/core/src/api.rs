@@ -31,15 +31,46 @@ pub mod gateway;
 pub mod organizations;
 pub mod users;
 
+use std::sync::Arc;
+
 use axum::{routing::get, Json, Router};
 use serde_json::{json, Value};
 
-use crate::{proxy::ProxyConfig, storage::Storage};
+use crate::{
+    pam_auth::{PamConfig, PasswordVerifier, UnavailableVerifier},
+    proxy::ProxyConfig,
+    storage::Storage,
+};
 
 /// Shared application state threaded through all route handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub storage: Storage,
+    /// PAM settings (disabled by default).
+    pub pam_config: PamConfig,
+    /// Verifier used for `auth_provider = 'pam'` logins. Injectable so tests can
+    /// substitute a mock without a real PAM stack.
+    pub pam_verifier: Arc<dyn PasswordVerifier>,
+}
+
+impl AppState {
+    /// State with PAM disabled and a fail-closed verifier — the default for
+    /// tests and non-PAM deployments.
+    pub fn new(storage: Storage) -> Self {
+        Self {
+            storage,
+            pam_config: PamConfig::disabled(),
+            pam_verifier: Arc::new(UnavailableVerifier),
+        }
+    }
+
+    /// State with PAM configured from `AGENTD_PAM_*` environment variables and a
+    /// verifier matching the build (real libpam under `--features pam`).
+    pub fn with_pam_from_env(storage: Storage) -> Self {
+        let pam_config = PamConfig::from_env();
+        let pam_verifier = pam_config.build_verifier();
+        Self { storage, pam_config, pam_verifier }
+    }
 }
 
 /// Build the application router without a proxy (for testing or when proxy is disabled).
@@ -82,7 +113,7 @@ mod tests {
     async fn test_app() -> Router {
         let (conn, _tmp) = create_test_connection().await;
         let storage = Storage::new(conn).await.unwrap();
-        create_router(AppState { storage })
+        create_router(AppState::new(storage))
     }
 
     #[tokio::test]

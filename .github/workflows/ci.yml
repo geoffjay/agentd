@@ -190,6 +190,33 @@ jobs:
       - name: Run Docker integration tests (orchestrator)
         run: cargo test -p orchestrator -- --ignored --test-threads=1
 
+  pam-feature:
+    name: PAM feature build (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install protoc and libpam
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libpam0g-dev
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: pam-feature
+
+      # The `pam` feature links system libpam; only meaningful on Linux. Build +
+      # clippy keep the feature-gated code compiling. The PAM verifier itself
+      # needs a live PAM stack and is exercised manually (see docs/pam-authentication.md).
+      - name: Build agentd-core with PAM
+        run: cargo build -p agentd-core --features pam
+
+      - name: Clippy agentd-core with PAM
+        run: cargo clippy -p agentd-core --features pam -- -D warnings
+
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
