@@ -1,5 +1,11 @@
 /**
- * Client for the Knowledge service (default port 17011).
+ * Client for the Knowledge service.
+ *
+ * Requests are routed through the core service's API gateway
+ * (`/api/v1/knowledge/*`) rather than hitting the knowledge service directly:
+ * the browser only ever talks to core, which proxies to the knowledge service
+ * server-side and injects the tenant context. The method paths below are the
+ * knowledge service's own routes; the gateway prefix lives in the base URL.
  *
  * Provides strongly-typed methods for all document operations including
  * creating, listing, updating, deleting, and retrieving the virtual tree.
@@ -14,7 +20,7 @@ import type {
 	TreeNode,
 	UpdateDocumentRequest,
 } from "@/types/knowledge";
-import { ApiClient } from "./base";
+import { ApiClient, withAuth } from "./base";
 import { serviceConfig } from "./config";
 
 export class KnowledgeClient extends ApiClient {
@@ -101,7 +107,11 @@ export class KnowledgeClient extends ApiClient {
 	}
 }
 
-/** Singleton client instance using the configured service URL. */
-export const knowledgeClient = new KnowledgeClient({
-	baseUrl: serviceConfig.knowledgeServiceUrl,
-});
+/**
+ * Singleton client routed through the core API gateway. Core proxies
+ * `/api/v1/knowledge/*` to the knowledge service and injects `X-Tenant-ID`,
+ * so the bearer token is attached via `withAuth`.
+ */
+export const knowledgeClient = new KnowledgeClient(
+	withAuth({ baseUrl: `${serviceConfig.coreServiceUrl}/api/v1/knowledge` }),
+);

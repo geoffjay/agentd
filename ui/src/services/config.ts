@@ -39,10 +39,8 @@ export const serviceConfig = {
 		runtimeServiceUrl("communicate") ??
 		import.meta.env.VITE_AGENTD_COMMUNICATE_SERVICE_URL ??
 		"http://localhost:17010",
-	knowledgeServiceUrl:
-		runtimeServiceUrl("knowledge") ??
-		import.meta.env.VITE_AGENTD_KNOWLEDGE_SERVICE_URL ??
-		"http://localhost:17011",
+	// Knowledge is reached through the core gateway (`/api/v1/knowledge/*`), so
+	// the browser does not need a direct knowledge URL — see services/knowledge.ts.
 } as const;
 
 export type ServiceConfig = typeof serviceConfig;
