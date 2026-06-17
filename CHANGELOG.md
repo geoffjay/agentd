@@ -3,6 +3,41 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.12] - 2026-06-17
+
+### Added
+
+- KB-1 Foundation agentd-knowledge crate scaffold
+- KB-1 foundation — crate scaffold, KnowledgeConfig, service registration
+- Register knowledge in core gateway + restore KnowledgeConfig (F1)
+- KB-2 storage and filesystem layer
+- Implement storage and filesystem layer (KB-2)
+- Add optional org-scope filtering to storage queries (F3a)
+- KB-3 REST API handlers
+- Implement REST API layer (KB-3)
+- Scope REST handlers by X-Tenant-ID via core gateway (F3b)
+- KB-4 client and CLI commands
+- KB-4 client and CLI commands
+- Route CLI/client through core gateway with bearer auth (F2)
+- KB-5 knowledgebase UI
+- KB-5 knowledgebase UI
+- KB-6 doctor reconciliation and docs
+- KB-6 doctor endpoint, CLI subcommand, env docs, E2E tests
+- KB-7 tenant scoping — NULL-row transition policy and gateway docs
+- KB-7 tenant scoping — NULL-row transition policy and gateway docs
+- Add CLI config section
+- Improve kb layout
+
+### Fixed
+
+- Address PR #1300 review feedback
+- Address KB-5 review feedback
+- Handle config correctly in core
+- Clippy warnings
+- Route knowledge client through core gateway
+- Add knowledge to Procfile, drop removed index crate
+- Resolve failure on document creation
+
 ## [0.4.11] - 2026-06-16
 
 ### Added
