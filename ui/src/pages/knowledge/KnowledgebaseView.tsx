@@ -1,6 +1,7 @@
 /**
- * KnowledgebaseView — two-panel layout: sidebar (project picker + document
- * tree) and main area (toolbar + CodeMirror editor).
+ * KnowledgebaseView — standard page header (title + project picker + actions)
+ * over a bordered two-pane workspace: document-tree sidebar and editor area
+ * (toolbar + CodeMirror editor).
  *
  * State management:
  * - selectedProjectId / selectedDocId live in URL params so deep-links work.
@@ -8,15 +9,19 @@
  * - Autosave writes back via PUT with optimistic-concurrency token.
  */
 
+import { FilePlus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { DocumentEditor } from "@/components/knowledge/DocumentEditor";
+import {
+	CreateDocumentDialog,
+	DocumentToolbar,
+} from "@/components/knowledge/DocumentToolbar";
+import { DocumentTree } from "@/components/knowledge/DocumentTree";
+import { ProjectPicker } from "@/components/knowledge/ProjectPicker";
+import { knowledgeClient } from "@/services/knowledge";
 import type { DocumentContent, TreeNode } from "@/types/knowledge";
 import type { Project } from "@/types/orchestrator";
-import { knowledgeClient } from "@/services/knowledge";
-import { DocumentEditor } from "@/components/knowledge/DocumentEditor";
-import { DocumentTree } from "@/components/knowledge/DocumentTree";
-import { DocumentToolbar, CreateDocumentDialog } from "@/components/knowledge/DocumentToolbar";
-import { ProjectPicker } from "@/components/knowledge/ProjectPicker";
 
 export function KnowledgebaseView() {
 	const { projectId } = useParams<{ projectId?: string }>();
@@ -24,6 +29,7 @@ export function KnowledgebaseView() {
 
 	const [tree, setTree] = useState<TreeNode[]>([]);
 	const [treeLoading, setTreeLoading] = useState(false);
+	const [treeRefreshing, setTreeRefreshing] = useState(false);
 	const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
 	const [docContent, setDocContent] = useState<DocumentContent | null>(null);
 	const [saving, setSaving] = useState(false);
@@ -163,66 +169,134 @@ export function KnowledgebaseView() {
 	}
 
 	// ------------------------------------------------------------------
+	// Refresh the document tree without flipping the full-page loader
+	// ------------------------------------------------------------------
+
+	const handleRefreshTree = useCallback(async () => {
+		if (!projectId) return;
+		setTreeRefreshing(true);
+		setError(null);
+		try {
+			setTree(await knowledgeClient.getTree(projectId));
+		} catch (e) {
+			setError(String(e));
+		} finally {
+			setTreeRefreshing(false);
+		}
+	}, [projectId]);
+
+	// ------------------------------------------------------------------
 	// Render
 	// ------------------------------------------------------------------
 
 	return (
-		<div className="flex h-full overflow-hidden">
-			{/* Left sidebar */}
-			<aside className="flex w-56 shrink-0 flex-col border-r border-th-border bg-th-surface">
-				{/* Project picker */}
-				<div className="border-b border-th-border p-3">
-					<ProjectPicker
-						selectedId={projectId ?? null}
-						onSelect={handleSelectProject}
-						onError={setError}
-					/>
+		<div className="space-y-6">
+			{/* Page header */}
+			<div className="flex items-start justify-between gap-4 flex-wrap">
+				<div>
+					<h1 className="text-2xl font-semibold text-th-text">Knowledgebase</h1>
+					<p className="mt-1 text-sm text-th-text-muted">
+						Browse and edit project documentation.
+					</p>
 				</div>
 
-				{/* Document tree */}
-				<div className="flex-1 overflow-y-auto p-2">
-					{treeLoading ? (
-						<p className="px-2 py-3 text-xs text-th-text-muted">Loading…</p>
-					) : (
-						<DocumentTree
-							nodes={tree}
-							selectedDocId={selectedDocId}
-							onSelectDoc={(docId) => setSelectedDocId(docId)}
+				<div className="flex items-center gap-2">
+					{/* Project context picker */}
+					<div className="w-56">
+						<ProjectPicker
+							selectedId={projectId ?? null}
+							onSelect={handleSelectProject}
+							onError={setError}
 						/>
-					)}
-				</div>
-			</aside>
-
-			{/* Main editor area */}
-			<div className="flex flex-1 flex-col overflow-hidden">
-				{/* Error banner */}
-				{error && (
-					<div className="flex items-center gap-2 border-b border-th-status-error-text bg-th-status-error-bg px-4 py-2 text-xs text-th-status-error-text">
-						<span className="flex-1">{error}</span>
-						<button
-							type="button"
-							onClick={() => setError(null)}
-							className="font-bold"
-						>
-							✕
-						</button>
 					</div>
-				)}
 
-				<DocumentToolbar
-					document={docContent?.document ?? null}
-					saving={saving}
-					projectId={projectId ?? null}
-					onCreateClick={() => setShowCreate(true)}
-					onDeleteClick={handleDelete}
-				/>
+					{/* New document */}
+					<button
+						type="button"
+						onClick={() => setShowCreate(true)}
+						disabled={!projectId}
+						className="flex items-center gap-1.5 rounded-md bg-th-accent px-4 py-2 text-sm font-medium text-th-accent-text hover:bg-th-accent-hover transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						<FilePlus size={16} aria-hidden="true" />
+						New Document
+					</button>
 
-				<div className="flex-1 overflow-hidden">
-					<DocumentEditor
-						docContent={docContent}
-						onSave={handleSave}
-						onSavingChange={setSaving}
+					{/* Refresh tree */}
+					<button
+						type="button"
+						onClick={handleRefreshTree}
+						disabled={!projectId}
+						aria-label="Refresh documents"
+						className="rounded-md border border-th-border-strong bg-th-surface p-2 text-th-text-muted hover:bg-th-surface-hover hover:text-th-text-secondary transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						<RefreshCw
+							size={16}
+							className={treeRefreshing ? "animate-spin" : ""}
+						/>
+					</button>
+				</div>
+			</div>
+
+			{/* Error banner */}
+			{error && (
+				<div
+					role="alert"
+					className="flex items-start gap-2 rounded-md border border-th-status-error-border bg-th-status-error-bg px-4 py-3 text-sm text-th-status-error-text"
+				>
+					<span className="flex-1">{error}</span>
+					<button
+						type="button"
+						onClick={() => setError(null)}
+						aria-label="Dismiss error"
+						className="shrink-0 rounded p-0.5 hover:bg-th-status-error-text/10 transition-colors"
+					>
+						<X size={14} />
+					</button>
+				</div>
+			)}
+
+			{/* Two-pane workspace */}
+			<div className="flex h-[calc(100vh-13rem)] min-h-[420px] overflow-hidden rounded-lg border border-th-border bg-th-surface">
+				{/* Left: document tree */}
+				<aside className="flex w-60 shrink-0 flex-col border-r border-th-border bg-th-surface-sunken">
+					<div className="border-b border-th-border px-4 py-2.5">
+						<h2 className="text-xs font-semibold uppercase tracking-wide text-th-text-muted">
+							Documents
+						</h2>
+					</div>
+					<div className="flex-1 overflow-y-auto p-2">
+						{!projectId ? (
+							<p className="px-2 py-3 text-xs text-th-text-muted">
+								Select a project to browse its documents.
+							</p>
+						) : treeLoading ? (
+							<p className="px-2 py-3 text-xs text-th-text-muted">Loading…</p>
+						) : (
+							<DocumentTree
+								nodes={tree}
+								selectedDocId={selectedDocId}
+								onSelectDoc={(docId) => setSelectedDocId(docId)}
+							/>
+						)}
+					</div>
+				</aside>
+
+				{/* Right: editor */}
+				<div className="flex flex-1 flex-col overflow-hidden">
+					<DocumentToolbar
+						document={docContent?.document ?? null}
+						saving={saving}
+						projectId={projectId ?? null}
+						onDeleteClick={handleDelete}
 					/>
+
+					<div className="flex-1 overflow-hidden">
+						<DocumentEditor
+							docContent={docContent}
+							onSave={handleSave}
+							onSavingChange={setSaving}
+						/>
+					</div>
 				</div>
 			</div>
 

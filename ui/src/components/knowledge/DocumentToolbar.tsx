@@ -2,7 +2,7 @@
  * DocumentToolbar — actions above the editor: create, rename, delete.
  */
 
-import { FilePlus, Save, Trash2 } from "lucide-react";
+import { Save, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { Document } from "@/types/knowledge";
 
@@ -10,7 +10,6 @@ interface DocumentToolbarProps {
 	document: Document | null;
 	saving: boolean;
 	projectId: string | null;
-	onCreateClick: () => void;
 	onDeleteClick: () => void;
 }
 
@@ -18,11 +17,10 @@ export function DocumentToolbar({
 	document,
 	saving,
 	projectId,
-	onCreateClick,
 	onDeleteClick,
 }: DocumentToolbarProps) {
 	return (
-		<div className="flex items-center gap-2 border-b border-th-border bg-th-surface px-4 py-2">
+		<div className="flex items-center gap-2 border-b border-th-border bg-th-surface-sunken px-4 py-2.5">
 			{/* Document title / path */}
 			<div className="flex-1 min-w-0">
 				{document ? (
@@ -50,23 +48,12 @@ export function DocumentToolbar({
 			)}
 
 			{/* Actions */}
-			{projectId && (
-				<button
-					type="button"
-					onClick={onCreateClick}
-					title="New document"
-					className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-th-text hover:bg-th-surface-secondary"
-				>
-					<FilePlus size={14} />
-					New
-				</button>
-			)}
 			{document && (
 				<button
 					type="button"
 					onClick={onDeleteClick}
 					title="Delete document"
-					className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-th-status-error-text hover:bg-th-status-error-bg"
+					className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-th-status-error-text hover:bg-th-status-error-bg transition-colors"
 				>
 					<Trash2 size={14} />
 					Delete
