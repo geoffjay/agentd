@@ -7,8 +7,8 @@
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
 use crate::tools::{
-    agents, approvals, communicate, creation, diagnostic, health, lifecycle, memory, metrics,
-    notifications, orchestrator_debug, remediation, workflows,
+    agents, approvals, communicate, creation, diagnostic, health, knowledge, lifecycle, memory,
+    metrics, notifications, orchestrator_debug, remediation, workflows,
 };
 use rmcp::{
     model::{ServerCapabilities, ServerInfo},
@@ -757,6 +757,144 @@ impl AgentdMcp {
         memory::run_get_memory(&self.client, &memory_id).await
     }
 
+    // ── Knowledge: per-project markdown documents ───────────────────────
+
+    /// List documents in a project's knowledgebase.
+    #[tool(
+        description = "List markdown documents in a project's knowledgebase. Returns a table of document IDs, paths, titles, sizes, and last-updated times. Supports a path prefix filter (e.g. `docs/`) and pagination. Use knowledge_get_tree for a hierarchical view, or knowledge_read_document to fetch a document's content."
+    )]
+    async fn knowledge_list_documents(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Project UUID that owns the documents")]
+        project_id: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Only return documents whose rel_path starts with this prefix, e.g. `docs/`"
+        )]
+        prefix: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "Maximum results (default: 50, max: 500)")]
+        limit: Option<u32>,
+        #[tool(param)]
+        #[schemars(description = "Pagination offset (default: 0)")]
+        offset: Option<u32>,
+    ) -> String {
+        knowledge::run_list_documents(&self.client, &project_id, prefix.as_deref(), limit, offset)
+            .await
+    }
+
+    /// Read a document's metadata and full markdown body.
+    #[tool(
+        description = "Read a single knowledgebase document's metadata and full markdown body by its ID. Use knowledge_list_documents or knowledge_get_tree first to discover document IDs."
+    )]
+    async fn knowledge_read_document(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Project UUID that owns the document")]
+        project_id: String,
+        #[tool(param)]
+        #[schemars(description = "Document UUID to read")]
+        doc_id: String,
+    ) -> String {
+        knowledge::run_read_document(&self.client, &project_id, &doc_id).await
+    }
+
+    /// Create a new document in a project's knowledgebase.
+    #[tool(
+        description = "Create a new markdown document in a project's knowledgebase. `rel_path` must end in `.md` and contain no `..` or absolute path segments (e.g. `docs/design/auth.md`). Title defaults to the filename stem when omitted. Returns the created document's metadata including its new ID."
+    )]
+    async fn knowledge_create_document(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Project UUID to create the document under")]
+        project_id: String,
+        #[tool(param)]
+        #[schemars(
+            description = "Relative path ending in `.md`, e.g. `docs/readme.md` (no `..`, no absolute paths)"
+        )]
+        rel_path: String,
+        #[tool(param)]
+        #[schemars(description = "Initial markdown body content")]
+        content: String,
+        #[tool(param)]
+        #[schemars(description = "Optional title override (defaults to the filename stem)")]
+        title: Option<String>,
+    ) -> String {
+        knowledge::run_create_document(
+            &self.client,
+            &project_id,
+            &rel_path,
+            &content,
+            title.as_deref(),
+        )
+        .await
+    }
+
+    /// Update a document's content and/or title.
+    #[tool(
+        description = "Update an existing knowledgebase document's content and/or title. Provide at least one of `content` or `title`. For safe concurrent edits, pass `expected_updated_at` (the RFC3339 updated_at from a prior read); the update is rejected with a conflict if the document changed since then."
+    )]
+    async fn knowledge_update_document(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Project UUID that owns the document")]
+        project_id: String,
+        #[tool(param)]
+        #[schemars(description = "Document UUID to update")]
+        doc_id: String,
+        #[tool(param)]
+        #[schemars(description = "New markdown body content (replaces the whole body)")]
+        content: Option<String>,
+        #[tool(param)]
+        #[schemars(description = "New title")]
+        title: Option<String>,
+        #[tool(param)]
+        #[schemars(
+            description = "Optimistic concurrency token: the RFC3339 updated_at from a prior read"
+        )]
+        expected_updated_at: Option<String>,
+    ) -> String {
+        knowledge::run_update_document(
+            &self.client,
+            &project_id,
+            &doc_id,
+            content.as_deref(),
+            title.as_deref(),
+            expected_updated_at.as_deref(),
+        )
+        .await
+    }
+
+    /// Delete a document from a project's knowledgebase.
+    #[tool(
+        description = "⚠️ DESTRUCTIVE — Permanently delete a knowledgebase document by ID, removing both its database row and the markdown file on disk. This cannot be undone."
+    )]
+    async fn knowledge_delete_document(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Project UUID that owns the document")]
+        project_id: String,
+        #[tool(param)]
+        #[schemars(description = "Document UUID to delete")]
+        doc_id: String,
+    ) -> String {
+        knowledge::run_delete_document(&self.client, &project_id, &doc_id).await
+    }
+
+    /// Show the virtual folder/file tree for a project's knowledgebase.
+    #[tool(
+        description = "Show the virtual folder/file tree for a project's knowledgebase, derived from document rel_paths. Useful for understanding the document layout at a glance before listing or reading."
+    )]
+    async fn knowledge_get_tree(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Project UUID whose document tree to render")]
+        project_id: String,
+    ) -> String {
+        knowledge::run_get_tree(&self.client, &project_id).await
+    }
+
     // ── Agent lifecycle management ──────────────────────────────────────
 
     /// Restart a failed or stopped agent by terminating and recreating it.
@@ -999,13 +1137,14 @@ impl ServerHandler for AgentdMcp {
         ServerInfo {
             instructions: Some(
                 "agentd MCP server — exposes agentd agent management, \
-                 messaging, memory, notification, approval, workflow, and \
-                 diagnostic services as MCP tools. \
+                 messaging, memory, knowledge, notification, approval, \
+                 workflow, and diagnostic services as MCP tools. \
                  Start with `diagnose_system` or `check_service_health` for a \
                  system overview. Use `diagnose_state_mismatches` to catch \
                  subtle agent stuckness. Provision resources with \
                  `create_agent` and `create_workflow`; smoke-test new \
-                 workflows with `trigger_workflow`."
+                 workflows with `trigger_workflow`. Browse and author \
+                 per-project documents with the `knowledge_*` tools."
                     .into(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),

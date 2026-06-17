@@ -425,6 +425,8 @@ pub struct McpConfig {
     pub monitor_url: String,
     /// Hook service URL. Defaults to `"http://localhost:17002"`.
     pub hook_url: String,
+    /// Knowledge service URL. Defaults to `"http://localhost:17011"`.
+    pub knowledge_url: String,
 }
 
 impl Default for McpConfig {
@@ -438,6 +440,7 @@ impl Default for McpConfig {
             wrap_url: "http://localhost:17005".to_string(),
             monitor_url: "http://localhost:17003".to_string(),
             hook_url: "http://localhost:17002".to_string(),
+            knowledge_url: "http://localhost:17011".to_string(),
         }
     }
 }
@@ -690,6 +693,7 @@ impl ValidateConfig for McpConfig {
             ("mcp.wrap_url", self.wrap_url.as_str()),
             ("mcp.monitor_url", self.monitor_url.as_str()),
             ("mcp.hook_url", self.hook_url.as_str()),
+            ("mcp.knowledge_url", self.knowledge_url.as_str()),
         ] {
             validate_url(url, name)?;
         }
@@ -1132,6 +1136,11 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     &base.services.mcp.hook_url,
                     &file.services.mcp.hook_url,
                     &d.services.mcp.hook_url,
+                ),
+                knowledge_url: pick(
+                    &base.services.mcp.knowledge_url,
+                    &file.services.mcp.knowledge_url,
+                    &d.services.mcp.knowledge_url,
                 ),
             },
             ui: UiConfig {

@@ -426,6 +426,7 @@ pub fn test_client(orch_addr: &str, notify_addr: &str, monitor_addr: &str) -> Ag
         wrap_url: "http://127.0.0.1:1".to_string(),
         monitor_url: monitor_addr.to_string(),
         hook_url: "http://127.0.0.1:1".to_string(),
+        knowledge_url: "http://127.0.0.1:1".to_string(),
     });
     AgentdClient::new(config)
 }

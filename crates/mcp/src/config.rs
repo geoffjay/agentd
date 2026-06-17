@@ -27,6 +27,8 @@ pub struct AgentdMcpConfig {
     pub monitor_url: String,
     /// Hook service URL (default: `http://127.0.0.1:17002`)
     pub hook_url: String,
+    /// Knowledge service URL (default: `http://127.0.0.1:17011`)
+    pub knowledge_url: String,
 }
 
 impl AgentdMcpConfig {
@@ -47,6 +49,7 @@ impl AgentdMcpConfig {
     /// | `AGENTD_WRAP_URL`               | `http://127.0.0.1:17005`   |
     /// | `AGENTD_MONITOR_URL`            | `http://127.0.0.1:17003`   |
     /// | `AGENTD_HOOK_URL`               | `http://127.0.0.1:17002`   |
+    /// | `AGENTD_KNOWLEDGE_URL`          | `http://127.0.0.1:17011`   |
     pub fn load() -> Self {
         let shared = agentd_common::config::load().unwrap_or_else(|e| {
             tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
@@ -63,6 +66,7 @@ impl AgentdMcpConfig {
             wrap_url: env::var("AGENTD_WRAP_URL").unwrap_or(base.wrap_url),
             monitor_url: env::var("AGENTD_MONITOR_URL").unwrap_or(base.monitor_url),
             hook_url: env::var("AGENTD_HOOK_URL").unwrap_or(base.hook_url),
+            knowledge_url: env::var("AGENTD_KNOWLEDGE_URL").unwrap_or(base.knowledge_url),
         }
     }
 
@@ -84,6 +88,7 @@ impl ValidateConfig for AgentdMcpConfig {
             ("mcp.wrap_url", self.wrap_url.as_str()),
             ("mcp.monitor_url", self.monitor_url.as_str()),
             ("mcp.hook_url", self.hook_url.as_str()),
+            ("mcp.knowledge_url", self.knowledge_url.as_str()),
         ];
         for (field, url) in urls {
             if !url.starts_with("http://") && !url.starts_with("https://") {
@@ -114,6 +119,7 @@ mod tests {
             "AGENTD_WRAP_URL",
             "AGENTD_MONITOR_URL",
             "AGENTD_HOOK_URL",
+            "AGENTD_KNOWLEDGE_URL",
         ];
         let saved: Vec<_> = vars.iter().map(|k| (k, env::var(k).ok())).collect();
         for k in &vars {
@@ -135,6 +141,7 @@ mod tests {
         assert_eq!(config.wrap_url, "http://localhost:17005");
         assert_eq!(config.monitor_url, "http://localhost:17003");
         assert_eq!(config.hook_url, "http://localhost:17002");
+        assert_eq!(config.knowledge_url, "http://localhost:17011");
 
         match saved_config {
             Some(val) => env::set_var("AGENTD_CONFIG", val),
@@ -169,6 +176,7 @@ mod tests {
             "AGENTD_WRAP_URL",
             "AGENTD_MONITOR_URL",
             "AGENTD_HOOK_URL",
+            "AGENTD_KNOWLEDGE_URL",
         ];
         let saved: Vec<_> = vars.iter().map(|k| (k, env::var(k).ok())).collect();
         for k in &vars {
@@ -195,6 +203,7 @@ mod tests {
             wrap_url: "http://127.0.0.1:17005".to_string(),
             monitor_url: "http://127.0.0.1:17003".to_string(),
             hook_url: "http://127.0.0.1:17002".to_string(),
+            knowledge_url: "http://127.0.0.1:17011".to_string(),
         };
         let err = config.validate().unwrap_err();
         assert!(err.to_string().contains("mcp.orchestrator_url"));

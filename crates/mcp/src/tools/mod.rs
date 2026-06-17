@@ -10,6 +10,7 @@
 //! - `creation`           — create agents and create/manage workflows
 //! - `diagnostic`         — cross-service diagnostics (system, agent, workflow)
 //! - `health`             — service health probes, system metrics, prometheus
+//! - `knowledge`          — browse, read, and author per-project markdown documents
 //! - `lifecycle`          — restart/terminate agents, send messages, update policy/model
 //! - `memory`             — search and list stored memories
 //! - `metrics`            — curated Prometheus queries via the monitor service
@@ -25,6 +26,7 @@ pub mod communicate;
 pub mod creation;
 pub mod diagnostic;
 pub mod health;
+pub mod knowledge;
 pub mod lifecycle;
 pub mod memory;
 pub mod metrics;
