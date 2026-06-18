@@ -14,28 +14,56 @@ PAM is a **pluggable, opt-in** backend:
   to the OS account via `system_username`.
 - Local password auth is unaffected and remains available even when PAM is on.
 
+The backend works on both **macOS** (OpenPAM) and **Linux** (Linux-PAM) from the
+same code. macOS is the easy path for local development; Linux production has an
+extra privilege requirement (below).
+
 > [!CAUTION]
-> Enabling PAM requires running `agentd-core` as a **system** service with
-> permission to verify system passwords (see [Privilege model](#privilege-model)).
-> This is a deployment-model change that touches systemd unit privileges — a
-> human-approval-adjacent area per `docs/planning/autonomous-pipeline-gates.md`.
-> The installer does **not** make this change automatically.
+> On **Linux**, enabling PAM requires running `agentd-core` as a **system**
+> service with permission to verify system passwords (see
+> [Privilege model (Linux)](#privilege-model-linux)). That deployment-model
+> change touches systemd unit privileges — a human-approval-adjacent area per
+> `docs/planning/autonomous-pipeline-gates.md` — so the installer does **not**
+> make it automatically. macOS dev has no such requirement.
 
 ## Build
 
-The PAM backend links system `libpam` and is gated behind a Cargo feature, off
-by default. Build core with it enabled:
+The PAM backend links the system PAM library and is gated behind a Cargo
+feature, off by default:
 
 ```bash
+# macOS:        no extra packages — links the SDK's libpam.
 # Debian/Ubuntu: sudo apt-get install -y libpam0g-dev
 # RHEL/Fedora:   sudo dnf install -y pam-devel
 cargo build -p agentd-core --features pam --release
 ```
 
+It uses raw `pam-sys` bindings plus a small hand-written conversation (no
+bindgen/libclang), and bridges the one ABI difference between OpenPAM and
+Linux-PAM (the conversation message-array layout) internally.
+
 A build **without** `--features pam` still runs, but every `pam` login fails
 closed with `500` and a startup warning is logged if `AGENTD_PAM_ENABLED=true`.
 
-## Privilege model
+## macOS (development)
+
+macOS needs no privilege setup. The system ships a ready-made `chkpasswd` PAM
+service (backed by `pam_opendirectory`) that verifies a user's password without
+root. Point agentd at it:
+
+```bash
+AGENTD_PAM_ENABLED=true AGENTD_PAM_SERVICE=chkpasswd \
+  cargo run -p agentd-core --features pam
+```
+
+Then log in with your macOS account username + password. Because the OpenPAM
+round-trip is exercised the same way on macOS and Linux, the real verifier path
+can be developed and tested entirely on a Mac — see the `pam_smoke` tests below.
+
+## Privilege model (Linux)
+
+> This section applies to Linux only. macOS verifies via `pam_opendirectory`
+> with no shadow-group or root requirement (see [macOS](#macos-development)).
 
 `pam_unix` reads `/etc/shadow`. When the calling process cannot read shadow
 directly it falls back to the SUID helper `unix_chkpwd`, which **refuses to
@@ -84,9 +112,30 @@ the comments in that file.
 | `AGENTD_PAM_SERVICE`      | `agentd`    | PAM service name → `/etc/pam.d/<service>`.          |
 | `AGENTD_PAM_EMAIL_DOMAIN` | `pam.local` | Domain for the synthesized email of a JIT-provisioned user (`<user>@<domain>`). |
 
-## Manual verification checklist
+## Manual verification
 
-These cannot run in CI (they need a live PAM stack on a Linux host):
+These need a live PAM stack, so they run outside CI.
+
+### Verifier smoke tests (`--ignored`)
+
+The `pam_smoke` integration tests drive the real verifier. The wrong-password
+case needs no credentials and runs anywhere with a PAM stack (including macOS):
+
+```bash
+cargo test -p agentd-core --features pam --test pam_smoke -- --ignored --nocapture
+# optional positive check (supply your own password out-of-band):
+AGENTD_PAM_TEST_PASSWORD='...' \
+  cargo test -p agentd-core --features pam --test pam_smoke -- --ignored --nocapture
+```
+
+### macOS end-to-end
+
+1. `AGENTD_PAM_ENABLED=true AGENTD_PAM_SERVICE=chkpasswd cargo run -p agentd-core --features pam`
+2. `curl -sX POST localhost:17000/auth/login -H 'content-type: application/json' -d '{"username":"'"$USER"'","password":"<your-mac-password>"}'`
+   → `200` + token, and a JIT-created user (`auth_provider: "pam"`) with a personal org.
+3. Wrong password → `401`. A registered `local` user still logs in (escape hatch intact).
+
+### Linux production checklist
 
 1. Install `/etc/pam.d/agentd`; run core as a **system** systemd unit; add its
    account to the `shadow` group (option 1) or enroll the host in SSSD (option 2).

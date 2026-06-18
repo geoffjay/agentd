@@ -191,13 +191,22 @@ jobs:
         run: cargo test -p orchestrator -- --ignored --test-threads=1
 
   pam-feature:
-    name: PAM feature build (Linux)
-    runs-on: ubuntu-latest
+    name: PAM feature build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install protoc and libpam
+      - name: Install protoc and libpam (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libpam0g-dev
+
+      - name: Install protoc (macOS)
+        if: runner.os == 'macOS'
+        run: brew install protobuf
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -206,16 +215,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: pam-feature
+          key: pam-feature-${{ matrix.os }}
 
-      # The `pam` feature links system libpam; only meaningful on Linux. Build +
-      # clippy keep the feature-gated code compiling. The PAM verifier itself
-      # needs a live PAM stack and is exercised manually (see docs/pam-authentication.md).
+      # The `pam` feature links the system PAM library and builds on both
+      # Linux (Linux-PAM) and macOS (OpenPAM). Build + clippy keep the
+      # feature-gated code compiling on each. The verifier's runtime behavior
+      # needs a live PAM stack and is exercised by the `--ignored` pam_smoke
+      # tests (see docs/pam-authentication.md).
       - name: Build agentd-core with PAM
         run: cargo build -p agentd-core --features pam
 
       - name: Clippy agentd-core with PAM
-        run: cargo clippy -p agentd-core --features pam -- -D warnings
+        run: cargo clippy -p agentd-core --features pam --all-targets -- -D warnings
 
   audit:
     name: Security Audit
