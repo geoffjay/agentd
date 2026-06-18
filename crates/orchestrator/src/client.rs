@@ -83,6 +83,23 @@ impl OrchestratorClient {
         self
     }
 
+    /// The base URL this client targets (e.g. the core gateway
+    /// `{core_url}/api/v1/orchestrator`).
+    ///
+    /// Useful for deriving WebSocket URLs that must traverse the same gateway
+    /// and honor the same configuration as the REST calls.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// The bearer token attached to this client, if any.
+    ///
+    /// WebSocket handshakes cannot carry an `Authorization` header through the
+    /// gateway, so callers pass this as a `token` query parameter instead.
+    pub fn token(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
+
     /// Create a client using the `AGENTD_ORCHESTRATOR_SERVICE_URL` environment
     /// variable, falling back to `http://localhost:7006`.
     ///

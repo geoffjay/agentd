@@ -511,8 +511,9 @@ async fn list(
             ]));
 
             for mem in &response.items {
-                let content_preview = if mem.content.len() > 50 {
-                    format!("{}…", &mem.content[..49])
+                let content_preview = if mem.content.chars().count() > 50 {
+                    let truncated: String = mem.content.chars().take(49).collect();
+                    format!("{truncated}…")
                 } else {
                     mem.content.clone()
                 };

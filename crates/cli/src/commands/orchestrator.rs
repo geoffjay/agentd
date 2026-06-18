@@ -974,7 +974,7 @@ impl OrchestratorCommand {
                     }
                     _ => id.clone(),
                 };
-                stream_agents(resolved_id.as_deref(), *all, *verbose, json).await
+                stream_agents(client, resolved_id.as_deref(), *all, *verbose, json).await
             }
             OrchestratorCommand::GetPolicy { id } => get_policy(client, id, json).await,
             OrchestratorCommand::SetPolicy { id, policy } => {
@@ -1328,7 +1328,7 @@ async fn create_agent(
 
         if is_pty {
             println!();
-            attach_pty_agent(&agent).await?;
+            attach_pty_agent(client, &agent).await?;
         } else {
             let session = agent
                 .session_id
@@ -1584,7 +1584,7 @@ async fn attach_agent(
         // orchestrator process.  Binary frames carry raw I/O bytes; JSON text
         // frames carry resize events: {"type":"resize","cols":N,"rows":N}.
         // Ctrl-D or Ctrl-] detaches without terminating the agent.
-        attach_pty_agent(&agent).await?;
+        attach_pty_agent(client, &agent).await?;
     } else {
         // Tmux backend: attach to the tmux session
         if std::process::Command::new("tmux")
@@ -1633,6 +1633,24 @@ async fn attach_agent(
 
 // -- PTY terminal relay --
 
+/// Build a WebSocket URL for an orchestrator endpoint that routes through the
+/// same core gateway as the client's REST calls.
+///
+/// Rewrites the client's base URL scheme (`http`→`ws`, `https`→`wss`) and
+/// appends `path`. The gateway authenticates WebSocket handshakes from a
+/// `token` query parameter (browsers cannot set `Authorization` on an upgrade),
+/// so the client's bearer token is appended when present.
+fn orchestrator_ws_url(client: &OrchestratorClient, path: &str) -> String {
+    let ws_base =
+        client.base_url().replacen("https://", "wss://", 1).replacen("http://", "ws://", 1);
+    let mut url = format!("{ws_base}{path}");
+    if let Some(token) = client.token() {
+        let sep = if url.contains('?') { '&' } else { '?' };
+        url.push_str(&format!("{sep}token={}", urlencoding::encode(token)));
+    }
+    url
+}
+
 /// Connect to the orchestrator's WebSocket terminal relay for a PTY-backed agent.
 ///
 /// Enables crossterm raw mode, bridges local stdin/stdout with the remote PTY
@@ -1645,11 +1663,8 @@ async fn attach_agent(
 ///   `{"type":"resize","cols":N,"rows":N}`.
 /// - Detach keys: Ctrl-D (`\x04`) or Ctrl-`]` (`\x1d`) — detach without
 ///   killing the agent.
-async fn attach_pty_agent(agent: &AgentResponse) -> Result<()> {
-    let base_url = std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-        .unwrap_or_else(|_| "http://localhost:7006".to_string());
-    let ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://");
-    let ws_url = format!("{}/terminal/{}", ws_base, agent.id);
+async fn attach_pty_agent(client: &OrchestratorClient, agent: &AgentResponse) -> Result<()> {
+    let ws_url = orchestrator_ws_url(client, &format!("/terminal/{}", agent.id));
 
     println!("{}", format!("Attaching to agent '{}' via PTY terminal relay...", agent.name).cyan());
 
@@ -1858,19 +1873,22 @@ async fn send_message_cmd(
 
 // -- Stream --
 
-async fn stream_agents(id: Option<&str>, all: bool, verbose: bool, json: bool) -> Result<()> {
+async fn stream_agents(
+    client: &OrchestratorClient,
+    id: Option<&str>,
+    all: bool,
+    verbose: bool,
+    json: bool,
+) -> Result<()> {
     if id.is_none() && !all {
         bail!("Either an agent ID or --all must be provided.");
     }
 
-    let base_url = std::env::var("AGENTD_ORCHESTRATOR_SERVICE_URL")
-        .unwrap_or_else(|_| "http://localhost:7006".to_string());
-    let ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://");
-
-    let ws_url = match id {
-        Some(agent_id) => format!("{}/stream/{}", ws_base, agent_id),
-        None => format!("{}/stream", ws_base),
+    let path = match id {
+        Some(agent_id) => format!("/stream/{agent_id}"),
+        None => "/stream".to_string(),
     };
+    let ws_url = orchestrator_ws_url(client, &path);
 
     if !json {
         let target = id.map(|a| format!("agent {}", a)).unwrap_or_else(|| "all agents".to_string());
@@ -3060,8 +3078,11 @@ fn display_workflow(workflow: &WorkflowResponse) {
         }
     }
     let template = &workflow.prompt_template;
-    let display =
-        if template.len() > 60 { format!("{}...", &template[..57]) } else { template.clone() };
+    let display = if template.chars().count() > 60 {
+        format!("{}...", template.chars().take(57).collect::<String>())
+    } else {
+        template.clone()
+    };
     println!("{}: {}", "Prompt Template".bold(), display);
     println!("{}: {}", "Created".bold(), workflow.created_at);
 }
@@ -3080,7 +3101,11 @@ fn display_dispatch(dispatch: &DispatchResponse) {
     };
     println!("{}: {}", "Status".bold(), colored_status);
     let prompt = &dispatch.prompt_sent;
-    let display = if prompt.len() > 60 { format!("{}...", &prompt[..57]) } else { prompt.clone() };
+    let display = if prompt.chars().count() > 60 {
+        format!("{}...", prompt.chars().take(57).collect::<String>())
+    } else {
+        prompt.clone()
+    };
     println!("{}: {}", "Prompt".bold(), display);
     println!("{}: {}", "Dispatched".bold(), dispatch.dispatched_at);
     if let Some(completed) = &dispatch.completed_at {
@@ -3092,6 +3117,34 @@ fn display_dispatch(dispatch: &DispatchResponse) {
 mod tests {
     use super::*;
     use orchestrator::types::AgentConfig;
+
+    #[test]
+    fn ws_url_routes_through_gateway_base_with_token() {
+        let client = OrchestratorClient::new("http://localhost:17000/api/v1/orchestrator")
+            .with_token("tok-123");
+        assert_eq!(
+            orchestrator_ws_url(&client, "/stream"),
+            "ws://localhost:17000/api/v1/orchestrator/stream?token=tok-123"
+        );
+    }
+
+    #[test]
+    fn ws_url_https_converts_to_wss() {
+        let client = OrchestratorClient::new("https://agentd.example.com/api/v1/orchestrator");
+        assert_eq!(
+            orchestrator_ws_url(&client, "/terminal/abc"),
+            "wss://agentd.example.com/api/v1/orchestrator/terminal/abc"
+        );
+    }
+
+    #[test]
+    fn ws_url_without_token_has_no_query() {
+        let client = OrchestratorClient::new("http://localhost:17000/api/v1/orchestrator");
+        assert_eq!(
+            orchestrator_ws_url(&client, "/stream/xyz"),
+            "ws://localhost:17000/api/v1/orchestrator/stream/xyz"
+        );
+    }
 
     #[test]
     fn test_display_agent_typed() {
