@@ -134,6 +134,10 @@ http_body() { # http_body <method> <url> [json-body]  -> response body only
         curl -sS -m 15 -X "$method" "$url" 2>/dev/null
     fi
 }
+# Single call returning the body with the status code appended on the last line.
+http_both() { # http_both <method> <url>  ->  "<body>\n<status>"
+    curl -sS -m 15 -w '\n%{http_code}' -X "$1" "$2" 2>/dev/null
+}
 
 is_localhost() { case "$1" in localhost|127.0.0.1|::1|"[::1]") return 0 ;; *) return 1 ;; esac; }
 
@@ -273,12 +277,33 @@ run_gateway() {
         skip "gateway CLI tests" "core gateway not reachable at $CORE_URL"
         return
     fi
-    # Aggregate downstream health (public; tolerate 401 if locked down).
-    code=$(http GET "${CORE_URL}/api/v1/health")
+    # Aggregate downstream health. The gateway returns 503 if ANY downstream is
+    # unhealthy — that reflects environment state, not a gateway fault — so a
+    # well-formed 503 is reported as "degraded" (with the offending services),
+    # not a failure. Only a malformed/unreachable response fails the run.
+    local out
+    out=$(http_both GET "${CORE_URL}/api/v1/health")
+    code="${out##*$'\n'}"          # status = last line
+    local agg_body="${out%$'\n'*}" # body = everything before it
     case "$code" in
-        200) pass "core /api/v1/health aggregate (200)" ;;
+        200)
+            pass "core /api/v1/health aggregate (all downstreams healthy)"
+            ;;
+        503)
+            local down=""
+            if [ "$HAVE_JQ" -eq 1 ]; then
+                down=$(printf '%s' "$agg_body" \
+                    | jq -r '.services[]? | select(.healthy==false) | .name' 2>/dev/null \
+                    | paste -sd, - 2>/dev/null)
+            fi
+            if printf '%s' "$agg_body" | grep -q '"services"'; then
+                skip "aggregate health (gateway OK, downstream degraded)" "unhealthy: ${down:-see body}"
+            else
+                fail "core /api/v1/health 503 with no health body: $(printf '%.120s' "$agg_body")"
+            fi
+            ;;
         401|403) skip "aggregate health" "auth required (HTTP $code)" ;;
-        *) fail "core /api/v1/health returned ${code:-none}" ;;
+        *) fail "core /api/v1/health returned ${code:-no-response}" ;;
     esac
 
     group "Gateway: 'agent status' (probes per-service ports)"

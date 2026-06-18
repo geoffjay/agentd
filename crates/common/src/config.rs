@@ -399,8 +399,6 @@ pub struct CoreConfig {
     pub communicate_url: String,
     /// Upstream URL for the knowledge service. Defaults to `"http://localhost:17011"`.
     pub knowledge_url: String,
-    /// Upstream URL for the index service. Defaults to `"http://localhost:17012"`.
-    pub index_url: String,
 }
 
 impl Default for CoreConfig {
@@ -416,7 +414,6 @@ impl Default for CoreConfig {
             memory_url: "http://localhost:17008".to_string(),
             communicate_url: "http://localhost:17010".to_string(),
             knowledge_url: "http://localhost:17011".to_string(),
-            index_url: "http://localhost:17012".to_string(),
         }
     }
 }
@@ -740,7 +737,6 @@ impl ValidateConfig for CoreConfig {
             ("core.memory_url", self.memory_url.as_str()),
             ("core.communicate_url", self.communicate_url.as_str()),
             ("core.knowledge_url", self.knowledge_url.as_str()),
-            ("core.index_url", self.index_url.as_str()),
         ] {
             validate_url(url, name)?;
         }
@@ -1115,11 +1111,6 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     &base.services.core.knowledge_url,
                     &file.services.core.knowledge_url,
                     &d.services.core.knowledge_url,
-                ),
-                index_url: pick(
-                    &base.services.core.index_url,
-                    &file.services.core.index_url,
-                    &d.services.core.index_url,
                 ),
             },
             mcp: McpConfig {
