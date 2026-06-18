@@ -90,15 +90,18 @@ impl Default for EmbeddingConfig {
 impl EmbeddingConfig {
     /// Load configuration from the shared config file and environment variables.
     ///
-    /// Loads base values from [`agentd_common::config::load`], then overlays
-    /// legacy service-specific environment variables for backward compatibility.
+    /// Loads base values from [`agentd_common::config::load`] (which already
+    /// reflects the `[services.memory]` config section), then lets the
+    /// service-specific environment variables override them when set.
     ///
-    /// | Variable                             | Default                       |
-    /// |--------------------------------------|-------------------------------|
-    /// | `AGENTD_MEMORY_EMBEDDING_PROVIDER`   | `"none"`                      |
-    /// | `AGENTD_MEMORY_EMBEDDING_MODEL`      | `"text-embedding-3-small"`    |
-    /// | `AGENTD_MEMORY_EMBEDDING_API_KEY`    | `None`                        |
-    /// | `AGENTD_MEMORY_EMBEDDING_ENDPOINT`   | `None` (uses provider default)|
+    /// All four settings are config-backed; the env var, when present, wins.
+    ///
+    /// | Variable                             | Config fallback                       |
+    /// |--------------------------------------|---------------------------------------|
+    /// | `AGENTD_MEMORY_EMBEDDING_PROVIDER`   | `services.memory.embedding_provider`  |
+    /// | `AGENTD_MEMORY_EMBEDDING_MODEL`      | `services.memory.embedding_model`     |
+    /// | `AGENTD_MEMORY_EMBEDDING_API_KEY`    | `services.memory.embedding_api_key`   |
+    /// | `AGENTD_MEMORY_EMBEDDING_ENDPOINT`   | `services.memory.embedding_endpoint`  |
     pub fn load() -> Self {
         let shared = agentd_common::config::load().unwrap_or_else(|e| {
             tracing::warn!("failed to load config file, using compiled defaults: {e:#}");
@@ -110,8 +113,8 @@ impl EmbeddingConfig {
             provider: env::var("AGENTD_MEMORY_EMBEDDING_PROVIDER")
                 .unwrap_or(base.embedding_provider),
             model: env::var("AGENTD_MEMORY_EMBEDDING_MODEL").unwrap_or(base.embedding_model),
-            api_key: env::var("AGENTD_MEMORY_EMBEDDING_API_KEY").ok(),
-            base_url: env::var("AGENTD_MEMORY_EMBEDDING_ENDPOINT").ok(),
+            api_key: env::var("AGENTD_MEMORY_EMBEDDING_API_KEY").ok().or(base.embedding_api_key),
+            base_url: env::var("AGENTD_MEMORY_EMBEDDING_ENDPOINT").ok().or(base.embedding_endpoint),
         }
     }
 
