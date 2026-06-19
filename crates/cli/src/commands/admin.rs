@@ -8,6 +8,8 @@
 //!
 //! - **backfill-tenant** — Assign an `organization_id` to all existing rows
 //!   that have a NULL value, backfilling legacy unscoped data.
+//! - **backfill-projects** — Copy project rows from orchestrator's database
+//!   into core's database, preserving UUIDs.
 //!
 //! # Usage
 //!
@@ -17,14 +19,22 @@
 //!
 //! # Dry run to preview affected row counts without modifying data
 //! agent admin backfill-tenant --org-id acme-corp --dry-run
+//!
+//! # Copy all orchestrator projects into core
+//! agent admin backfill-projects
+//!
+//! # Dry-run scoped to one organization
+//! agent admin backfill-projects --org-id acme-corp --dry-run
 //! ```
+
+use std::collections::HashSet;
 
 use agentd_common::storage::{create_connection, get_db_path};
 use agentd_install::migrate::DB_SERVICES;
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::*;
-use sea_orm::{ConnectionTrait, Statement, Value};
+use sea_orm::{ConnectionTrait, FromQueryResult, Statement, Value};
 
 /// Admin subcommands.
 #[derive(Debug, Subcommand)]
@@ -56,6 +66,35 @@ pub enum AdminCommand {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Copy project rows from orchestrator's database into core's database.
+    ///
+    /// Phase 2 of the projects-to-core migration: after core's `projects`
+    /// table exists (Phase 1), this command seeds it with all existing rows
+    /// from orchestrator, preserving UUIDs so that foreign-key references in
+    /// other services continue to resolve.
+    ///
+    /// The command is **idempotent**: rows already present in core (matched by
+    /// `id`) are silently skipped, so it is safe to run more than once.
+    ///
+    /// **When to use:**
+    /// - After upgrading to a release that adds `projects` to core
+    /// - Before repointing consumers (communicate, knowledge, orchestrator)
+    ///   from the orchestrator project API to the core project API
+    #[command(name = "backfill-projects")]
+    BackfillProjects {
+        /// Preview which rows would be inserted without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Scope the backfill to a specific organization.
+        ///
+        /// When provided, only projects with a matching `organization_id`
+        /// **or** a NULL `organization_id` (legacy data) are copied.
+        /// When omitted, all orchestrator projects are copied.
+        #[arg(long)]
+        org_id: Option<String>,
+    },
 }
 
 impl AdminCommand {
@@ -64,6 +103,9 @@ impl AdminCommand {
         match self {
             AdminCommand::BackfillTenant { org_id, dry_run } => {
                 backfill_tenant(org_id, *dry_run, json).await
+            }
+            AdminCommand::BackfillProjects { dry_run, org_id } => {
+                backfill_projects(org_id.as_deref(), *dry_run, json).await
             }
         }
     }
@@ -240,6 +282,266 @@ async fn backfill_tenant(org_id: &str, dry_run: bool, json: bool) -> Result<()> 
 }
 
 // ---------------------------------------------------------------------------
+// backfill_projects
+// ---------------------------------------------------------------------------
+
+/// A project row read from orchestrator's `projects` table.
+#[derive(Debug, FromQueryResult)]
+struct OrchestratorProjectRow {
+    id: String,
+    name: String,
+    description: Option<String>,
+    organization_id: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+/// Per-project outcome reported by [`run_backfill_projects`].
+#[derive(serde::Serialize, Clone, PartialEq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectBackfillStatus {
+    /// Row was inserted into core's `projects` table.
+    Inserted,
+    /// Row already existed in core (matched by `id`); skipped.
+    Skipped,
+    /// Dry-run mode: row would be inserted.
+    WouldInsert,
+    /// Insert failed (e.g. unique-name conflict with a different id).
+    Error,
+}
+
+/// Per-project result returned by [`run_backfill_projects`].
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct ProjectBackfillResult {
+    pub id: String,
+    pub name: String,
+    pub status: ProjectBackfillStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Core logic for the backfill-projects command.
+///
+/// Separated from [`backfill_projects`] so it can be exercised in tests with
+/// in-memory SQLite connections instead of real service databases.
+pub async fn run_backfill_projects(
+    orch_db: &sea_orm::DatabaseConnection,
+    core_db: &sea_orm::DatabaseConnection,
+    org_id: Option<&str>,
+    dry_run: bool,
+) -> Result<Vec<ProjectBackfillResult>> {
+    // Read projects from orchestrator (with optional org scope).
+    let rows = if let Some(oid) = org_id {
+        OrchestratorProjectRow::find_by_statement(Statement::from_sql_and_values(
+            orch_db.get_database_backend(),
+            "SELECT id, name, description, organization_id, created_at, updated_at \
+             FROM projects \
+             WHERE organization_id = ? OR organization_id IS NULL",
+            vec![Value::from(oid.to_owned())],
+        ))
+        .all(orch_db)
+        .await
+        .context("failed to read orchestrator projects")?
+    } else {
+        OrchestratorProjectRow::find_by_statement(Statement::from_string(
+            orch_db.get_database_backend(),
+            "SELECT id, name, description, organization_id, created_at, updated_at \
+             FROM projects",
+        ))
+        .all(orch_db)
+        .await
+        .context("failed to read orchestrator projects")?
+    };
+
+    // Load all project IDs already present in core so we can skip them cheaply.
+    #[derive(FromQueryResult)]
+    struct IdRow {
+        id: String,
+    }
+
+    let existing: HashSet<String> = IdRow::find_by_statement(Statement::from_string(
+        core_db.get_database_backend(),
+        "SELECT id FROM projects",
+    ))
+    .all(core_db)
+    .await
+    .context("failed to read existing project IDs from core")?
+    .into_iter()
+    .map(|r| r.id)
+    .collect();
+
+    let mut results = Vec::with_capacity(rows.len());
+
+    for row in rows {
+        // Skip rows already present in core (idempotency).
+        if existing.contains(&row.id) {
+            results.push(ProjectBackfillResult {
+                id: row.id,
+                name: row.name,
+                status: ProjectBackfillStatus::Skipped,
+                error: None,
+            });
+            continue;
+        }
+
+        if dry_run {
+            results.push(ProjectBackfillResult {
+                id: row.id,
+                name: row.name,
+                status: ProjectBackfillStatus::WouldInsert,
+                error: None,
+            });
+            continue;
+        }
+
+        let stmt = Statement::from_sql_and_values(
+            core_db.get_database_backend(),
+            "INSERT INTO projects \
+             (id, name, description, organization_id, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?)",
+            vec![
+                Value::from(row.id.clone()),
+                Value::from(row.name.clone()),
+                Value::from(row.description.clone()),
+                Value::from(row.organization_id.clone()),
+                Value::from(row.created_at.clone()),
+                Value::from(row.updated_at.clone()),
+            ],
+        );
+
+        match core_db.execute(stmt).await {
+            Ok(_) => results.push(ProjectBackfillResult {
+                id: row.id,
+                name: row.name,
+                status: ProjectBackfillStatus::Inserted,
+                error: None,
+            }),
+            Err(e) => results.push(ProjectBackfillResult {
+                id: row.id,
+                name: row.name,
+                status: ProjectBackfillStatus::Error,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+
+    Ok(results)
+}
+
+/// Render backfill results to stdout in either JSON or human-readable form.
+fn output_backfill_projects_results(
+    results: &[ProjectBackfillResult],
+    dry_run: bool,
+    org_id: Option<&str>,
+    json: bool,
+) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(results)?);
+        return Ok(());
+    }
+
+    let mode_label = if dry_run { " (dry-run)" } else { "" };
+    let scope_label = match org_id {
+        Some(oid) => format!(": org_id = {oid}"),
+        None => String::new(),
+    };
+    println!("{}", format!("Backfill projects{scope_label}{mode_label}").blue().bold());
+    println!("{}", "=".repeat(60).cyan());
+
+    let mut n_inserted = 0u64;
+    let mut n_skipped = 0u64;
+    let mut n_errors = 0u64;
+    let mut n_would_insert = 0u64;
+
+    for r in results {
+        let (icon, verb) = match r.status {
+            ProjectBackfillStatus::Inserted => {
+                n_inserted += 1;
+                ("✅", "inserted")
+            }
+            ProjectBackfillStatus::Skipped => {
+                n_skipped += 1;
+                ("  ", "skipped")
+            }
+            ProjectBackfillStatus::WouldInsert => {
+                n_would_insert += 1;
+                ("🔍", "would insert")
+            }
+            ProjectBackfillStatus::Error => {
+                n_errors += 1;
+                ("❌", "error")
+            }
+        };
+        let colored_verb = match r.status {
+            ProjectBackfillStatus::Error => verb.red().bold(),
+            _ => verb.green().bold(),
+        };
+        println!("  {} {:<40} {}", icon, r.name.bright_black(), colored_verb);
+        if let Some(err) = &r.error {
+            println!("     error: {}", err.red());
+        }
+    }
+
+    println!();
+    let total = results.len();
+    if dry_run {
+        println!(
+            "Total: {} rows found in orchestrator — {} would be inserted, {} already in core",
+            total.to_string().green().bold(),
+            n_would_insert.to_string().green().bold(),
+            n_skipped.to_string().bright_black()
+        );
+        println!("{}", "Run without --dry-run to apply the backfill.".yellow());
+    } else {
+        println!(
+            "Total: {} rows processed — {} inserted, {} skipped, {} errors",
+            total.to_string().green().bold(),
+            n_inserted.to_string().green().bold(),
+            n_skipped.to_string().bright_black(),
+            if n_errors > 0 { n_errors.to_string().red() } else { n_errors.to_string().green() }
+        );
+    }
+
+    Ok(())
+}
+
+/// Open both service databases and run the project backfill.
+async fn backfill_projects(org_id: Option<&str>, dry_run: bool, json: bool) -> Result<()> {
+    // Reject an explicitly empty --org-id before touching any database.
+    if let Some(id) = org_id {
+        if id.is_empty() {
+            anyhow::bail!("--org-id must not be empty");
+        }
+    }
+
+    // Open orchestrator database.
+    let orch_path = get_db_path("agentd-orchestrator", "orchestrator.db")
+        .context("cannot resolve orchestrator database path")?;
+    if !orch_path.exists() {
+        anyhow::bail!(
+            "orchestrator database not found at {}; is the orchestrator service initialized?",
+            orch_path.display()
+        );
+    }
+    let orch_db =
+        create_connection(&orch_path).await.context("failed to open orchestrator database")?;
+
+    // Open core database.
+    let core_path =
+        get_db_path("agentd-core", "core.db").context("cannot resolve core database path")?;
+    if !core_path.exists() {
+        anyhow::bail!(
+            "core database not found at {}; is the core service initialized?",
+            core_path.display()
+        );
+    }
+    let core_db = create_connection(&core_path).await.context("failed to open core database")?;
+
+    let results = run_backfill_projects(&orch_db, &core_db, org_id, dry_run).await?;
+    output_backfill_projects_results(&results, dry_run, org_id, json)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -371,5 +673,174 @@ mod tests {
             err.to_string().contains("must not be empty"),
             "expected an empty-org-id error, got: {err}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // backfill_projects tests
+    // -----------------------------------------------------------------------
+
+    /// Create the `projects` schema in an in-memory SQLite connection.
+    async fn create_projects_table(db: &sea_orm::DatabaseConnection) {
+        db.execute_unprepared(
+            "CREATE TABLE IF NOT EXISTS projects (\
+                id TEXT PRIMARY KEY, \
+                name TEXT NOT NULL UNIQUE, \
+                description TEXT, \
+                organization_id TEXT, \
+                created_at TEXT NOT NULL, \
+                updated_at TEXT NOT NULL\
+            )",
+        )
+        .await
+        .unwrap();
+    }
+
+    /// Seed the `projects` table with rows of the form `(id, name, org_id)`.
+    ///
+    /// `org_id = None` → NULL in the database.
+    ///
+    /// Uses parameterized statements so that values containing special characters
+    /// (e.g. single quotes) are handled safely, consistent with production paths.
+    async fn seed_projects(db: &sea_orm::DatabaseConnection, rows: &[(&str, &str, Option<&str>)]) {
+        create_projects_table(db).await;
+        for (id, name, org_id) in rows {
+            let stmt = Statement::from_sql_and_values(
+                db.get_database_backend(),
+                "INSERT INTO projects \
+                 (id, name, description, organization_id, created_at, updated_at) \
+                 VALUES (?, ?, NULL, ?, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')",
+                vec![
+                    Value::from((*id).to_string()),
+                    Value::from((*name).to_string()),
+                    Value::from(org_id.map(|s| s.to_string())),
+                ],
+            );
+            db.execute(stmt).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn backfill_projects_rejects_empty_org_id() {
+        // Guard fires before any database path is resolved.
+        let err = backfill_projects(Some(""), false, true).await.unwrap_err();
+        assert!(
+            err.to_string().contains("must not be empty"),
+            "expected an empty-org-id error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn backfill_projects_inserts_all_rows_first_run() {
+        let (orch_db, _orch_tmp) = create_test_connection().await;
+        let (core_db, _core_tmp) = create_test_connection().await;
+
+        seed_projects(&orch_db, &[("uuid-1", "Alpha", Some("org-a")), ("uuid-2", "Beta", None)])
+            .await;
+        create_projects_table(&core_db).await;
+
+        let results = run_backfill_projects(&orch_db, &core_db, None, false).await.unwrap();
+
+        assert_eq!(results.len(), 2, "should process both orchestrator rows");
+        assert!(
+            results.iter().all(|r| r.status == ProjectBackfillStatus::Inserted),
+            "both rows should be inserted on first run"
+        );
+    }
+
+    #[tokio::test]
+    async fn backfill_projects_idempotent() {
+        let (orch_db, _orch_tmp) = create_test_connection().await;
+        let (core_db, _core_tmp) = create_test_connection().await;
+
+        seed_projects(
+            &orch_db,
+            &[("uuid-1", "Alpha", Some("org-a")), ("uuid-2", "Beta", Some("org-b"))],
+        )
+        .await;
+        create_projects_table(&core_db).await;
+
+        // First run: both rows should be inserted.
+        let first = run_backfill_projects(&orch_db, &core_db, None, false).await.unwrap();
+        assert!(
+            first.iter().all(|r| r.status == ProjectBackfillStatus::Inserted),
+            "first run should insert all rows"
+        );
+
+        // Second run: both rows already exist → all skipped.
+        let second = run_backfill_projects(&orch_db, &core_db, None, false).await.unwrap();
+        assert_eq!(second.len(), 2, "second run should still process both rows");
+        assert!(
+            second.iter().all(|r| r.status == ProjectBackfillStatus::Skipped),
+            "second run should skip all rows (already in core)"
+        );
+    }
+
+    #[tokio::test]
+    async fn backfill_projects_dry_run_does_not_insert() {
+        let (orch_db, _orch_tmp) = create_test_connection().await;
+        let (core_db, _core_tmp) = create_test_connection().await;
+
+        seed_projects(&orch_db, &[("uuid-1", "Alpha", None)]).await;
+        create_projects_table(&core_db).await;
+
+        let results =
+            run_backfill_projects(&orch_db, &core_db, None, /* dry_run */ true).await.unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ProjectBackfillStatus::WouldInsert);
+
+        // Core must remain empty.
+        assert_eq!(total_rows(&core_db, "projects").await, 0, "dry-run must not insert anything");
+    }
+
+    #[tokio::test]
+    async fn backfill_projects_org_filter_includes_null_rows() {
+        let (orch_db, _orch_tmp) = create_test_connection().await;
+        let (core_db, _core_tmp) = create_test_connection().await;
+
+        seed_projects(
+            &orch_db,
+            &[
+                ("uuid-1", "OrgA Project", Some("org-a")),
+                ("uuid-2", "OrgB Project", Some("org-b")),
+                ("uuid-3", "Legacy Project", None),
+            ],
+        )
+        .await;
+        create_projects_table(&core_db).await;
+
+        // Filter to org-a: should include OrgA Project AND Legacy Project (NULL).
+        let results =
+            run_backfill_projects(&orch_db, &core_db, Some("org-a"), false).await.unwrap();
+
+        assert_eq!(results.len(), 2, "org filter should return org-a + NULL rows");
+        let names: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
+        assert!(names.contains(&"OrgA Project"));
+        assert!(names.contains(&"Legacy Project"));
+        assert!(!names.contains(&"OrgB Project"), "org-b project must not appear");
+    }
+
+    #[tokio::test]
+    async fn backfill_projects_name_collision_reports_error() {
+        let (orch_db, _orch_tmp) = create_test_connection().await;
+        let (core_db, _core_tmp) = create_test_connection().await;
+
+        // Orchestrator has "SharedName" with id "uuid-orch".
+        seed_projects(&orch_db, &[("uuid-orch", "SharedName", None)]).await;
+
+        // Core already has "SharedName" but under a *different* id.
+        // Because the id doesn't match, the skip-by-id guard won't fire,
+        // and the INSERT will hit the UNIQUE constraint on `name`.
+        seed_projects(&core_db, &[("uuid-core", "SharedName", None)]).await;
+
+        let results = run_backfill_projects(&orch_db, &core_db, None, false).await.unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].status,
+            ProjectBackfillStatus::Error,
+            "name collision should yield Error status, not a panic"
+        );
+        assert!(results[0].error.is_some(), "error field must contain the database error message");
     }
 }
