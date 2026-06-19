@@ -1,5 +1,5 @@
 use crate::scheduler::events::SystemEvent;
-use crate::storage::{AgentStorage, ProjectStorage};
+use crate::storage::AgentStorage;
 use crate::types::{
     Agent, AgentConfig, AgentStatus, AgentUsageStats, ClearContextResponse, RetentionConfig,
 };
@@ -84,11 +84,6 @@ impl AgentManager {
 
     pub fn registry(&self) -> &ConnectionRegistry {
         &self.registry
-    }
-
-    /// Returns a [`ProjectStorage`] backed by the same database connection.
-    pub fn project_storage(&self) -> ProjectStorage {
-        ProjectStorage::from_db(self.storage.db().clone())
     }
 
     /// Returns the underlying [`AgentStorage`] for direct access.
