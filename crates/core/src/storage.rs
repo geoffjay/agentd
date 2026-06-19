@@ -22,6 +22,7 @@ use sea_orm_migration::MigratorTrait;
 use crate::membership_storage::MembershipStorage;
 use crate::migration::Migrator;
 use crate::organization_storage::OrganizationStorage;
+use crate::project_storage::ProjectStorage;
 use crate::session_storage::SessionStorage;
 use crate::user_storage::UserStorage;
 
@@ -52,6 +53,11 @@ impl Storage {
     /// Returns an [`OrganizationStorage`] instance sharing this connection.
     pub fn organizations(&self) -> OrganizationStorage {
         OrganizationStorage::new(self.db.clone())
+    }
+
+    /// Returns a [`ProjectStorage`] instance sharing this connection.
+    pub fn projects(&self) -> ProjectStorage {
+        ProjectStorage::new(self.db.clone())
     }
 
     /// Returns a [`MembershipStorage`] instance sharing this connection.
