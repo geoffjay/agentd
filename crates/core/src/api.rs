@@ -22,6 +22,11 @@
 //! - `GET  /api/v1/organizations/{id}/members`   — list members
 //! - `POST /api/v1/organizations/{id}/members`   — add member (owners only)
 //! - `DELETE /api/v1/organizations/{id}/members/{uid}` — remove member (owners only)
+//! - `POST /api/v1/projects`                     — create project
+//! - `GET  /api/v1/projects`                     — list projects (tenant-scoped via X-Tenant-ID)
+//! - `GET  /api/v1/projects/{id}`                — get project
+//! - `PUT  /api/v1/projects/{id}`                — update project
+//! - `DELETE /api/v1/projects/{id}`              — delete project
 //! - `GET  /api/v1/health`                       — aggregate downstream health check
 //! - `ANY  /api/v1/{service}/*`                  — proxy to downstream service
 
@@ -29,6 +34,7 @@ pub mod admin;
 pub mod auth;
 pub mod gateway;
 pub mod organizations;
+pub mod projects;
 pub mod users;
 
 use std::sync::Arc;
@@ -84,6 +90,7 @@ pub fn create_router_with_proxy(state: AppState, proxy: ProxyConfig) -> Router {
     let api_v1 = Router::new()
         .nest("/users", users::v1_router())
         .nest("/organizations", organizations::router())
+        .nest("/projects", projects::router())
         // Product-admin routes — superuser only, product-wide (not tenant-scoped)
         .nest("/admin", admin::router())
         // Gateway routes — /api/v1/health and /api/v1/{service}/* path
