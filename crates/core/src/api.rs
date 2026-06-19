@@ -64,10 +64,11 @@ impl AppState {
         }
     }
 
-    /// State with PAM configured from `AGENTD_PAM_*` environment variables and a
-    /// verifier matching the build (real libpam under `--features pam`).
-    pub fn with_pam_from_env(storage: Storage) -> Self {
-        let pam_config = PamConfig::from_env();
+    /// State with PAM configured from the `[services.core.pam]` config section
+    /// overlaid with `AGENTD_PAM_*` environment variables, and a verifier
+    /// matching the build (real libpam under `--features pam`).
+    pub fn with_pam_loaded(storage: Storage) -> Self {
+        let pam_config = PamConfig::load();
         let pam_verifier = pam_config.build_verifier();
         Self { storage, pam_config, pam_verifier }
     }

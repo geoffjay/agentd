@@ -39,8 +39,13 @@ cargo build -p agentd-core --features pam --release
 ```
 
 It uses raw `pam-sys` bindings plus a small hand-written conversation (no
-bindgen/libclang), and bridges the one ABI difference between OpenPAM and
-Linux-PAM (the conversation message-array layout) internally.
+bindgen/libclang). `pam-sys` hard-codes Linux-PAM's status-code numbering, so
+the verifier re-interprets the raw `pam_authenticate`/`pam_acct_mgmt` return
+codes against the correct per-platform constants (OpenPAM and Linux-PAM number
+their error codes differently); without this a wrong password on macOS would be
+misreported (e.g. as `ACCT_EXPIRED`) and surfaced as a `500` instead of a `401`.
+The conversation message-array layout (an array of pointers) is shared by
+Linux-PAM and OpenPAM; only Solaris/illumos differ there.
 
 A build **without** `--features pam` still runs, but every `pam` login fails
 closed with `500` and a startup warning is logged if `AGENTD_PAM_ENABLED=true`.
@@ -106,11 +111,32 @@ the comments in that file.
 
 ## Configuration
 
-| Variable                  | Default     | Description                                         |
-|---------------------------|-------------|-----------------------------------------------------|
-| `AGENTD_PAM_ENABLED`      | `false`     | Master switch. When off, `pam` users fail closed and JIT never triggers. |
-| `AGENTD_PAM_SERVICE`      | `agentd`    | PAM service name → `/etc/pam.d/<service>`.          |
-| `AGENTD_PAM_EMAIL_DOMAIN` | `pam.local` | Domain for the synthesized email of a JIT-provisioned user (`<user>@<domain>`). |
+PAM can be configured two ways. Settings are read from the shared `config.toml`
+first, then any `AGENTD_PAM_*` environment variables are overlaid on top — **the
+environment variable wins** when both are set. This lets you keep a stable base
+in `config.toml` and override per-launch from the environment.
+
+### `config.toml`
+
+Add a `[services.core.pam]` section to the shared config file (on macOS,
+`~/Library/Application Support/agentd-core/config.toml`; see the config guide for
+your platform's path). This is the recommended way to run the **installed**
+production binary, since it needs no environment wrangling at launch:
+
+```toml
+[services.core.pam]
+enabled = true
+service = "chkpasswd"   # macOS dev; "agentd" (the default) on Linux
+email_domain = "pam.local"
+```
+
+### Environment variables
+
+| Variable / `[services.core.pam]` key | Default | Description |
+|--------------------------------------|---------|-------------|
+| `AGENTD_PAM_ENABLED` / `enabled`           | `false`     | Master switch. When off, `pam` users fail closed and JIT never triggers. |
+| `AGENTD_PAM_SERVICE` / `service`           | `agentd`    | PAM service name → `/etc/pam.d/<service>`. |
+| `AGENTD_PAM_EMAIL_DOMAIN` / `email_domain` | `pam.local` | Domain for the synthesized email of a JIT-provisioned user (`<user>@<domain>`). |
 
 ## Manual verification
 

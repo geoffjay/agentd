@@ -14,7 +14,7 @@
 //! ```
 #![cfg(all(unix, feature = "pam"))]
 
-use agentd_core::pam_auth::build_verifier;
+use agentd_core::pam_auth::{build_verifier, PamError};
 
 /// Default PAM service to test against: macOS ships `chkpasswd`
 /// (pam_opendirectory); Linux hosts should install `/etc/pam.d/agentd`.
@@ -44,7 +44,14 @@ fn wrong_password_is_rejected() {
     let verifier = build_verifier(&service());
     let user = current_user();
     let result = verifier.verify(&user, "definitely-not-the-password-xyzzy");
-    assert!(result.is_err(), "a bogus password must not authenticate");
+    // Must be a clean credential rejection (→ 401), not an operational
+    // `Unavailable` (→ 500). Before the OpenPAM return-code fix, macOS
+    // misclassified the rejection as `Unavailable` because `pam-sys` decodes
+    // raw statuses with Linux-PAM's numbering.
+    assert!(
+        matches!(result, Err(PamError::AuthFailed)),
+        "a bogus password must be rejected as AuthFailed, got: {result:?}"
+    );
 }
 
 /// Optional positive check — only runs when a real password is supplied.

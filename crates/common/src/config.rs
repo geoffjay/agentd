@@ -399,6 +399,8 @@ pub struct CoreConfig {
     pub communicate_url: String,
     /// Upstream URL for the knowledge service. Defaults to `"http://localhost:17011"`.
     pub knowledge_url: String,
+    /// PAM (system-user) authentication settings. See [`CorePamConfig`].
+    pub pam: CorePamConfig,
 }
 
 impl Default for CoreConfig {
@@ -414,6 +416,37 @@ impl Default for CoreConfig {
             memory_url: "http://localhost:17008".to_string(),
             communicate_url: "http://localhost:17010".to_string(),
             knowledge_url: "http://localhost:17011".to_string(),
+            pam: CorePamConfig::default(),
+        }
+    }
+}
+
+/// PAM (system-user) authentication settings for `agentd-core`, nested under
+/// `[services.core.pam]`.
+///
+/// These mirror the `AGENTD_PAM_*` environment variables, which **override**
+/// these values when set (see [`crate::config`] precedence). PAM login also
+/// requires a build with `--features pam`; without it, `pam` logins fail closed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct CorePamConfig {
+    /// Master switch (`AGENTD_PAM_ENABLED`). When `false`, `pam` users fail
+    /// closed and just-in-time provisioning never triggers. Defaults to `false`.
+    pub enabled: bool,
+    /// PAM service name (`AGENTD_PAM_SERVICE`) → `/etc/pam.d/<service>`.
+    /// Defaults to `"agentd"`.
+    pub service: String,
+    /// Domain for the synthesized email of a just-in-time provisioned user
+    /// (`AGENTD_PAM_EMAIL_DOMAIN`): `<user>@<domain>`. Defaults to `"pam.local"`.
+    pub email_domain: String,
+}
+
+impl Default for CorePamConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            service: "agentd".to_string(),
+            email_domain: "pam.local".to_string(),
         }
     }
 }
@@ -1112,6 +1145,23 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     &file.services.core.knowledge_url,
                     &d.services.core.knowledge_url,
                 ),
+                pam: CorePamConfig {
+                    enabled: pick_bool(
+                        base.services.core.pam.enabled,
+                        file.services.core.pam.enabled,
+                        d.services.core.pam.enabled,
+                    ),
+                    service: pick(
+                        &base.services.core.pam.service,
+                        &file.services.core.pam.service,
+                        &d.services.core.pam.service,
+                    ),
+                    email_domain: pick(
+                        &base.services.core.pam.email_domain,
+                        &file.services.core.pam.email_domain,
+                        &d.services.core.pam.email_domain,
+                    ),
+                },
             },
             mcp: McpConfig {
                 orchestrator_url: pick(
@@ -1375,6 +1425,15 @@ fn pick(base: &str, file: &str, default: &str) -> String {
 
 #[inline]
 fn pick_u16(base: u16, file: u16, default: u16) -> u16 {
+    if file != default {
+        file
+    } else {
+        base
+    }
+}
+
+#[inline]
+fn pick_bool(base: bool, file: bool, default: bool) -> bool {
     if file != default {
         file
     } else {

@@ -1,5 +1,7 @@
-import { useState } from "react";
+import p5 from "p5";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import TOPOLOGY from "vanta/dist/vanta.topology.min";
 import { authApi } from "@/services/auth";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -11,6 +13,34 @@ export function LoginPage() {
 	const { login } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
+
+	// Animated Vanta "topology" backdrop. Scoped to this component: it is created
+	// when the login route mounts and destroyed on unmount, so it never runs on
+	// any other page. Vanta TOPOLOGY is a p5-based effect, so we hand it the p5
+	// constructor explicitly rather than relying on a global.
+	const vantaRef = useRef<HTMLDivElement>(null);
+	const vantaEffect = useRef<{ destroy: () => void } | null>(null);
+
+	useEffect(() => {
+		if (!vantaRef.current || vantaEffect.current) return;
+		vantaEffect.current = TOPOLOGY({
+			el: vantaRef.current,
+			p5,
+			mouseControls: true,
+			touchControls: true,
+			gyroControls: false,
+			minHeight: 200.0,
+			minWidth: 200.0,
+			scale: 1.0,
+			scaleMobile: 1.0,
+			color: 0x7f5757,
+			backgroundColor: 0x220000,
+		});
+		return () => {
+			vantaEffect.current?.destroy();
+			vantaEffect.current = null;
+		};
+	}, []);
 	const from =
 		(location.state as { from?: { pathname?: string } } | null)?.from
 			?.pathname ?? "/";
@@ -31,8 +61,9 @@ export function LoginPage() {
 	};
 
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-th-bg px-4">
-			<div className="w-full max-w-sm space-y-6">
+		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-th-bg px-4">
+			<div ref={vantaRef} aria-hidden="true" className="absolute inset-0 z-0" />
+			<div className="relative z-10 w-full max-w-sm space-y-6 rounded-xl border border-th-border bg-th-bg/80 p-8 shadow-2xl backdrop-blur-sm">
 				<h2 className="text-center text-2xl font-semibold text-th-text">
 					Sign in to agentd
 				</h2>
