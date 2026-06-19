@@ -82,7 +82,8 @@ struct ServiceTables {
 }
 
 const SCOPED_TABLES: &[ServiceTables] = &[
-    ServiceTables { service: "orchestrator", tables: &["agents", "workflows", "projects"] },
+    ServiceTables { service: "orchestrator", tables: &["agents", "workflows"] },
+    ServiceTables { service: "core", tables: &["projects"] },
     ServiceTables { service: "notify", tables: &["notifications"] },
     ServiceTables { service: "communicate", tables: &["rooms"] },
     ServiceTables { service: "memory", tables: &["memory_entries"] },

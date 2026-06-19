@@ -97,9 +97,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/approvals/{id}/deny", post(deny_tool))
         .route("/debug/agents", get(debug_agents))
         .route("/events/ask", post(ask_event_handler))
-        // Project management
-        .route("/projects", get(list_projects).post(create_project))
-        .route("/projects/{id}", get(get_project).put(update_project).delete(delete_project))
+        // Project association endpoints (CRUD lives in core service)
         .route("/projects/{id}/agents", get(list_project_agents))
         .route(
             "/projects/{id}/agents/{agent_id}",
@@ -1307,8 +1305,10 @@ async fn ask_event_handler(
 }
 
 // ---------------------------------------------------------------------------
-// Project management handlers
+// Project association handlers
 // ---------------------------------------------------------------------------
+// Project CRUD (create/read/update/delete) has been moved to the core service.
+// These handlers manage the associations between projects and agents/workflows.
 
 #[derive(Deserialize)]
 struct ProjectListQuery {
@@ -1316,131 +1316,11 @@ struct ProjectListQuery {
     offset: Option<usize>,
 }
 
-async fn list_projects(
-    OptionalTenantId(org_id): OptionalTenantId,
-    State(state): State<ApiState>,
-    Query(query): Query<ProjectListQuery>,
-) -> Result<impl IntoResponse, ApiError> {
-    let ps = state.manager.project_storage();
-    let all = ps.list_org(org_id.as_deref()).await.map_err(ApiError::Internal)?;
-    let total = all.len();
-    let limit = clamp_limit(query.limit);
-    let offset = query.offset.unwrap_or(0);
-    let items: Vec<Project> = all.into_iter().skip(offset).take(limit).collect();
-    Ok(Json(PaginatedResponse { items, total, limit, offset }))
-}
-
-async fn create_project(
-    OptionalTenantId(org_id): OptionalTenantId,
-    State(state): State<ApiState>,
-    Json(req): Json<CreateProjectRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    if req.name.trim().is_empty() {
-        return Err(ApiError::InvalidInput("project name must not be empty".to_string()));
-    }
-    let mut project = Project::new(req.name, req.description);
-    project.organization_id = org_id;
-    let ps = state.manager.project_storage();
-    let created = ps.create(&project).await.map_err(|e| {
-        if e.to_string().contains("UNIQUE") {
-            ApiError::Conflict(format!("a project named '{}' already exists", project.name))
-        } else {
-            ApiError::Internal(e)
-        }
-    })?;
-    Ok((StatusCode::CREATED, Json(created)))
-}
-
-async fn get_project(
-    State(state): State<ApiState>,
-    Path(id): Path<Uuid>,
-) -> Result<impl IntoResponse, ApiError> {
-    let ps = state.manager.project_storage();
-    let project = ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
-
-    let agent_count =
-        state.manager.agent_storage().list(None, Some(id)).await.map_err(ApiError::Internal)?.len();
-
-    let workflow_count =
-        state.scheduler.storage().list_workflows(Some(id)).await.map_err(ApiError::Internal)?.len();
-
-    Ok(Json(ProjectResponse {
-        id: project.id,
-        name: project.name,
-        description: project.description,
-        created_at: project.created_at,
-        updated_at: project.updated_at,
-        agent_count,
-        workflow_count,
-    }))
-}
-
-async fn update_project(
-    State(state): State<ApiState>,
-    Path(id): Path<Uuid>,
-    Json(req): Json<UpdateProjectRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let ps = state.manager.project_storage();
-    let updated = ps.update(&id, &req).await.map_err(|e| {
-        let msg = e.to_string();
-        if msg.contains("not found") {
-            ApiError::NotFound
-        } else if msg.contains("UNIQUE") {
-            ApiError::Conflict("a project with that name already exists".to_string())
-        } else {
-            ApiError::Internal(e)
-        }
-    })?;
-    Ok(Json(updated))
-}
-
-async fn delete_project(
-    State(state): State<ApiState>,
-    Path(id): Path<Uuid>,
-) -> Result<impl IntoResponse, ApiError> {
-    let ps = state.manager.project_storage();
-
-    // Verify project exists.
-    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
-
-    // Reject if any agents are still associated.
-    let associated_agents =
-        state.manager.agent_storage().list(None, Some(id)).await.map_err(ApiError::Internal)?;
-    if !associated_agents.is_empty() {
-        return Err(ApiError::InvalidInput(format!(
-            "cannot delete project: {} agent(s) still associated",
-            associated_agents.len()
-        )));
-    }
-
-    // Reject if any workflows are still associated.
-    let associated_workflows =
-        state.scheduler.storage().list_workflows(Some(id)).await.map_err(ApiError::Internal)?;
-    if !associated_workflows.is_empty() {
-        return Err(ApiError::InvalidInput(format!(
-            "cannot delete project: {} workflow(s) still associated",
-            associated_workflows.len()
-        )));
-    }
-
-    ps.delete(&id).await.map_err(|e| {
-        if e.to_string().contains("not found") {
-            ApiError::NotFound
-        } else {
-            ApiError::Internal(e)
-        }
-    })?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
 async fn list_project_agents(
     State(state): State<ApiState>,
     Path(id): Path<Uuid>,
     Query(query): Query<ProjectListQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ps = state.manager.project_storage();
-    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
-
     let limit = clamp_limit(query.limit);
     let offset = query.offset.unwrap_or(0);
 
@@ -1465,9 +1345,7 @@ async fn associate_project_agent(
     State(state): State<ApiState>,
     Path((id, agent_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // Verify project and agent exist.
-    let ps = state.manager.project_storage();
-    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+    // Verify agent exists.
     state
         .manager
         .get_agent(&agent_id)
@@ -1486,10 +1364,8 @@ async fn associate_project_agent(
 
 async fn dissociate_project_agent(
     State(state): State<ApiState>,
-    Path((id, agent_id)): Path<(Uuid, Uuid)>,
+    Path((_id, agent_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ps = state.manager.project_storage();
-    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
     state
         .manager
         .get_agent(&agent_id)
@@ -1511,9 +1387,6 @@ async fn list_project_workflows(
     Path(id): Path<Uuid>,
     Query(query): Query<ProjectListQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ps = state.manager.project_storage();
-    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
-
     let limit = clamp_limit(query.limit);
     let offset = query.offset.unwrap_or(0);
 
@@ -1532,8 +1405,7 @@ async fn associate_project_workflow(
     State(state): State<ApiState>,
     Path((id, workflow_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ps = state.manager.project_storage();
-    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+    // Verify workflow exists.
     state
         .scheduler
         .storage()
@@ -1553,10 +1425,9 @@ async fn associate_project_workflow(
 
 async fn dissociate_project_workflow(
     State(state): State<ApiState>,
-    Path((id, workflow_id)): Path<(Uuid, Uuid)>,
+    Path((_id, workflow_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ps = state.manager.project_storage();
-    ps.get(&id).await.map_err(ApiError::Internal)?.ok_or(ApiError::NotFound)?;
+    // Verify workflow exists.
     state
         .scheduler
         .storage()
