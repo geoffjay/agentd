@@ -50,6 +50,21 @@ Linux-PAM and OpenPAM; only Solaris/illumos differ there.
 A build **without** `--features pam` still runs, but every `pam` login fails
 closed with `500` and a startup warning is logged if `AGENTD_PAM_ENABLED=true`.
 
+### Prebuilt artifact (Linux x86_64)
+
+The default release tarballs are static **musl** binaries and do **not** include
+PAM (musl can't `dlopen` PAM modules). A separate dynamically-linked **glibc**
+artifact ships with PAM compiled in for Linux x86_64 only; install it via the
+opt-in flag:
+
+```bash
+AGENTD_PAM=1 curl -fsSL https://github.com/geoffjay/agentd/releases/latest/download/install.sh | sh
+```
+
+This fetches `agentd-<version>-x86_64-unknown-linux-gnu-pam.tar.gz`. It requires
+a glibc at least as new as the build runner's; on other platforms (arm64, macOS)
+build from source with `--features pam` as above.
+
 ## macOS (development)
 
 macOS needs no privilege setup. The system ships a ready-made `chkpasswd` PAM

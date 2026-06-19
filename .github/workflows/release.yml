@@ -51,6 +51,15 @@ jobs:
           # (1h+ builds) that cross-compiling beats building natively.
           # - target: x86_64-apple-darwin
           #   os: macos-latest
+          # Dynamically-linked glibc build with PAM (system-user login) compiled
+          # in, shipped as a separate `-pam` tarball. PAM `dlopen`s its modules
+          # at runtime, which the static musl targets above cannot do — so a PAM
+          # artifact must be a glibc build. The default install stays musl/no-PAM;
+          # this is opt-in (install.sh AGENTD_PAM=1). glibc reduces portability:
+          # it requires a glibc at least as new as the runner's.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            pam: true
     steps:
       - uses: actions/checkout@v6
         with:
@@ -63,6 +72,11 @@ jobs:
       - name: Install protoc (macOS)
         if: runner.os == 'macOS'
         run: brew install protobuf
+
+      # The `pam` feature links libpam, so the dev headers must be present.
+      - name: Install libpam dev headers (PAM build)
+        if: ${{ matrix.pam }}
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -81,6 +95,13 @@ jobs:
       - name: Build release binaries
         run: cargo build --release --workspace --bins --target ${{ matrix.target }}
 
+      # Opt-in: overwrite agentd-core with a PAM-enabled build. Done as a
+      # separate `-p agentd-core` build (not a workspace `--features`) since the
+      # `pam` feature only exists on that crate — mirrors `cargo xtask`.
+      - name: Rebuild agentd-core with PAM support
+        if: ${{ matrix.pam }}
+        run: cargo build --release -p agentd-core --features pam --target ${{ matrix.target }}
+
       - name: Download UI assets
         uses: actions/download-artifact@v4
         with:
@@ -98,6 +119,9 @@ jobs:
           set -euo pipefail
           TARGET="${{ matrix.target }}"
           VERSION="${{ github.ref_name }}"
+          # PAM builds ship under a distinct `-pam` suffix so they sit alongside
+          # the default (musl/no-PAM) artifact rather than replacing it.
+          SUFFIX="${{ matrix.pam && '-pam' || '' }}"
           BINS=(
             agentd-ask
             agentd-communicate
@@ -119,12 +143,12 @@ jobs:
           cp "target/${TARGET}/release/cli" "stage/agent"
           chmod 755 stage/agent stage/agentd-*
           mkdir -p dist
-          tar -czf "dist/agentd-${VERSION}-${TARGET}.tar.gz" -C stage .
+          tar -czf "dist/agentd-${VERSION}-${TARGET}${SUFFIX}.tar.gz" -C stage .
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tarball-${{ matrix.target }}
+          name: tarball-${{ matrix.target }}${{ matrix.pam && '-pam' || '' }}
           path: dist/*.tar.gz
           if-no-files-found: error
 
