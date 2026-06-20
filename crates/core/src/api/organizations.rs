@@ -371,7 +371,7 @@ mod tests {
     async fn test_app() -> (Router, tempfile::TempDir) {
         let (conn, tmp) = create_test_connection().await;
         let storage = Storage::new(conn).await.unwrap();
-        let state = AppState { storage };
+        let state = AppState::new(storage);
         let app = crate::api::create_router(state);
         (app, tmp)
     }

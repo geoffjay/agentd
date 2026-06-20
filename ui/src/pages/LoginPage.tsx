@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { authApi } from "@/services/auth";
 import { useAuthStore } from "@/stores/authStore";
+
+// The solid backdrop Vanta's topology effect renders onto (its `backgroundColor`
+// below, as a CSS hex). We paint it on the container synchronously so the login
+// screen shows the final backdrop on first paint instead of flashing the gray
+// theme background while p5/Vanta load and initialize.
+const VANTA_BACKGROUND = "#220000";
 
 export function LoginPage() {
 	const [username, setUsername] = useState("");
@@ -11,6 +17,47 @@ export function LoginPage() {
 	const { login } = useAuthStore();
 	const navigate = useNavigate();
 	const location = useLocation();
+
+	// Animated Vanta "topology" backdrop. Scoped to this component: it is created
+	// when the login route mounts and destroyed on unmount, so it never runs on
+	// any other page. p5 (~1MB) and Vanta are heavy and only used here, so we
+	// load them lazily off the main bundle — the container already shows the
+	// final backdrop color, so the animated canvas simply fades in once these
+	// chunks resolve and the effect initializes. Vanta TOPOLOGY is a p5-based
+	// effect, so we hand it the p5 constructor explicitly rather than a global.
+	const vantaRef = useRef<HTMLDivElement>(null);
+	const vantaEffect = useRef<{ destroy: () => void } | null>(null);
+	const [vantaReady, setVantaReady] = useState(false);
+
+	useEffect(() => {
+		let cancelled = false;
+		void (async () => {
+			const [{ default: p5 }, { default: TOPOLOGY }] = await Promise.all([
+				import("p5"),
+				import("vanta/dist/vanta.topology.min"),
+			]);
+			if (cancelled || !vantaRef.current || vantaEffect.current) return;
+			vantaEffect.current = TOPOLOGY({
+				el: vantaRef.current,
+				p5,
+				mouseControls: true,
+				touchControls: true,
+				gyroControls: false,
+				minHeight: 200.0,
+				minWidth: 200.0,
+				scale: 1.0,
+				scaleMobile: 1.0,
+				color: 0x7f5757,
+				backgroundColor: 0x220000,
+			});
+			setVantaReady(true);
+		})();
+		return () => {
+			cancelled = true;
+			vantaEffect.current?.destroy();
+			vantaEffect.current = null;
+		};
+	}, []);
 	const from =
 		(location.state as { from?: { pathname?: string } } | null)?.from
 			?.pathname ?? "/";
@@ -31,8 +78,16 @@ export function LoginPage() {
 	};
 
 	return (
-		<div className="flex min-h-screen items-center justify-center bg-th-bg px-4">
-			<div className="w-full max-w-sm space-y-6">
+		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-th-bg px-4">
+			<div
+				ref={vantaRef}
+				aria-hidden="true"
+				className={`absolute inset-0 z-0 [&>canvas]:transition-opacity [&>canvas]:duration-700 ${
+					vantaReady ? "[&>canvas]:opacity-100" : "[&>canvas]:opacity-0"
+				}`}
+				style={{ backgroundColor: VANTA_BACKGROUND }}
+			/>
+			<div className="relative z-10 w-full max-w-sm space-y-6 rounded-xl border border-th-border bg-th-bg/80 p-8 shadow-2xl backdrop-blur-sm">
 				<h2 className="text-center text-2xl font-semibold text-th-text">
 					Sign in to agentd
 				</h2>

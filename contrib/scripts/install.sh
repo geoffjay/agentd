@@ -13,6 +13,11 @@
 # Environment variables:
 #   AGENTD_VERSION  Install a specific version (e.g. "v0.5.0" or "0.5.0")
 #                   instead of the latest release.
+#   AGENTD_PAM      When set to 1/true/yes/on, install the PAM-enabled build
+#                   (system-user login). Only available as a prebuilt artifact
+#                   for Linux x86_64 (a dynamically-linked glibc tarball — the
+#                   static musl default cannot load PAM modules). On any other
+#                   platform, build from source with `--features pam` instead.
 #   PREFIX          Install prefix honoured by `agent install`
 #                   (default: /usr/local on macOS or as root, ~/.local otherwise).
 #
@@ -25,6 +30,15 @@ REPO="geoffjay/agentd"
 
 info() { printf '\033[0;34m==>\033[0m %s\n' "$1"; }
 error() { printf '\033[0;31merror:\033[0m %s\n' "$1" >&2; exit 1; }
+
+# Truthy test for opt-in flags, matching the AGENTD_PAM semantics used by the
+# Rust installer and config loader (1/true/yes/on, case-insensitive).
+is_truthy() {
+    case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+        1 | true | yes | on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 
 # Map uname output to a release target triple.
 detect_target() {
@@ -109,7 +123,23 @@ verify_checksum() {
 main() {
     target=$(detect_target)
     version=$(resolve_version)
-    asset="agentd-${version}-${target}.tar.gz"
+
+    # Opt-in PAM build. Only Linux x86_64 ships a prebuilt PAM artifact: it is a
+    # dynamically-linked glibc tarball (`-pam` suffix, target
+    # x86_64-unknown-linux-gnu), because the static musl default cannot dlopen
+    # PAM modules. Any other platform must build from source.
+    suffix=""
+    if is_truthy "${AGENTD_PAM:-}"; then
+        if [ "$target" = "x86_64-unknown-linux-musl" ]; then
+            target="x86_64-unknown-linux-gnu"
+            suffix="-pam"
+        else
+            error "AGENTD_PAM is only available as a prebuilt artifact for Linux x86_64 (glibc).
+For this platform ($(uname -s)/$(uname -m)), build from source with: cargo build -p agentd-core --features pam"
+        fi
+    fi
+
+    asset="agentd-${version}-${target}${suffix}.tar.gz"
     base="https://github.com/$REPO/releases/download/$version"
 
     # Explicit template: unlike `mktemp -d` bare, this honours $TMPDIR on

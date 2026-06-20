@@ -331,7 +331,6 @@ monitor_url      = "http://localhost:17003"
 memory_url       = "http://localhost:17008"
 communicate_url  = "http://localhost:17010"
 knowledge_url    = "http://localhost:17011"
-index_url        = "http://localhost:17012"
 
 # ---------------------------------------------------------------------------
 # [services.mcp] — MCP server (no dedicated port — uses stdio transport)

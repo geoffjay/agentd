@@ -61,6 +61,35 @@ impl UserStorage {
             display_name: Set(display_name.map(str::to_string)),
             role: Set(role.to_string()),
             is_superuser: Set(false),
+            auth_provider: Set("local".to_string()),
+            system_username: Set(None),
+            active_organization_id: Set(None),
+            created_at: Set(now.clone()),
+            updated_at: Set(now),
+        }
+        .insert(&self.db)
+        .await?;
+        Ok(model)
+    }
+
+    /// Insert a new PAM-backed user linked to a system account.
+    ///
+    /// `username` is set to `system_username`, `auth_provider` is `"pam"`, and
+    /// `password_hash` is a non-parseable sentinel (`"!"`) so that
+    /// [`Self::verify_password`] can never accidentally authenticate the row.
+    /// The synthesized `email` must be unique (the column is `NOT NULL UNIQUE`).
+    pub async fn create_pam(&self, system_username: &str, email: &str) -> Result<user::Model> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let model = user::ActiveModel {
+            id: Set(Uuid::new_v4().to_string()),
+            username: Set(Some(system_username.to_string())),
+            email: Set(email.to_string()),
+            password_hash: Set("!".to_string()),
+            display_name: Set(Some(system_username.to_string())),
+            role: Set("user".to_string()),
+            is_superuser: Set(false),
+            auth_provider: Set("pam".to_string()),
+            system_username: Set(Some(system_username.to_string())),
             active_organization_id: Set(None),
             created_at: Set(now.clone()),
             updated_at: Set(now),
@@ -83,6 +112,17 @@ impl UserStorage {
     /// Return the user with the given email, or `None` if not found.
     pub async fn get_by_email(&self, email: &str) -> Result<Option<user::Model>> {
         Ok(user::Entity::find().filter(Column::Email.eq(email)).one(&self.db).await?)
+    }
+
+    /// Return the PAM user linked to the given system account, or `None`.
+    pub async fn get_by_system_username(
+        &self,
+        system_username: &str,
+    ) -> Result<Option<user::Model>> {
+        Ok(user::Entity::find()
+            .filter(Column::SystemUsername.eq(system_username))
+            .one(&self.db)
+            .await?)
     }
 
     /// Update mutable user fields. Fields set to `None` are left unchanged.
@@ -395,6 +435,40 @@ mod tests {
 
         let page2 = storage.list_paginated(3, 3).await.unwrap();
         assert_eq!(page2.items.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_create_sets_local_provider() {
+        let (storage, _tmp) = setup().await;
+        let user =
+            storage.create(Some("liz"), "liz@example.com", None, "pass", "user").await.unwrap();
+        assert_eq!(user.auth_provider, "local");
+        assert!(user.system_username.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_create_pam_and_lookup_by_system_username() {
+        let (storage, _tmp) = setup().await;
+        let user = storage.create_pam("deploy", "deploy@pam.local").await.unwrap();
+        assert_eq!(user.auth_provider, "pam");
+        assert_eq!(user.system_username, Some("deploy".to_string()));
+        assert_eq!(user.username, Some("deploy".to_string()));
+        // Sentinel hash must never verify.
+        assert!(
+            !UserStorage::verify_password("deploy@pam.local", &user.password_hash).unwrap_or(false)
+        );
+
+        let found = storage.get_by_system_username("deploy").await.unwrap().unwrap();
+        assert_eq!(found.id, user.id);
+        assert!(storage.get_by_system_username("nobody").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_unique_system_username_constraint() {
+        let (storage, _tmp) = setup().await;
+        storage.create_pam("deploy", "deploy@pam.local").await.unwrap();
+        let dup = storage.create_pam("deploy", "deploy2@pam.local").await;
+        assert!(dup.is_err(), "duplicate system_username should be rejected");
     }
 
     #[tokio::test]

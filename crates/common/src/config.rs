@@ -45,6 +45,8 @@
 //! | `AGENTD_MEMORY_PORT`                 | `services.memory.port`                        |
 //! | `AGENTD_MEMORY_EMBEDDING_PROVIDER`   | `services.memory.embedding_provider`          |
 //! | `AGENTD_MEMORY_EMBEDDING_MODEL`      | `services.memory.embedding_model`             |
+//! | `AGENTD_MEMORY_EMBEDDING_API_KEY`    | `services.memory.embedding_api_key`           |
+//! | `AGENTD_MEMORY_EMBEDDING_ENDPOINT`   | `services.memory.embedding_endpoint`          |
 //! | `AGENTD_MEMORY_LANCE_PATH`           | `services.memory.lance_path`                  |
 //! | `AGENTD_HOOK_PORT`                   | `services.hook.port`                          |
 //! | `AGENTD_HISTORY_SIZE`                | `services.hook.history_size`                  |
@@ -236,6 +238,18 @@ pub struct MemoryConfig {
     pub embedding_provider: String,
     /// Embedding model name. Defaults to `"text-embedding-3-small"`.
     pub embedding_model: String,
+    /// API key for remote embedding providers (sent as a `Bearer` token).
+    ///
+    /// Omit for Ollama or other localhost providers. The
+    /// `AGENTD_MEMORY_EMBEDDING_API_KEY` env var overrides this when set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_api_key: Option<String>,
+    /// Override the embedding provider's API base URL (e.g. an Ollama URL).
+    ///
+    /// Defaults to the provider's own default when unset. The
+    /// `AGENTD_MEMORY_EMBEDDING_ENDPOINT` env var overrides this when set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_endpoint: Option<String>,
     /// LanceDB directory path. Defaults to XDG data dir.
     pub lance_path: String,
 }
@@ -246,6 +260,8 @@ impl Default for MemoryConfig {
             port: 17008,
             embedding_provider: "none".to_string(),
             embedding_model: "text-embedding-3-small".to_string(),
+            embedding_api_key: None,
+            embedding_endpoint: None,
             lance_path: default_memory_lance_path(),
         }
     }
@@ -383,8 +399,8 @@ pub struct CoreConfig {
     pub communicate_url: String,
     /// Upstream URL for the knowledge service. Defaults to `"http://localhost:17011"`.
     pub knowledge_url: String,
-    /// Upstream URL for the index service. Defaults to `"http://localhost:17012"`.
-    pub index_url: String,
+    /// PAM (system-user) authentication settings. See [`CorePamConfig`].
+    pub pam: CorePamConfig,
 }
 
 impl Default for CoreConfig {
@@ -400,7 +416,37 @@ impl Default for CoreConfig {
             memory_url: "http://localhost:17008".to_string(),
             communicate_url: "http://localhost:17010".to_string(),
             knowledge_url: "http://localhost:17011".to_string(),
-            index_url: "http://localhost:17012".to_string(),
+            pam: CorePamConfig::default(),
+        }
+    }
+}
+
+/// PAM (system-user) authentication settings for `agentd-core`, nested under
+/// `[services.core.pam]`.
+///
+/// These mirror the `AGENTD_PAM_*` environment variables, which **override**
+/// these values when set (see [`crate::config`] precedence). PAM login also
+/// requires a build with `--features pam`; without it, `pam` logins fail closed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct CorePamConfig {
+    /// Master switch (`AGENTD_PAM_ENABLED`). When `false`, `pam` users fail
+    /// closed and just-in-time provisioning never triggers. Defaults to `false`.
+    pub enabled: bool,
+    /// PAM service name (`AGENTD_PAM_SERVICE`) → `/etc/pam.d/<service>`.
+    /// Defaults to `"agentd"`.
+    pub service: String,
+    /// Domain for the synthesized email of a just-in-time provisioned user
+    /// (`AGENTD_PAM_EMAIL_DOMAIN`): `<user>@<domain>`. Defaults to `"pam.local"`.
+    pub email_domain: String,
+}
+
+impl Default for CorePamConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            service: "agentd".to_string(),
+            email_domain: "pam.local".to_string(),
         }
     }
 }
@@ -724,7 +770,6 @@ impl ValidateConfig for CoreConfig {
             ("core.memory_url", self.memory_url.as_str()),
             ("core.communicate_url", self.communicate_url.as_str()),
             ("core.knowledge_url", self.knowledge_url.as_str()),
-            ("core.index_url", self.index_url.as_str()),
         ] {
             validate_url(url, name)?;
         }
@@ -946,6 +991,16 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     &file.services.memory.embedding_model,
                     &d.services.memory.embedding_model,
                 ),
+                embedding_api_key: file
+                    .services
+                    .memory
+                    .embedding_api_key
+                    .or(base.services.memory.embedding_api_key),
+                embedding_endpoint: file
+                    .services
+                    .memory
+                    .embedding_endpoint
+                    .or(base.services.memory.embedding_endpoint),
                 lance_path: pick(
                     &base.services.memory.lance_path,
                     &file.services.memory.lance_path,
@@ -1090,11 +1145,23 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                     &file.services.core.knowledge_url,
                     &d.services.core.knowledge_url,
                 ),
-                index_url: pick(
-                    &base.services.core.index_url,
-                    &file.services.core.index_url,
-                    &d.services.core.index_url,
-                ),
+                pam: CorePamConfig {
+                    enabled: pick_bool(
+                        base.services.core.pam.enabled,
+                        file.services.core.pam.enabled,
+                        d.services.core.pam.enabled,
+                    ),
+                    service: pick(
+                        &base.services.core.pam.service,
+                        &file.services.core.pam.service,
+                        &d.services.core.pam.service,
+                    ),
+                    email_domain: pick(
+                        &base.services.core.pam.email_domain,
+                        &file.services.core.pam.email_domain,
+                        &d.services.core.pam.email_domain,
+                    ),
+                },
             },
             mcp: McpConfig {
                 orchestrator_url: pick(
@@ -1230,6 +1297,12 @@ fn apply_env_overrides(cfg: &mut AgentdConfig) {
     if let Ok(v) = env::var("AGENTD_MEMORY_EMBEDDING_MODEL") {
         cfg.services.memory.embedding_model = v;
     }
+    if let Ok(v) = env::var("AGENTD_MEMORY_EMBEDDING_API_KEY") {
+        cfg.services.memory.embedding_api_key = Some(v);
+    }
+    if let Ok(v) = env::var("AGENTD_MEMORY_EMBEDDING_ENDPOINT") {
+        cfg.services.memory.embedding_endpoint = Some(v);
+    }
     if let Ok(v) = env::var("AGENTD_MEMORY_LANCE_PATH") {
         cfg.services.memory.lance_path = v;
     }
@@ -1352,6 +1425,15 @@ fn pick(base: &str, file: &str, default: &str) -> String {
 
 #[inline]
 fn pick_u16(base: u16, file: u16, default: u16) -> u16 {
+    if file != default {
+        file
+    } else {
+        base
+    }
+}
+
+#[inline]
+fn pick_bool(base: bool, file: bool, default: bool) -> bool {
     if file != default {
         file
     } else {
@@ -1627,6 +1709,55 @@ history_size = 1000
         assert_eq!(cfg.services.core.port, 19000);
         // Other ports untouched
         assert_eq!(cfg.services.ask.port, 17001);
+    }
+
+    #[test]
+    fn test_memory_embedding_credentials_from_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        env::remove_var("AGENTD_MEMORY_EMBEDDING_API_KEY");
+        env::remove_var("AGENTD_MEMORY_EMBEDDING_ENDPOINT");
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            "[services.memory]\nembedding_provider = \"openai\"\nembedding_api_key = \"sk-from-file\"\nembedding_endpoint = \"http://localhost:11434/v1\""
+        )
+        .unwrap();
+
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+
+        assert_eq!(cfg.services.memory.embedding_provider, "openai");
+        assert_eq!(cfg.services.memory.embedding_api_key.as_deref(), Some("sk-from-file"));
+        assert_eq!(
+            cfg.services.memory.embedding_endpoint.as_deref(),
+            Some("http://localhost:11434/v1")
+        );
+    }
+
+    #[test]
+    fn test_memory_embedding_credentials_env_beats_file() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            "[services.memory]\nembedding_api_key = \"sk-from-file\"\nembedding_endpoint = \"http://from-file/v1\""
+        )
+        .unwrap();
+        env::set_var("AGENTD_MEMORY_EMBEDDING_API_KEY", "sk-from-env");
+        env::set_var("AGENTD_MEMORY_EMBEDDING_ENDPOINT", "http://from-env/v1");
+
+        let cfg = load_from_path(Some(f.path())).expect("load failed");
+        env::remove_var("AGENTD_MEMORY_EMBEDDING_API_KEY");
+        env::remove_var("AGENTD_MEMORY_EMBEDDING_ENDPOINT");
+
+        assert_eq!(cfg.services.memory.embedding_api_key.as_deref(), Some("sk-from-env"));
+        assert_eq!(cfg.services.memory.embedding_endpoint.as_deref(), Some("http://from-env/v1"));
+    }
+
+    #[test]
+    fn test_memory_embedding_credentials_default_none() {
+        let cfg = AgentdConfig::default();
+        assert!(cfg.services.memory.embedding_api_key.is_none());
+        assert!(cfg.services.memory.embedding_endpoint.is_none());
     }
 
     // ── core upstream URLs ─────────────────────────────────────────────────

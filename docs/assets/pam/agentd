@@ -1,0 +1,14 @@
+#%PAM-1.0
+# PAM service stack for agentd-core system-user login.
+#
+# Install as /etc/pam.d/agentd (matching AGENTD_PAM_SERVICE, default "agentd").
+# This Debian/Ubuntu stack delegates to the host's standard Unix auth via the
+# `common-*` includes. On RHEL/Fedora, replace the includes with:
+#   auth     substack  system-auth
+#   account  substack  system-auth
+#
+# For an SSSD/LDAP/AD-backed host, point these at pam_sss instead of pam_unix —
+# pam_sss consults a privileged socket and needs no local /etc/shadow access,
+# so agentd-core does not need shadow-group membership in that configuration.
+auth     required  pam_unix.so
+account  required  pam_unix.so

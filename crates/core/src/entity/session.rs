@@ -68,6 +68,8 @@ mod tests {
             display_name: Set(None),
             role: Set("user".to_string()),
             is_superuser: Set(false),
+            auth_provider: Set("local".to_string()),
+            system_username: Set(None),
             active_organization_id: Set(None),
             created_at: Set(now.clone()),
             updated_at: Set(now),

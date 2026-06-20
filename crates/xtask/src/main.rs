@@ -9,6 +9,7 @@
 //! # Commands
 //!
 //! - `install-user` / `install` — Build everything and install for the current user
+//!   (set `AGENTD_PAM=1` to build `agentd-core` with PAM system-user login support)
 //! - `uninstall` — Remove all installed components
 //! - `start-services` / `stop-services` / `restart-services` — Service lifecycle
 //! - `start-service` / `stop-service` / `restart-service` <name> — Single-service lifecycle
@@ -84,6 +85,10 @@ fn print_help() {
     println!();
     println!("{}", "Installation:".cyan());
     println!("  {} - Build & install for current user", "install-user".green());
+    println!(
+        "      {} build agentd-core with PAM (system-user login) support",
+        "AGENTD_PAM=1".yellow()
+    );
     println!("  {} - Generate & install shell completions", "install-completions".green());
     println!("  {} - Uninstall all components", "uninstall".green());
     println!();
@@ -597,6 +602,17 @@ fn check_in_project_root() -> Result<()> {
     Ok(())
 }
 
+/// Whether to build `agentd-core` with PAM (system-user login) support.
+///
+/// Opt-in via `AGENTD_PAM=1` (also accepts `true`/`yes`/`on`). The `pam` feature
+/// links the system PAM library and is off by default so standard installs don't
+/// need it; this gate lets `install-user` produce a PAM-enabled build.
+fn pam_enabled() -> bool {
+    std::env::var("AGENTD_PAM")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
 fn build_release() -> Result<()> {
     let status = Command::new("cargo")
         .arg("build")
@@ -608,6 +624,30 @@ fn build_release() -> Result<()> {
 
     if !status.success() {
         anyhow::bail!("Build failed");
+    }
+
+    // Opt-in: rebuild agentd-core with PAM support. This second build overwrites
+    // target/release/agentd-core with the feature-enabled binary the installer
+    // then sources. Done as a separate `-p agentd-core` build (rather than a
+    // workspace `--features`) since the `pam` feature only exists on that crate.
+    if pam_enabled() {
+        println!("{}", "Rebuilding agentd-core with PAM support (AGENTD_PAM set)...".blue());
+        let status = Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .arg("-p")
+            .arg("agentd-core")
+            .arg("--features")
+            .arg("pam")
+            .status()
+            .context("Failed to execute PAM-enabled cargo build")?;
+
+        if !status.success() {
+            anyhow::bail!(
+                "PAM-enabled build failed. On Linux, ensure the PAM dev library is installed \
+                 (libpam0g-dev on Debian/Ubuntu, pam-devel on RHEL/Fedora); macOS needs no extra packages."
+            );
+        }
     }
 
     Ok(())

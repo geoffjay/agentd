@@ -202,7 +202,7 @@ mod tests {
     async fn setup() -> (Router, Storage, tempfile::TempDir) {
         let (conn, tmp) = create_test_connection().await;
         let storage = Storage::new(conn).await.unwrap();
-        let router = create_router(AppState { storage: storage.clone() });
+        let router = create_router(AppState::new(storage.clone()));
         (router, storage, tmp)
     }
 

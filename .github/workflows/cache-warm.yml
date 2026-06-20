@@ -46,6 +46,9 @@ jobs:
             os: macos-latest
           # - target: x86_64-apple-darwin
           #   os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            pam: true
     steps:
       - uses: actions/checkout@v6
 
@@ -56,6 +59,10 @@ jobs:
       - name: Install protoc (macOS)
         if: runner.os == 'macOS'
         run: brew install protobuf
+
+      - name: Install libpam dev headers (PAM build)
+        if: ${{ matrix.pam }}
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -73,3 +80,9 @@ jobs:
       # re-saving), but the restore still refreshes the eviction timer.
       - name: Build release dependencies
         run: cargo build --release --workspace --bins --target ${{ matrix.target }}
+
+      # Warm the PAM-only dependency (pam-sys) so the release run's PAM rebuild
+      # restores from cache too.
+      - name: Build PAM dependencies
+        if: ${{ matrix.pam }}
+        run: cargo build --release -p agentd-core --features pam --target ${{ matrix.target }}

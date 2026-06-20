@@ -140,7 +140,7 @@ async fn run_serve() -> Result<()> {
     let metrics_router =
         axum::Router::new().route("/metrics", get(metrics_handler)).with_state(metrics_handle);
 
-    let state = agentd_core::api::AppState { storage };
+    let state = agentd_core::api::AppState::with_pam_loaded(storage);
 
     // Build the gateway's upstream map from the shared `[services.core]`
     // config (with bare `*_URL` env vars still overriding for compatibility).

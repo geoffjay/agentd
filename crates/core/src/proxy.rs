@@ -26,7 +26,6 @@
 //! | monitor       | `monitor_url`                  | `MONITOR_URL`       | `http://localhost:17003`   |
 //! | memory        | `memory_url`                   | `MEMORY_URL`        | `http://localhost:17008`   |
 //! | communicate   | `communicate_url`              | `COMMUNICATE_URL`   | `http://localhost:17010`   |
-//! | index         | `index_url`                    | `INDEX_URL`         | `http://localhost:17012`   |
 //! | knowledge     | `knowledge_url`                | `KNOWLEDGE_URL`     | `http://localhost:17011`   |
 
 use std::collections::HashMap;
@@ -63,7 +62,6 @@ impl ProxyConfig {
             ("monitor", "MONITOR_URL", core.monitor_url.as_str()),
             ("memory", "MEMORY_URL", core.memory_url.as_str()),
             ("communicate", "COMMUNICATE_URL", core.communicate_url.as_str()),
-            ("index", "INDEX_URL", core.index_url.as_str()),
             ("knowledge", "KNOWLEDGE_URL", core.knowledge_url.as_str()),
         ]
         .into_iter()
@@ -237,8 +235,9 @@ mod tests {
         assert!(cfg.url_for("monitor").is_some());
         assert!(cfg.url_for("memory").is_some());
         assert!(cfg.url_for("communicate").is_some());
-        assert!(cfg.url_for("index").is_some());
         assert!(cfg.url_for("knowledge").is_some());
+        // The index service was removed; it must not be a proxy target.
+        assert!(cfg.url_for("index").is_none());
         assert!(cfg.url_for("nonexistent").is_none());
     }
 
@@ -247,7 +246,6 @@ mod tests {
         let cfg = ProxyConfig::from_env();
         assert_eq!(cfg.url_for("memory"), Some("http://localhost:17008"));
         assert_eq!(cfg.url_for("communicate"), Some("http://localhost:17010"));
-        assert_eq!(cfg.url_for("index"), Some("http://localhost:17012"));
         assert_eq!(cfg.url_for("knowledge"), Some("http://localhost:17011"));
     }
 

@@ -82,6 +82,18 @@ fn build_install_defaults(services: &[ServiceInfo]) -> toml::Value {
         t.insert("backend".to_string(), Value::String("subprocess".to_string()));
     }
 
+    // memory: embedding provider/model + LanceDB path. These mirror the
+    // compiled defaults so the [services.memory] section is complete and
+    // discoverable after install. The merge is gap-fill, so user-set values
+    // are preserved. The API key/endpoint are intentionally omitted — they are
+    // optional and (for the key) secret, set via env or by editing config.
+    if let Some(Value::Table(t)) = services_map.get_mut("memory") {
+        let mem = agentd_common::config::MemoryConfig::default();
+        t.insert("embedding_provider".to_string(), Value::String(mem.embedding_provider));
+        t.insert("embedding_model".to_string(), Value::String(mem.embedding_model));
+        t.insert("lance_path".to_string(), Value::String(mem.lance_path));
+    }
+
     // ask: orchestrator_url (compiled default points at dev port 17006)
     if let Some(Value::Table(t)) = services_map.get_mut("ask") {
         t.insert(
@@ -225,6 +237,48 @@ mod tests {
         // new section inserted
         assert_eq!(svcs["orchestrator"]["port"].as_integer(), Some(7006));
         assert_eq!(svcs["orchestrator"]["backend"].as_str(), Some("subprocess"));
+    }
+
+    #[test]
+    fn test_build_defaults_seeds_memory_embedding() {
+        let svcs = vec![ServiceInfo {
+            name: "memory",
+            binary: "agentd-memory",
+            port: 7008,
+            port_env: "AGENTD_MEMORY_PORT",
+        }];
+        let defaults = build_install_defaults(&svcs);
+        let memory = &defaults["services"]["memory"];
+        assert_eq!(memory["embedding_provider"].as_str(), Some("none"));
+        assert_eq!(memory["embedding_model"].as_str(), Some("text-embedding-3-small"));
+        assert!(memory["lance_path"].as_str().is_some_and(|p| !p.is_empty()));
+        // Secret/optional fields are not seeded.
+        assert!(memory.get("embedding_api_key").is_none());
+        assert!(memory.get("embedding_endpoint").is_none());
+    }
+
+    #[test]
+    fn test_merge_preserves_user_embedding_provider() {
+        let mut base: toml::Value = toml::from_str(
+            r#"
+            [services.memory]
+            embedding_provider = "openai"
+        "#,
+        )
+        .unwrap();
+
+        let svcs = vec![ServiceInfo {
+            name: "memory",
+            binary: "agentd-memory",
+            port: 7008,
+            port_env: "AGENTD_MEMORY_PORT",
+        }];
+        merge_toml_defaults(&mut base, build_install_defaults(&svcs));
+
+        let memory = &base["services"]["memory"];
+        // User-set provider preserved, model gap-filled.
+        assert_eq!(memory["embedding_provider"].as_str(), Some("openai"));
+        assert_eq!(memory["embedding_model"].as_str(), Some("text-embedding-3-small"));
     }
 
     #[test]

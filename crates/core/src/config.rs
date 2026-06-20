@@ -10,6 +10,22 @@
 //! | `AGENTD_HOST`   | `127.0.0.1`   | HTTP bind host       |
 //! | `AGENTD_CORE_PORT` | `17000`     | HTTP listen port     |
 //! | `AGENTD_PORT`   | —             | Fallback port (legacy) |
+//! | `SESSION_EXPIRY_HOURS` | `24`   | Session token lifetime |
+//!
+//! ## PAM (system-user) login
+//!
+//! Loaded by [`crate::pam_auth::PamConfig::load`] from the shared
+//! `[services.core.pam]` config section, with the environment variables below
+//! overlaid on top (env wins). Requires a build with `--features pam` and a
+//! deployment where the core process can verify system passwords (system
+//! service in the `shadow` group, or an SSSD-backed stack — see the PAM
+//! deployment guide under `docs/`).
+//!
+//! | Env variable / `[services.core.pam]` key | Default | Description |
+//! |------------------------------------------|---------|-------------|
+//! | `AGENTD_PAM_ENABLED` / `enabled` | `false` | Master switch for PAM login |
+//! | `AGENTD_PAM_SERVICE` / `service` | `agentd` | PAM service → `/etc/pam.d/<service>` |
+//! | `AGENTD_PAM_EMAIL_DOMAIN` / `email_domain` | `pam.local` | Domain for synthesized JIT-user emails |
 
 use agentd_common::config::ValidateConfig;
 use anyhow::{bail, Result};

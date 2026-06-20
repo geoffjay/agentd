@@ -47,9 +47,11 @@ dependencies = [
  "futures-util",
  "http-body-util",
  "hyper",
+ "libc",
  "metrics",
  "metrics-exporter-prometheus",
  "notify",
+ "pam-sys",
  "rand 0.8.5",
  "reqwest",
  "sea-orm",
@@ -4825,6 +4827,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fbd56f7631767e61784dc43f8580f403f4475bd4aaa4da003e6295e1bab4a7e"
 dependencies = [
  "stable_deref_trait",
+]
+
+[[package]]
+name = "pam-sys"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd4858311a097f01a0006ef7d0cd50bca81ec430c949d7bf95cbefd202282434"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
