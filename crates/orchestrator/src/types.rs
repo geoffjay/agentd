@@ -86,6 +86,229 @@ impl std::str::FromStr for AgentStatus {
     }
 }
 
+// ─── Execution state machine ──────────────────────────────────────────────────
+
+/// The unified execution state of an agent, combining lifecycle and activity.
+///
+/// This is the single source of truth for "what is this agent doing right now?"
+/// It replaces the split between `AgentStatus` (persisted) and `ActivityState`
+/// (in-memory) with a single richer model.
+///
+/// ## Valid Transitions
+///
+/// ```text
+/// Pending   → Starting, Failed
+/// Starting  → Idle, Failed
+/// Idle      → Busy, Suspended, Stopped, Failed
+/// Busy      → Idle, Suspended, Stopped, Failed
+/// Suspended → Idle, Busy, Stopped, Failed
+/// Stopped   → Starting  (restart)
+/// Failed    → Starting  (restart)
+/// ```
+///
+/// Use [`ExecutionState::transition_to`] to perform a validated transition.
+/// Use [`ExecutionState::to_agent_status`] / [`ExecutionState::to_activity_state`]
+/// for backward-compatible mapping to the existing API surface.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionState {
+    /// Agent record created; backend session not yet started.
+    Pending,
+    /// Backend session created; waiting for the Claude Code process to connect.
+    Starting,
+    /// Agent is connected and waiting for input.
+    Idle,
+    /// Agent is actively processing a prompt.
+    Busy,
+    /// Agent is temporarily suspended (e.g. context-clear in progress).
+    Suspended,
+    /// Agent exited cleanly.
+    Stopped,
+    /// Agent process failed or crashed.
+    Failed,
+}
+
+impl ExecutionState {
+    /// Return `true` if a direct transition to `target` is permitted.
+    pub fn can_transition_to(&self, target: &ExecutionState) -> bool {
+        use ExecutionState::*;
+        matches!(
+            (self, target),
+            // From Pending
+            (Pending, Starting) | (Pending, Failed) |
+            // From Starting
+            (Starting, Idle) | (Starting, Failed) |
+            // From Idle
+            (Idle, Busy) | (Idle, Suspended) | (Idle, Stopped) | (Idle, Failed) |
+            // From Busy
+            (Busy, Idle) | (Busy, Suspended) | (Busy, Stopped) | (Busy, Failed) |
+            // From Suspended
+            (Suspended, Idle) | (Suspended, Busy) | (Suspended, Stopped) | (Suspended, Failed) |
+            // From terminal states — restart only
+            (Stopped, Starting) | (Failed, Starting)
+        )
+    }
+
+    /// Attempt a validated transition to `target`.
+    ///
+    /// Returns `Ok(target)` when the transition is legal, or an error
+    /// describing the illegal `from → to` pair.
+    pub fn transition_to(&self, target: ExecutionState) -> anyhow::Result<ExecutionState> {
+        if self.can_transition_to(&target) {
+            Ok(target)
+        } else {
+            anyhow::bail!("Invalid execution state transition: {} → {}", self, target)
+        }
+    }
+
+    /// `true` for states where the agent will not process any further work
+    /// without an explicit restart (`Stopped` and `Failed`).
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, ExecutionState::Stopped | ExecutionState::Failed)
+    }
+
+    /// `true` when the agent is logically alive and could accept work
+    /// (`Idle`, `Busy`, or `Suspended`).
+    pub fn is_active(&self) -> bool {
+        matches!(self, ExecutionState::Idle | ExecutionState::Busy | ExecutionState::Suspended)
+    }
+
+    /// Map to the coarser [`AgentStatus`] used by the existing REST API and
+    /// database `status` column, preserving backward compatibility.
+    ///
+    /// | `ExecutionState`       | `AgentStatus` |
+    /// |------------------------|---------------|
+    /// | `Pending`, `Starting`  | `Pending`     |
+    /// | `Idle`, `Busy`, `Suspended` | `Running` |
+    /// | `Stopped`              | `Stopped`     |
+    /// | `Failed`               | `Failed`      |
+    pub fn to_agent_status(&self) -> AgentStatus {
+        match self {
+            ExecutionState::Pending | ExecutionState::Starting => AgentStatus::Pending,
+            ExecutionState::Idle | ExecutionState::Busy | ExecutionState::Suspended => {
+                AgentStatus::Running
+            }
+            ExecutionState::Stopped => AgentStatus::Stopped,
+            ExecutionState::Failed => AgentStatus::Failed,
+        }
+    }
+
+    /// Map to the in-memory [`ActivityState`] consumed by the WebSocket layer
+    /// and existing API consumers.
+    ///
+    /// Only `Busy` maps to `Busy`; all other states map to `Idle`.
+    pub fn to_activity_state(&self) -> ActivityState {
+        match self {
+            ExecutionState::Busy => ActivityState::Busy,
+            _ => ActivityState::Idle,
+        }
+    }
+}
+
+impl std::fmt::Display for ExecutionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExecutionState::Pending => write!(f, "pending"),
+            ExecutionState::Starting => write!(f, "starting"),
+            ExecutionState::Idle => write!(f, "idle"),
+            ExecutionState::Busy => write!(f, "busy"),
+            ExecutionState::Suspended => write!(f, "suspended"),
+            ExecutionState::Stopped => write!(f, "stopped"),
+            ExecutionState::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+impl std::str::FromStr for ExecutionState {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(ExecutionState::Pending),
+            "starting" => Ok(ExecutionState::Starting),
+            "idle" => Ok(ExecutionState::Idle),
+            "busy" => Ok(ExecutionState::Busy),
+            "suspended" => Ok(ExecutionState::Suspended),
+            "stopped" => Ok(ExecutionState::Stopped),
+            "failed" => Ok(ExecutionState::Failed),
+            _ => Err(anyhow::anyhow!("Unknown execution state: {}", s)),
+        }
+    }
+}
+
+// ─── Transition trigger ───────────────────────────────────────────────────────
+
+/// Records the reason a state transition was initiated.
+///
+/// Stored alongside every [`ExecutionState`] change in the `state_transitions`
+/// audit table (added by #1219).  The variant names are serialised as
+/// `snake_case` strings so they are human-readable in JSON and SQLite.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransitionTrigger {
+    /// The agent backend session was spawned.
+    Spawn,
+    /// The WebSocket / stdio connection to the Claude Code process was established.
+    Connected,
+    /// The connection to the Claude Code process was lost unexpectedly.
+    Disconnected,
+    /// A user prompt was forwarded to the agent.
+    PromptReceived,
+    /// The agent returned a final result for a prompt.
+    ResultReceived,
+    /// The agent's conversation context was cleared and a new session started.
+    ContextCleared,
+    /// An explicit stop request was issued by a user or the API.
+    UserTerminated,
+    /// The backend process exited with a zero (clean) exit code.
+    ProcessExited,
+    /// The backend process exited abnormally or was killed.
+    ProcessCrashed,
+    /// An agent restart was explicitly requested.
+    Restart,
+    /// The orchestrator reconciled agent state on startup.
+    Reconciliation,
+}
+
+impl std::fmt::Display for TransitionTrigger {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransitionTrigger::Spawn => write!(f, "spawn"),
+            TransitionTrigger::Connected => write!(f, "connected"),
+            TransitionTrigger::Disconnected => write!(f, "disconnected"),
+            TransitionTrigger::PromptReceived => write!(f, "prompt_received"),
+            TransitionTrigger::ResultReceived => write!(f, "result_received"),
+            TransitionTrigger::ContextCleared => write!(f, "context_cleared"),
+            TransitionTrigger::UserTerminated => write!(f, "user_terminated"),
+            TransitionTrigger::ProcessExited => write!(f, "process_exited"),
+            TransitionTrigger::ProcessCrashed => write!(f, "process_crashed"),
+            TransitionTrigger::Restart => write!(f, "restart"),
+            TransitionTrigger::Reconciliation => write!(f, "reconciliation"),
+        }
+    }
+}
+
+impl std::str::FromStr for TransitionTrigger {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "spawn" => Ok(TransitionTrigger::Spawn),
+            "connected" => Ok(TransitionTrigger::Connected),
+            "disconnected" => Ok(TransitionTrigger::Disconnected),
+            "prompt_received" => Ok(TransitionTrigger::PromptReceived),
+            "result_received" => Ok(TransitionTrigger::ResultReceived),
+            "context_cleared" => Ok(TransitionTrigger::ContextCleared),
+            "user_terminated" => Ok(TransitionTrigger::UserTerminated),
+            "process_exited" => Ok(TransitionTrigger::ProcessExited),
+            "process_crashed" => Ok(TransitionTrigger::ProcessCrashed),
+            "restart" => Ok(TransitionTrigger::Restart),
+            "reconciliation" => Ok(TransitionTrigger::Reconciliation),
+            _ => Err(anyhow::anyhow!("Unknown transition trigger: {}", s)),
+        }
+    }
+}
+
 /// Policy controlling which tools an agent is allowed to use.
 ///
 /// When a Claude Code agent requests permission to use a tool (via the
@@ -2210,6 +2433,260 @@ mod tests {
         let json = r#"{"mode":"deny_list","tools":["Bash(rm *)"]}"#;
         let policy: ToolPolicy = serde_json::from_str(json).unwrap();
         assert!(policy.sandbox_bypass().is_empty());
+    }
+
+    // ─── ExecutionState tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_execution_state_display_and_from_str_round_trip() {
+        use std::str::FromStr;
+        let states = [
+            ExecutionState::Pending,
+            ExecutionState::Starting,
+            ExecutionState::Idle,
+            ExecutionState::Busy,
+            ExecutionState::Suspended,
+            ExecutionState::Stopped,
+            ExecutionState::Failed,
+        ];
+        for state in &states {
+            let s = state.to_string();
+            let parsed = ExecutionState::from_str(&s).unwrap();
+            assert_eq!(&parsed, state, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn test_execution_state_from_str_unknown_returns_error() {
+        use std::str::FromStr;
+        assert!(ExecutionState::from_str("unknown_state").is_err());
+        assert!(ExecutionState::from_str("").is_err());
+    }
+
+    #[test]
+    fn test_execution_state_serializes_as_snake_case() {
+        assert_eq!(serde_json::to_string(&ExecutionState::Pending).unwrap(), "\"pending\"");
+        assert_eq!(serde_json::to_string(&ExecutionState::Starting).unwrap(), "\"starting\"");
+        assert_eq!(serde_json::to_string(&ExecutionState::Idle).unwrap(), "\"idle\"");
+        assert_eq!(serde_json::to_string(&ExecutionState::Busy).unwrap(), "\"busy\"");
+        assert_eq!(serde_json::to_string(&ExecutionState::Suspended).unwrap(), "\"suspended\"");
+        assert_eq!(serde_json::to_string(&ExecutionState::Stopped).unwrap(), "\"stopped\"");
+        assert_eq!(serde_json::to_string(&ExecutionState::Failed).unwrap(), "\"failed\"");
+    }
+
+    #[test]
+    fn test_execution_state_deserializes_from_snake_case() {
+        let s: ExecutionState = serde_json::from_str("\"starting\"").unwrap();
+        assert_eq!(s, ExecutionState::Starting);
+        let s: ExecutionState = serde_json::from_str("\"suspended\"").unwrap();
+        assert_eq!(s, ExecutionState::Suspended);
+    }
+
+    // ── Valid transitions ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_valid_transitions_from_pending() {
+        assert!(ExecutionState::Pending.transition_to(ExecutionState::Starting).is_ok());
+        assert!(ExecutionState::Pending.transition_to(ExecutionState::Failed).is_ok());
+    }
+
+    #[test]
+    fn test_valid_transitions_from_starting() {
+        assert!(ExecutionState::Starting.transition_to(ExecutionState::Idle).is_ok());
+        assert!(ExecutionState::Starting.transition_to(ExecutionState::Failed).is_ok());
+    }
+
+    #[test]
+    fn test_valid_transitions_from_idle() {
+        assert!(ExecutionState::Idle.transition_to(ExecutionState::Busy).is_ok());
+        assert!(ExecutionState::Idle.transition_to(ExecutionState::Suspended).is_ok());
+        assert!(ExecutionState::Idle.transition_to(ExecutionState::Stopped).is_ok());
+        assert!(ExecutionState::Idle.transition_to(ExecutionState::Failed).is_ok());
+    }
+
+    #[test]
+    fn test_valid_transitions_from_busy() {
+        assert!(ExecutionState::Busy.transition_to(ExecutionState::Idle).is_ok());
+        assert!(ExecutionState::Busy.transition_to(ExecutionState::Suspended).is_ok());
+        assert!(ExecutionState::Busy.transition_to(ExecutionState::Stopped).is_ok());
+        assert!(ExecutionState::Busy.transition_to(ExecutionState::Failed).is_ok());
+    }
+
+    #[test]
+    fn test_valid_transitions_from_suspended() {
+        assert!(ExecutionState::Suspended.transition_to(ExecutionState::Idle).is_ok());
+        assert!(ExecutionState::Suspended.transition_to(ExecutionState::Busy).is_ok());
+        assert!(ExecutionState::Suspended.transition_to(ExecutionState::Stopped).is_ok());
+        assert!(ExecutionState::Suspended.transition_to(ExecutionState::Failed).is_ok());
+    }
+
+    #[test]
+    fn test_valid_restart_from_terminal_states() {
+        assert!(ExecutionState::Stopped.transition_to(ExecutionState::Starting).is_ok());
+        assert!(ExecutionState::Failed.transition_to(ExecutionState::Starting).is_ok());
+    }
+
+    // ── Invalid transitions ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_invalid_transitions_from_pending() {
+        // Pending cannot jump directly to running states
+        assert!(ExecutionState::Pending.transition_to(ExecutionState::Idle).is_err());
+        assert!(ExecutionState::Pending.transition_to(ExecutionState::Busy).is_err());
+        assert!(ExecutionState::Pending.transition_to(ExecutionState::Suspended).is_err());
+        assert!(ExecutionState::Pending.transition_to(ExecutionState::Stopped).is_err());
+    }
+
+    #[test]
+    fn test_invalid_transitions_from_starting() {
+        assert!(ExecutionState::Starting.transition_to(ExecutionState::Pending).is_err());
+        assert!(ExecutionState::Starting.transition_to(ExecutionState::Busy).is_err());
+        assert!(ExecutionState::Starting.transition_to(ExecutionState::Stopped).is_err());
+    }
+
+    #[test]
+    fn test_invalid_transitions_from_idle() {
+        assert!(ExecutionState::Idle.transition_to(ExecutionState::Pending).is_err());
+        assert!(ExecutionState::Idle.transition_to(ExecutionState::Starting).is_err());
+    }
+
+    #[test]
+    fn test_invalid_transitions_from_busy() {
+        assert!(ExecutionState::Busy.transition_to(ExecutionState::Pending).is_err());
+        assert!(ExecutionState::Busy.transition_to(ExecutionState::Starting).is_err());
+    }
+
+    #[test]
+    fn test_invalid_transitions_from_terminal_states() {
+        // Terminal states can only restart — they cannot jump directly to running
+        for terminal in [ExecutionState::Stopped, ExecutionState::Failed] {
+            assert!(terminal.clone().transition_to(ExecutionState::Pending).is_err());
+            assert!(terminal.clone().transition_to(ExecutionState::Idle).is_err());
+            assert!(terminal.clone().transition_to(ExecutionState::Busy).is_err());
+            assert!(terminal.clone().transition_to(ExecutionState::Suspended).is_err());
+        }
+    }
+
+    #[test]
+    fn test_invalid_self_transitions() {
+        // No state can transition to itself
+        for state in [
+            ExecutionState::Pending,
+            ExecutionState::Starting,
+            ExecutionState::Idle,
+            ExecutionState::Busy,
+            ExecutionState::Suspended,
+            ExecutionState::Stopped,
+            ExecutionState::Failed,
+        ] {
+            assert!(
+                state.clone().transition_to(state.clone()).is_err(),
+                "self-transition of {state} should be invalid"
+            );
+        }
+    }
+
+    // ── Helper predicates ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_terminal() {
+        assert!(ExecutionState::Stopped.is_terminal());
+        assert!(ExecutionState::Failed.is_terminal());
+        assert!(!ExecutionState::Pending.is_terminal());
+        assert!(!ExecutionState::Starting.is_terminal());
+        assert!(!ExecutionState::Idle.is_terminal());
+        assert!(!ExecutionState::Busy.is_terminal());
+        assert!(!ExecutionState::Suspended.is_terminal());
+    }
+
+    #[test]
+    fn test_is_active() {
+        assert!(ExecutionState::Idle.is_active());
+        assert!(ExecutionState::Busy.is_active());
+        assert!(ExecutionState::Suspended.is_active());
+        assert!(!ExecutionState::Pending.is_active());
+        assert!(!ExecutionState::Starting.is_active());
+        assert!(!ExecutionState::Stopped.is_active());
+        assert!(!ExecutionState::Failed.is_active());
+    }
+
+    // ── Backward-compatibility mappings ────────────────────────────────────
+
+    #[test]
+    fn test_to_agent_status_mapping() {
+        assert_eq!(ExecutionState::Pending.to_agent_status(), AgentStatus::Pending);
+        assert_eq!(ExecutionState::Starting.to_agent_status(), AgentStatus::Pending);
+        assert_eq!(ExecutionState::Idle.to_agent_status(), AgentStatus::Running);
+        assert_eq!(ExecutionState::Busy.to_agent_status(), AgentStatus::Running);
+        assert_eq!(ExecutionState::Suspended.to_agent_status(), AgentStatus::Running);
+        assert_eq!(ExecutionState::Stopped.to_agent_status(), AgentStatus::Stopped);
+        assert_eq!(ExecutionState::Failed.to_agent_status(), AgentStatus::Failed);
+    }
+
+    #[test]
+    fn test_to_activity_state_mapping() {
+        assert_eq!(ExecutionState::Busy.to_activity_state(), ActivityState::Busy);
+        assert_eq!(ExecutionState::Idle.to_activity_state(), ActivityState::Idle);
+        assert_eq!(ExecutionState::Pending.to_activity_state(), ActivityState::Idle);
+        assert_eq!(ExecutionState::Starting.to_activity_state(), ActivityState::Idle);
+        assert_eq!(ExecutionState::Suspended.to_activity_state(), ActivityState::Idle);
+        assert_eq!(ExecutionState::Stopped.to_activity_state(), ActivityState::Idle);
+        assert_eq!(ExecutionState::Failed.to_activity_state(), ActivityState::Idle);
+    }
+
+    // ─── TransitionTrigger tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_transition_trigger_display_and_from_str_round_trip() {
+        use std::str::FromStr;
+        let triggers = [
+            TransitionTrigger::Spawn,
+            TransitionTrigger::Connected,
+            TransitionTrigger::Disconnected,
+            TransitionTrigger::PromptReceived,
+            TransitionTrigger::ResultReceived,
+            TransitionTrigger::ContextCleared,
+            TransitionTrigger::UserTerminated,
+            TransitionTrigger::ProcessExited,
+            TransitionTrigger::ProcessCrashed,
+            TransitionTrigger::Restart,
+            TransitionTrigger::Reconciliation,
+        ];
+        for trigger in &triggers {
+            let s = trigger.to_string();
+            let parsed = TransitionTrigger::from_str(&s).unwrap();
+            assert_eq!(&parsed, trigger, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn test_transition_trigger_from_str_unknown_returns_error() {
+        use std::str::FromStr;
+        assert!(TransitionTrigger::from_str("unknown_trigger").is_err());
+    }
+
+    #[test]
+    fn test_transition_trigger_serializes_as_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&TransitionTrigger::PromptReceived).unwrap(),
+            "\"prompt_received\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TransitionTrigger::ProcessCrashed).unwrap(),
+            "\"process_crashed\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TransitionTrigger::UserTerminated).unwrap(),
+            "\"user_terminated\""
+        );
+    }
+
+    #[test]
+    fn test_transition_trigger_deserializes_from_snake_case() {
+        let t: TransitionTrigger = serde_json::from_str("\"reconciliation\"").unwrap();
+        assert_eq!(t, TransitionTrigger::Reconciliation);
+        let t: TransitionTrigger = serde_json::from_str("\"result_received\"").unwrap();
+        assert_eq!(t, TransitionTrigger::ResultReceived);
     }
 }
 
