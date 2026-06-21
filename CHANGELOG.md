@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file.
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.13] - 2026-06-21
+
+### Added
+
+- Add MCP tools for knowledgebase
+- Add memory tool
+- Add CLI integration tests
+- Add CLI integration tests
+- Linux-only implementation
+- Support macos pam
+- Support PAM in build
+- Add PAM config to core and validate auth
+- Add Makefile targets
+
+### Fixed
+
+- Update trigger_config in tools
+- Update memory service for missing config
+- Login background layout flash
+
 ## [0.4.12] - 2026-06-17
 
 ### Added
