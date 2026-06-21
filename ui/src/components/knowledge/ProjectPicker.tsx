@@ -6,7 +6,7 @@
 import { ChevronDown, FolderOpen } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Project } from "@/types/orchestrator";
-import { orchestratorClient } from "@/services/orchestrator";
+import { coreClient } from "@/services/core";
 
 interface ProjectPickerProps {
 	selectedId: string | null;
@@ -27,7 +27,7 @@ export function ProjectPicker({
 	useEffect(() => {
 		let cancelled = false;
 		setLoading(true);
-		orchestratorClient
+		coreClient
 			.listProjects({ limit: 200 })
 			.then((page) => {
 				if (!cancelled) setProjects(page.items);
