@@ -712,12 +712,16 @@ async fn main() -> Result<()> {
         }
         Commands::Project { command } => {
             let token = load_token_or_warn();
-            let url = gateway_url("orchestrator");
-            let mut client = OrchestratorClient::new(url);
+            let orch_url = gateway_url("orchestrator");
+            // Project CRUD now lives in core; association operations stay on the
+            // orchestrator. Build a client that routes CRUD to core and keeps
+            // associations on the orchestrator base URL.
+            let core_api_url = format!("{}/api/v1", client::core_url());
+            let mut orch_client = OrchestratorClient::new(orch_url).with_core_url(core_api_url);
             if let Some(t) = token {
-                client = client.with_token(t);
+                orch_client = orch_client.with_token(t);
             }
-            command.execute(&client, cli.json).await?;
+            command.execute(&orch_client, cli.json).await?;
         }
         Commands::Control => {
             agentd_tui::run_control().await?;

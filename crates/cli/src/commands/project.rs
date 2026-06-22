@@ -292,8 +292,6 @@ async fn show_project(client: &OrchestratorClient, id_or_name: &str, json: bool)
     if let Some(desc) = &project.description {
         println!("  Description: {}", desc);
     }
-    println!("  Agents:      {}", project.agent_count);
-    println!("  Workflows:   {}", project.workflow_count);
     println!("  Created:     {}", project.created_at.format("%Y-%m-%d %H:%M:%S UTC"));
     println!("  Updated:     {}", project.updated_at.format("%Y-%m-%d %H:%M:%S UTC"));
 
