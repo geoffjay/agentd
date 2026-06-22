@@ -643,6 +643,67 @@ mod tests {
         assert_eq!(body["offset"], 1);
     }
 
+    #[tokio::test]
+    async fn test_list_projects_with_tenant_header_scopes_results() {
+        let (app, _tmp) = test_app().await;
+        let (token, _) = register(&app, "tenant_tester", "tenant_tester@example.com").await;
+
+        // Project for org-x
+        for &(name, org) in &[
+            ("Org-X Project", Some("org-x")),
+            ("No-Org Project", None),
+            ("Org-Y Project", Some("org-y")),
+        ] {
+            let payload = serde_json::json!({ "name": name });
+            let mut builder = Request::builder()
+                .method("POST")
+                .uri("/api/v1/projects")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json");
+            if let Some(oid) = org {
+                builder = builder.header("X-Tenant-ID", oid);
+            }
+            app.clone()
+                .oneshot(builder.body(Body::from(payload.to_string())).unwrap())
+                .await
+                .unwrap();
+        }
+
+        // List with X-Tenant-ID: org-x — should return org-x project + NULL-org project (2)
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/v1/projects")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header("X-Tenant-ID", "org-x")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_json(response).await;
+        assert_eq!(body["total"], 2, "org-x scoped list should include org-x + NULL rows");
+
+        // List without tenant header — should return all 3
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/v1/projects")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_json(response).await;
+        assert_eq!(body["total"], 3, "unscoped list should return all projects");
+    }
+
     // -----------------------------------------------------------------------
     // Update project
     // -----------------------------------------------------------------------
