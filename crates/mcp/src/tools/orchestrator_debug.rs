@@ -90,8 +90,6 @@ struct ProjectDetail {
     description: Option<String>,
     created_at: String,
     updated_at: String,
-    agent_count: u64,
-    workflow_count: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -302,13 +300,13 @@ pub async fn run_get_conversation_summary(client: &AgentdClient, agent_id: &str)
 }
 
 pub async fn run_list_projects(client: &AgentdClient, limit: Option<u32>) -> String {
-    let base = client.orchestrator_url();
+    let base = client.core_url();
     let limit_val = limit.unwrap_or(50).clamp(1, 200);
-    let url = format!("{base}/projects?limit={limit_val}");
+    let url = format!("{base}/api/v1/projects?limit={limit_val}");
 
     let resp = match client.inner.get(&url).send().await {
         Ok(r) => r,
-        Err(e) => return format!("Error: orchestrator unreachable at {base}: {e}"),
+        Err(e) => return format!("Error: core unreachable at {base}: {e}"),
     };
     if !resp.status().is_success() {
         return format!("Error: HTTP {} listing projects", resp.status());
@@ -338,12 +336,12 @@ pub async fn run_list_projects(client: &AgentdClient, limit: Option<u32>) -> Str
 }
 
 pub async fn run_get_project(client: &AgentdClient, project_id: &str) -> String {
-    let base = client.orchestrator_url();
-    let url = format!("{base}/projects/{project_id}");
+    let base = client.core_url();
+    let url = format!("{base}/api/v1/projects/{project_id}");
 
     let resp = match client.inner.get(&url).send().await {
         Ok(r) => r,
-        Err(e) => return format!("Error: orchestrator unreachable at {base}: {e}"),
+        Err(e) => return format!("Error: core unreachable at {base}: {e}"),
     };
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
         return format!("Project `{project_id}` not found.");
@@ -361,8 +359,6 @@ pub async fn run_get_project(client: &AgentdClient, project_id: &str) -> String 
     if let Some(ref d) = p.description {
         out.push_str(&format!("- **Description**: {d}\n"));
     }
-    out.push_str(&format!("- **Agents**: {}\n", p.agent_count));
-    out.push_str(&format!("- **Workflows**: {}\n", p.workflow_count));
     out.push_str(&format!("- **Created**: {}\n", p.created_at));
     out.push_str(&format!("- **Updated**: {}\n", p.updated_at));
     out

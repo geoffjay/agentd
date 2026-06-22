@@ -11,6 +11,8 @@ use std::env;
 /// Configuration for connecting to agentd services.
 #[derive(Debug, Clone)]
 pub struct AgentdMcpConfig {
+    /// Core service URL (API gateway, default: `http://127.0.0.1:17000`)
+    pub core_url: String,
     /// Orchestrator service URL (default: `http://127.0.0.1:17006`)
     pub orchestrator_url: String,
     /// Communicate service URL (default: `http://127.0.0.1:17010`)
@@ -41,6 +43,7 @@ impl AgentdMcpConfig {
     ///
     /// | Variable                        | Default                     |
     /// |---------------------------------|-----------------------------|
+    /// | `AGENTD_CORE_URL`               | `http://127.0.0.1:17000`   |
     /// | `AGENTD_ORCHESTRATOR_URL`       | `http://127.0.0.1:17006`   |
     /// | `AGENTD_COMMUNICATE_URL`        | `http://127.0.0.1:17010`   |
     /// | `AGENTD_MEMORY_URL`             | `http://127.0.0.1:17008`   |
@@ -58,6 +61,7 @@ impl AgentdMcpConfig {
         let base = shared.services.mcp;
 
         Self {
+            core_url: env::var("AGENTD_CORE_URL").unwrap_or(base.core_url),
             orchestrator_url: env::var("AGENTD_ORCHESTRATOR_URL").unwrap_or(base.orchestrator_url),
             communicate_url: env::var("AGENTD_COMMUNICATE_URL").unwrap_or(base.communicate_url),
             memory_url: env::var("AGENTD_MEMORY_URL").unwrap_or(base.memory_url),
@@ -80,6 +84,7 @@ impl AgentdMcpConfig {
 impl ValidateConfig for AgentdMcpConfig {
     fn validate(&self) -> Result<()> {
         let urls = [
+            ("mcp.core_url", self.core_url.as_str()),
             ("mcp.orchestrator_url", self.orchestrator_url.as_str()),
             ("mcp.communicate_url", self.communicate_url.as_str()),
             ("mcp.memory_url", self.memory_url.as_str()),
@@ -111,6 +116,7 @@ mod tests {
     fn test_defaults() {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let vars = [
+            "AGENTD_CORE_URL",
             "AGENTD_ORCHESTRATOR_URL",
             "AGENTD_COMMUNICATE_URL",
             "AGENTD_MEMORY_URL",
@@ -133,6 +139,7 @@ mod tests {
         env::set_var("AGENTD_CONFIG", "/nonexistent/agentd-mcp-test-config.toml");
 
         let config = AgentdMcpConfig::from_env();
+        assert_eq!(config.core_url, "http://localhost:17000");
         assert_eq!(config.orchestrator_url, "http://localhost:17006");
         assert_eq!(config.communicate_url, "http://localhost:17010");
         assert_eq!(config.memory_url, "http://localhost:17008");
@@ -168,6 +175,7 @@ mod tests {
     fn test_validate_default_passes() {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let vars = [
+            "AGENTD_CORE_URL",
             "AGENTD_ORCHESTRATOR_URL",
             "AGENTD_COMMUNICATE_URL",
             "AGENTD_MEMORY_URL",
@@ -195,6 +203,7 @@ mod tests {
     #[test]
     fn test_validate_bad_url_fails() {
         let config = AgentdMcpConfig {
+            core_url: "http://127.0.0.1:17000".to_string(),
             orchestrator_url: "not-a-url".to_string(),
             communicate_url: "http://127.0.0.1:17010".to_string(),
             memory_url: "http://127.0.0.1:17008".to_string(),

@@ -22,6 +22,11 @@ impl AgentdClient {
         Self { inner: Client::new(), config }
     }
 
+    /// Returns the base URL for the core service (API gateway).
+    pub fn core_url(&self) -> &str {
+        &self.config.core_url
+    }
+
     /// Returns the base URL for the orchestrator service.
     pub fn orchestrator_url(&self) -> &str {
         &self.config.orchestrator_url

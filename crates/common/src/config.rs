@@ -455,6 +455,8 @@ impl Default for CorePamConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct McpConfig {
+    /// Core service URL (API gateway). Defaults to `"http://localhost:17000"`.
+    pub core_url: String,
     /// Orchestrator service URL. Defaults to `"http://localhost:17006"`.
     pub orchestrator_url: String,
     /// Notify service URL. Defaults to `"http://localhost:17004"`.
@@ -478,6 +480,7 @@ pub struct McpConfig {
 impl Default for McpConfig {
     fn default() -> Self {
         Self {
+            core_url: "http://localhost:17000".to_string(),
             orchestrator_url: "http://localhost:17006".to_string(),
             notify_url: "http://localhost:17004".to_string(),
             ask_url: "http://localhost:17001".to_string(),
@@ -731,6 +734,7 @@ impl ValidateConfig for MonitorConfig {
 impl ValidateConfig for McpConfig {
     fn validate(&self) -> Result<()> {
         for (name, url) in [
+            ("mcp.core_url", self.core_url.as_str()),
             ("mcp.orchestrator_url", self.orchestrator_url.as_str()),
             ("mcp.notify_url", self.notify_url.as_str()),
             ("mcp.ask_url", self.ask_url.as_str()),
@@ -1164,6 +1168,11 @@ fn merge(base: AgentdConfig, file: AgentdConfig) -> AgentdConfig {
                 },
             },
             mcp: McpConfig {
+                core_url: pick(
+                    &base.services.mcp.core_url,
+                    &file.services.mcp.core_url,
+                    &d.services.mcp.core_url,
+                ),
                 orchestrator_url: pick(
                     &base.services.mcp.orchestrator_url,
                     &file.services.mcp.orchestrator_url,
@@ -1368,6 +1377,9 @@ fn apply_env_overrides(cfg: &mut AgentdConfig) {
     }
 
     // ── MCP ───────────────────────────────────────────────────────────────
+    if let Ok(v) = env::var("AGENTD_MCP_CORE_URL") {
+        cfg.services.mcp.core_url = v;
+    }
     if let Ok(v) = env::var("AGENTD_MCP_ORCHESTRATOR_URL") {
         cfg.services.mcp.orchestrator_url = v;
     }

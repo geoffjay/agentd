@@ -37,9 +37,9 @@ use crate::types::{
     AddDirRequest, AddDirResponse, AgentResponse, AgentUsageStats, ApprovalActionRequest,
     ClearContextRequest, ClearContextResponse, ConversationEventResponse, ConversationHistoryQuery,
     ConversationHistoryResponse, ConversationSummary, CreateAgentRequest, CreateProjectRequest,
-    HealthResponse, PaginatedResponse, PendingApproval, Project, ProjectResponse,
-    SendMessageRequest, SendMessageResponse, SetModelRequest, ToolPolicy, UpdateAgentRequest,
-    UpdateAgentResponse, UpdateProjectRequest,
+    HealthResponse, PaginatedResponse, PendingApproval, Project, SendMessageRequest,
+    SendMessageResponse, SetModelRequest, ToolPolicy, UpdateAgentRequest, UpdateAgentResponse,
+    UpdateProjectRequest,
 };
 
 /// Typed HTTP client for the orchestrator service.
@@ -58,6 +58,12 @@ use crate::types::{
 pub struct OrchestratorClient {
     client: reqwest::Client,
     base_url: String,
+    /// Optional base URL for the core service (used for project CRUD).
+    ///
+    /// When set, project CRUD operations (`list_projects`, `create_project`,
+    /// `get_project`, `update_project`, `delete_project`) target this URL
+    /// instead of `base_url`. Association operations remain on `base_url`.
+    core_base_url: Option<String>,
     token: Option<String>,
 }
 
@@ -72,7 +78,12 @@ impl OrchestratorClient {
     /// let client = OrchestratorClient::new("http://localhost:7006");
     /// ```
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self { client: reqwest::Client::new(), base_url: base_url.into(), token: None }
+        Self {
+            client: reqwest::Client::new(),
+            base_url: base_url.into(),
+            core_base_url: None,
+            token: None,
+        }
     }
 
     /// Attach a bearer token to all requests made by this client.
@@ -80,6 +91,26 @@ impl OrchestratorClient {
     /// Returns `self` for method chaining.
     pub fn with_token(mut self, token: impl Into<String>) -> Self {
         self.token = Some(token.into());
+        self
+    }
+
+    /// Set the core service base URL for project CRUD operations.
+    ///
+    /// Project CRUD (`list_projects`, `create_project`, `get_project`,
+    /// `update_project`, `delete_project`) will target `{core_base_url}/projects`
+    /// instead of the orchestrator. Association operations remain on the
+    /// orchestrator `base_url`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use orchestrator::client::OrchestratorClient;
+    ///
+    /// let client = OrchestratorClient::new("http://localhost:17006")
+    ///     .with_core_url("http://localhost:17000/api/v1");
+    /// ```
+    pub fn with_core_url(mut self, core_base_url: impl Into<String>) -> Self {
+        self.core_base_url = Some(core_base_url.into());
         self
     }
 
@@ -408,37 +439,82 @@ impl OrchestratorClient {
         self.delete_with_response(&format!("/queues/{}", queue_name)).await
     }
 
-    // -- Project management --
+    // -- Project management (CRUD targets core; associations stay on orchestrator) --
 
     /// List all projects.
+    ///
+    /// Targets the core service when a core base URL is configured via
+    /// [`with_core_url`]; otherwise falls back to the orchestrator base URL.
     pub async fn list_projects(&self) -> Result<PaginatedResponse<Project>> {
-        self.get("/projects").await
+        self.get_core("/projects").await
     }
 
     /// Create a new project.
+    ///
+    /// Targets the core service when a core base URL is configured.
     pub async fn create_project(&self, req: &CreateProjectRequest) -> Result<Project> {
-        self.post("/projects", req).await
+        self.post_core("/projects", req).await
     }
 
-    /// Get a project by UUID, including agent and workflow counts.
-    pub async fn get_project(&self, id: &Uuid) -> Result<ProjectResponse> {
-        self.get(&format!("/projects/{id}")).await
+    /// Get a project by UUID.
+    ///
+    /// Targets the core service when a core base URL is configured.
+    /// Returns the project without agent/workflow counts (core does not
+    /// compute those; query the orchestrator association endpoints separately
+    /// if counts are needed).
+    pub async fn get_project(&self, id: &Uuid) -> Result<Project> {
+        self.get_core(&format!("/projects/{id}")).await
     }
 
     /// Find a project by name (client-side search).
+    ///
+    /// Targets the core service when a core base URL is configured.
     pub async fn get_project_by_name(&self, name: &str) -> Result<Option<Project>> {
-        let resp: PaginatedResponse<Project> = self.get("/projects?limit=500").await?;
+        let resp: PaginatedResponse<Project> = self.get_core("/projects?limit=500").await?;
         Ok(resp.items.into_iter().find(|p| p.name == name))
     }
 
     /// Update a project's name and/or description.
+    ///
+    /// Targets the core service when a core base URL is configured.
     pub async fn update_project(&self, id: &Uuid, req: &UpdateProjectRequest) -> Result<Project> {
-        self.put(&format!("/projects/{id}"), req).await
+        self.put_core(&format!("/projects/{id}"), req).await
     }
 
-    /// Delete a project (fails if agents or workflows are still associated).
+    /// Delete a project.
+    ///
+    /// Checks the orchestrator for active agent and workflow associations
+    /// before sending the DELETE to core, preventing orphaned references
+    /// (core does not enforce cross-service constraints at this layer).
+    /// Returns an error if any associations remain.
+    ///
+    /// Targets the core service when a core base URL is configured.
     pub async fn delete_project(&self, id: &Uuid) -> Result<()> {
-        self.delete(&format!("/projects/{id}")).await
+        // Guard: verify no agent associations remain on the orchestrator.
+        let agents = self
+            .list_project_agents(id)
+            .await
+            .context("Failed to check project agent associations before deletion")?;
+        if agents.total > 0 {
+            anyhow::bail!(
+                "cannot delete project {id}: {} agent(s) still associated \
+                 (dissociate them first with `project remove-agent`)",
+                agents.total
+            );
+        }
+        // Guard: verify no workflow associations remain on the orchestrator.
+        let workflows = self
+            .list_project_workflows(id)
+            .await
+            .context("Failed to check project workflow associations before deletion")?;
+        if workflows.total > 0 {
+            anyhow::bail!(
+                "cannot delete project {id}: {} workflow(s) still associated \
+                 (dissociate them first with `project remove-workflow`)",
+                workflows.total
+            );
+        }
+        self.delete_core(&format!("/projects/{id}")).await
     }
 
     /// List agents associated with a project.
@@ -554,39 +630,62 @@ impl OrchestratorClient {
     }
 
     // -- Private HTTP helpers --
+    //
+    // `url_for` is the single URL-computation function used by all helpers.
+    // Pass `use_core = true` to route to `core_base_url` (falling back to
+    // `base_url` when unset); `use_core = false` always uses `base_url`.
+    //
+    // The `*_core` wrappers are thin aliases that set `use_core = true` so
+    // call sites in the project-CRUD methods remain readable without repeating
+    // the flag everywhere.
+
+    fn url_for(&self, path: &str, use_core: bool) -> String {
+        let base = if use_core {
+            self.core_base_url.as_deref().unwrap_or(&self.base_url)
+        } else {
+            &self.base_url
+        };
+        format!("{base}{path}")
+    }
+
+    // -- Core-routing wrappers (use_core = true) --
+
+    async fn get_core<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        self.get_url(self.url_for(path, true)).await
+    }
+
+    async fn post_core<T: Serialize, R: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &T,
+    ) -> Result<R> {
+        self.post_url(self.url_for(path, true), body).await
+    }
+
+    async fn put_core<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
+        self.put_url(self.url_for(path, true), body).await
+    }
+
+    async fn delete_core(&self, path: &str) -> Result<()> {
+        self.delete_url(self.url_for(path, true)).await
+    }
+
+    // -- Orchestrator-routing wrappers (use_core = false) --
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = self.client.get(&url);
-        if let Some(t) = &self.token {
-            req = req.bearer_auth(t);
-        }
-        let response = req.send().await.context(format!("Failed to GET {url}"))?;
-        Self::handle_response(response).await
+        self.get_url(self.url_for(path, false)).await
     }
 
     async fn post<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = self.client.post(&url).json(body);
-        if let Some(t) = &self.token {
-            req = req.bearer_auth(t);
-        }
-        let response = req.send().await.context(format!("Failed to POST {url}"))?;
-        Self::handle_response(response).await
+        self.post_url(self.url_for(path, false), body).await
     }
 
     async fn put<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = self.client.put(&url).json(body);
-        if let Some(t) = &self.token {
-            req = req.bearer_auth(t);
-        }
-        let response = req.send().await.context(format!("Failed to PUT {url}"))?;
-        Self::handle_response(response).await
+        self.put_url(self.url_for(path, false), body).await
     }
 
     async fn patch<T: Serialize, R: DeserializeOwned>(&self, path: &str, body: &T) -> Result<R> {
-        let url = format!("{}{}", self.base_url, path);
+        let url = self.url_for(path, false);
         let mut req = self.client.patch(&url).json(body);
         if let Some(t) = &self.token {
             req = req.bearer_auth(t);
@@ -596,7 +695,61 @@ impl OrchestratorClient {
     }
 
     async fn delete(&self, path: &str) -> Result<()> {
-        let url = format!("{}{}", self.base_url, path);
+        self.delete_url(self.url_for(path, false)).await
+    }
+
+    async fn delete_with_body<T: Serialize, R: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &T,
+    ) -> Result<R> {
+        let url = self.url_for(path, false);
+        let mut req = self.client.delete(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to DELETE {url}"))?;
+        Self::handle_response(response).await
+    }
+
+    async fn delete_with_response<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        self.delete_with_response_url(self.url_for(path, false)).await
+    }
+
+    // -- URL-based implementations (shared by both routing variants) --
+
+    async fn get_url<T: DeserializeOwned>(&self, url: String) -> Result<T> {
+        let mut req = self.client.get(&url);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to GET {url}"))?;
+        Self::handle_response(response).await
+    }
+
+    async fn post_url<T: Serialize, R: DeserializeOwned>(
+        &self,
+        url: String,
+        body: &T,
+    ) -> Result<R> {
+        let mut req = self.client.post(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to POST {url}"))?;
+        Self::handle_response(response).await
+    }
+
+    async fn put_url<T: Serialize, R: DeserializeOwned>(&self, url: String, body: &T) -> Result<R> {
+        let mut req = self.client.put(&url).json(body);
+        if let Some(t) = &self.token {
+            req = req.bearer_auth(t);
+        }
+        let response = req.send().await.context(format!("Failed to PUT {url}"))?;
+        Self::handle_response(response).await
+    }
+
+    async fn delete_url(&self, url: String) -> Result<()> {
         let mut req = self.client.delete(&url);
         if let Some(t) = &self.token {
             req = req.bearer_auth(t);
@@ -611,22 +764,7 @@ impl OrchestratorClient {
         }
     }
 
-    async fn delete_with_body<T: Serialize, R: DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &T,
-    ) -> Result<R> {
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = self.client.delete(&url).json(body);
-        if let Some(t) = &self.token {
-            req = req.bearer_auth(t);
-        }
-        let response = req.send().await.context(format!("Failed to DELETE {url}"))?;
-        Self::handle_response(response).await
-    }
-
-    async fn delete_with_response<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
+    async fn delete_with_response_url<T: DeserializeOwned>(&self, url: String) -> Result<T> {
         let mut req = self.client.delete(&url);
         if let Some(t) = &self.token {
             req = req.bearer_auth(t);
@@ -650,7 +788,21 @@ impl OrchestratorClient {
 mod tests {
     // reqwest::Client::new() triggers macOS system-configuration TLS
     // initialisation which panics when called from non-main test threads.
-    // These tests verify URL string handling without constructing the client.
+    // Tests that only need to verify URL string handling use a lightweight
+    // helper that skips reqwest construction.
+
+    use super::*;
+
+    /// Build a minimal `OrchestratorClient` for URL-computation tests only.
+    /// Does NOT construct a live reqwest client; safe to call from test threads.
+    fn url_only_client(base: &str, core: Option<&str>) -> OrchestratorClient {
+        OrchestratorClient {
+            client: reqwest::Client::new(),
+            base_url: base.to_string(),
+            core_base_url: core.map(|s| s.to_string()),
+            token: None,
+        }
+    }
 
     #[test]
     fn test_base_url_string_conversion() {
@@ -669,5 +821,33 @@ mod tests {
     fn test_base_url_from_string() {
         let url: String = String::from("http://localhost:7006");
         assert_eq!(url, "http://localhost:7006");
+    }
+
+    // -- url_for tests --
+
+    #[test]
+    fn test_url_for_uses_base_when_core_not_set() {
+        let c = url_only_client("http://orch", None);
+        // use_core = true falls back to base_url when core_base_url is None
+        assert_eq!(c.url_for("/projects", true), "http://orch/projects");
+        // use_core = false always uses base_url
+        assert_eq!(c.url_for("/agents", false), "http://orch/agents");
+    }
+
+    #[test]
+    fn test_url_for_uses_core_base_when_set() {
+        let c = url_only_client("http://orch", Some("http://core/api/v1"));
+        // use_core = true targets core_base_url
+        assert_eq!(c.url_for("/projects", true), "http://core/api/v1/projects");
+        // use_core = false still targets base_url (orchestrator)
+        assert_eq!(c.url_for("/agents", false), "http://orch/agents");
+    }
+
+    #[test]
+    fn test_with_core_url_builder_sets_core_base() {
+        // Verify the public builder wires up core_base_url correctly via url_for.
+        let c = url_only_client("http://orch", None);
+        let c = OrchestratorClient { core_base_url: Some("http://core/api/v1".into()), ..c };
+        assert_eq!(c.url_for("/projects", true), "http://core/api/v1/projects");
     }
 }
