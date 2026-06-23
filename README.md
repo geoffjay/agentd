@@ -21,7 +21,7 @@ A modular daemon system for managing AI agents, notifications, interactive quest
 **agentd** is a suite of services and tools designed to orchestrate AI agents and provide intelligent, context-aware notifications and interactions. It consists of:
 
 - **agent** - Command-line interface for interacting with all services
-- **agentd-core** - Core service providing user and organization management
+- **agentd-core** - Core service providing user, organization, and project management
 - **agentd-orchestrator** - Agent lifecycle management, WebSocket SDK server, workflow scheduler, and tool policy enforcement
 - **agentd-notify** - Notification service with REST API and SQLite storage
 - **agentd-ask** - Interactive question service with tmux integration
@@ -97,6 +97,7 @@ agent teardown .agentd/               # delete in reverse order
 - **Declarative templates** - `agent apply` / `agent teardown` for YAML-based agent and workflow management
 - **Agent management** - create, list, get, delete, attach, send-message, stream
 - **Workflow management** - create, list, get, update, delete, history, validate-template
+- **Project management** - create, list, show, update, delete; add/remove agent and workflow associations
 - **Tool policies** - get-policy, set-policy, `--tool-policy` flag on create-agent
 - **Approval management** - list-approvals, approve, deny (for RequireApproval policy)
 - **Health monitoring** - `agent status` checks all services concurrently; per-service `health` commands
@@ -362,12 +363,13 @@ For the complete configuration reference including all environment variables, da
 
 | Service | Dev Port | Prod Port | Description |
 |---------|----------|-----------|-------------|
+| agentd-core | 17000 | 7000 | Core API (users, organizations, projects) |
 | agentd-ask | 17001 | 7001 | Interactive question service |
 | agentd-hook | 17002 | 7002 | Shell hook integration |
 | agentd-monitor | 17003 | 7003 | System monitoring |
 | agentd-notify | 17004 | 7004 | Notification service |
 | agentd-wrap | 17005 | 7005 | Tmux session management |
-| agentd-orchestrator | 17006 | 7006 | Agent orchestration |
+| agentd-orchestrator | 17006 | 7006 | Agent orchestration and project associations |
 | agentd-index | 17012 | 17012 | Semantic code search and indexing |
 | agentd-mcp | - | - | MCP server (stdio transport, no HTTP port) |
 
@@ -418,6 +420,12 @@ For the complete configuration reference including all environment variables, da
 - ✅ Shell completions (bash, zsh, fish, PowerShell)
 - ✅ Structured JSON logging (`AGENTD_LOG_FORMAT=json`)
 - ✅ GitHub Actions CI/CD pipeline
+
+**Project Entity Migration (v0.15.0):**
+- ✅ Project CRUD moved from orchestrator to core service (`agentd-core`)
+- ✅ CLI, MCP tools, and UI repointed to core for project CRUD
+- ✅ Orchestrator retains project association endpoints (add/remove agent and workflow)
+- ⚠️ **Operators upgrading to v0.15.0** must run `agent admin backfill-projects` once after the upgrade to assign `organization_id` to existing project rows created before multi-tenancy was introduced.
 
 **In Progress:**
 - 🔄 Hook service

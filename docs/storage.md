@@ -852,6 +852,28 @@ let scheduler_storage = SchedulerStorage::new(agent_storage.db().clone());
 
 ---
 
+## Service-to-Table Ownership
+
+Each agentd service owns its own SQLite database.  The table below maps key
+entities to their canonical service after the v0.15.0 project migration:
+
+| Entity | Owning service | Database | Notes |
+|--------|---------------|----------|-------|
+| `users` | agentd-core | `agentd-core/core.db` | |
+| `organizations` | agentd-core | `agentd-core/core.db` | |
+| `projects` | agentd-core | `agentd-core/core.db` | Moved from orchestrator in v0.15.0 |
+| `agents` | agentd-orchestrator | `agentd/agent.db` | `project_id` FK points to core `projects.id` |
+| `workflows` | agentd-orchestrator | `agentd/agent.db` | `project_id` FK points to core `projects.id` |
+| `notifications` | agentd-notify | `agentd-notify/notify.db` | |
+| `memories` | agentd-memory | `agentd-memory/memory.db` | |
+
+> **Upgrade note (v0.15.0):** The `projects` table was removed from the
+> orchestrator database and added to the core database.  Run
+> `agent admin backfill-projects` after upgrading to assign `organization_id`
+> to project rows that were created before multi-tenancy was introduced.
+
+---
+
 ## xtask Commands
 
 Three `cargo xtask` sub-commands help manage databases during development:

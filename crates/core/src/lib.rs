@@ -12,6 +12,7 @@ pub mod middleware;
 pub mod migration;
 pub mod organization_storage;
 pub mod pam_auth;
+pub mod project_storage;
 pub mod proxy;
 pub mod session_storage;
 pub mod storage;

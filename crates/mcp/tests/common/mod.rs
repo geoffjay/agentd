@@ -418,6 +418,7 @@ pub async fn mock_monitor_server() -> MockServer {
 /// Build an `AgentdClient` pointed at the given mock servers.
 pub fn test_client(orch_addr: &str, notify_addr: &str, monitor_addr: &str) -> AgentdClient {
     let config = Arc::new(AgentdMcpConfig {
+        core_url: "http://127.0.0.1:1".to_string(), // unused
         orchestrator_url: orch_addr.to_string(),
         communicate_url: "http://127.0.0.1:1".to_string(), // unused
         memory_url: "http://127.0.0.1:1".to_string(),
