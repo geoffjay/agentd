@@ -1701,3 +1701,211 @@ mod client_tests {
         mock2.assert_async().await;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Project command tests
+// ---------------------------------------------------------------------------
+//
+// Project CRUD uses the core service URL; association operations (add/remove
+// agent or workflow) use the orchestrator URL.  Both URL paths are exercised
+// below using two independent mockito servers.
+
+mod project_tests {
+    use mockito::Server;
+    use orchestrator::client::OrchestratorClient;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    fn project_json(id: &str, name: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "name": name,
+            "description": null,
+            "organization_id": null,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        })
+    }
+
+    fn paginated(items: Vec<serde_json::Value>) -> serde_json::Value {
+        let total = items.len();
+        json!({ "items": items, "total": total, "limit": 50, "offset": 0 })
+    }
+
+    /// `list_projects` routes to the core URL (`/projects`).
+    #[tokio::test]
+    async fn test_list_projects_routes_to_core() {
+        let mut core_server = Server::new_async().await;
+        let orch_server = Server::new_async().await; // should not be called
+
+        let id = Uuid::new_v4().to_string();
+        let mock = core_server
+            .mock("GET", "/projects")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(paginated(vec![project_json(&id, "My Project")]).to_string())
+            .create_async()
+            .await;
+
+        let client = OrchestratorClient::new(orch_server.url()).with_core_url(core_server.url());
+        let result = client.list_projects().await;
+
+        assert!(result.is_ok(), "list_projects should succeed: {result:?}");
+        assert_eq!(result.unwrap().items.len(), 1);
+        mock.assert_async().await;
+    }
+
+    /// `create_project` routes to the core URL.
+    #[tokio::test]
+    async fn test_create_project_routes_to_core() {
+        let mut core_server = Server::new_async().await;
+        let orch_server = Server::new_async().await;
+
+        let id = Uuid::new_v4().to_string();
+        let mock = core_server
+            .mock("POST", "/projects")
+            .with_status(201)
+            .with_header("content-type", "application/json")
+            .with_body(project_json(&id, "New Project").to_string())
+            .create_async()
+            .await;
+
+        use orchestrator::types::CreateProjectRequest;
+        let client = OrchestratorClient::new(orch_server.url()).with_core_url(core_server.url());
+        let result = client
+            .create_project(&CreateProjectRequest {
+                name: "New Project".to_string(),
+                description: None,
+            })
+            .await;
+
+        assert!(result.is_ok(), "create_project should succeed: {result:?}");
+        assert_eq!(result.unwrap().name, "New Project");
+        mock.assert_async().await;
+    }
+
+    /// `add_agent_to_project` routes to the orchestrator URL.
+    #[tokio::test]
+    async fn test_add_agent_to_project_routes_to_orchestrator() {
+        let core_server = Server::new_async().await;
+        let mut orch_server = Server::new_async().await;
+
+        let project_id = Uuid::new_v4();
+        let agent_id = Uuid::new_v4();
+
+        let mock = orch_server
+            .mock("POST", format!("/projects/{project_id}/agents/{agent_id}").as_str())
+            .with_status(204)
+            .create_async()
+            .await;
+
+        let client = OrchestratorClient::new(orch_server.url()).with_core_url(core_server.url());
+        let result = client.associate_project_agent(&project_id, &agent_id).await;
+
+        assert!(result.is_ok(), "associate_project_agent should succeed: {result:?}");
+        mock.assert_async().await;
+    }
+
+    /// `remove_agent_from_project` routes to the orchestrator URL.
+    #[tokio::test]
+    async fn test_remove_agent_from_project_routes_to_orchestrator() {
+        let core_server = Server::new_async().await;
+        let mut orch_server = Server::new_async().await;
+
+        let project_id = Uuid::new_v4();
+        let agent_id = Uuid::new_v4();
+
+        let mock = orch_server
+            .mock("DELETE", format!("/projects/{project_id}/agents/{agent_id}").as_str())
+            .with_status(204)
+            .create_async()
+            .await;
+
+        let client = OrchestratorClient::new(orch_server.url()).with_core_url(core_server.url());
+        let result = client.dissociate_project_agent(&project_id, &agent_id).await;
+
+        assert!(result.is_ok(), "dissociate_project_agent should succeed: {result:?}");
+        mock.assert_async().await;
+    }
+
+    /// `delete_project` pre-checks associations on the orchestrator before
+    /// deleting from core.  When both return empty associations (total=0),
+    /// the delete request is forwarded to core.
+    #[tokio::test]
+    async fn test_delete_project_checks_associations_then_deletes_from_core() {
+        let mut core_server = Server::new_async().await;
+        let mut orch_server = Server::new_async().await;
+
+        let project_id = Uuid::new_v4();
+
+        // Orchestrator: no agents associated
+        let agents_mock = orch_server
+            .mock("GET", format!("/projects/{project_id}/agents").as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "items": [], "total": 0, "limit": 50, "offset": 0 }).to_string())
+            .create_async()
+            .await;
+
+        // Orchestrator: no workflows associated
+        let workflows_mock = orch_server
+            .mock("GET", format!("/projects/{project_id}/workflows").as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "items": [], "total": 0, "limit": 50, "offset": 0 }).to_string())
+            .create_async()
+            .await;
+
+        // Core: delete succeeds
+        let delete_mock = core_server
+            .mock("DELETE", format!("/projects/{project_id}").as_str())
+            .with_status(204)
+            .create_async()
+            .await;
+
+        let client = OrchestratorClient::new(orch_server.url()).with_core_url(core_server.url());
+        let result = client.delete_project(&project_id).await;
+
+        assert!(result.is_ok(), "delete_project should succeed: {result:?}");
+        agents_mock.assert_async().await;
+        workflows_mock.assert_async().await;
+        delete_mock.assert_async().await;
+    }
+
+    /// `delete_project` returns an error when agents are still associated.
+    #[tokio::test]
+    async fn test_delete_project_blocked_when_agents_associated() {
+        let core_server = Server::new_async().await;
+        let mut orch_server = Server::new_async().await;
+
+        let project_id = Uuid::new_v4();
+        let agent_id = Uuid::new_v4();
+
+        // Orchestrator: one agent associated
+        let _agents_mock = orch_server
+            .mock("GET", format!("/projects/{project_id}/agents").as_str())
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "items": [{ "id": agent_id, "name": "busy-agent", "status": "idle" }],
+                    "total": 1,
+                    "limit": 50,
+                    "offset": 0
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let client = OrchestratorClient::new(orch_server.url()).with_core_url(core_server.url());
+        let result = client.delete_project(&project_id).await;
+
+        assert!(result.is_err(), "delete_project should fail when agents are associated");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("agent") || msg.contains("associated"),
+            "error message should mention agents: {msg}"
+        );
+    }
+}
