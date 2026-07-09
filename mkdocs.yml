@@ -99,7 +99,6 @@ nav:
       - Ask: public/services/ask.md
       - Wrap: public/services/wrap.md
       - Communicate: public/services/communicate.md
-      - Index: public/services/index.md
       - Memory: public/services/memory.md
       - Monitor: public/services/monitor.md
       - Hook: public/services/hook.md
@@ -127,6 +126,10 @@ nav:
       - Human Approval Gates: planning/autonomous-pipeline-gates.md
   - Execution Backends:
       - Docker: docker-backend.md
+  - Observability:
+      - Overview: public/observability/index.md
+      - Prometheus Setup: public/observability/prometheus-setup.md
+      - Grafana Setup: public/observability/grafana-setup.md
   - Specifications:
       - Agent Protocol (AAP) v1: spec/agent-protocol-v1.md
   - Development:

@@ -17,6 +17,7 @@ This page is a consolidated quick-reference for all workflow trigger types. For 
 | `delay` | Once at a specific datetime | No - auto-disables | No | Yes | Yes |
 | `agent_lifecycle` | When the agent connects, disconnects, or clears context | Yes | No | No - API only | No - API only |
 | `dispatch_result` | When another workflow dispatch completes | Yes | No | No - API only | No - API only |
+| `ask_response` | When a human answers or dismisses an agent's question | Yes | No | No - API only | No - API only |
 | `webhook` | On inbound HTTP POST to a dedicated endpoint | Yes | Yes (or tunnel) | Yes | Yes |
 | `agent_idle` | When the agent has been idle for a configured duration | Yes - repeats on each idle period | No | Yes | Yes |
 | `composite` | When sub-triggers fire (AND/OR logic) | Yes | Depends on sub-triggers | No - API only | No - API only |
@@ -114,6 +115,19 @@ Do not use when:
 
 - You want parallel execution (each workflow must have its own trigger)
 
+### `ask_response`
+
+Use when:
+
+- You want a workflow to react when a human answers or dismisses an agent's question (the ask service)
+- You are building interactive, human-in-the-loop pipelines (an agent asks a question, and a second workflow triggers on the answer)
+
+Do not use when:
+
+- The reacting logic can live in the asking agent itself (no separate workflow needed)
+
+Optional filters narrow which answers fire the workflow: `agent_id` (only questions from a specific agent), `category` (only a question category), and `response_pattern` (a regex matched against the answer text).
+
 ### `agent_idle`
 
 Use when:
@@ -191,10 +205,11 @@ All trigger types use the `trigger_config` field with a `"type"` discriminant:
 { "type": "delay",                "run_at": "2026-04-01T09:00:00Z" }
 { "type": "agent_lifecycle",      "event": "session_start" }
 { "type": "dispatch_result",      "source_workflow_id": "<UUID>", "status": "completed" }
+{ "type": "ask_response",         "agent_id": "dietician", "category": "health", "response_pattern": ".*" }
 { "type": "agent_idle",           "idle_seconds": 30 }
 { "type": "composite",           "mode": "or", "triggers": [{ "type": "cron", "expression": "0 9 * * *" }, { "type": "agent_lifecycle", "event": "session_start" }] }
 { "type": "queue",               "queue_name": "work-items", "poll_interval_secs": 5, "visibility_timeout_secs": 300 }
-{ "type": "webhook",              "secret": "my-hmac-secret" }
+{ "type": "webhook",              "secret": "my-hmac-secret", "source": "any" }
 { "type": "manual" }
 ```
 
@@ -216,7 +231,7 @@ source:
   owner: myorg
   repo: myrepo
   state: open
-  # assignees: [alice, bob]   # optional - filter by assignee usernames
+  # assignee: alice   # optional - filter by assignee username
 
 # GitLab Issues (note: 'opened' not 'open')
 source:
@@ -233,7 +248,7 @@ source:
   owner: mygroup
   repo: myproject
   state: opened
-  # assignees: [alice, bob]   # optional - filter by assignee usernames
+  # assignee: alice   # optional - filter by assignee username
 
 # Linear Issues
 source:
@@ -270,6 +285,7 @@ source:
 source:
   type: webhook
   secret: "my-hmac-secret"   # optional
+  # source: any   # optional - github | linear | any (default); selects payload parsing
 
 # Manual
 source:
@@ -277,7 +293,7 @@ source:
 ```
 
 !!! note
-    `agent_lifecycle`, `dispatch_result`, and `composite` are not available in YAML templates. Create them via the REST API.
+    `agent_lifecycle`, `dispatch_result`, `composite`, and `ask_response` are not available in YAML templates. Create them via the REST API. (`ask_response` is also not available via the CLI.)
 
 ### CLI (`create-workflow`)
 
@@ -441,7 +457,23 @@ agent orchestrator create-workflow --name wf --agent-name agent \
 | `{{timestamp}}` | RFC 3339 completion timestamp | `2026-04-01T09:05:00Z` |
 | `{{source_id}}` | `event:dispatch:<dispatch_id>:<timestamp>` | |
 
+### `ask_response`
+
+Config fields (all optional filters): `agent_id`, `category`, `response_pattern` (regex on the answer text).
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{question_id}}` | UUID of the answered question | `550e8400-...` |
+| `{{agent_id}}` | Which agent asked the question | `dietician` |
+| `{{category}}` | Question category | `health` |
+| `{{question}}` | The question text | `"Any allergies?"` |
+| `{{answer}}` | The human's answer (empty string if dismissed) | `"peanuts"` |
+| `{{event_type}}` | `question_answered` or `question_dismissed` | `question_answered` |
+| `{{workflow_id}}` | Originating workflow, if the question came from one | `a1b2c3d4-...` |
+
 ### `webhook`
+
+Config fields: `secret` (optional HMAC secret) and `source` — `github`, `linear`, or `any` (default), which selects how the inbound payload is parsed.
 
 | Variable | Description | Example |
 |----------|-------------|---------|
@@ -604,7 +636,7 @@ This bypasses the workflow's normal trigger strategy and dispatches immediately.
 |-------|------|
 | TriggerStrategy trait and architecture | [Trigger Strategies](trigger-strategies.md) |
 | Cron and delay triggers | [Schedule Triggers](schedule-triggers.md) |
-| Agent lifecycle and dispatch result triggers | [Event-Driven Triggers](event-triggers.md) |
+| Agent lifecycle, dispatch result, and ask response triggers | [Event-Driven Triggers](event-triggers.md) |
 | Webhook trigger and GitHub setup | [Webhook Triggers](webhook-triggers.md) |
 | Linear trigger setup and filter options | [Linear Triggers](linear-triggers.md) |
 | Composite triggers (AND/OR logic) | [Composite Triggers](composite-triggers.md) |

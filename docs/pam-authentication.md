@@ -114,11 +114,11 @@ Pick one of:
 
 ## Install the PAM service file
 
-Install the sample stack ([`docs/assets/pam/agentd`](assets/pam/agentd)) as
+Install the sample stack ([`infra/pam/agentd`](https://github.com/geoffjay/agentd/blob/main/infra/pam/agentd)) as
 `/etc/pam.d/<AGENTD_PAM_SERVICE>` (default `agentd`):
 
 ```bash
-sudo install -m 0644 docs/assets/pam/agentd /etc/pam.d/agentd
+sudo install -m 0644 infra/pam/agentd /etc/pam.d/agentd
 ```
 
 Adjust the stack for your host (RHEL `system-auth`, or `pam_sss` for SSSD) per

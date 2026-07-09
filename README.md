@@ -146,7 +146,7 @@ open http://localhost:3999
 Pre-built dashboards: **Service Overview**, **Agent Activity**,
 **Workflow Execution**, and **Experiment Tracking**.
 
-See **[docs/observability/README.md](docs/observability/README.md)** for the
+See **[docs/public/observability/index.md](docs/public/observability/index.md)** for the
 full guide including manual setup, dashboard descriptions, and troubleshooting.
 
 ## Installation
