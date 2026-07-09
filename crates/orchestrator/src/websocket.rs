@@ -62,6 +62,12 @@ pub struct ConnectionRegistry {
     /// Backed by a `std::sync::Mutex` because increments are non-blocking
     /// and we want to call [`next_seq`] from sync code paths.
     seq_counters: Arc<std::sync::Mutex<HashMap<Uuid, i64>>>,
+    /// Agents that have sent the AAP `ready` handshake and can accept prompts.
+    ready_agents: Arc<RwLock<std::collections::HashSet<Uuid>>>,
+    /// Notifies waiters when any agent becomes ready.
+    ready_notify: Arc<tokio::sync::Notify>,
+    /// Capabilities advertised by each agent's adapter in its `ready` message.
+    capabilities: Arc<RwLock<HashMap<Uuid, Vec<String>>>>,
 }
 
 impl Default for ConnectionRegistry {
@@ -88,6 +94,53 @@ impl ConnectionRegistry {
             storage: None,
             session_numbers: Arc::new(RwLock::new(HashMap::new())),
             seq_counters: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            ready_agents: Arc::new(RwLock::new(std::collections::HashSet::new())),
+            ready_notify: Arc::new(tokio::sync::Notify::new()),
+            capabilities: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Mark an agent as ready (its adapter sent the AAP `ready` handshake) and
+    /// wake any waiters.
+    pub async fn mark_ready(&self, agent_id: Uuid) {
+        self.ready_agents.write().await.insert(agent_id);
+        self.ready_notify.notify_waiters();
+    }
+
+    /// Record the capabilities an agent's adapter advertised.
+    pub async fn set_capabilities(&self, agent_id: Uuid, caps: Vec<String>) {
+        self.capabilities.write().await.insert(agent_id, caps);
+    }
+
+    /// Return the capabilities advertised by an agent's adapter, if known.
+    #[allow(dead_code)] // Public accessor for capability introspection (API/diagnostics).
+    pub async fn get_capabilities(&self, agent_id: &Uuid) -> Option<Vec<String>> {
+        self.capabilities.read().await.get(agent_id).cloned()
+    }
+
+    /// Whether an agent has completed the AAP `ready` handshake.
+    pub async fn is_ready(&self, agent_id: &Uuid) -> bool {
+        self.ready_agents.read().await.contains(agent_id)
+    }
+
+    /// Wait until an agent has sent `ready`, or until the timeout expires.
+    /// Returns `true` if the agent became ready.
+    pub async fn wait_for_ready(&self, agent_id: &Uuid, timeout: std::time::Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if self.is_ready(agent_id).await {
+                return true;
+            }
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            tokio::select! {
+                _ = self.ready_notify.notified() => {}
+                _ = tokio::time::sleep(remaining) => {
+                    return self.is_ready(agent_id).await;
+                }
+            }
         }
     }
 
@@ -221,6 +274,11 @@ impl ConnectionRegistry {
         };
         self.seq_counters.lock().expect("seq counter mutex poisoned").insert(agent_id, max_seq);
 
+        // A fresh connection must re-send the AAP `ready` handshake; clear any
+        // stale readiness/capabilities from a prior session.
+        self.ready_agents.write().await.remove(&agent_id);
+        self.capabilities.write().await.remove(&agent_id);
+
         self.connections.write().await.insert(agent_id, conn);
         self.activity_states.write().await.insert(agent_id, ActivityState::Idle);
         self.connect_notify.notify_waiters();
@@ -295,6 +353,8 @@ impl ConnectionRegistry {
         self.activity_states.write().await.remove(agent_id);
         self.session_numbers.write().await.remove(agent_id);
         self.seq_counters.lock().expect("seq counter mutex poisoned").remove(agent_id);
+        self.ready_agents.write().await.remove(agent_id);
+        self.capabilities.write().await.remove(agent_id);
         if let Some(bus) = &self.event_bus {
             bus.publish(SystemEvent::AgentDisconnected { agent_id: *agent_id });
         }
@@ -345,27 +405,26 @@ impl ConnectionRegistry {
 
     /// Send a user message (prompt) to a connected agent.
     ///
-    /// Uses the Claude Code SDK `stream-json` input format:
-    /// `{"type": "user", "message": {"role": "user", "content": "..."}}`
+    /// Emits the AAP `prompt` message with a fresh `turn_id`. The adapter
+    /// translates it into its agent's native format.
     ///
     /// Transitions the agent's activity state to `Busy`, broadcasts an
     /// `agent:activity_changed` event, and persists both a `prompt_sent` and
     /// an `activity_changed` conversation event.
     pub async fn send_user_message(&self, agent_id: &Uuid, content: &str) -> anyhow::Result<()> {
+        use agentd_agent_protocol::{HostMessage, PromptContent};
+
         let connections = self.connections.read().await;
         let conn = connections
             .get(agent_id)
             .ok_or_else(|| anyhow::anyhow!("Agent {} not connected", agent_id))?;
 
-        let msg = serde_json::json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": content,
-            }
-        });
+        let prompt = HostMessage::Prompt {
+            turn_id: Uuid::new_v4().to_string(),
+            content: PromptContent::Text(content.to_string()),
+        };
         conn.tx
-            .send(serde_json::to_string(&msg)? + "\n")
+            .send(prompt.to_ndjson()? + "\n")
             .map_err(|e| anyhow::anyhow!("Failed to send to agent: {}", e))?;
 
         drop(connections);
@@ -488,6 +547,21 @@ async fn handle_agent_socket(socket: WebSocket, agent_id: Uuid, registry: Connec
 
     // Channel for sending messages to this agent.
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+
+    // AAP handshake: the adapter (running in a tmux/docker session, dialing
+    // back over this websocket) needs the `initialize` message carrying all
+    // agent configuration before it will accept prompts. Queue it before the
+    // connection is registered so it is the first frame the adapter receives.
+    if let Some(storage) = registry.storage() {
+        match storage.get(&agent_id).await {
+            Ok(Some(agent)) => {
+                let _ = tx.send(aap_initialize_line(&agent.config));
+            }
+            Ok(None) => warn!(%agent_id, "No agent record found; cannot send AAP initialize"),
+            Err(e) => warn!(%agent_id, %e, "Failed to load agent for AAP initialize"),
+        }
+    }
+
     let conn = AgentConnection { tx };
     registry.register(agent_id, conn).await;
 
@@ -525,50 +599,86 @@ async fn handle_agent_socket(socket: WebSocket, agent_id: Uuid, registry: Connec
     info!(%agent_id, "Agent WebSocket connection ended");
 }
 
-/// Extract usage data from a Claude Code `result` message.
-///
-/// Token counts are read from the nested `usage` object. Top-level fields
-/// (`total_cost_usd`, `num_turns`, `duration_ms`, `duration_api_ms`) are read
-/// from the message root, falling back to the `usage` sub-object for
-/// backwards compatibility.
-///
-/// Returns `None` when the `usage` block is absent entirely.  Individual
-/// missing fields within the block default to `0` (or `0.0` for cost).
-fn extract_usage(msg: &Value) -> Option<UsageSnapshot> {
-    let usage = msg.get("usage")?;
+/// Convert an AAP [`agentd_agent_protocol::Usage`] into the orchestrator's
+/// [`UsageSnapshot`]. The field shapes are identical by design.
+fn usage_to_snapshot(u: &agentd_agent_protocol::Usage) -> UsageSnapshot {
+    UsageSnapshot {
+        input_tokens: u.input_tokens,
+        output_tokens: u.output_tokens,
+        cache_read_input_tokens: u.cache_read_input_tokens,
+        cache_creation_input_tokens: u.cache_creation_input_tokens,
+        total_cost_usd: u.total_cost_usd,
+        num_turns: u.num_turns,
+        duration_ms: u.duration_ms,
+        duration_api_ms: u.duration_api_ms,
+    }
+}
 
-    Some(UsageSnapshot {
-        input_tokens: usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        output_tokens: usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        cache_read_input_tokens: usage
-            .get("cache_read_input_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-        cache_creation_input_tokens: usage
-            .get("cache_creation_input_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-        total_cost_usd: msg
-            .get("total_cost_usd")
-            .or_else(|| usage.get("total_cost_usd"))
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0),
-        num_turns: msg
-            .get("num_turns")
-            .or_else(|| usage.get("num_turns"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-        duration_ms: msg
-            .get("duration_ms")
-            .or_else(|| usage.get("duration_ms"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-        duration_api_ms: msg
-            .get("duration_api_ms")
-            .or_else(|| usage.get("duration_api_ms"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-    })
+/// Build the AAP `initialize` NDJSON line (with trailing newline) for an agent.
+///
+/// This is the sole handshake the host sends before prompts: it carries all
+/// agent configuration (model, system prompt, workspace, MCP servers) that the
+/// adapter maps to its agent's native invocation.
+pub(crate) fn aap_initialize_line(config: &crate::types::AgentConfig) -> String {
+    use agentd_agent_protocol::{
+        HostMessage, InitializeParams, McpServer, SystemPrompt, SystemPromptMode, Tools, Workspace,
+        PROTOCOL_VERSION,
+    };
+
+    let system_prompt = match (&config.system_prompt, &config.system_prompt_file) {
+        (Some(text), _) => Some(SystemPrompt {
+            mode: if config.append_system_prompt {
+                SystemPromptMode::Append
+            } else {
+                SystemPromptMode::Replace
+            },
+            text: Some(text.clone()),
+            path: None,
+        }),
+        (None, Some(path)) => Some(SystemPrompt {
+            mode: if config.append_system_prompt {
+                SystemPromptMode::Append
+            } else {
+                SystemPromptMode::Replace
+            },
+            text: None,
+            path: Some(path.clone()),
+        }),
+        (None, None) => None,
+    };
+
+    let tools = config.mcp_servers.as_ref().map(|servers| Tools {
+        mcp_servers: servers
+            .iter()
+            .map(|(name, s)| {
+                (
+                    name.clone(),
+                    McpServer {
+                        command: s.command.clone(),
+                        args: s.args.clone(),
+                        env: s.env.clone(),
+                    },
+                )
+            })
+            .collect(),
+    });
+
+    let init = HostMessage::Initialize(InitializeParams {
+        protocol_version: PROTOCOL_VERSION,
+        model: config.model.clone(),
+        system_prompt,
+        workspace: Workspace {
+            cwd: config.working_dir.clone(),
+            additional_dirs: config.additional_dirs.clone(),
+            worktree: config.worktree,
+        },
+        tools,
+        resume_token: None,
+    });
+
+    // The stdin relay / ws sender writes the payload verbatim; include the
+    // trailing newline so this line and the next don't concatenate.
+    init.to_ndjson().unwrap_or_default() + "\n"
 }
 
 /// Generate a human-readable one-line summary of a tool call input.
@@ -617,62 +727,6 @@ fn summarize_tool_input(tool_name: &str, input: &Value) -> String {
     }
 }
 
-/// Extract displayable text lines from a Claude Code `assistant` message.
-///
-/// The `message` object may have a `content` field that is either a plain
-/// string or an array of content blocks (text blocks, tool_use blocks,
-/// thinking blocks, etc.).
-///
-/// Returns a tuple of (text_lines, tool_use_blocks, thinking_lines) where
-/// tool_use_blocks carries structured tool use data for broadcasting as
-/// separate events, and thinking_lines holds reasoning text from thinking
-/// blocks.
-fn extract_assistant_content(message: &Value) -> (Vec<String>, Vec<Value>, Vec<String>) {
-    let mut lines = Vec::new();
-    let mut tool_uses = Vec::new();
-    let mut thinking_lines = Vec::new();
-    if let Some(content) = message.get("content") {
-        if let Some(text) = content.as_str() {
-            lines.push(text.to_string());
-        } else if let Some(blocks) = content.as_array() {
-            for block in blocks {
-                let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                match block_type {
-                    "text" => {
-                        if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                            lines.push(text.to_string());
-                        }
-                    }
-                    "thinking" => {
-                        if let Some(thinking) = block.get("thinking").and_then(|v| v.as_str()) {
-                            thinking_lines.push(thinking.to_string());
-                        }
-                    }
-                    "tool_use" => {
-                        let tool_name =
-                            block.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                        let tool_id =
-                            block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let tool_input = block
-                            .get("input")
-                            .cloned()
-                            .unwrap_or(Value::Object(Default::default()));
-                        let summary = summarize_tool_input(tool_name, &tool_input);
-                        tool_uses.push(serde_json::json!({
-                            "tool_name": tool_name,
-                            "tool_id": tool_id,
-                            "tool_input": tool_input,
-                            "summary": summary,
-                        }));
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-    (lines, tool_uses, thinking_lines)
-}
-
 /// Record and broadcast one `agent:output` event per non-empty line in `text`.
 ///
 /// Each line is assigned its own per-agent `seq`, persisted, and broadcast
@@ -711,107 +765,140 @@ async fn broadcast_output(
     }
 }
 
-/// Process an incoming NDJSON message from a claude code instance.
+/// Process incoming AAP NDJSON frames from an agent adapter.
+///
+/// Parses each line into a typed [`agentd_agent_protocol::AgentMessage`] and
+/// normalizes it into the orchestrator's `ConversationEventType` vocabulary,
+/// preserving the existing streaming/persistence behavior. Unparseable lines
+/// are logged and skipped (per the AAP spec's forward-compat rule).
 pub(crate) async fn handle_incoming_message(
     agent_id: &Uuid,
     text: &str,
     registry: &ConnectionRegistry,
 ) {
-    // Claude sends NDJSON — each line is a separate JSON message.
+    use agentd_agent_protocol::{
+        ActivityState as AapActivity, AgentMessage, ContentBlock, LogLevel,
+    };
+
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-
-        let msg: Value = match serde_json::from_str(line) {
-            Ok(v) => v,
+        let msg: AgentMessage = match serde_json::from_str(line) {
+            Ok(m) => m,
             Err(e) => {
-                warn!(%agent_id, %e, "Failed to parse message from agent");
+                warn!(%agent_id, %e, "Failed to parse AAP message from agent; skipping line");
                 continue;
             }
         };
 
-        let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        debug!(%agent_id, %msg_type, "Received message from agent");
-
         let session = registry.get_session_number(agent_id).await;
 
-        match msg_type {
-            "system" => {
-                let subtype = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
-                debug!(%agent_id, %subtype, "System message from agent");
-                // system messages are lifecycle-only; not persisted.
+        match msg {
+            AgentMessage::Ready { protocol_version, agent, capabilities, models } => {
+                info!(
+                    %agent_id, agent_name = %agent.name, protocol_version,
+                    ?capabilities, ?models, "Agent adapter ready"
+                );
+                registry.set_capabilities(*agent_id, capabilities).await;
+                registry.mark_ready(*agent_id).await;
             }
-            "assistant" => {
-                debug!(%agent_id, "Assistant response received");
-                // Extract text content, tool use blocks, and thinking lines.
-                // For each, assign a seq via record_and_seq (which persists)
-                // and use that same seq in the live broadcast frame so v2
-                // clients can dedupe across the snapshot/live boundary.
-                if let Some(message) = msg.get("message") {
-                    let (texts, tool_uses, thinking_lines) = extract_assistant_content(message);
-                    for text in &texts {
-                        broadcast_output(agent_id, text, session, registry).await;
-                    }
-                    for tool_use in &tool_uses {
-                        let seq = registry
-                            .record_and_seq(ConversationEvent::new(
-                                *agent_id,
-                                ConversationEventType::ToolUse,
-                                session,
-                                tool_use["summary"].as_str().map(|s| s.to_string()),
-                                Some(tool_use.clone()),
-                            ))
-                            .await;
-                        let stream_event = serde_json::json!({
-                            "type": "agent:tool_use",
-                            "seq": seq,
-                            "agent_id": agent_id.to_string(),
-                            "agentId": agent_id.to_string(),
-                            "tool_name": tool_use["tool_name"],
-                            "tool_id": tool_use["tool_id"],
-                            "tool_input": tool_use["tool_input"],
-                            "summary": tool_use["summary"],
-                            "session_number": session,
-                            "timestamp": Utc::now().to_rfc3339(),
-                        });
-                        let _ = registry.stream_tx.send(stream_event.to_string());
-                    }
-                    for thinking in &thinking_lines {
-                        let seq = registry
-                            .record_and_seq(ConversationEvent::new(
-                                *agent_id,
-                                ConversationEventType::Thinking,
-                                session,
-                                Some(thinking.clone()),
-                                None,
-                            ))
-                            .await;
-                        let stream_event = serde_json::json!({
-                            "type": "agent:thinking",
-                            "seq": seq,
-                            "agent_id": agent_id.to_string(),
-                            "agentId": agent_id.to_string(),
-                            "text": thinking,
-                            "session_number": session,
-                            "timestamp": Utc::now().to_rfc3339(),
-                        });
-                        let _ = registry.stream_tx.send(stream_event.to_string());
+            AgentMessage::Message { content, .. } => {
+                for block in &content {
+                    match block {
+                        ContentBlock::Text { text } => {
+                            broadcast_output(agent_id, text, session, registry).await;
+                        }
+                        ContentBlock::Thinking { text } => {
+                            let seq = registry
+                                .record_and_seq(ConversationEvent::new(
+                                    *agent_id,
+                                    ConversationEventType::Thinking,
+                                    session,
+                                    Some(text.clone()),
+                                    None,
+                                ))
+                                .await;
+                            let stream_event = serde_json::json!({
+                                "type": "agent:thinking",
+                                "seq": seq,
+                                "agent_id": agent_id.to_string(),
+                                "agentId": agent_id.to_string(),
+                                "text": text,
+                                "session_number": session,
+                                "timestamp": Utc::now().to_rfc3339(),
+                            });
+                            let _ = registry.stream_tx.send(stream_event.to_string());
+                        }
                     }
                 }
             }
-            "result" => {
-                let is_error = msg.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+            AgentMessage::ToolCall { call_id, name, input, .. } => {
+                let summary = summarize_tool_input(&name, &input);
+                let seq = registry
+                    .record_and_seq(ConversationEvent::new(
+                        *agent_id,
+                        ConversationEventType::ToolUse,
+                        session,
+                        Some(summary.clone()),
+                        Some(serde_json::json!({
+                            "tool_name": name,
+                            "tool_id": call_id,
+                            "tool_input": input,
+                            "summary": summary,
+                        })),
+                    ))
+                    .await;
+                let stream_event = serde_json::json!({
+                    "type": "agent:tool_use",
+                    "seq": seq,
+                    "agent_id": agent_id.to_string(),
+                    "agentId": agent_id.to_string(),
+                    "tool_name": name,
+                    "tool_id": call_id,
+                    "tool_input": input,
+                    "summary": summary,
+                    "session_number": session,
+                    "timestamp": Utc::now().to_rfc3339(),
+                });
+                let _ = registry.stream_tx.send(stream_event.to_string());
+            }
+            AgentMessage::Status { state } => {
+                let (activity, label) = match state {
+                    AapActivity::Busy => (ActivityState::Busy, "busy"),
+                    AapActivity::Idle => (ActivityState::Idle, "idle"),
+                };
+                registry.activity_states.write().await.insert(*agent_id, activity);
+                let seq = registry
+                    .record_and_seq(ConversationEvent::new(
+                        *agent_id,
+                        ConversationEventType::ActivityChanged,
+                        session,
+                        Some(label.to_string()),
+                        None,
+                    ))
+                    .await;
+                let event = serde_json::json!({
+                    "type": "agent:activity_changed",
+                    "seq": seq,
+                    "agent_id": agent_id.to_string(),
+                    "agentId": agent_id.to_string(),
+                    "activity": label,
+                    "session_number": session,
+                    "timestamp": Utc::now().to_rfc3339(),
+                });
+                let _ = registry.stream_tx.send(event.to_string());
+            }
+            AgentMessage::TurnComplete { is_error, result_text, usage, .. } => {
                 if is_error {
-                    warn!(%agent_id, "Agent query completed with error");
+                    warn!(%agent_id, "Agent turn completed with error");
                 } else {
-                    info!(%agent_id, "Agent query completed successfully");
+                    info!(%agent_id, "Agent turn completed successfully");
                 }
 
-                // Transition to Idle. Record and broadcast the activity_changed
-                // event together so the broadcast frame carries the seq the
-                // snapshot will replay.
+                // Transition to Idle and record activity_changed with the seq
+                // the snapshot will replay.
                 registry.activity_states.write().await.insert(*agent_id, ActivityState::Idle);
                 let activity_seq = registry
                     .record_and_seq(ConversationEvent::new(
@@ -833,15 +920,9 @@ pub(crate) async fn handle_incoming_message(
                 });
                 let _ = registry.stream_tx.send(activity_event.to_string());
 
-                let usage = extract_usage(&msg);
-                let result_text =
-                    msg.get("result").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let usage = usage.as_ref().map(usage_to_snapshot);
+                let result_text = result_text.unwrap_or_default();
 
-                // Record + broadcast the Result event. The result text is the
-                // canonical record — we no longer emit a duplicate
-                // `[Result] …` agent:output frame, which used to appear only
-                // on the live stream and never in history (one of the sources
-                // of the Web/TUI divergence).
                 let usage_meta = usage.as_ref().map(|u| {
                     serde_json::json!({
                         "is_error": is_error,
@@ -875,7 +956,6 @@ pub(crate) async fn handle_incoming_message(
                 });
                 let _ = registry.stream_tx.send(result_event.to_string());
 
-                // Record + broadcast agent:usage_update for UI consumers.
                 if let Some(ref usage_snap) = usage {
                     let usage_payload = serde_json::json!({
                         "input_tokens": usage_snap.input_tokens,
@@ -912,91 +992,95 @@ pub(crate) async fn handle_incoming_message(
                     .notify_result(ResultInfo { agent_id: *agent_id, is_error, usage, result_text })
                     .await;
             }
-            "control_request" => {
-                // control_request is part of the approval flow; not persisted.
-                handle_control_request(agent_id, &msg, registry).await;
+            AgentMessage::ApprovalRequest { request_id, tool_name, input, .. } => {
+                handle_approval_request(agent_id, request_id, tool_name, input, registry).await;
             }
-            "keep_alive" => {
-                debug!(%agent_id, "Keep-alive from agent");
-            }
-            _ => {
-                debug!(%agent_id, %msg_type, "Unhandled message type");
+            AgentMessage::Log { level, message } => match level {
+                LogLevel::Error | LogLevel::Warn => warn!(%agent_id, "adapter log: {message}"),
+                LogLevel::Info => debug!(%agent_id, "adapter log: {message}"),
+            },
+            AgentMessage::Error { fatal, code, message } => {
+                warn!(%agent_id, fatal, ?code, "adapter error: {message}");
             }
         }
     }
 }
 
-/// Handle control requests from claude code (e.g., tool permission requests).
-/// Evaluates tool requests against the agent's tool policy.
-async fn handle_control_request(agent_id: &Uuid, msg: &Value, registry: &ConnectionRegistry) {
-    let request_id = msg.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+/// Evaluate an AAP `approval_request` against the agent's tool policy and reply
+/// with an AAP `approval_response`. The host is the sole decision authority.
+async fn handle_approval_request(
+    agent_id: &Uuid,
+    request_id: String,
+    tool_name: String,
+    input: Value,
+    registry: &ConnectionRegistry,
+) {
+    let policy = registry.get_policy(agent_id).await;
+    let policy_mode = policy.mode_str();
 
-    let request = match msg.get("request") {
-        Some(r) => r,
-        None => return,
-    };
+    // sandbox_bypass takes priority — auto-approve with the sandbox disabled,
+    // expressed as an opaque `updated_input` the adapter applies natively.
+    if policy.matches_sandbox_bypass(&tool_name, Some(&input)) {
+        info!(
+            %agent_id, %tool_name, decision = "sandbox_bypass",
+            "Tool call matches sandbox_bypass glob — auto-approving with sandbox disabled"
+        );
+        let updated = sandbox_bypass_input(&input);
+        if let Err(e) = send_approval_response(
+            agent_id,
+            &request_id,
+            ApprovalDecision::Approve,
+            Some(updated),
+            None,
+            registry,
+        )
+        .await
+        {
+            error!(%agent_id, %e, "Failed to send sandbox-bypass approval");
+        }
+        return;
+    }
 
-    let subtype = request.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
-
-    match subtype {
-        "can_use_tool" => {
-            let tool_name =
-                request.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
-            let input = request.get("input").cloned().unwrap_or(Value::Object(Default::default()));
-
-            let policy = registry.get_policy(agent_id).await;
-            let policy_mode = policy.mode_str();
-
-            // Check sandbox_bypass first — takes priority over all other policy rules.
-            // A matching glob auto-approves the call with dangerouslyDisableSandbox injected.
-            if policy.matches_sandbox_bypass(&tool_name, Some(&input)) {
-                info!(
-                    %agent_id, %tool_name, decision = "sandbox_bypass",
-                    "Tool call matches sandbox_bypass glob — auto-approving with sandbox disabled"
-                );
-                let response = make_sandbox_bypass_response(&request_id, &input);
-                if let Err(e) = send_raw(agent_id, &response, registry).await {
-                    error!(%agent_id, %e, "Failed to send sandbox-bypass response");
-                }
-                return;
-            }
-
-            match policy {
-                ToolPolicy::RequireApproval { .. } => {
-                    // Spawn a separate task that holds the response until a human decides.
-                    // The recv loop continues immediately so keep_alive etc. are processed.
-                    info!(%agent_id, %tool_name, %policy_mode, "Tool use requires human approval, holding...");
-                    let registry = registry.clone();
-                    let agent_id = *agent_id;
-                    tokio::spawn(async move {
-                        handle_approval_hold(agent_id, request_id, tool_name, input, registry)
-                            .await;
-                    });
-                }
-                _ => {
-                    let allowed = policy.evaluate(&tool_name, Some(&input));
-                    if allowed {
-                        info!(%agent_id, %tool_name, decision = "allow", %policy_mode, "Tool use decision");
-                        let response = make_allow_response(&request_id, &input);
-                        if let Err(e) = send_raw(agent_id, &response, registry).await {
-                            error!(%agent_id, %e, "Failed to send control response");
-                        }
-                    } else {
-                        warn!(%agent_id, %tool_name, decision = "deny", %policy_mode, "Tool use decision");
-                        let response = make_deny_response(
-                            &request_id,
-                            &tool_name,
-                            "not allowed by agent policy",
-                        );
-                        if let Err(e) = send_raw(agent_id, &response, registry).await {
-                            error!(%agent_id, %e, "Failed to send deny response");
-                        }
-                    }
-                }
-            }
+    match policy {
+        ToolPolicy::RequireApproval { .. } => {
+            info!(%agent_id, %tool_name, %policy_mode, "Tool use requires human approval, holding...");
+            let registry = registry.clone();
+            let agent_id = *agent_id;
+            tokio::spawn(async move {
+                handle_approval_hold(agent_id, request_id, tool_name, input, registry).await;
+            });
         }
         _ => {
-            debug!(%agent_id, %subtype, "Unhandled control request subtype");
+            let allowed = policy.evaluate(&tool_name, Some(&input));
+            if allowed {
+                info!(%agent_id, %tool_name, decision = "allow", %policy_mode, "Tool use decision");
+                if let Err(e) = send_approval_response(
+                    agent_id,
+                    &request_id,
+                    ApprovalDecision::Approve,
+                    Some(input.clone()),
+                    None,
+                    registry,
+                )
+                .await
+                {
+                    error!(%agent_id, %e, "Failed to send approval response");
+                }
+            } else {
+                warn!(%agent_id, %tool_name, decision = "deny", %policy_mode, "Tool use decision");
+                if let Err(e) = send_approval_response(
+                    agent_id,
+                    &request_id,
+                    ApprovalDecision::Deny,
+                    None,
+                    Some(format!("Tool '{tool_name}': not allowed by agent policy")),
+                    registry,
+                )
+                .await
+                {
+                    error!(%agent_id, %e, "Failed to send deny response");
+                }
+            }
         }
     }
 }
@@ -1008,7 +1092,7 @@ const APPROVAL_TIMEOUT_SECS: u64 = 300;
 ///
 /// Registers the request in the ApprovalRegistry, broadcasts a `pending_approval`
 /// event on the stream, then waits for a decision (or timeout). Sends the
-/// appropriate control_response to the agent when resolved.
+/// appropriate AAP `approval_response` to the adapter when resolved.
 async fn handle_approval_hold(
     agent_id: Uuid,
     request_id: String,
@@ -1021,7 +1105,7 @@ async fn handle_approval_hold(
         .register(agent_id, request_id.clone(), tool_name.clone(), tool_input.clone())
         .await;
 
-    // Broadcast pending_approval event for stream subscribers / UIs
+    // Broadcast pending_approval event for stream subscribers / UIs.
     let stream_event = serde_json::json!({
         "type": "pending_approval",
         "agent_id": agent_id,
@@ -1032,87 +1116,102 @@ async fn handle_approval_hold(
     });
     registry.broadcast(stream_event.to_string());
 
-    // Wait for human decision or timeout
     let timeout = tokio::time::Duration::from_secs(APPROVAL_TIMEOUT_SECS);
     let decision = tokio::time::timeout(timeout, rx).await;
 
     match decision {
         Ok(Ok(ApprovalDecision::Approve)) => {
             info!(%agent_id, %tool_name, approval_id = %approval.id, "Tool approved by human");
-            let response = make_allow_response(&request_id, &tool_input);
-            if let Err(e) = send_raw(&agent_id, &response, &registry).await {
+            if let Err(e) = send_approval_response(
+                &agent_id,
+                &request_id,
+                ApprovalDecision::Approve,
+                Some(tool_input.clone()),
+                None,
+                &registry,
+            )
+            .await
+            {
                 error!(%agent_id, %e, "Failed to send approve response");
             }
         }
         Ok(Ok(ApprovalDecision::Deny)) | Ok(Err(_)) => {
             warn!(%agent_id, %tool_name, approval_id = %approval.id, "Tool denied by human");
-            let response = make_deny_response(&request_id, &tool_name, "denied by human operator");
-            if let Err(e) = send_raw(&agent_id, &response, &registry).await {
+            if let Err(e) = send_approval_response(
+                &agent_id,
+                &request_id,
+                ApprovalDecision::Deny,
+                None,
+                Some("denied by human operator".to_string()),
+                &registry,
+            )
+            .await
+            {
                 error!(%agent_id, %e, "Failed to send deny response");
             }
         }
         Err(_elapsed) => {
             warn!(%agent_id, %tool_name, approval_id = %approval.id, "Approval timed out, auto-denying");
             registry.approvals.mark_timed_out(&approval.id).await;
-            let response = make_deny_response(
+            if let Err(e) = send_approval_response(
+                &agent_id,
                 &request_id,
-                &tool_name,
-                "approval timeout — no human decision within 5 minutes",
-            );
-            if let Err(e) = send_raw(&agent_id, &response, &registry).await {
+                ApprovalDecision::Deny,
+                None,
+                Some("approval timeout — no human decision within 5 minutes".to_string()),
+                &registry,
+            )
+            .await
+            {
                 error!(%agent_id, %e, "Failed to send timeout-deny response");
             }
         }
     }
 }
 
-fn make_allow_response(request_id: &str, input: &Value) -> Value {
-    serde_json::json!({
-        "type": "control_response",
-        "response": {
-            "subtype": "success",
-            "request_id": request_id,
-            "response": { "behavior": "allow", "updatedInput": input }
-        }
-    })
-}
-
-/// Build a control response that allows the tool call with the sandbox disabled.
-///
-/// Injects `"dangerouslyDisableSandbox": true` into the `updatedInput` object so
-/// that Claude Code skips TLS interception and filesystem sandboxing for this
-/// specific tool call. Used when the tool matches a `sandbox_bypass` glob in the
-/// agent's tool policy.
-fn make_sandbox_bypass_response(request_id: &str, input: &Value) -> Value {
-    // Clone the input and inject dangerouslyDisableSandbox into the updatedInput map.
+/// Build the opaque `updated_input` for a sandbox-bypass approval by injecting
+/// `dangerouslyDisableSandbox: true`. The adapter merges this into the native
+/// tool call.
+fn sandbox_bypass_input(input: &Value) -> Value {
     let mut updated = match input.as_object() {
         Some(map) => map.clone(),
         None => serde_json::Map::new(),
     };
     updated.insert("dangerouslyDisableSandbox".to_string(), serde_json::json!(true));
-
-    serde_json::json!({
-        "type": "control_response",
-        "response": {
-            "subtype": "success",
-            "request_id": request_id,
-            "response": { "behavior": "allow", "updatedInput": updated }
-        }
-    })
+    Value::Object(updated)
 }
 
-fn make_deny_response(request_id: &str, tool_name: &str, reason: &str) -> Value {
-    serde_json::json!({
-        "type": "control_response",
-        "response": {
-            "subtype": "success",
-            "request_id": request_id,
-            "response": {
-                "behavior": "deny",
-                "message": format!("Tool '{}': {}", tool_name, reason),
-            }
-        }
-    })
+/// Send an AAP `approval_response` to an agent adapter, mapping the internal
+/// [`ApprovalDecision`] to the protocol's allow/deny.
+async fn send_approval_response(
+    agent_id: &Uuid,
+    request_id: &str,
+    decision: ApprovalDecision,
+    updated_input: Option<Value>,
+    message: Option<String>,
+    registry: &ConnectionRegistry,
+) -> anyhow::Result<()> {
+    use agentd_agent_protocol::{ApprovalDecision as AapDecision, HostMessage};
+
+    let decision = match decision {
+        ApprovalDecision::Approve => AapDecision::Allow,
+        ApprovalDecision::Deny => AapDecision::Deny,
+    };
+    let resp = HostMessage::ApprovalResponse {
+        request_id: request_id.to_string(),
+        decision,
+        updated_input,
+        message,
+    };
+
+    let connections = registry.connections.read().await;
+    let conn = connections
+        .get(agent_id)
+        .ok_or_else(|| anyhow::anyhow!("Agent {} not connected", agent_id))?;
+    conn.tx
+        .send(resp.to_ndjson()? + "\n")
+        .map_err(|e| anyhow::anyhow!("Failed to send to agent: {}", e))?;
+    Ok(())
 }
 
 /// Axum handler for the multiplexed stream at /stream.
@@ -1676,237 +1775,112 @@ async fn handle_terminal_socket(
     info!(%agent_id, "Terminal WebSocket connection ended");
 }
 
-async fn send_raw(
-    agent_id: &Uuid,
-    msg: &Value,
-    registry: &ConnectionRegistry,
-) -> anyhow::Result<()> {
-    let connections = registry.connections.read().await;
-    let conn = connections
-        .get(agent_id)
-        .ok_or_else(|| anyhow::anyhow!("Agent {} not connected", agent_id))?;
-
-    conn.tx
-        .send(serde_json::to_string(msg)? + "\n")
-        .map_err(|e| anyhow::anyhow!("Failed to send to agent: {}", e))?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
     #[test]
-    fn test_extract_usage_full() {
-        let msg = json!({
-            "type": "result",
-            "is_error": false,
-            "usage": {
-                "input_tokens": 1500,
-                "output_tokens": 800,
-                "cache_read_input_tokens": 200,
-                "cache_creation_input_tokens": 50
-            },
-            "total_cost_usd": 0.0123,
-            "num_turns": 3,
-            "duration_ms": 5000,
-            "duration_api_ms": 4200
-        });
-
-        let usage = extract_usage(&msg).expect("should extract usage");
-        assert_eq!(usage.input_tokens, 1500);
-        assert_eq!(usage.output_tokens, 800);
-        assert_eq!(usage.cache_read_input_tokens, 200);
-        assert_eq!(usage.cache_creation_input_tokens, 50);
-        assert!((usage.total_cost_usd - 0.0123).abs() < 1e-9);
-        assert_eq!(usage.num_turns, 3);
-        assert_eq!(usage.duration_ms, 5000);
-        assert_eq!(usage.duration_api_ms, 4200);
+    fn usage_to_snapshot_maps_all_fields() {
+        let u = agentd_agent_protocol::Usage {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_read_input_tokens: 3,
+            cache_creation_input_tokens: 4,
+            total_cost_usd: 0.5,
+            num_turns: 6,
+            duration_ms: 7,
+            duration_api_ms: 8,
+        };
+        let s = usage_to_snapshot(&u);
+        assert_eq!(s.input_tokens, 1);
+        assert_eq!(s.output_tokens, 2);
+        assert_eq!(s.cache_read_input_tokens, 3);
+        assert_eq!(s.cache_creation_input_tokens, 4);
+        assert!((s.total_cost_usd - 0.5).abs() < 1e-9);
+        assert_eq!(s.num_turns, 6);
+        assert_eq!(s.duration_ms, 7);
+        assert_eq!(s.duration_api_ms, 8);
     }
 
     #[test]
-    fn test_extract_usage_missing_block_returns_none() {
-        let msg = json!({
-            "type": "result",
-            "is_error": false,
-            "total_cost_usd": 0.01
-        });
-
-        assert!(extract_usage(&msg).is_none());
+    fn aap_initialize_line_maps_config() {
+        use crate::types::{AgentConfig, ToolPolicy};
+        let config = AgentConfig {
+            working_dir: "/repo".to_string(),
+            user: None,
+            shell: "zsh".to_string(),
+            interactive: false,
+            prompt: None,
+            worktree: true,
+            system_prompt: Some("hi".to_string()),
+            system_prompt_file: None,
+            append_system_prompt: true,
+            tool_policy: ToolPolicy::default(),
+            model: Some("opus".to_string()),
+            env: std::collections::HashMap::new(),
+            auto_clear_threshold: None,
+            network_policy: None,
+            docker_image: None,
+            extra_mounts: None,
+            resource_limits: None,
+            additional_dirs: vec!["/x".to_string()],
+            rooms: vec![],
+            mcp_servers: None,
+            agent_type: "claude".to_string(),
+        };
+        let line = aap_initialize_line(&config);
+        let v: Value = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(v["type"], "initialize");
+        assert_eq!(v["protocol_version"], 1);
+        assert_eq!(v["model"], "opus");
+        assert_eq!(v["workspace"]["cwd"], "/repo");
+        assert_eq!(v["workspace"]["worktree"], true);
+        assert_eq!(v["workspace"]["additional_dirs"][0], "/x");
+        assert_eq!(v["system_prompt"]["mode"], "append");
+        assert_eq!(v["system_prompt"]["text"], "hi");
     }
 
-    #[test]
-    fn test_extract_usage_partial_fields_default_to_zero() {
-        // Only input_tokens present in the usage block; everything else defaults.
-        let msg = json!({
-            "type": "result",
-            "usage": {
-                "input_tokens": 42
-            }
-        });
-
-        let usage = extract_usage(&msg).expect("should extract usage");
-        assert_eq!(usage.input_tokens, 42);
-        assert_eq!(usage.output_tokens, 0);
-        assert_eq!(usage.cache_read_input_tokens, 0);
-        assert_eq!(usage.cache_creation_input_tokens, 0);
-        assert!((usage.total_cost_usd - 0.0).abs() < 1e-9);
-        assert_eq!(usage.num_turns, 0);
-        assert_eq!(usage.duration_ms, 0);
-        assert_eq!(usage.duration_api_ms, 0);
+    #[tokio::test]
+    async fn aap_ready_marks_agent_ready_and_records_capabilities() {
+        let registry = ConnectionRegistry::new();
+        let id = Uuid::new_v4();
+        let line = r#"{"type":"ready","protocol_version":1,"agent":{"name":"claude-code"},"capabilities":["tool_approval","streaming"]}"#;
+        handle_incoming_message(&id, line, &registry).await;
+        assert!(registry.is_ready(&id).await);
+        let caps = registry.get_capabilities(&id).await.expect("capabilities recorded");
+        assert!(caps.iter().any(|c| c == "tool_approval"));
     }
 
-    #[test]
-    fn test_extract_usage_empty_usage_object() {
-        let msg = json!({
-            "type": "result",
-            "usage": {}
-        });
-
-        let usage = extract_usage(&msg).expect("should extract usage from empty block");
-        assert_eq!(usage.input_tokens, 0);
-        assert_eq!(usage.output_tokens, 0);
-        assert!((usage.total_cost_usd - 0.0).abs() < 1e-9);
+    #[tokio::test]
+    async fn aap_turn_complete_notifies_result_with_usage() {
+        let registry = ConnectionRegistry::new();
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let sink = captured.clone();
+        registry
+            .on_result(std::sync::Arc::new(move |info| {
+                *sink.lock().unwrap() = Some(info);
+            }))
+            .await;
+        let id = Uuid::new_v4();
+        let line = r#"{"type":"turn_complete","turn_id":"t1","is_error":false,"result_text":"done","usage":{"input_tokens":10,"output_tokens":5,"total_cost_usd":0.01,"num_turns":1}}"#;
+        handle_incoming_message(&id, line, &registry).await;
+        let info = captured.lock().unwrap().clone().expect("result callback fired");
+        assert!(!info.is_error);
+        assert_eq!(info.result_text, "done");
+        let usage = info.usage.expect("usage present");
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 5);
     }
 
-    #[test]
-    fn test_extract_usage_top_level_fields_preferred() {
-        // When both top-level and nested fields exist, top-level wins.
-        let msg = json!({
-            "type": "result",
-            "usage": {
-                "input_tokens": 100,
-                "output_tokens": 50,
-                "total_cost_usd": 0.001,
-                "num_turns": 1,
-                "duration_ms": 100,
-                "duration_api_ms": 80,
-            },
-            "total_cost_usd": 0.999,
-            "num_turns": 99,
-            "duration_ms": 9999,
-            "duration_api_ms": 8888,
-        });
-
-        let usage = extract_usage(&msg).expect("should extract usage");
-        // Top-level fields should take precedence.
-        assert!((usage.total_cost_usd - 0.999).abs() < 1e-9);
-        assert_eq!(usage.num_turns, 99);
-        assert_eq!(usage.duration_ms, 9999);
-        assert_eq!(usage.duration_api_ms, 8888);
-        // Token fields always come from the nested usage object.
-        assert_eq!(usage.input_tokens, 100);
-        assert_eq!(usage.output_tokens, 50);
-    }
-
-    #[test]
-    fn test_extract_assistant_content_thinking_block() {
-        let message = json!({
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "thinking",
-                    "thinking": "Let me reason about this step by step."
-                },
-                {
-                    "type": "text",
-                    "text": "Here is my answer."
-                }
-            ]
-        });
-
-        let (texts, tool_uses, thinking_lines) = extract_assistant_content(&message);
-        assert_eq!(texts, vec!["Here is my answer."]);
-        assert!(tool_uses.is_empty());
-        assert_eq!(thinking_lines, vec!["Let me reason about this step by step."]);
-    }
-
-    #[test]
-    fn test_extract_assistant_content_no_thinking_block() {
-        let message = json!({
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "Plain response."
-                }
-            ]
-        });
-
-        let (texts, tool_uses, thinking_lines) = extract_assistant_content(&message);
-        assert_eq!(texts, vec!["Plain response."]);
-        assert!(tool_uses.is_empty());
-        assert!(thinking_lines.is_empty());
-    }
-
-    #[test]
-    fn test_extract_assistant_content_multiple_thinking_blocks() {
-        let message = json!({
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "thinking",
-                    "thinking": "First thought."
-                },
-                {
-                    "type": "thinking",
-                    "thinking": "Second thought."
-                },
-                {
-                    "type": "text",
-                    "text": "Conclusion."
-                }
-            ]
-        });
-
-        let (texts, _tool_uses, thinking_lines) = extract_assistant_content(&message);
-        assert_eq!(texts, vec!["Conclusion."]);
-        assert_eq!(thinking_lines, vec!["First thought.", "Second thought."]);
-    }
-
-    #[test]
-    fn test_extract_assistant_content_thinking_block_missing_field() {
-        // A thinking block with no "thinking" field should be silently ignored.
-        let message = json!({
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "thinking"
-                },
-                {
-                    "type": "text",
-                    "text": "Answer."
-                }
-            ]
-        });
-
-        let (texts, _tool_uses, thinking_lines) = extract_assistant_content(&message);
-        assert_eq!(texts, vec!["Answer."]);
-        assert!(thinking_lines.is_empty());
-    }
-
-    #[test]
-    fn test_extract_usage_fallback_to_nested_for_top_level_fields() {
-        // When top-level fields are absent, fall back to the usage sub-object.
-        let msg = json!({
-            "type": "result",
-            "usage": {
-                "input_tokens": 100,
-                "output_tokens": 50,
-                "total_cost_usd": 0.005,
-                "num_turns": 2,
-                "duration_ms": 300,
-                "duration_api_ms": 250,
-            }
-        });
-
-        let usage = extract_usage(&msg).expect("should extract usage");
-        assert!((usage.total_cost_usd - 0.005).abs() < 1e-9);
-        assert_eq!(usage.num_turns, 2);
-        assert_eq!(usage.duration_ms, 300);
-        assert_eq!(usage.duration_api_ms, 250);
+    #[tokio::test]
+    async fn aap_unparseable_line_is_skipped() {
+        let registry = ConnectionRegistry::new();
+        let id = Uuid::new_v4();
+        // Must not panic on garbage or unknown message types.
+        handle_incoming_message(&id, "not json", &registry).await;
+        handle_incoming_message(&id, r#"{"type":"totally_unknown"}"#, &registry).await;
+        assert!(!registry.is_ready(&id).await);
     }
 
     // ---------------------------------------------------------------------------
@@ -1972,11 +1946,12 @@ mod tests {
         registry.activity_states.write().await.insert(agent_id, ActivityState::Busy);
         assert_eq!(registry.get_activity_state(&agent_id).await, ActivityState::Busy);
 
-        // Simulate receiving a result message.
+        // Simulate receiving an AAP turn_complete message.
         let result_msg = json!({
-            "type": "result",
+            "type": "turn_complete",
+            "turn_id": "t1",
             "is_error": false,
-            "result": "done",
+            "result_text": "done",
             "usage": {
                 "input_tokens": 10,
                 "output_tokens": 5,
@@ -1999,9 +1974,10 @@ mod tests {
         // Set busy then receive result.
         registry.activity_states.write().await.insert(agent_id, ActivityState::Busy);
         let result_msg = json!({
-            "type": "result",
+            "type": "turn_complete",
+            "turn_id": "t1",
             "is_error": false,
-            "result": "",
+            "result_text": "",
             "usage": { "input_tokens": 1, "output_tokens": 1 }
         });
         handle_incoming_message(&agent_id, &result_msg.to_string(), &registry).await;
@@ -2240,11 +2216,9 @@ mod tests {
         registry.register(agent_id, AgentConnection { tx }).await;
 
         let msg = serde_json::json!({
-            "type": "assistant",
-            "message": {
-                "role": "assistant",
-                "content": [{"type": "text", "text": "Here is my answer."}]
-            }
+            "type": "message",
+            "turn_id": "t1",
+            "content": [{"type": "text", "text": "Here is my answer."}]
         });
         handle_incoming_message(&agent_id, &msg.to_string(), &registry).await;
 
@@ -2273,16 +2247,11 @@ mod tests {
         registry.register(agent_id, AgentConnection { tx }).await;
 
         let msg = serde_json::json!({
-            "type": "assistant",
-            "message": {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": "tool_abc123",
-                    "name": "Bash",
-                    "input": {"command": "ls"}
-                }]
-            }
+            "type": "tool_call",
+            "turn_id": "t1",
+            "call_id": "tool_abc123",
+            "name": "Bash",
+            "input": {"command": "ls"}
         });
         handle_incoming_message(&agent_id, &msg.to_string(), &registry).await;
 
@@ -2311,14 +2280,12 @@ mod tests {
         registry.register(agent_id, AgentConnection { tx }).await;
 
         let msg = serde_json::json!({
-            "type": "assistant",
-            "message": {
-                "role": "assistant",
-                "content": [{
-                    "type": "thinking",
-                    "thinking": "Let me reason through this."
-                }]
-            }
+            "type": "message",
+            "turn_id": "t1",
+            "content": [{
+                "type": "thinking",
+                "text": "Let me reason through this."
+            }]
         });
         handle_incoming_message(&agent_id, &msg.to_string(), &registry).await;
 
@@ -2347,9 +2314,10 @@ mod tests {
         registry.register(agent_id, AgentConnection { tx }).await;
 
         let msg = serde_json::json!({
-            "type": "result",
+            "type": "turn_complete",
+            "turn_id": "t1",
             "is_error": false,
-            "result": "done",
+            "result_text": "done",
             "usage": {
                 "input_tokens": 10,
                 "output_tokens": 5

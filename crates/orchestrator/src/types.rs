@@ -492,6 +492,16 @@ pub struct AgentConfig {
     /// these servers and nothing inherited from user-level configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
+    /// The kind of agent to run, resolved to an AAP adapter command at launch
+    /// (e.g. `"claude"` → `agentd-adapter-claude`). agentd speaks the
+    /// vendor-neutral agentd Agent Protocol to every adapter; this selects
+    /// which adapter fronts the agent. Defaults to `"claude"`.
+    #[serde(default = "default_agent_type")]
+    pub agent_type: String,
+}
+
+fn default_agent_type() -> String {
+    "claude".to_string()
 }
 
 /// One stdio MCP server entry, mirroring Claude Code's `mcpServers` format.
@@ -714,6 +724,10 @@ pub struct CreateAgentRequest {
     /// [`AgentConfig::mcp_servers`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
+    /// The kind of agent to run (see [`AgentConfig::agent_type`]). Defaults to
+    /// `"claude"`.
+    #[serde(default = "default_agent_type")]
+    pub agent_type: String,
 }
 
 /// Response body for agent endpoints.
@@ -835,6 +849,10 @@ pub struct UpdateAgentRequest {
     pub append_system_prompt: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Change the agent kind (adapter). Launch-affecting; requires a restart
+    /// to take effect. Empty string is ignored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_policy: Option<ToolPolicy>,
     /// Full replacement of the env map when present. Entries whose value is
@@ -1305,6 +1323,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -1336,6 +1355,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -1365,6 +1385,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
@@ -1400,6 +1421,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1433,6 +1455,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1478,6 +1501,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -1514,6 +1538,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);
@@ -1634,6 +1659,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("docker_image"));
@@ -1671,6 +1697,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("custom-image:v1"));
@@ -1718,6 +1745,7 @@ mod tests {
             additional_dirs: vec!["/opt/configs".to_string(), "/shared/libs".to_string()],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("additional_dirs"));
@@ -1751,6 +1779,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         // Empty vec should be omitted from JSON output
@@ -2112,6 +2141,7 @@ mod tests {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);

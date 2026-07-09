@@ -21,6 +21,7 @@
 //! - **Database:** `~/Library/Application Support/agentd-orchestrator/orchestrator.db`
 //! - **Environment:** `AGENTD_PORT`, `RUST_LOG`, `AGENTD_LOG_FORMAT`
 
+pub mod adapter;
 pub mod api;
 pub mod approvals;
 pub mod client;

@@ -109,6 +109,7 @@ impl SystemAgentDef {
             additional_dirs: vec![],
             rooms: self.rooms.iter().map(|r| r.to_string()).collect(),
             mcp_servers: (self.mcp_servers)(),
+            agent_type: "claude".to_string(),
         }
     }
 }

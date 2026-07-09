@@ -127,11 +127,14 @@ nav:
       - Human Approval Gates: planning/autonomous-pipeline-gates.md
   - Execution Backends:
       - Docker: docker-backend.md
+  - Specifications:
+      - Agent Protocol (AAP) v1: spec/agent-protocol-v1.md
   - Development:
       - Error Handling & Logging: public/error-handling.md
       - Storage Patterns: storage.md
       - Architecture Decisions:
           - 0001 — agentd-mcp stdio Transport: planning/decisions/0001-agentd-mcp-stdio-transport.md
+          - 0002 — agentd Agent Protocol (AAP): planning/decisions/0002-agentd-agent-protocol.md
 
 extra_css:
   - stylesheets/extra.css

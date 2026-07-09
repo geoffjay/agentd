@@ -74,6 +74,9 @@ pub struct Model {
     /// Optional organization UUID for tenant scoping.  NULL when not
     /// scoped (dev/test mode without gateway).
     pub organization_id: Option<String>,
+    /// The kind of agent to run, resolved to an AAP adapter at launch (e.g.
+    /// "claude"). NOT NULL with a default of "claude" for pre-existing rows.
+    pub agent_type: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

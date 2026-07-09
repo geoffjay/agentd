@@ -36,6 +36,7 @@ chrono = { workspace = true }
 directories = "6.0.0"
 futures = "0.3"
 agentd-common = { path = "../common" }
+agentd-agent-protocol = { path = "../agent-protocol" }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 

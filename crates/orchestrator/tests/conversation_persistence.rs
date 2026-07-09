@@ -147,6 +147,7 @@ async fn create_agent(storage: &AgentStorage) -> Uuid {
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         },
     );
     storage.add(&agent).await.unwrap();

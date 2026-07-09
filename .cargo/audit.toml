@@ -14,4 +14,18 @@ ignore = [
     # -> hyper-rustls 0.24 -> tokio-rustls 0.24 -> rustls 0.21. Cannot update without
     # bumping lancedb past 0.16. Tracked in #543.
     "RUSTSEC-2026-0049",
+    # Invalid pointer deref in crossbeam-epoch's fmt::Pointer impl. Transitive via:
+    #   memory -> lancedb 0.27.1 -> lance 3.0.1 -> lance-index -> rayon -> crossbeam-epoch.
+    # Only reached through the debug-formatting path we never exercise; fix requires an
+    # upstream crossbeam-epoch release adopted by rayon. Re-check when rayon updates.
+    "RUSTSEC-2026-0204",
+    # Remote memory exhaustion in quinn-proto. Present in Cargo.lock only as reqwest's
+    # OPTIONAL QUIC/HTTP3 dependency — it is not compiled: reqwest is built with
+    # default-features=false + rustls-tls + json (no http3), so quinn-proto appears in
+    # no built dependency tree (`cargo tree -i quinn-proto` is empty). No runtime exposure.
+    "RUSTSEC-2026-0185",
+    # DNS rebinding in rmcp's Streamable HTTP server transport. agentd-mcp uses the
+    # stdio transport (see docs/planning/decisions/0001-agentd-mcp-stdio-transport.md),
+    # not the HTTP server transport, so the vulnerable code path is not used.
+    "RUSTSEC-2026-0189",
 ]

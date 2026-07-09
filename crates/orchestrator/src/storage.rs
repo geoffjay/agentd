@@ -117,6 +117,7 @@ impl AgentStorage {
                 .as_ref()
                 .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()))),
             organization_id: Set(agent.organization_id.clone()),
+            agent_type: Set(agent.config.agent_type.clone()),
         };
 
         agent_entity::Entity::insert(model).exec(&self.db).await?;
@@ -239,6 +240,7 @@ impl AgentStorage {
                 agent_entity::Column::LaunchCommand,
                 Expr::value(agent.launch_command.clone()),
             )
+            .col_expr(agent_entity::Column::AgentType, Expr::value(agent.config.agent_type.clone()))
             .col_expr(agent_entity::Column::Pid, Expr::value(agent.pid.map(|p| p as i64)))
             .col_expr(agent_entity::Column::UpdatedAt, Expr::value(agent.updated_at.to_rfc3339()))
             .filter(agent_entity::Column::Id.eq(agent.id.to_string()))
@@ -1212,6 +1214,7 @@ fn model_to_agent(model: agent_entity::Model) -> Result<Agent> {
             additional_dirs: serde_json::from_str(&model.additional_dirs).unwrap_or_default(),
             rooms: serde_json::from_str(&model.rooms).unwrap_or_default(),
             mcp_servers: model.mcp_servers.as_deref().and_then(|s| serde_json::from_str(s).ok()),
+            agent_type: model.agent_type,
         },
         session_id: model.session_id,
         backend_type: model.backend_type,
@@ -1322,6 +1325,7 @@ mod tests {
                 additional_dirs: vec![],
                 rooms: vec![],
                 mcp_servers: None,
+                agent_type: "claude".to_string(),
             },
         )
     }

@@ -426,8 +426,8 @@ async fn test_message_delivered_to_agent_via_ws() {
 
     let prompt = prompt.expect("bridge should have delivered a prompt to the agent");
     let parsed: serde_json::Value = serde_json::from_str(prompt.trim()).unwrap();
-    assert_eq!(parsed["type"], "user", "should be a user message");
-    let content = parsed["message"]["content"].as_str().unwrap();
+    assert_eq!(parsed["type"], "prompt", "should be an AAP prompt message");
+    let content = parsed["content"].as_str().unwrap();
     assert!(content.contains("general"), "prompt should include room name");
     assert!(content.contains("Alice"), "prompt should include sender name");
     assert!(content.contains("Hello agent!"), "prompt should include message content");

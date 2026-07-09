@@ -9,6 +9,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agentd-adapter-claude"
+version = "0.4.13"
+dependencies = [
+ "agentd-agent-protocol",
+ "anyhow",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "agentd-agent-protocol"
+version = "0.4.13"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "agentd-common"
 version = "0.4.13"
 dependencies = [
@@ -4742,6 +4765,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "orchestrator"
 version = "0.4.13"
 dependencies = [
+ "agentd-agent-protocol",
  "agentd-common",
  "anyhow",
  "async-trait",

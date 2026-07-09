@@ -92,10 +92,17 @@ pub struct AgentTemplate {
     /// per-agent config file and launches claude with `--mcp-config`.
     #[serde(default)]
     pub mcp_servers: Option<HashMap<String, orchestrator::types::McpServerConfig>>,
+    /// The kind of agent to run, resolved to an AAP adapter at launch (e.g.
+    /// "claude"). Defaults to "claude".
+    #[serde(default = "default_agent_type")]
+    pub agent_type: String,
 }
 
 fn default_working_dir() -> String {
     ".".to_string()
+}
+fn default_agent_type() -> String {
+    "claude".to_string()
 }
 fn default_shell() -> String {
     "zsh".to_string()
@@ -1233,6 +1240,7 @@ async fn apply_agent(
         additional_dirs,
         rooms: tmpl.rooms.iter().map(|r| r.name().to_string()).collect(),
         mcp_servers: tmpl.mcp_servers.clone(),
+        agent_type: tmpl.agent_type.clone(),
     };
 
     let agent = client.create_agent(&request).await?;

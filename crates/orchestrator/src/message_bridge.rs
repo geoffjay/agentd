@@ -1151,9 +1151,9 @@ mod tests {
         // Agent must receive the prompt via the mpsc channel.
         let received = rx.try_recv().expect("agent should receive prompt immediately");
         let parsed: serde_json::Value = serde_json::from_str(received.trim()).unwrap();
-        assert_eq!(parsed["type"], "user");
+        assert_eq!(parsed["type"], "prompt");
         assert!(
-            parsed["message"]["content"].as_str().unwrap().contains("ping"),
+            parsed["content"].as_str().unwrap().contains("ping"),
             "content should contain the prompt"
         );
 
@@ -1301,8 +1301,8 @@ mod tests {
         // Agent must receive the queued prompt.
         let received = rx.try_recv().expect("agent should receive the drained message");
         let parsed: serde_json::Value = serde_json::from_str(received.trim()).unwrap();
-        assert_eq!(parsed["type"], "user");
-        let content = parsed["message"]["content"].as_str().unwrap();
+        assert_eq!(parsed["type"], "prompt");
+        let content = parsed["content"].as_str().unwrap();
         assert!(
             content.contains("deferred delivery"),
             "drained message content not found: {}",
