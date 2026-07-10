@@ -11,7 +11,7 @@
 //!   assets    → XDG_DATA_HOME/agentd
 //!   units     → XDG_CONFIG_HOME/systemd/user  (WantedBy=default.target)
 
-use super::{Platform, ServiceInfo, SERVICES};
+use super::{Platform, ServiceInfo, ADAPTER_BINARIES, SERVICES};
 use crate::InstallPaths;
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -129,6 +129,15 @@ impl Platform for LinuxPlatform {
                 fs::remove_file(&bin_path)
                     .context(format!("Failed to remove {}", service.binary))?;
                 println!("  {} Removed {}", "✓".green(), service.binary);
+            }
+        }
+
+        // Remove AAP adapter binaries.
+        for adapter in ADAPTER_BINARIES {
+            let bin_path = bin_dir.join(adapter);
+            if bin_path.exists() {
+                fs::remove_file(&bin_path).context(format!("Failed to remove {adapter}"))?;
+                println!("  {} Removed {}", "✓".green(), adapter);
             }
         }
 
@@ -442,6 +451,20 @@ fn install_binaries(bin_src: &Path, bin_dir: &Path) -> Result<()> {
             install_one_binary(&src, &dest, service.binary)?;
         } else {
             println!("  {} {} (not found)", "⚠".yellow(), service.binary);
+        }
+    }
+
+    // Install AAP adapter binaries. These are not services but are spawned by
+    // the orchestrator as sibling binaries; without them every agent restart
+    // fails with "Failed to spawn 'agentd-adapter-<type>'".
+    for adapter in ADAPTER_BINARIES {
+        let src = bin_src.join(adapter);
+        let dest = bin_dir.join(adapter);
+
+        if src.exists() {
+            install_one_binary(&src, &dest, adapter)?;
+        } else {
+            println!("  {} {} (not found)", "⚠".yellow(), adapter);
         }
     }
 

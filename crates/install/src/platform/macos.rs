@@ -1,6 +1,6 @@
 //! macOS platform implementation using LaunchAgent plists and launchctl.
 
-use super::{Platform, ServiceInfo, SERVICES};
+use super::{Platform, ServiceInfo, ADAPTER_BINARIES, SERVICES};
 use crate::InstallPaths;
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -324,6 +324,22 @@ fn install_binaries(bin_src: &Path, bin_dir: &Path) -> Result<()> {
             println!("  {} {}", "✓".green(), service.binary);
         } else {
             println!("  {} {} (not found)", "⚠".yellow(), service.binary);
+        }
+    }
+
+    // Install AAP adapter binaries. These are not services but are spawned by
+    // the orchestrator as sibling binaries; without them every agent restart
+    // fails with "Failed to spawn 'agentd-adapter-<type>'".
+    for adapter in ADAPTER_BINARIES {
+        let src = bin_src.join(adapter);
+        let dest = macos_dir.join(adapter);
+
+        if src.exists() {
+            fs::copy(&src, &dest).context(format!("Failed to install {adapter}"))?;
+            crate::set_executable(&dest)?;
+            println!("  {} {}", "✓".green(), adapter);
+        } else {
+            println!("  {} {} (not found)", "⚠".yellow(), adapter);
         }
     }
 
