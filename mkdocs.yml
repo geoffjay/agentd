@@ -86,6 +86,7 @@ nav:
   - Configuration:
       - Reference: public/configuration.md
       - Execution Backends: public/configuration/backends.md
+      - PAM Authentication: public/pam-authentication.md
   - Installation: public/install.md
   - Tool Policies: public/tool-policies.md
   - Templates: public/templates.md
@@ -130,11 +131,12 @@ nav:
       - Overview: public/observability/index.md
       - Prometheus Setup: public/observability/prometheus-setup.md
       - Grafana Setup: public/observability/grafana-setup.md
+      - Metrics & Instrumentation: public/instrumentation.md
   - Specifications:
       - Agent Protocol (AAP) v1: spec/agent-protocol-v1.md
   - Development:
       - Error Handling & Logging: public/error-handling.md
-      - Storage Patterns: storage.md
+      - Storage Patterns: public/storage.md
       - Architecture Decisions:
           - 0001 — agentd-mcp stdio Transport: planning/decisions/0001-agentd-mcp-stdio-transport.md
           - 0002 — agentd Agent Protocol (AAP): planning/decisions/0002-agentd-agent-protocol.md

@@ -7,7 +7,7 @@ lists the gap, a proposed change, and the dashboard or operational capability it
 would unlock.
 
 Related: the Prometheus/Grafana stack documented in
-[`docs/public/observability/`](public/observability/index.md) already scrapes the services'
+[`docs/public/observability/`](observability/index.md) already scrapes the services'
 Prometheus metrics. This document focuses on what the *APIs* expose, since the
 web dashboard consumes JSON endpoints directly rather than PromQL.
 
@@ -84,7 +84,7 @@ uptime, so the UI cannot show "restarted 2 min ago" or flag crash loops.
 
 Services register rich metrics with the `metrics` crate (counters like
 `agents_created_total`, gauges like `approvals_pending`), and Prometheus scrapes
-them (see [`docs/public/observability/`](public/observability/index.md)). However, the web
+them (see [`docs/public/observability/`](observability/index.md)). However, the web
 dashboard does not consume Prometheus format, so none of those values are
 reachable from the UI. The most useful gauges should also be surfaced through
 plain JSON endpoints (see item 1) so both consumers see the same numbers.
