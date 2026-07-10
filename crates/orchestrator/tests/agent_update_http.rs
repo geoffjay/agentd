@@ -6,7 +6,7 @@
 //! # Design
 //!
 //! HTTP tests drive the full Axum router via `tower::ServiceExt::oneshot` with
-//! no real TCP connection. A `NullBackend` replaces tmux/Docker so that
+//! no real TCP connection. A `NullBackend` replaces tmux so that
 //! `AgentManager` can be constructed without external dependencies.
 
 use async_trait::async_trait;

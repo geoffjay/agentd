@@ -15,7 +15,7 @@
 //! # Design
 //!
 //! HTTP tests drive the full Axum router via `tower::ServiceExt::oneshot` with
-//! no real TCP connection.  A `NullBackend` replaces tmux/Docker so that
+//! no real TCP connection.  A `NullBackend` replaces tmux so that
 //! `AgentManager` can be constructed without external dependencies.  All
 //! databases are in a temp file (migrated automatically); no file descriptors
 //! leak between tests because each test owns its own `TempDir`.
@@ -140,10 +140,6 @@ async fn create_agent(storage: &AgentStorage) -> Uuid {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,

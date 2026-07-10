@@ -449,14 +449,14 @@ All configuration keys with their TOML path, environment variable, default value
 | TOML Key | Environment Variable | Default | Description |
 |----------|---------------------|---------|-------------|
 | `services.wrap.port` | `AGENTD_WRAP_PORT` | `17005` | HTTP listen port |
-| `services.wrap.backend` | `AGENTD_WRAP_BACKEND` | `tmux` | Execution backend: `tmux`, `docker`, `pty`, `subprocess` |
+| `services.wrap.backend` | `AGENTD_WRAP_BACKEND` | `tmux` | Execution backend: `tmux`, `pty`, `subprocess` |
 
 #### agentd-orchestrator (port 17006)
 
 | TOML Key | Environment Variable | Default | Description |
 |----------|---------------------|---------|-------------|
 | `services.orchestrator.port` | `AGENTD_ORCHESTRATOR_PORT` | `17006` | HTTP listen port |
-| `services.orchestrator.backend` | `AGENTD_ORCHESTRATOR_BACKEND` | `tmux` | Execution backend: `tmux`, `docker`, `pty`, `subprocess` |
+| `services.orchestrator.backend` | `AGENTD_ORCHESTRATOR_BACKEND` | `tmux` | Execution backend: `tmux`, `pty`, `subprocess` |
 | `services.orchestrator.communicate_url` | `AGENTD_ORCHESTRATOR_COMMUNICATE_URL` | `http://localhost:17010` | Communicate service URL for agent message delivery |
 | `services.orchestrator.reconcile_interval_secs` | `AGENTD_RECONCILE_INTERVAL_SECS` | `30` | Agent reconciliation interval in seconds |
 
@@ -501,14 +501,13 @@ The MCP server uses stdio transport and has no dedicated port of its own. These 
 
 #### Execution Backends
 
-Both `agentd-orchestrator` and `agentd-wrap` support four execution backends. Set `backend` to one of:
+Both `agentd-orchestrator` and `agentd-wrap` support three execution backends. Set `backend` to one of:
 
 | Backend | Description | Use when |
 |---------|-------------|----------|
 | `tmux` | Launches agents in tmux sessions (default) | Local development, interactive attach |
 | `subprocess` | Launches agents as direct child processes with stdio | Lightweight, no tmux required |
 | `pty` | Launches agents in a pseudo-terminal | Interactive terminal emulation |
-| `docker` | Launches agents in Docker containers | Isolation, reproducible environments |
 
 #### Embedding Providers
 
@@ -602,11 +601,11 @@ port = 8004
 
 [services.wrap]
 port = 8005
-backend = "docker"
+backend = "subprocess"
 
 [services.orchestrator]
 port = 8006
-backend = "docker"
+backend = "subprocess"
 communicate_url = "http://communicate.internal:8010"
 reconcile_interval_secs = 60
 
@@ -690,7 +689,7 @@ For each environment variable you have set, find the corresponding TOML key in t
 **Example:** If you have these environment variables:
 
 ```bash
-export AGENTD_ORCHESTRATOR_BACKEND=docker
+export AGENTD_ORCHESTRATOR_BACKEND=subprocess
 export AGENTD_MEMORY_EMBEDDING_PROVIDER=openai
 export AGENTD_LOG_LEVEL=debug
 ```
@@ -702,7 +701,7 @@ Add the equivalent TOML:
 log_level = "debug"
 
 [services.orchestrator]
-backend = "docker"
+backend = "subprocess"
 
 [services.memory]
 embedding_provider = "openai"
@@ -739,7 +738,7 @@ Every service validates its configuration section at startup. If a setting is in
 Common validation rules:
 
 - **port**: Must be non-zero (`1`-`65535`)
-- **backend**: Must be one of `tmux`, `docker`, `pty`, `subprocess`
+- **backend**: Must be one of `tmux`, `pty`, `subprocess`
 - **embedding_provider (memory)**: Must be one of `none`, `ollama`, `openai`
 - **URL fields**: Must start with `http://` or `https://`
 - **hook.history_size**: Must be greater than `0`
@@ -751,6 +750,6 @@ Example error output:
 
 ```
 Error: configuration validation failed:
-  [services.orchestrator]: orchestrator.backend must be one of tmux, docker, pty, subprocess; got: invalid
+  [services.orchestrator]: orchestrator.backend must be one of tmux, pty, subprocess; got: invalid
   [services.memory]: memory.embedding_provider must be one of none, ollama, openai; got: huggingface
 ```

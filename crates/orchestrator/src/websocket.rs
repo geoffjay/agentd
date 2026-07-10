@@ -548,7 +548,7 @@ async fn handle_agent_socket(socket: WebSocket, agent_id: Uuid, registry: Connec
     // Channel for sending messages to this agent.
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
-    // AAP handshake: the adapter (running in a tmux/docker session, dialing
+    // AAP handshake: the adapter (running in a tmux session, dialing
     // back over this websocket) needs the `initialize` message carrying all
     // agent configuration before it will accept prompts. Queue it before the
     // connection is registered so it is the first frame the adapter receives.
@@ -1820,10 +1820,6 @@ mod tests {
             model: Some("opus".to_string()),
             env: std::collections::HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec!["/x".to_string()],
             rooms: vec![],
             mcp_servers: None,

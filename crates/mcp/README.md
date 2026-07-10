@@ -99,7 +99,7 @@ localhost ports used by `agentd` services.
 | Tool | Description |
 |------|-------------|
 | `diagnose_system` | Full system overview: services, failed agents, alerts, backlogs |
-| `diagnose_agent` | Deep dive on a single agent: status, activity, approvals, usage, backend-specific health (docker/subprocess/pty/tmux) |
+| `diagnose_agent` | Deep dive on a single agent: status, activity, approvals, usage, backend-specific health (subprocess/pty/tmux) |
 | `diagnose_workflow` | Workflow health: agent state, dispatch success rate, trigger-type-specific notes (cron, webhook, agent_lifecycle, dispatch_result, agent_idle, etc.) |
 | `diagnose_state_mismatches` | Detect orphan WebSocket connections, agents running-but-disconnected, and connected-but-not-running. Highest-value tool for catching subtle stuckness. |
 | `inspect_queue` | Stats and peek for a named orchestrator queue (pending, processing, failed, dead) |
@@ -289,7 +289,7 @@ agentd-mcp (this crate)
      ├── memory        :17008  (vector memory store)
      ├── notify        :17004  (notifications)
      ├── ask           :17001  (approval requests)
-     ├── wrap          :17005  (Docker wrap configs)
+     ├── wrap          :17005  (agent session management)
      ├── monitor       :17003  (system metrics, alerts)
      └── hook          :17002  (pre/post tool hooks)
 ```

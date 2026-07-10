@@ -18,7 +18,7 @@ position: it is one adapter among many.
 AAP governs the **programmatic communication path** only. It does **not** govern:
 
 - **Where** the agent process runs. That is the concern of the host's execution backend
-  (subprocess, tmux, docker, pty). AAP rides on top of whichever backend is active.
+  (subprocess, tmux, pty). AAP rides on top of whichever backend is active.
 - **Interactive PTY mode**, in which a human types directly into a terminal running an agent. That path
   bypasses AAP entirely.
 
@@ -63,7 +63,7 @@ binding at launch and communicates the choice through environment variables.
 
 - The adapter dials back to a host-provided WebSocket URL and exchanges the same AAP frames as text
   messages (one JSON object per WebSocket text frame; the trailing `\n` is optional over WebSocket).
-- Used by the `tmux` and `docker` execution backends, where clean stdio piping is not available.
+- Used by the `tmux` execution backend, where clean stdio piping is not available.
 - Environment: `AGENTD_AAP_TRANSPORT=websocket`, `AGENTD_AAP_WS_URL=ws://host:port/path`.
 
 The message schema is identical across bindings; only the byte transport differs.

@@ -67,15 +67,6 @@ pub struct AgentTemplate {
     /// If set, automatically clear the agent's context when the cumulative
     /// input-token count for the current session exceeds this threshold.
     pub auto_clear_threshold: Option<u64>,
-    /// Network policy for Docker-backed agents (internet, isolated, host_network).
-    pub network_policy: Option<String>,
-    /// Custom Docker image override for this agent.
-    pub docker_image: Option<String>,
-    /// Additional volume mounts for Docker containers.
-    #[serde(default)]
-    pub extra_mounts: Vec<orchestrator::types::VolumeMount>,
-    /// Resource limits for Docker containers.
-    pub resource_limits: Option<orchestrator::types::ResourceLimits>,
     /// Additional directories the agent has access to.
     /// Maps to Claude Code's `--add-dir` flag.
     /// Relative paths are resolved relative to the YAML file location.
@@ -1180,13 +1171,6 @@ async fn apply_agent(
         full.canonicalize().unwrap_or(full).to_string_lossy().to_string()
     };
 
-    let parsed_network_policy = tmpl
-        .network_policy
-        .as_deref()
-        .map(|s| s.parse::<wrap::docker::NetworkPolicy>())
-        .transpose()
-        .map_err(|e| anyhow::anyhow!("Invalid network_policy in agent '{}': {}", tmpl.name, e))?;
-
     // Resolve additional_dirs: relative paths are resolved relative to the YAML file location.
     let base = path.parent().unwrap_or(Path::new("."));
     let additional_dirs: Vec<String> = tmpl
@@ -1229,14 +1213,6 @@ async fn apply_agent(
         model: tmpl.model.clone(),
         env: tmpl.env.clone(),
         auto_clear_threshold: tmpl.auto_clear_threshold,
-        network_policy: parsed_network_policy,
-        docker_image: tmpl.docker_image.clone(),
-        extra_mounts: if tmpl.extra_mounts.is_empty() {
-            None
-        } else {
-            Some(tmpl.extra_mounts.clone())
-        },
-        resource_limits: tmpl.resource_limits.clone(),
         additional_dirs,
         rooms: tmpl.rooms.iter().map(|r| r.name().to_string()).collect(),
         mcp_servers: tmpl.mcp_servers.clone(),

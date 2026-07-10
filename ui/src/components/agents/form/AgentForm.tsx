@@ -2,7 +2,7 @@
  * AgentForm — full agent configuration form body.
  *
  * Sections: Identity, Execution, System Prompt, Tool Policy, Workspace,
- * Advanced (env, auto-clear, user), and Backend/Docker (collapsed).
+ * and Advanced (env, auto-clear, user).
  * State lives in the parent page via the agentFormModel draft; this
  * component is purely presentational over that draft.
  */
@@ -19,7 +19,6 @@ import {
 	ToolPolicyFields,
 } from "@/components/common/form";
 import type { AgentFormErrors, AgentFormState } from "./agentFormModel";
-import { ExtraMountsEditor } from "./ExtraMountsEditor";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -456,100 +455,6 @@ export function AgentForm({
 							{errors.env}
 						</p>
 					)}
-				</div>
-			</CollapsibleSection>
-
-			{/* Docker / backend */}
-			<CollapsibleSection
-				title="Backend (Docker)"
-				subtitle="only applies to Docker-backed orchestrators"
-			>
-				<FormField
-					htmlFor="agent-network-policy"
-					label="Network policy"
-					optional
-				>
-					<select
-						id="agent-network-policy"
-						value={state.networkPolicy}
-						onChange={(e) =>
-							onChange(
-								"networkPolicy",
-								e.target.value as AgentFormState["networkPolicy"],
-							)
-						}
-						disabled={disabled}
-						className={fieldClass()}
-					>
-						<option value="">Default</option>
-						<option value="internet">Internet</option>
-						<option value="isolated">Isolated</option>
-						<option value="host_network">Host network</option>
-					</select>
-				</FormField>
-
-				<FormField htmlFor="agent-docker-image" label="Docker image" optional>
-					<input
-						id="agent-docker-image"
-						type="text"
-						value={state.dockerImage}
-						onChange={(e) => onChange("dockerImage", e.target.value)}
-						placeholder="default image"
-						disabled={disabled}
-						className={fieldClass(undefined, "font-mono")}
-					/>
-				</FormField>
-
-				<div>
-					<span className="mb-1 block text-sm font-medium text-th-text-secondary">
-						Extra mounts{" "}
-						<span className="text-xs font-normal text-th-text-faint">
-							(optional)
-						</span>
-					</span>
-					<ExtraMountsEditor
-						mounts={state.extraMounts}
-						onChange={(extraMounts) => onChange("extraMounts", extraMounts)}
-						disabled={disabled}
-					/>
-					{errors.extraMounts && (
-						<p className="mt-1 text-xs text-th-status-error-text">
-							{errors.extraMounts}
-						</p>
-					)}
-				</div>
-
-				<div className="grid grid-cols-2 gap-3">
-					<FormField htmlFor="agent-cpu-limit" label="CPU limit" optional>
-						<input
-							id="agent-cpu-limit"
-							type="number"
-							min={0}
-							step="0.5"
-							value={state.cpuLimit}
-							onChange={(e) => onChange("cpuLimit", e.target.value)}
-							placeholder="e.g. 2"
-							disabled={disabled}
-							className={fieldClass()}
-						/>
-					</FormField>
-					<FormField
-						htmlFor="agent-memory-limit"
-						label="Memory limit (MB)"
-						optional
-					>
-						<input
-							id="agent-memory-limit"
-							type="number"
-							min={0}
-							step={128}
-							value={state.memoryLimitMb}
-							onChange={(e) => onChange("memoryLimitMb", e.target.value)}
-							placeholder="e.g. 4096"
-							disabled={disabled}
-							className={fieldClass()}
-						/>
-					</FormField>
 				</div>
 			</CollapsibleSection>
 		</div>

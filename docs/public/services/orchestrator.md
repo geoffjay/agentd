@@ -132,7 +132,6 @@ Content-Type: application/json
 | `env` | object | no | `{}` | Environment variables set when launching the agent. Commonly used for `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`. Values are write-only - the API returns `"***"` in responses. |
 | `additional_dirs` | array | no | `[]` | Extra directories the agent can read and write, in addition to `working_dir`. Each entry maps to a `--add-dir` flag. See [Additional Directories](../additional-dirs.md). |
 | `auto_clear_threshold` | integer | no | | Automatically clear context when cumulative input tokens for the session exceeds this value. |
-| `network_policy` | string | no | | Network policy for Docker-backed agents (`internet`, `isolated`, `host`). Ignored for tmux backends. |
 
 **Response:** `201 Created` with agent object.
 
@@ -263,7 +262,7 @@ Content-Type: application/json
 
 Add or remove filesystem directories the agent can access. Each directory maps to Claude Code's `--add-dir` flag. Changes are persisted immediately but **take effect on the next agent restart**.
 
-See [Additional Directories](../additional-dirs.md) for full details including YAML template configuration and Docker behavior.
+See [Additional Directories](../additional-dirs.md) for full details including YAML template configuration.
 
 #### Add a directory
 

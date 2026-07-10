@@ -2,7 +2,7 @@
 //!
 //! This module defines the [`ExecutionBackend`] trait, which provides a
 //! uniform async interface for launching and managing agent sessions across
-//! different execution environments (tmux, Docker, Podman, etc.).
+//! different execution environments (tmux, PTY, subprocess, etc.).
 //!
 //! # Implementations
 //!
@@ -24,7 +24,6 @@
 //!     model_provider: "anthropic".into(),
 //!     model_name: "claude-sonnet-4.5".into(),
 //!     layout: None,
-//!     network_policy: None,
 //! };
 //!
 //! backend.create_session(&config).await?;
@@ -41,18 +40,18 @@ use crate::types::TmuxLayout;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-/// Health status of a backend session (container or tmux session).
+/// Health status of a backend session.
 ///
 /// Used by the orchestrator to make reconciliation decisions based on
 /// the liveness of the underlying execution environment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionHealth {
-    /// Session is running and healthy (Docker: health check passing or no health check configured).
+    /// Session is running and healthy.
     Healthy,
     /// Session is running but health check is failing.
     Unhealthy,
-    /// Session is starting up (Docker: health check hasn't passed yet).
+    /// Session is starting up.
     Starting,
     /// Health status cannot be determined.
     Unknown,
@@ -104,18 +103,12 @@ pub struct SessionConfig {
 
     /// Optional layout configuration (tmux-specific, ignored by other backends)
     pub layout: Option<TmuxLayout>,
-
-    /// Optional network policy override for Docker backends.
-    ///
-    /// When `None`, the backend's default policy is used. Tmux backends
-    /// ignore this field.
-    pub network_policy: Option<crate::docker::NetworkPolicy>,
 }
 
 /// Async trait for execution backends that manage agent sessions.
 ///
-/// Each implementation wraps a specific execution environment (tmux, Docker,
-/// Podman, etc.) and exposes a uniform async interface for the orchestrator
+/// Each implementation wraps a specific execution environment (tmux, PTY,
+/// subprocess, etc.) and exposes a uniform async interface for the orchestrator
 /// and wrap service to consume.
 ///
 /// # Object Safety
@@ -159,9 +152,8 @@ pub trait ExecutionBackend: Send + Sync {
     /// Returns the WebSocket URL for streaming agent output, if supported.
     ///
     /// The optional `config` parameter allows backends to use per-session
-    /// overrides (e.g., [`NetworkPolicy`](crate::docker::NetworkPolicy)) when
-    /// constructing the URL. Callers that don't have a config can pass `None`,
-    /// in which case the backend's default settings are used.
+    /// overrides when constructing the URL. Callers that don't have a config
+    /// can pass `None`, in which case the backend's default settings are used.
     ///
     /// Not all backends support WebSocket streaming. Returns `None` by default.
     fn agent_ws_url(&self, _session_name: &str, _config: Option<&SessionConfig>) -> Option<String> {
@@ -170,8 +162,7 @@ pub trait ExecutionBackend: Send + Sync {
 
     /// Returns the health status of a session.
     ///
-    /// For Docker backends this inspects the container's health check status.
-    /// For tmux backends (or backends without health checks), this returns
+    /// For backends without health checks, this returns
     /// [`SessionHealth::Unknown`] by default.
     async fn session_health(&self, _session_name: &str) -> anyhow::Result<SessionHealth> {
         Ok(SessionHealth::Unknown)
@@ -241,7 +232,7 @@ pub trait ExecutionBackend: Send + Sync {
     /// Returns the OS process ID for a session, if available.
     ///
     /// Only backends that spawn processes directly (e.g., [`SubprocessBackend`])
-    /// return a PID. Tmux and Docker backends return `None`.
+    /// return a PID. Other backends return `None`.
     async fn session_pid(&self, _session_name: &str) -> anyhow::Result<Option<u32>> {
         Ok(None)
     }
@@ -454,7 +445,6 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: None,
-            network_policy: None,
         };
         assert_eq!(build_agent_command(&config).unwrap(), "claude");
     }
@@ -468,7 +458,6 @@ mod tests {
             model_provider: "openai".into(),
             model_name: "gpt-4".into(),
             layout: None,
-            network_policy: None,
         };
         assert_eq!(
             build_agent_command(&config).unwrap(),
@@ -485,7 +474,6 @@ mod tests {
             model_provider: "google".into(),
             model_name: "gemini-pro".into(),
             layout: None,
-            network_policy: None,
         };
         assert_eq!(build_agent_command(&config).unwrap(), "gemini --model gemini-pro");
     }
@@ -499,7 +487,6 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: None,
-            network_policy: None,
         };
         assert_eq!(build_agent_command(&config).unwrap(), "crush");
     }
@@ -513,7 +500,6 @@ mod tests {
             model_provider: "none".into(),
             model_name: "none".into(),
             layout: None,
-            network_policy: None,
         };
         let err = build_agent_command(&config).unwrap_err();
         assert!(err.to_string().contains("Unsupported agent type"));
@@ -528,7 +514,6 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: None,
-            network_policy: None,
         };
         let debug = format!("{:?}", config);
         assert!(debug.contains("test"));
@@ -544,7 +529,6 @@ mod tests {
             model_provider: "anthropic".into(),
             model_name: "claude-sonnet-4.5".into(),
             layout: Some(TmuxLayout { layout_type: "vertical".into(), panes: Some(2) }),
-            network_policy: None,
         };
         let cloned = config.clone();
         assert_eq!(cloned.session_name, "test");

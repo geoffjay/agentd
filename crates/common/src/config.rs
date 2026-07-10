@@ -177,7 +177,7 @@ impl Default for NotifyConfig {
 pub struct OrchestratorConfig {
     /// HTTP listen port. Defaults to `17006`.
     pub port: u16,
-    /// Execution backend: `"tmux"`, `"docker"`, `"pty"`, or `"subprocess"`.
+    /// Execution backend: `"tmux"`, `"pty"`, or `"subprocess"`.
     ///
     /// Defaults to `"tmux"`.
     pub backend: String,
@@ -216,7 +216,7 @@ impl Default for OrchestratorConfig {
 pub struct WrapConfig {
     /// HTTP listen port. Defaults to `17005`.
     pub port: u16,
-    /// Execution backend: `"tmux"`, `"docker"`, `"pty"`, or `"subprocess"`.
+    /// Execution backend: `"tmux"`, `"pty"`, or `"subprocess"`.
     ///
     /// Defaults to `"tmux"`.
     pub backend: String,
@@ -608,7 +608,7 @@ pub struct ServicesConfig {
 /// port = 17004
 ///
 /// [services.orchestrator]
-/// backend = "docker"
+/// backend = "subprocess"
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -660,10 +660,10 @@ impl ValidateConfig for OrchestratorConfig {
     fn validate(&self) -> Result<()> {
         validate_port(self.port, "orchestrator")?;
         match self.backend.as_str() {
-            "tmux" | "docker" | "pty" | "subprocess" => {}
-            other => bail!(
-                "orchestrator.backend must be one of tmux, docker, pty, subprocess; got: {other}"
-            ),
+            "tmux" | "pty" | "subprocess" => {}
+            other => {
+                bail!("orchestrator.backend must be one of tmux, pty, subprocess; got: {other}")
+            }
         }
         Ok(())
     }
@@ -673,9 +673,9 @@ impl ValidateConfig for WrapConfig {
     fn validate(&self) -> Result<()> {
         validate_port(self.port, "wrap")?;
         match self.backend.as_str() {
-            "tmux" | "docker" | "pty" | "subprocess" => {}
+            "tmux" | "pty" | "subprocess" => {}
             other => {
-                bail!("wrap.backend must be one of tmux, docker, pty, subprocess; got: {other}")
+                bail!("wrap.backend must be one of tmux, pty, subprocess; got: {other}")
             }
         }
         Ok(())

@@ -57,7 +57,7 @@ Realize the abstraction as a Rust trait compiled into agentd; each provider is a
 
 **Chosen**: Option A. AAP is the contract (see `docs/spec/agent-protocol-v1.md`). Adapters are separate
 processes speaking AAP over a mandatory stdio binding (and an optional websocket binding for
-tmux/docker backends). Claude Code ships as the in-tree reference adapter `agentd-adapter-claude`.
+the tmux backend). Claude Code ships as the in-tree reference adapter `agentd-adapter-claude`.
 
 Rollout is a **hard cut**: the hardcoded Claude launch and protocol path is removed from the orchestrator
 and replaced by AAP plus the Claude adapter. There is no dual path.
@@ -77,7 +77,7 @@ and replaced by AAP plus the Claude adapter. There is no dual path.
   approval holds) that must be tested per adapter.
 
 **Neutral**:
-- The `ExecutionBackend` abstraction (tmux/docker/pty/subprocess) is unchanged; AAP rides on top.
+- The `ExecutionBackend` abstraction (tmux/pty/subprocess) is unchanged; AAP rides on top.
 - Interactive PTY mode (human types in a terminal) is out of AAP's scope and unchanged.
 
 ## Implementation Notes

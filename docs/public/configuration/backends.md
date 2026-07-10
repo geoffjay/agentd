@@ -1,6 +1,6 @@
 # Execution Backends
 
-agentd supports three execution backends for running agent sessions. The active
+agentd supports multiple execution backends for running agent sessions. The active
 backend is selected via the `AGENTD_BACKEND` environment variable and applies to
 both the **orchestrator** (`agentd-orchestrator`) and the standalone **wrap**
 service (`agentd-wrap`).
@@ -13,9 +13,6 @@ cargo run -p agentd-orchestrator
 
 # PTY backend (in-process, supports web terminal)
 AGENTD_BACKEND=pty cargo run -p agentd-orchestrator
-
-# Docker backend (isolated containers)
-AGENTD_BACKEND=docker cargo run -p agentd-orchestrator
 ```
 
 ## Backend Comparison
@@ -23,7 +20,6 @@ AGENTD_BACKEND=docker cargo run -p agentd-orchestrator
 | Backend  | Dependency     | PTY Streaming | Health Check | Web Terminal | Use Case                             |
 |----------|---------------|:-------------:|:------------:|:------------:|--------------------------------------|
 | `tmux`   | tmux binary    | ❌            | ❌ (Unknown) | ❌           | Default, simple, battle-tested       |
-| `docker` | Docker daemon  | ❌            | ✅           | ❌           | Isolated execution, resource limits  |
 | `pty`    | None           | ✅            | ❌           | ✅           | Web terminal, no external deps       |
 
 ## Backend Details
@@ -48,33 +44,6 @@ additional infrastructure.
 
 ---
 
-### `docker`
-
-Runs each agent in an isolated Docker container. Provides resource limits,
-network policy enforcement, and container health checks.
-
-**Capabilities:** `health-check`, `logs`
-
-**Requirements:**
-- Docker daemon running and accessible via the default socket
-- The agent Docker image (default: `ghcr.io/geoffjay/agentd-agent:latest`)
-
-**Environment variables:**
-
-| Variable              | Default                                    | Description                    |
-|-----------------------|--------------------------------------------|-------------------------------|
-| `AGENTD_DOCKER_IMAGE` | `ghcr.io/geoffjay/agentd-agent:latest`    | Container image for agents     |
-
-**Limitations:**
-- No PTY streaming - the web Terminal tab is not available
-- Docker daemon must be running at service startup; startup fails with a clear
-  error if Docker is unreachable
-
-**When to use:** Production deployments requiring isolation, resource limits, or
-network policy enforcement.
-
----
-
 ### `pty`
 
 Runs each agent as a child process attached to an in-process PTY (pseudo
@@ -92,7 +61,7 @@ terminal). Provides full terminal I/O streaming via WebSocket, enabling the
 - No structured health checks - process liveness is not reported via the `health-check` capability
 
 **When to use:** Web terminal access, demos, local development without tmux, or
-environments where you cannot install tmux or Docker.
+environments where you cannot install tmux.
 
 ## Capability Detection
 
@@ -117,14 +86,12 @@ GET http://localhost:17006/info
 |---------------|---------------|------------------------------------------------|
 | `terminal`    | `pty`         | PTY output streaming via WebSocket             |
 | `interactive` | `pty`         | Bidirectional keyboard input via WebSocket     |
-| `health-check`| `docker`      | Container health status reported in sessions   |
-| `logs`        | `docker`      | Structured container log retrieval             |
 | `attach-tmux` | `tmux`        | Native tmux session attach support             |
 
 ### Feature gating in the UI
 
 The UI fetches `/info` on the agent detail page and shows the **Terminal** tab
-only when the `terminal` capability is present. On tmux and Docker backends the
+only when the `terminal` capability is present. On the tmux backend the
 tab is hidden and agents use the **Logs** tab instead.
 
 ### Feature gating in the CLI
@@ -144,7 +111,7 @@ Specifying an unrecognised `AGENTD_BACKEND` value causes the service to exit
 immediately with a descriptive error:
 
 ```
-Error: Unknown AGENTD_BACKEND value 'badvalue'. Valid options: tmux, docker, pty
+Error: Unknown AGENTD_BACKEND value 'badvalue'. Valid options: tmux, pty
 ```
 
 This prevents silent degradation - an explicit configuration error is always

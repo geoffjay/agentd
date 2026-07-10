@@ -14,7 +14,7 @@ use wrap::backend::ExecutionBackend;
 /// Manages the lifecycle of AI agent processes.
 ///
 /// Uses an [`ExecutionBackend`] trait object to interact with the underlying
-/// session manager (tmux, Docker, etc.), making the orchestrator
+/// session manager (tmux, PTY, subprocess, etc.), making the orchestrator
 /// backend-agnostic.
 #[derive(Clone)]
 pub struct AgentManager {
@@ -133,7 +133,6 @@ impl AgentManager {
             model_provider: "anthropic".into(),
             model_name: agent.config.model.clone().unwrap_or_default(),
             layout: None,
-            network_policy: agent.config.network_policy.clone(),
         };
 
         if let Err(e) = self.backend.create_session(&session_config).await {
@@ -353,25 +352,12 @@ impl AgentManager {
     /// Returns the file path to pass via `--mcp-config`, or `None` when the
     /// agent has no `mcp_servers` configured. The file is created with mode
     /// 0600 — MCP server env vars can carry secrets.
-    ///
-    /// Known limitation: the file lives on the orchestrator host, so
-    /// Docker-backed agents cannot see it. We deliberately do not inline the
-    /// JSON into the launch command instead — that would leak the env values
-    /// into the UI-visible `launch_command`.
     fn write_mcp_config(&self, agent: &Agent) -> anyhow::Result<Option<String>> {
         let Some(servers) = agent.config.mcp_servers.as_ref().filter(|s| !s.is_empty()) else {
             // Config removed since last launch — drop any stale file.
             self.remove_mcp_config(&agent.id);
             return Ok(None);
         };
-
-        if agent.config.docker_image.is_some() {
-            warn!(
-                agent_id = %agent.id,
-                "mcp_servers is configured but the agent uses a Docker image; \
-                 the MCP config file is not visible inside containers (tmux-only for now)"
-            );
-        }
 
         std::fs::create_dir_all(&self.mcp_config_dir)?;
         let path = self.mcp_config_dir.join(format!("{}.json", agent.id));
@@ -1032,7 +1018,7 @@ impl AgentManager {
     /// supports it.
     ///
     /// Returns `Ok(None)` when the agent does not have a session or when the
-    /// backend does not support PTY streaming (e.g., tmux or Docker backends).
+    /// backend does not support PTY streaming (e.g., tmux backends).
     /// Returns `Ok(Some(stream))` for PTY-backed sessions.
     pub async fn get_agent_pty_stream(
         &self,
@@ -1064,7 +1050,7 @@ impl AgentManager {
     ///
     /// Returns an error if:
     /// - The agent is not found or has no active session.
-    /// - The backend does not expose a PTY stream (tmux / Docker backends).
+    /// - The backend does not expose a PTY stream (tmux backend).
     /// - The PTY writer has been closed (session already exited).
     pub async fn inject_pty_prompt(&self, agent_id: &Uuid, prompt: &str) -> anyhow::Result<()> {
         let stream = self.get_agent_pty_stream(agent_id).await?.ok_or_else(|| {
@@ -1083,7 +1069,7 @@ impl AgentManager {
 
     /// Resize the PTY terminal for an agent's session.
     ///
-    /// No-ops silently for backends that do not support resize (tmux/Docker).
+    /// No-ops silently for backends that do not support resize (tmux).
     /// Returns `Ok(())` when the agent has no active session.
     pub async fn resize_agent_pty(
         &self,
@@ -1138,7 +1124,6 @@ impl AgentManager {
             model_provider: "anthropic".into(),
             model_name: agent.config.model.clone().unwrap_or_default(),
             layout: None,
-            network_policy: agent.config.network_policy.clone(),
         };
 
         if let Err(e) = self.backend.create_session(&session_config).await {
@@ -1367,7 +1352,7 @@ fn wrap_with_env_and_sudo(base: &str, env_assignments: &[String], user: Option<&
 /// configuration is NOT passed as flags — it travels in the AAP `initialize`
 /// message ([`crate::websocket::aap_initialize_line`]). Only the AAP transport
 /// is selected here, via environment: stdio backends use the stdin/stdout
-/// binding; tmux/docker backends use the websocket binding and the adapter
+/// binding; the tmux backend uses the websocket binding and the adapter
 /// dials back to `ws_url`.
 fn build_adapter_command(config: &AgentConfig, ws_url: &str, use_stdio: bool) -> String {
     let program = crate::adapter::resolve_adapter_program(&config.agent_type);
@@ -1458,10 +1443,6 @@ mod tests {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,

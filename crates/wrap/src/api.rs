@@ -2,7 +2,7 @@
 //!
 //! This module provides HTTP endpoints for launching and managing agent sessions.
 //! It uses the Axum web framework and the [`ExecutionBackend`] abstraction so the
-//! same API works with tmux, Docker, and PTY backends.
+//! same API works with tmux, PTY, and subprocess backends.
 //!
 //! # API Endpoints
 //!
@@ -34,7 +34,7 @@ use tracing::{error, info, warn};
 /// Shared application state injected into all API handlers.
 #[derive(Clone)]
 pub struct AppState {
-    /// The active execution backend (tmux / docker / pty).
+    /// The active execution backend (tmux / pty / subprocess).
     pub backend: Arc<dyn ExecutionBackend>,
     /// The type of the active backend — used for capability reporting.
     pub backend_type: BackendType,
@@ -111,7 +111,6 @@ async fn launch_session(
         model_provider: req.model_provider.clone(),
         model_name: req.model_name.clone(),
         layout: req.layout.clone(),
-        network_policy: None,
     };
 
     // Create session, then launch agent inside it

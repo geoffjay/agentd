@@ -102,10 +102,6 @@ impl SystemAgentDef {
             model: Some(self.model.to_string()),
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: self.rooms.iter().map(|r| r.to_string()).collect(),
             mcp_servers: (self.mcp_servers)(),
@@ -187,7 +183,7 @@ fn render_service_table(services: &agentd_common::config::ServicesConfig) -> Str
         ("hook", services.hook.port, "Shell-event capture and forwarding"),
         ("monitor", services.monitor.port, "System health metrics and thresholds"),
         ("notify", services.notify.port, "Notification routing and delivery"),
-        ("wrap", services.wrap.port, "tmux/Docker execution backend"),
+        ("wrap", services.wrap.port, "Agent session execution backends"),
         ("orchestrator", services.orchestrator.port, "Agent lifecycle, WebSocket SDK, policies"),
         ("memory", services.memory.port, "Semantic vector memory store"),
         ("ui", services.ui.port, "Web UI server"),
@@ -792,7 +788,7 @@ AGENT LIFECYCLE
 ─────────────────────────────────────────────────────────────────────────────
 
 1. POST /agents          Create agent record and spawn Claude Code process.
-                         Backend: tmux session (default) or Docker container.
+                         Backend: tmux session (default), PTY, or subprocess.
 2. WebSocket connect     Claude Code connects back to ws://host:port/ws/{id}.
 3. Tool approval         Orchestrator evaluates tool policy on each tool call.
 4. Messaging             Users/agents send prompts via POST /agents/{id}/message.

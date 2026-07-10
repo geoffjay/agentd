@@ -168,58 +168,6 @@ definitions:
             - "Bash(gh pr *)"
 
   # ---------------------------------------------------------------------------
-  # Volume mount (Docker backend)
-  # ---------------------------------------------------------------------------
-  volume_mount:
-    description: |
-      A volume mount specification for Docker-backed agents.
-      Ignored for tmux backends.
-    type: object
-    properties:
-      host_path:
-        description: "Path on the host machine."
-        type: string
-      container_path:
-        description: "Mount point inside the container."
-        type: string
-      read_only:
-        description: "If true, mount as read-only."
-        type: boolean
-        default: false
-    required: [host_path, container_path]
-    additionalProperties: false
-
-  # ---------------------------------------------------------------------------
-  # Resource limits (Docker backend)
-  # ---------------------------------------------------------------------------
-  resource_limits:
-    description: |
-      Resource limits for Docker-backed agent containers.
-      Ignored for tmux backends.
-    type: object
-    properties:
-      cpu_limit:
-        description: "Number of CPUs (e.g. 2.0 means two full cores)."
-        type: number
-        minimum: 0
-        exclusiveMinimum: true
-      memory_limit_mb:
-        description: "Memory cap in megabytes (e.g. 2048 for 2 GiB)."
-        type: integer
-        minimum: 1
-    additionalProperties: false
-
-  # ---------------------------------------------------------------------------
-  # Network policy (Docker backend)
-  # ---------------------------------------------------------------------------
-  network_policy:
-    description: |
-      Network access policy for Docker-backed agent containers.
-      Ignored for tmux backends.
-    type: string
-    enum: [internet, isolated, host_network]
-
-  # ---------------------------------------------------------------------------
   # Participant kind
   # ---------------------------------------------------------------------------
   participant_kind:

@@ -6,7 +6,6 @@
 //! | Value        | Backend                      |
 //! |--------------|------------------------------|
 //! | `tmux`       | tmux sessions (default)      |
-//! | `docker`     | Docker containers            |
 //! | `pty`        | In-process PTY               |
 //! | `subprocess` | Direct subprocess (SDK-only) |
 //!
@@ -24,7 +23,7 @@
 //!
 //! - `RUST_LOG`                     — Logging level (default: `info`)
 //! - `AGENTD_PORT`                  — Listen port (default: `17005`)
-//! - `AGENTD_BACKEND`               — Execution backend: `tmux` | `docker` | `pty` | `subprocess` (default: `tmux`)
+//! - `AGENTD_BACKEND`               — Execution backend: `tmux` | `pty` | `subprocess` (default: `tmux`)
 //! - `AGENTD_WRAP_HISTORY_BYTES`    — PTY output ring-buffer size in bytes (default: `524288` / 512 KiB); agentd-wrap PTY backend only
 //! - `AGENTD_WRAP_CHANNEL_CAPACITY` — PTY broadcast channel capacity in chunks (default: `256`); must be ≥ 1; agentd-wrap PTY backend only
 
@@ -35,7 +34,6 @@ use wrap::{
     api::{create_router, AppState},
     backend::{ExecutionBackend, TmuxBackend},
     config::WrapConfig,
-    docker::{DockerBackend, DEFAULT_IMAGE},
     pty::PtyBackend,
     subprocess::SubprocessBackend,
     types::BackendType,
@@ -79,19 +77,6 @@ async fn main() -> anyhow::Result<()> {
                 cfg.history_bytes, cfg.channel_capacity
             );
             Arc::new(PtyBackend::new_with_config("agentd", cfg.channel_capacity, cfg.history_bytes))
-        }
-        BackendType::Docker => {
-            info!("Initialising Docker backend");
-            // Fail loudly — an explicit AGENTD_BACKEND=docker request must not
-            // silently degrade to a tmux backend (no container isolation, no
-            // network policies). Fix the Docker configuration and restart.
-            let b = DockerBackend::new("agentd", DEFAULT_IMAGE).map_err(|e| {
-                anyhow::anyhow!(
-                    "AGENTD_BACKEND=docker requested but Docker initialisation failed: {e}\n\
-                     Fix the Docker configuration and restart the service."
-                )
-            })?;
-            Arc::new(b)
         }
         BackendType::Tmux => {
             info!("Initialising tmux backend");

@@ -33,7 +33,6 @@ pub mod api;
 pub mod backend;
 pub mod client;
 pub mod config;
-pub mod docker;
 pub mod pty;
 pub mod pty_stream;
 pub mod subprocess;
@@ -42,7 +41,6 @@ pub mod types;
 
 pub use backend::{ExecutionBackend, SessionConfig, SessionExitInfo, SessionHealth, TmuxBackend};
 pub use client::WrapClient;
-pub use docker::{DockerBackend, NetworkPolicy};
 pub use pty::PtyBackend;
 pub use pty_stream::PtyOutputStream;
 pub use subprocess::SubprocessBackend;

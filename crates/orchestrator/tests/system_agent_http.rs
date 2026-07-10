@@ -12,7 +12,7 @@
 //! # Design
 //!
 //! HTTP tests drive the full Axum router via `tower::ServiceExt::oneshot` with
-//! no real TCP connection.  A `NullBackend` replaces tmux/Docker so that
+//! no real TCP connection.  A `NullBackend` replaces tmux so that
 //! `AgentManager` can be constructed without external dependencies.
 
 use async_trait::async_trait;
@@ -144,10 +144,6 @@ async fn insert_builtin_agent(storage: &AgentStorage, name: &str) -> Agent {
             model: Some("sonnet".to_string()),
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec!["system".to_string()],
             mcp_servers: None,
@@ -178,10 +174,6 @@ async fn insert_user_agent(storage: &AgentStorage, name: &str) -> Agent {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,

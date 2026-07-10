@@ -125,8 +125,6 @@ nav:
       - Conductor Behavior: public/pipeline/conductor.md
       - Troubleshooting: public/pipeline/troubleshooting.md
       - Human Approval Gates: planning/autonomous-pipeline-gates.md
-  - Execution Backends:
-      - Docker: docker-backend.md
   - Observability:
       - Overview: public/observability/index.md
       - Prometheus Setup: public/observability/prometheus-setup.md

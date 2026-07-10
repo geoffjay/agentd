@@ -9,9 +9,9 @@
 //! `create_agent` accepts no `env` map: agent env vars commonly carry
 //! `ANTHROPIC_API_KEY`-class secrets, and values passed through an MCP tool
 //! transit model context and transcripts. `get_agent` redacts env values for
-//! the same reason — accepting them here would undo that. Docker fields,
-//! `interactive`, `worktree`, `shell`, and other power-user knobs are also
-//! omitted to keep the tool schema small; use the CLI or API directly.
+//! the same reason — accepting them here would undo that. `interactive`,
+//! `worktree`, `shell`, and other power-user knobs are also omitted to keep
+//! the tool schema small; use the CLI or API directly.
 
 use crate::client::AgentdClient;
 use crate::tools::policy::build_tool_policy;

@@ -34,22 +34,6 @@ export type ToolPolicy =
 // AgentConfig
 // ---------------------------------------------------------------------------
 
-/** Docker network policy for container-backed agents. */
-export type NetworkPolicy = "internet" | "isolated" | "host_network";
-
-/** Additional volume mount for Docker-backed agents. */
-export interface VolumeMount {
-	host_path: string;
-	container_path: string;
-	read_only?: boolean;
-}
-
-/** CPU / memory limits for Docker-backed agents. */
-export interface ResourceLimits {
-	cpu_limit?: number;
-	memory_limit_mb?: number;
-}
-
 /**
  * One stdio MCP server entry, mirroring Claude Code's `mcpServers` format.
  * `env` values are redacted in API responses like `AgentConfig.env`.
@@ -81,10 +65,6 @@ export interface AgentConfig {
 	additional_dirs?: string[];
 	/** Communicate rooms the agent is auto-joined to on connection. */
 	rooms?: string[];
-	network_policy?: NetworkPolicy;
-	docker_image?: string;
-	extra_mounts?: VolumeMount[];
-	resource_limits?: ResourceLimits;
 	/** MCP servers for the agent's Claude session, keyed by server name. */
 	mcp_servers?: Record<string, McpServerConfig>;
 }
@@ -141,10 +121,6 @@ export interface CreateAgentRequest {
 	additional_dirs?: string[];
 	/** Communicate rooms the agent auto-joins when it connects. */
 	rooms?: string[];
-	network_policy?: NetworkPolicy;
-	docker_image?: string;
-	extra_mounts?: VolumeMount[];
-	resource_limits?: ResourceLimits;
 	/** MCP servers for the agent's Claude session, keyed by server name. */
 	mcp_servers?: Record<string, McpServerConfig>;
 }

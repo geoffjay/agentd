@@ -209,7 +209,7 @@ mod tests {
         let mut base: toml::Value = toml::from_str(
             r#"
             [services.wrap]
-            backend = "docker"
+            backend = "tmux"
         "#,
         )
         .unwrap();
@@ -231,7 +231,7 @@ mod tests {
 
         let svcs = base["services"].as_table().unwrap();
         // user value preserved
-        assert_eq!(svcs["wrap"]["backend"].as_str(), Some("docker"));
+        assert_eq!(svcs["wrap"]["backend"].as_str(), Some("tmux"));
         // gap filled
         assert_eq!(svcs["wrap"]["port"].as_integer(), Some(7005));
         // new section inserted

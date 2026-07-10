@@ -1,7 +1,7 @@
 //! PTY execution backend using `portable-pty`.
 //!
 //! Provides [`PtyBackend`] which implements [`ExecutionBackend`] using in-process
-//! PTY sessions instead of tmux or Docker. Sessions are tracked in-memory and
+//! PTY sessions instead of tmux. Sessions are tracked in-memory and
 //! are not persistent across process restarts.
 //!
 //! # Example
@@ -322,7 +322,6 @@ mod tests {
             model_provider: "anthropic".to_string(),
             model_name: "claude-sonnet-4.5".to_string(),
             layout: None,
-            network_policy: None,
         }
     }
 
