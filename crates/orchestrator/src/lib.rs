@@ -29,6 +29,7 @@ pub mod manager;
 pub mod message_bridge;
 pub(crate) mod migration;
 pub mod scheduler;
+pub mod skills;
 pub mod storage;
 pub mod system_agents;
 pub mod types;
