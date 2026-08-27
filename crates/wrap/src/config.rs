@@ -103,9 +103,9 @@ impl ValidateConfig for WrapConfig {
             bail!("wrap.port must be non-zero");
         }
         match self.backend.as_str() {
-            "tmux" | "docker" | "pty" | "subprocess" => {}
+            "tmux" | "pty" | "subprocess" => {}
             other => {
-                bail!("wrap.backend must be one of tmux, docker, pty, subprocess; got: {other}")
+                bail!("wrap.backend must be one of tmux, pty, subprocess; got: {other}")
             }
         }
         if self.channel_capacity < 1 {
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn test_validate_all_valid_backends_pass() {
-        for backend in &["tmux", "docker", "pty", "subprocess"] {
+        for backend in &["tmux", "pty", "subprocess"] {
             let config = WrapConfig {
                 host: "127.0.0.1".to_string(),
                 port: 17005,

@@ -17,7 +17,7 @@ agentd-mcp
      ├── memory        :17008  (vector memory store)
      ├── notify        :17004  (notifications)
      ├── ask           :17001  (approval requests)
-     ├── wrap          :17005  (Docker wrap configs)
+     ├── wrap          :17005  (agent session management)
      ├── monitor       :17003  (system metrics, alerts)
      └── hook          :17002  (pre/post tool hooks)
 ```
@@ -134,7 +134,7 @@ Run a full system diagnostic: check all agentd services, identify failed agents,
 
 #### `diagnose_agent`
 
-Deep dive on a single agent: status, activity, pending approval backlog, session usage, and **backend-specific health**. For each agent, branches on `backend_type` (docker, subprocess, pty, tmux) and cross-checks the wrap service to detect mismatches between orchestrator state and the actual backend session.
+Deep dive on a single agent: status, activity, pending approval backlog, session usage, and **backend-specific health**. For each agent, branches on `backend_type` (subprocess, pty, tmux) and cross-checks the wrap service to detect mismatches between orchestrator state and the actual backend session.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

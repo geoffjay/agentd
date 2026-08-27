@@ -156,7 +156,7 @@ fn normalize_path(path: &str) -> String {
 ///
 /// # Allowed Configuration
 ///
-/// - **Methods**: GET, POST, PUT, DELETE, OPTIONS
+/// - **Methods**: GET, POST, PUT, PATCH, DELETE, OPTIONS
 /// - **Headers**: Content-Type, Authorization, and WebSocket upgrade headers
 /// - **Origins**: Configurable via `AGENTD_CORS_ORIGINS` env var (default: `*`)
 ///
@@ -190,7 +190,14 @@ pub fn cors_layer() -> tower_http::cors::CorsLayer {
 
     CorsLayer::new()
         .allow_origin(allow_origin)
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([
             header::CONTENT_TYPE,
             header::AUTHORIZATION,

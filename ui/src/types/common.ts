@@ -18,7 +18,7 @@ export interface HealthResponse {
 }
 
 /** Execution backend type */
-export type BackendType = "tmux" | "docker" | "pty";
+export type BackendType = "tmux" | "pty";
 
 /** Information about the active execution backend and its capabilities */
 export interface BackendInfo {

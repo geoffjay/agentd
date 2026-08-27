@@ -115,12 +115,9 @@ agent teardown .agentd/               # delete in reverse order
 ### Wrap Service (agentd-wrap)
 
 - **Tmux session management** - Launch and manage agent CLI sessions
-- **Docker execution backend** - Run agents in isolated containers with resource limits and network policies
 - **Multi-agent support** - Claude Code, OpenCode, Gemini, and other agent types
 - **Configurable layouts** - Custom tmux pane layouts via JSON
 - **REST API** for launching, listing, and killing sessions
-
-> **Docker backend docs:** See [`docs/docker-backend.md`](docs/docker-backend.md) for setup, configuration, platform notes, and troubleshooting.
 
 ### Ask Service (agentd-ask)
 
@@ -146,7 +143,7 @@ open http://localhost:3999
 Pre-built dashboards: **Service Overview**, **Agent Activity**,
 **Workflow Execution**, and **Experiment Tracking**.
 
-See **[docs/observability/README.md](docs/observability/README.md)** for the
+See **[docs/public/observability/index.md](docs/public/observability/index.md)** for the
 full guide including manual setup, dashboard descriptions, and troubleshooting.
 
 ## Installation
@@ -155,7 +152,6 @@ full guide including manual setup, dashboard descriptions, and troubleshooting.
 
 - macOS 14+ (tested) or Linux
 - tmux (for agent session management with tmux backend)
-- Docker Engine 20.10+ or Docker Desktop (optional, for Docker backend)
 - Rust 1.75+ ([Install Rust](https://rustup.rs/)) - only for installing from source
 
 ### Install from a release (recommended)
@@ -311,7 +307,7 @@ All services communicate via REST APIs. The orchestrator additionally provides W
 | `orchestrator` | Agent lifecycle, WebSocket SDK, scheduler, tool policies, approvals |
 | `notify` | Notification CRUD with SQLite, priority ordering, expiration |
 | `ask` | System checks, tmux detection, question/answer flow |
-| `wrap` | Tmux and Docker session management, multi-agent launch |
+| `wrap` | Tmux session management, multi-agent launch |
 | `common` | Shared types (PaginatedResponse, HealthResponse, ApiError), utilities |
 | `hook` | Shell hook integration (planned) |
 | `mcp` | MCP server for agent diagnostics, management, and self-healing |

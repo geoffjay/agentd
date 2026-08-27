@@ -1,3 +1,4 @@
+mod adapter;
 mod api;
 mod approvals;
 mod config;
@@ -35,7 +36,6 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 use websocket::ConnectionRegistry;
 use wrap::backend::{ExecutionBackend, TmuxBackend};
-use wrap::docker::DockerBackend;
 use wrap::pty::PtyBackend;
 use wrap::subprocess::SubprocessBackend;
 use wrap::types::BackendType;
@@ -66,9 +66,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Agent storage initialized at: {:?}", AgentStorage::get_db_path()?);
     let storage = Arc::new(storage);
 
-    // Determine the port and WS base URL early — both the Docker backend
-    // and the AgentManager need it.
-    let port_num: u16 = cfg.port;
+    // Determine the WS base URL early — the AgentManager needs it.
     let ws_base_url = format!("ws://127.0.0.1:{}", cfg.port);
 
     // Propagate config-file values into the env vars that the backend
@@ -89,27 +87,6 @@ async fn main() -> anyhow::Result<()> {
         BackendType::Tmux => {
             info!("Using tmux execution backend");
             Arc::new(TmuxBackend::new("agentd-orch"))
-        }
-        BackendType::Docker => {
-            let image = cfg.docker_image.as_deref().unwrap_or(wrap::docker::DEFAULT_IMAGE);
-            info!(image = %image, "Using Docker execution backend");
-
-            let docker_backend = DockerBackend::new("agentd-orch", image)
-                .map_err(|e| anyhow::anyhow!("Failed to initialize Docker backend: {}", e))?
-                .with_orchestrator_port(port_num);
-
-            // Validate that the Docker daemon is reachable before proceeding.
-            // A simple `list_sessions` call exercises the Docker API.
-            docker_backend.list_sessions().await.map_err(|e| {
-                anyhow::anyhow!(
-                    "Docker daemon is unreachable (AGENTD_BACKEND=docker). \
-                     Ensure Docker is running and accessible: {}",
-                    e
-                )
-            })?;
-            info!("Docker daemon connectivity verified");
-
-            Arc::new(docker_backend)
         }
         BackendType::Pty => {
             info!("Using PTY execution backend");

@@ -1003,7 +1003,6 @@ mod tests {
             model_provider: "anthropic".to_string(),
             model_name: "sonnet".to_string(),
             layout: None,
-            network_policy: None,
         };
         let err = backend.create_session(&config).await.unwrap_err();
         assert!(err.to_string().contains("does not exist"));
@@ -1019,7 +1018,6 @@ mod tests {
             model_provider: "anthropic".to_string(),
             model_name: "sonnet".to_string(),
             layout: None,
-            network_policy: None,
         };
         backend.create_session(&config).await.unwrap();
         let err = backend.create_session(&config).await.unwrap_err();
@@ -1036,7 +1034,6 @@ mod tests {
             model_provider: "anthropic".to_string(),
             model_name: "sonnet".to_string(),
             layout: None,
-            network_policy: None,
         };
         backend.create_session(&config).await.unwrap();
         let sessions = backend.list_sessions().await.unwrap();
@@ -1053,7 +1050,6 @@ mod tests {
             model_provider: "anthropic".to_string(),
             model_name: "sonnet".to_string(),
             layout: None,
-            network_policy: None,
         };
         backend.create_session(&config).await.unwrap();
         let health = backend.session_health("health-pending").await.unwrap();
@@ -1077,7 +1073,6 @@ mod tests {
             model_provider: "anthropic".to_string(),
             model_name: "sonnet".to_string(),
             layout: None,
-            network_policy: None,
         };
         backend.create_session(&config).await.unwrap();
         // Spawn a process that exits immediately
@@ -1105,7 +1100,6 @@ mod tests {
             model_provider: "anthropic".to_string(),
             model_name: "sonnet".to_string(),
             layout: None,
-            network_policy: None,
         };
         backend.create_session(&config).await.unwrap();
         // Spawn a long-running process
@@ -1132,7 +1126,6 @@ mod tests {
                 model_provider: "anthropic".to_string(),
                 model_name: "sonnet".to_string(),
                 layout: None,
-                network_policy: None,
             };
             backend.create_session(&config).await.unwrap();
             backend.send_command(&format!("shutdown-{i}"), "sleep 3600").await.unwrap();

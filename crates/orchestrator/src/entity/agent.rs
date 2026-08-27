@@ -29,7 +29,7 @@ pub struct Model {
     pub session_id: Option<String>,
     /// JSON-serialized [`crate::types::ToolPolicy`].
     pub tool_policy: String,
-    /// Execution backend type (e.g., "tmux", "docker"). Defaults to "tmux".
+    /// Execution backend type (e.g., "tmux", "pty", "subprocess"). Defaults to "tmux".
     pub backend_type: Option<String>,
     pub model: Option<String>,
     /// JSON-serialized `HashMap<String, String>`.
@@ -39,15 +39,6 @@ pub struct Model {
     /// Optional token-count threshold that triggers an automatic context clear.
     /// Stored as nullable INTEGER; maps to `Option<u64>` in the domain layer.
     pub auto_clear_threshold: Option<i64>,
-    /// Optional network policy for Docker containers (e.g., "internet", "isolated", "host_network").
-    /// Stored as nullable TEXT; maps to `Option<NetworkPolicy>` in the domain layer.
-    pub network_policy: Option<String>,
-    /// Custom Docker image override for this agent. Nullable TEXT.
-    pub docker_image: Option<String>,
-    /// JSON-serialized `Vec<VolumeMount>` for additional Docker volume mounts.
-    pub extra_mounts: Option<String>,
-    /// JSON-serialized `ResourceLimits` (cpu_limit, memory_limit_mb).
-    pub resource_limits: Option<String>,
     /// JSON-serialized `Vec<String>` of additional directory paths.
     /// Maps to Claude Code's `--add-dir` flag.
     pub additional_dirs: String,
@@ -74,6 +65,9 @@ pub struct Model {
     /// Optional organization UUID for tenant scoping.  NULL when not
     /// scoped (dev/test mode without gateway).
     pub organization_id: Option<String>,
+    /// The kind of agent to run, resolved to an AAP adapter at launch (e.g.
+    /// "claude"). NOT NULL with a default of "claude" for pre-existing rows.
+    pub agent_type: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

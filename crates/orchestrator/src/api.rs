@@ -267,13 +267,10 @@ async fn create_agent(
         model: req.model,
         env: req.env,
         auto_clear_threshold: req.auto_clear_threshold,
-        network_policy: req.network_policy,
-        docker_image: req.docker_image,
-        extra_mounts: req.extra_mounts,
-        resource_limits: req.resource_limits,
         additional_dirs: req.additional_dirs,
         rooms: req.rooms,
         mcp_servers: req.mcp_servers,
+        agent_type: req.agent_type,
     };
 
     // Pass organization_id directly into spawn_agent so the initial DB INSERT
@@ -337,6 +334,7 @@ fn launch_affecting_changed(before: &Agent, after: &Agent) -> bool {
     b.working_dir != a.working_dir
         || b.shell != a.shell
         || b.model != a.model
+        || b.agent_type != a.agent_type
         || b.env != a.env
         || b.system_prompt != a.system_prompt
         || b.system_prompt_file != a.system_prompt_file
@@ -411,6 +409,11 @@ async fn update_agent(
 
     if let Some(model) = req.model {
         agent.config.model = Some(model);
+    }
+    if let Some(agent_type) = req.agent_type {
+        if !agent_type.trim().is_empty() {
+            agent.config.agent_type = agent_type;
+        }
     }
     if let Some(policy) = req.tool_policy {
         agent.config.tool_policy = policy;

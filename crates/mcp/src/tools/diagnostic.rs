@@ -149,13 +149,6 @@ pub async fn run_diagnose_agent(client: &AgentdClient, agent_id: &str) -> String
         }
 
         match backend_type {
-            "docker" => {
-                info.push(
-                    "Backend is **docker** — for deep health (exit code, OOM kills) check the \
-                     container directly with `docker inspect`."
-                        .to_string(),
-                );
-            }
             "subprocess" => {
                 info.push(
                     "Backend is **subprocess** — uses stdin/stdout NDJSON. If the agent appears \

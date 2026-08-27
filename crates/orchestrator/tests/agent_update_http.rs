@@ -6,7 +6,7 @@
 //! # Design
 //!
 //! HTTP tests drive the full Axum router via `tower::ServiceExt::oneshot` with
-//! no real TCP connection. A `NullBackend` replaces tmux/Docker so that
+//! no real TCP connection. A `NullBackend` replaces tmux so that
 //! `AgentManager` can be constructed without external dependencies.
 
 use async_trait::async_trait;
@@ -247,10 +247,17 @@ async fn test_patch_with_restart_relaunches_agent() {
     assert_eq!(json["restarted"], true);
     assert_eq!(json["requires_restart"], false);
 
-    // The relaunch regenerated the launch command from the new config.
+    // The relaunch persisted the new config (delivered to the adapter via the
+    // AAP initialize message) and regenerated the adapter launch command. Under
+    // AAP the model is not a launch flag — it travels in `initialize` — so we
+    // assert on the stored config and that the adapter is what gets launched.
     let stored = storage.get(&agent.id).await.unwrap().unwrap();
+    assert_eq!(stored.config.model.as_deref(), Some("opus"));
     let launch = stored.launch_command.unwrap_or_default();
-    assert!(launch.contains("opus"), "launch command should include the new model: {launch}");
+    assert!(
+        launch.contains("agentd-adapter-claude"),
+        "launch command should invoke the adapter: {launch}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -475,12 +482,13 @@ async fn test_mcp_servers_redaction_sentinel_without_stored_value_rejected() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// POST /agents with mcp_servers writes the per-agent config file and bakes
-/// --mcp-config / --strict-mcp-config into the launch command; DELETE removes
-/// the file again.
+/// POST /agents with mcp_servers launches the AAP adapter (not `claude`
+/// directly) and persists the servers for delivery via the AAP `initialize`
+/// message. Under AAP the orchestrator no longer bakes `--mcp-config` into the
+/// launch command or writes a per-agent MCP file — the adapter does that.
 #[tokio::test]
-async fn test_create_agent_with_mcp_servers_writes_config_file() {
-    let (app, _storage, tmp) = build_app().await;
+async fn test_create_agent_with_mcp_servers_launches_adapter() {
+    let (app, _storage, _tmp) = build_app().await;
 
     let body = serde_json::json!({
         "name": "mcp-agent",
@@ -506,23 +514,19 @@ async fn test_create_agent_with_mcp_servers_writes_config_file() {
     assert_eq!(response.status(), StatusCode::CREATED);
     let json = body_json(response).await;
     let id = json["id"].as_str().unwrap().to_string();
+
+    // The launch command invokes the adapter with the AAP transport env, and
+    // carries no Claude MCP flags.
     let launch_command = json["launch_command"].as_str().unwrap();
-    assert!(launch_command.contains("--mcp-config"), "launch: {launch_command}");
-    assert!(launch_command.contains("--strict-mcp-config"), "launch: {launch_command}");
+    assert!(launch_command.contains("agentd-adapter-claude"), "launch: {launch_command}");
+    assert!(launch_command.contains("AGENTD_AAP_TRANSPORT"), "launch: {launch_command}");
+    assert!(!launch_command.contains("--mcp-config"), "launch: {launch_command}");
 
-    let config_path = tmp.path().join("mcp").join(format!("{id}.json"));
-    assert!(config_path.is_file(), "MCP config file must exist at {config_path:?}");
-    let written: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
-    assert_eq!(written["mcpServers"]["agentd"]["command"], "agent");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(&config_path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "MCP config file must be private (0600)");
-    }
+    // The MCP servers are persisted (they travel in the AAP initialize message).
+    assert_eq!(json["config"]["mcp_servers"]["agentd"]["command"], "agent");
+    assert_eq!(json["config"]["agent_type"], "claude");
 
-    // DELETE removes the file.
+    // DELETE succeeds.
     let response = app
         .oneshot(
             Request::builder()
@@ -534,7 +538,6 @@ async fn test_create_agent_with_mcp_servers_writes_config_file() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(!config_path.exists(), "MCP config file must be removed on terminate");
 }
 
 /// An empty command in an mcp_servers entry is rejected at create time.

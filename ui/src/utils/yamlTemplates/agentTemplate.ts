@@ -20,7 +20,7 @@ import {
 	policyFromDraft,
 	type ToolPolicyDraft,
 } from "@/components/common/form";
-import type { NetworkPolicy, ToolPolicy } from "@/types/orchestrator";
+import type { ToolPolicy } from "@/types/orchestrator";
 import { ENV_REDACTED } from "@/types/orchestrator";
 import { findEnvSubstitutions } from "./envSubstitution";
 
@@ -53,10 +53,6 @@ const AGENT_TEMPLATE_KEYS = new Set([
 	"model",
 	"env",
 	"auto_clear_threshold",
-	"network_policy",
-	"docker_image",
-	"extra_mounts",
-	"resource_limits",
 	"additional_dirs",
 	"rooms",
 ]);
@@ -152,19 +148,6 @@ export function importAgentYaml(
 		);
 	}
 
-	const mounts = Array.isArray(doc.extra_mounts)
-		? (doc.extra_mounts as Array<Record<string, unknown>>).map((m) => ({
-				hostPath: asString(m.host_path),
-				containerPath: asString(m.container_path),
-				readOnly: asBool(m.read_only),
-			}))
-		: [];
-
-	const limits =
-		doc.resource_limits && typeof doc.resource_limits === "object"
-			? (doc.resource_limits as Record<string, unknown>)
-			: {};
-
 	const state: AgentFormState = {
 		...DEFAULT_AGENT_FORM,
 		name: asString(doc.name),
@@ -190,12 +173,6 @@ export function importAgentYaml(
 			? doc.additional_dirs.map(asString)
 			: [],
 		rooms,
-		networkPolicy: (asString(doc.network_policy) || "") as "" | NetworkPolicy,
-		dockerImage: asString(doc.docker_image),
-		extraMounts: mounts,
-		cpuLimit: limits.cpu_limit != null ? asString(limits.cpu_limit) : "",
-		memoryLimitMb:
-			limits.memory_limit_mb != null ? asString(limits.memory_limit_mb) : "",
 	};
 
 	return { state, warnings };
@@ -226,20 +203,6 @@ export function exportAgentYaml(state: AgentFormState): YamlExportResult {
 	}
 
 	const inline = state.systemPromptMode === "inline";
-	const mounts = state.extraMounts
-		.filter((m) => m.hostPath.trim() && m.containerPath.trim())
-		.map((m) => ({
-			host_path: m.hostPath.trim(),
-			container_path: m.containerPath.trim(),
-			...(m.readOnly ? { read_only: true } : {}),
-		}));
-
-	const cpu = Number.parseFloat(state.cpuLimit);
-	const mem = Number.parseInt(state.memoryLimitMb, 10);
-	const limits = {
-		...(Number.isNaN(cpu) ? {} : { cpu_limit: cpu }),
-		...(Number.isNaN(mem) ? {} : { memory_limit_mb: mem }),
-	};
 
 	const threshold = Number.parseInt(state.autoClearThreshold, 10);
 	const dirs = state.additionalDirs.map((d) => d.trim()).filter(Boolean);
@@ -268,12 +231,6 @@ export function exportAgentYaml(state: AgentFormState): YamlExportResult {
 		...(Number.isNaN(threshold) || threshold <= 0
 			? {}
 			: { auto_clear_threshold: threshold }),
-		...(state.networkPolicy ? { network_policy: state.networkPolicy } : {}),
-		...(state.dockerImage.trim()
-			? { docker_image: state.dockerImage.trim() }
-			: {}),
-		...(mounts.length > 0 ? { extra_mounts: mounts } : {}),
-		...(Object.keys(limits).length > 0 ? { resource_limits: limits } : {}),
 		...(dirs.length > 0 ? { additional_dirs: dirs } : {}),
 		...(rooms.length > 0 ? { rooms } : {}),
 	};

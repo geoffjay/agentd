@@ -233,7 +233,7 @@ impl AgentdMcp {
 
     /// Create a new agent.
     #[tool(
-        description = "Create a new agent. Exposes the safe subset of agent configuration: name, working_dir, model, system_prompt, initial prompt, tool policy, and rooms. Env vars and Docker settings are deliberately NOT exposed (secrets must not transit MCP) — use the CLI for those. Returns the new agent ID."
+        description = "Create a new agent. Exposes the safe subset of agent configuration: name, working_dir, model, system_prompt, initial prompt, tool policy, and rooms. Env vars are deliberately NOT exposed (secrets must not transit MCP) — use the CLI for those. Returns the new agent ID."
     )]
     #[allow(clippy::too_many_arguments)]
     async fn create_agent(

@@ -194,13 +194,10 @@ async fn create_agent(storage: &AgentStorage) -> Uuid {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         },
     );
     storage.add(&agent).await.unwrap();

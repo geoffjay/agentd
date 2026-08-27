@@ -7,7 +7,6 @@
 //! | Backend | Description |
 //! |---------|-------------|
 //! | `tmux`  | Detached tmux sessions (default) |
-//! | `docker`| Docker containers |
 //! | `pty`   | In-process PTY sessions — supports interactive attach |
 //!
 //! # Available Commands
@@ -119,7 +118,7 @@ pub enum WrapCommand {
         #[arg(long)]
         layout_json: Option<String>,
 
-        /// Requested backend type (tmux, docker, pty).
+        /// Requested backend type (tmux, pty, subprocess).
         ///
         /// This is forwarded to the service as a hint. The service uses
         /// whatever backend is configured via `AGENTD_BACKEND` at startup;
@@ -532,7 +531,6 @@ mod tests {
     #[test]
     fn backend_type_display() {
         assert_eq!(BackendType::Tmux.to_string(), "tmux");
-        assert_eq!(BackendType::Docker.to_string(), "docker");
         assert_eq!(BackendType::Pty.to_string(), "pty");
     }
 
@@ -541,12 +539,11 @@ mod tests {
         assert!(BackendType::Pty.capabilities().contains(&"terminal".to_string()));
         assert!(BackendType::Pty.capabilities().contains(&"interactive".to_string()));
         assert!(BackendType::Tmux.capabilities().contains(&"attach-tmux".to_string()));
-        assert!(BackendType::Docker.capabilities().contains(&"health-check".to_string()));
     }
 
     #[test]
     fn backend_type_serde_roundtrip() {
-        for bt in [BackendType::Tmux, BackendType::Docker, BackendType::Pty] {
+        for bt in [BackendType::Tmux, BackendType::Pty] {
             let json = serde_json::to_string(&bt).unwrap();
             let decoded: BackendType = serde_json::from_str(&json).unwrap();
             assert_eq!(decoded, bt);

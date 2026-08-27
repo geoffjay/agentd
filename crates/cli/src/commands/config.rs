@@ -218,7 +218,7 @@ port = 17004
 # Environment variable: AGENTD_ORCHESTRATOR_PORT
 port = 17006
 
-# Execution backend: tmux, docker, pty, subprocess
+# Execution backend: tmux, pty, subprocess
 # Environment variable: AGENTD_ORCHESTRATOR_BACKEND
 backend = "tmux"
 
@@ -240,7 +240,7 @@ reconcile_interval_secs = 30
 # Environment variable: AGENTD_WRAP_PORT
 port = 17005
 
-# Execution backend: tmux, docker, pty, subprocess
+# Execution backend: tmux, pty, subprocess
 # Environment variable: AGENTD_WRAP_BACKEND
 backend = "tmux"
 

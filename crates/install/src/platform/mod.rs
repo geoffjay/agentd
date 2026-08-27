@@ -69,6 +69,16 @@ pub const SERVICES: &[ServiceInfo] = &[
     ServiceInfo { name: "ui", binary: "agentd-ui", port: 7009, port_env: "AGENTD_UI_PORT" },
 ];
 
+/// AAP adapter binaries that must ship alongside the services.
+///
+/// These are not port-bound services (so they are absent from [`SERVICES`]),
+/// but the orchestrator spawns them as agent processes and resolves them as a
+/// sibling of its own binary (see `orchestrator::adapter::resolve_adapter_program`).
+/// They must therefore be installed into the same directory as the service
+/// binaries, or every agent restart fails with "Failed to spawn
+/// 'agentd-adapter-<type>'".
+pub const ADAPTER_BINARIES: &[&str] = &["agentd-adapter-claude"];
+
 /// All valid service names.
 pub const SERVICE_NAMES: &[&str] = &[
     "ask",

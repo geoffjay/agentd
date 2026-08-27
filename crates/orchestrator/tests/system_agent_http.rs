@@ -12,7 +12,7 @@
 //! # Design
 //!
 //! HTTP tests drive the full Axum router via `tower::ServiceExt::oneshot` with
-//! no real TCP connection.  A `NullBackend` replaces tmux/Docker so that
+//! no real TCP connection.  A `NullBackend` replaces tmux so that
 //! `AgentManager` can be constructed without external dependencies.
 
 use async_trait::async_trait;
@@ -144,13 +144,10 @@ async fn insert_builtin_agent(storage: &AgentStorage, name: &str) -> Agent {
             model: Some("sonnet".to_string()),
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec!["system".to_string()],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         },
     );
     agent.built_in = true;
@@ -177,13 +174,10 @@ async fn insert_user_agent(storage: &AgentStorage, name: &str) -> Agent {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         },
     );
     storage.add(&agent).await.unwrap();
@@ -621,10 +615,11 @@ async fn test_bootstrap_pty_backend_does_not_restart_loop() {
     );
 }
 
-/// Waking the bootstrapped diagnostician writes its agentd MCP config file
-/// and bakes --mcp-config/--strict-mcp-config into the launch command.
+/// Waking the bootstrapped diagnostician launches the AAP adapter and carries
+/// its agentd MCP servers in the agent config (delivered via the AAP
+/// `initialize` message, not a launch flag or an orchestrator-written file).
 #[tokio::test]
-async fn test_diagnostician_wake_writes_mcp_config() {
+async fn test_diagnostician_wake_launches_adapter_with_mcp_config() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
     let mcp_dir = temp_dir.path().join("mcp");
@@ -649,21 +644,26 @@ async fn test_diagnostician_wake_writes_mcp_config() {
         .into_iter()
         .find(|a| a.name == DIAGNOSTICIAN_AGENT_NAME)
         .unwrap();
-    assert!(!mcp_dir.join(format!("{}.json", dormant.id)).exists(), "dormant: no file yet");
 
     let woken = manager.ensure_builtin_running(&dormant.id).await.unwrap();
     assert_eq!(woken.status, orchestrator::types::AgentStatus::Running);
 
+    // AAP path: the launch command invokes the adapter, not claude with
+    // --mcp-config. The orchestrator writes no per-agent MCP file.
     let launch = woken.launch_command.expect("launch command recorded");
-    assert!(launch.contains("--mcp-config"), "launch: {launch}");
-    assert!(launch.contains("--strict-mcp-config"), "launch: {launch}");
-
-    let config_path = mcp_dir.join(format!("{}.json", dormant.id));
-    let written: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
+    assert!(launch.contains("agentd-adapter-claude"), "launch: {launch}");
+    assert!(!launch.contains("--mcp-config"), "launch: {launch}");
     assert!(
-        written["mcpServers"]["agentd"]["command"].as_str().is_some_and(|c| !c.is_empty()),
-        "agentd MCP server configured: {written}"
+        !mcp_dir.join(format!("{}.json", dormant.id)).exists(),
+        "orchestrator writes no MCP file"
+    );
+
+    // The agentd MCP servers are configured and will be delivered via the AAP
+    // initialize message.
+    let servers = woken.config.mcp_servers.expect("diagnostician has MCP servers");
+    assert!(
+        servers.get("agentd").is_some_and(|s| !s.command.is_empty()),
+        "agentd MCP server configured: {servers:?}"
     );
 }
 

@@ -28,10 +28,6 @@ propertyOrder:
   - additional_dirs
   - rooms
   - mcp_servers
-  - network_policy
-  - docker_image
-  - extra_mounts
-  - resource_limits
 
 properties:
 
@@ -150,34 +146,6 @@ properties:
     type: integer
     minimum: 1
 
-  network_policy:
-    description: |
-      Network policy for Docker-backed agents. Controls whether the
-      container has internet access, is fully isolated, or shares the
-      host network. Ignored for tmux backends.
-    $ref: "definitions.yml#/definitions/network_policy"
-
-  docker_image:
-    description: |
-      Custom Docker image override for this agent. When set, the Docker
-      backend uses this image instead of its default. Ignored for tmux
-      backends.
-    type: string
-
-  extra_mounts:
-    description: |
-      Additional volume mounts for Docker-backed agents. Appended to
-      the default /workspace bind mount. Ignored for tmux backends.
-    type: array
-    items:
-      $ref: "definitions.yml#/definitions/volume_mount"
-
-  resource_limits:
-    description: |
-      Resource limits (CPU, memory) for Docker-backed agents. Overrides
-      the backend's default limits. Ignored for tmux backends.
-    $ref: "definitions.yml#/definitions/resource_limits"
-
   additional_dirs:
     description: |
       Additional directories the agent has access to. Maps to Claude
@@ -290,18 +258,4 @@ examples:
           - "Bash(git-spice branch submit *)"
           - "Bash(git-spice repo sync*)"
           - "Bash(gh pr create *)"
-  -
-    - "Docker-backed agent with resource limits"
-    - |
-      name: sandbox-worker
-      model: claude-sonnet-4-6
-      network_policy: isolated
-      docker_image: "ghcr.io/myorg/agent-sandbox:latest"
-      resource_limits:
-        cpu_limit: 2.0
-        memory_limit_mb: 4096
-      extra_mounts:
-        - host_path: /data/shared
-          container_path: /mnt/shared
-          read_only: true
 ...

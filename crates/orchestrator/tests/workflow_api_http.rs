@@ -9,7 +9,7 @@
 //! This avoids real TCP and is faster than spawning a server.
 //!
 //! A `NullBackend` implements `ExecutionBackend` with no-op responses so that
-//! `AgentManager` can be constructed without a real tmux/Docker environment.
+//! `AgentManager` can be constructed without a real tmux environment.
 
 use async_trait::async_trait;
 use axum::{

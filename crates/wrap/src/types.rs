@@ -17,8 +17,6 @@ pub enum BackendType {
     /// tmux-based sessions (default)
     #[default]
     Tmux,
-    /// Docker container sessions
-    Docker,
     /// In-process PTY sessions
     Pty,
     /// Direct subprocess (no shell, no terminal)
@@ -29,7 +27,6 @@ impl fmt::Display for BackendType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BackendType::Tmux => write!(f, "tmux"),
-            BackendType::Docker => write!(f, "docker"),
             BackendType::Pty => write!(f, "pty"),
             BackendType::Subprocess => write!(f, "subprocess"),
         }
@@ -42,7 +39,6 @@ impl BackendType {
     /// Returns [`BackendType::Tmux`] if the variable is unset or unrecognised.
     pub fn from_env() -> Self {
         match std::env::var("AGENTD_BACKEND").as_deref() {
-            Ok("docker") => BackendType::Docker,
             Ok("pty") => BackendType::Pty,
             Ok("subprocess") => BackendType::Subprocess,
             _ => BackendType::Tmux,
@@ -64,11 +60,10 @@ impl BackendType {
     pub fn from_env_strict() -> anyhow::Result<Self> {
         match std::env::var("AGENTD_BACKEND").as_deref() {
             Ok("tmux") | Err(_) => Ok(BackendType::Tmux),
-            Ok("docker") => Ok(BackendType::Docker),
             Ok("pty") => Ok(BackendType::Pty),
             Ok("subprocess") => Ok(BackendType::Subprocess),
             Ok(other) => anyhow::bail!(
-                "Unknown AGENTD_BACKEND value '{}'. Valid options: tmux, docker, pty, subprocess",
+                "Unknown AGENTD_BACKEND value '{}'. Valid options: tmux, pty, subprocess",
                 other
             ),
         }
@@ -78,7 +73,6 @@ impl BackendType {
     pub fn capabilities(&self) -> Vec<String> {
         match self {
             BackendType::Tmux => vec!["attach-tmux".to_string()],
-            BackendType::Docker => vec!["health-check".to_string(), "logs".to_string()],
             BackendType::Pty => vec!["terminal".to_string(), "interactive".to_string()],
             BackendType::Subprocess => vec!["sdk".to_string()],
         }
@@ -374,15 +368,6 @@ mod tests {
     }
 
     #[test]
-    fn from_env_strict_docker() {
-        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        std::env::set_var("AGENTD_BACKEND", "docker");
-        let bt = BackendType::from_env_strict().unwrap();
-        assert_eq!(bt, BackendType::Docker);
-        std::env::remove_var("AGENTD_BACKEND");
-    }
-
-    #[test]
     fn from_env_strict_pty() {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("AGENTD_BACKEND", "pty");
@@ -425,10 +410,5 @@ mod tests {
         let caps = BackendType::Pty.capabilities();
         assert!(caps.contains(&"terminal".to_string()));
         assert!(caps.contains(&"interactive".to_string()));
-    }
-
-    #[test]
-    fn docker_has_health_check_capability() {
-        assert!(BackendType::Docker.capabilities().contains(&"health-check".to_string()));
     }
 }

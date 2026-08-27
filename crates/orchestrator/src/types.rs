@@ -3,35 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-/// A volume mount specification for Docker-backed agents.
-///
-/// Maps a host directory into the container at a specified path,
-/// optionally as read-only. These are ignored for tmux backends.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct VolumeMount {
-    /// Path on the host machine.
-    pub host_path: String,
-    /// Mount point inside the container.
-    pub container_path: String,
-    /// If true, mount as read-only. Defaults to `false`.
-    #[serde(default)]
-    pub read_only: bool,
-}
-
-/// Resource limits for Docker-backed agent containers.
-///
-/// These are translated to Docker's `NanoCpus` and `Memory` host-config
-/// fields. Ignored for tmux backends.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ResourceLimits {
-    /// Number of CPUs (e.g., `2.0` means two full cores).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cpu_limit: Option<f64>,
-    /// Memory cap in megabytes (e.g., `2048` for 2 GiB).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_limit_mb: Option<u64>,
-}
-
 /// Status of an agent managed by the orchestrator.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -452,31 +423,6 @@ pub struct AgentConfig {
     /// input-token count for the current session exceeds this threshold.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_clear_threshold: Option<u64>,
-    /// Network policy for Docker-backed agents.
-    ///
-    /// Controls whether the container has internet access, is fully
-    /// isolated, or shares the host network. Ignored for tmux backends.
-    /// Defaults to `Internet` (bridge network with outbound access).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub network_policy: Option<wrap::docker::NetworkPolicy>,
-    /// Custom Docker image override for this agent.
-    ///
-    /// When set, the Docker backend uses this image instead of its default.
-    /// Ignored for tmux backends.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub docker_image: Option<String>,
-    /// Additional volume mounts for Docker-backed agents.
-    ///
-    /// These are appended to the default `/workspace` bind mount.
-    /// Ignored for tmux backends.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extra_mounts: Option<Vec<VolumeMount>>,
-    /// Resource limits (CPU, memory) for Docker-backed agents.
-    ///
-    /// Overrides the backend's default limits when set. Ignored for
-    /// tmux backends.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_limits: Option<ResourceLimits>,
     /// Additional directories the agent has access to.
     /// Maps to Claude Code's `--add-dir` flag.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -492,6 +438,16 @@ pub struct AgentConfig {
     /// these servers and nothing inherited from user-level configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
+    /// The kind of agent to run, resolved to an AAP adapter command at launch
+    /// (e.g. `"claude"` → `agentd-adapter-claude`). agentd speaks the
+    /// vendor-neutral agentd Agent Protocol to every adapter; this selects
+    /// which adapter fronts the agent. Defaults to `"claude"`.
+    #[serde(default = "default_agent_type")]
+    pub agent_type: String,
+}
+
+fn default_agent_type() -> String {
+    "claude".to_string()
 }
 
 /// One stdio MCP server entry, mirroring Claude Code's `mcpServers` format.
@@ -586,14 +542,13 @@ pub struct Agent {
     pub config: AgentConfig,
     /// Backend-agnostic session identifier.
     ///
-    /// For tmux backends this is the tmux session name; for Docker backends
-    /// it would be the container ID.
+    /// For tmux backends this is the tmux session name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
     /// Which execution backend owns this agent's session.
     ///
-    /// Values: `"tmux"`, `"docker"`. Defaults to `"tmux"` for backward
-    /// compatibility.
+    /// Values: `"tmux"`, `"pty"`, `"subprocess"`. Defaults to `"tmux"` for
+    /// backward compatibility.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backend_type: Option<String>,
     /// Optional project this agent belongs to.
@@ -691,18 +646,6 @@ pub struct CreateAgentRequest {
     /// input-token count for the current session exceeds this threshold.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_clear_threshold: Option<u64>,
-    /// Network policy for Docker-backed agents.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub network_policy: Option<wrap::docker::NetworkPolicy>,
-    /// Custom Docker image override for this agent.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub docker_image: Option<String>,
-    /// Additional volume mounts for Docker-backed agents.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extra_mounts: Option<Vec<VolumeMount>>,
-    /// Resource limits (CPU, memory) for Docker-backed agents.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_limits: Option<ResourceLimits>,
     /// Additional directories the agent has access to.
     /// Maps to Claude Code's `--add-dir` flag.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -714,6 +657,10 @@ pub struct CreateAgentRequest {
     /// [`AgentConfig::mcp_servers`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_servers: Option<HashMap<String, McpServerConfig>>,
+    /// The kind of agent to run (see [`AgentConfig::agent_type`]). Defaults to
+    /// `"claude"`.
+    #[serde(default = "default_agent_type")]
+    pub agent_type: String,
 }
 
 /// Response body for agent endpoints.
@@ -835,6 +782,10 @@ pub struct UpdateAgentRequest {
     pub append_system_prompt: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Change the agent kind (adapter). Launch-affecting; requires a restart
+    /// to take effect. Empty string is ignored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_policy: Option<ToolPolicy>,
     /// Full replacement of the env map when present. Entries whose value is
@@ -1298,13 +1249,10 @@ mod tests {
             model: Some("opus".to_string()),
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"model\":\"opus\""));
@@ -1329,13 +1277,10 @@ mod tests {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("model"));
@@ -1358,13 +1303,10 @@ mod tests {
             model: Some("sonnet".to_string()),
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("\"model\":\"sonnet\""));
@@ -1393,13 +1335,10 @@ mod tests {
             model: None,
             env: env.clone(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1426,13 +1365,10 @@ mod tests {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -1471,13 +1407,10 @@ mod tests {
             model: None,
             env: env.clone(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -1507,13 +1440,10 @@ mod tests {
             model: None,
             env,
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);
@@ -1566,133 +1496,6 @@ mod tests {
         );
     }
 
-    // -- Docker config types --
-
-    #[test]
-    fn test_volume_mount_serialization() {
-        let mount = VolumeMount {
-            host_path: "/data/models".to_string(),
-            container_path: "/models".to_string(),
-            read_only: true,
-        };
-        let json = serde_json::to_string(&mount).unwrap();
-        assert!(json.contains("\"read_only\":true"));
-
-        let deserialized: VolumeMount = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, mount);
-    }
-
-    #[test]
-    fn test_volume_mount_read_only_defaults_false() {
-        let json = r#"{"host_path":"/data","container_path":"/mnt"}"#;
-        let mount: VolumeMount = serde_json::from_str(json).unwrap();
-        assert!(!mount.read_only);
-    }
-
-    #[test]
-    fn test_resource_limits_serialization() {
-        let limits = ResourceLimits { cpu_limit: Some(2.0), memory_limit_mb: Some(4096) };
-        let json = serde_json::to_string(&limits).unwrap();
-        assert!(json.contains("\"cpu_limit\":2.0"));
-        assert!(json.contains("\"memory_limit_mb\":4096"));
-
-        let deserialized: ResourceLimits = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, limits);
-    }
-
-    #[test]
-    fn test_resource_limits_partial() {
-        let limits = ResourceLimits { cpu_limit: Some(1.5), memory_limit_mb: None };
-        let json = serde_json::to_string(&limits).unwrap();
-        assert!(json.contains("\"cpu_limit\":1.5"));
-        assert!(!json.contains("memory_limit_mb"));
-
-        let deserialized: ResourceLimits = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, limits);
-    }
-
-    #[test]
-    fn test_agent_config_docker_fields_omitted_when_none() {
-        let config = AgentConfig {
-            working_dir: "/tmp".to_string(),
-            user: None,
-            shell: "zsh".to_string(),
-            interactive: false,
-            prompt: None,
-            worktree: false,
-            system_prompt: None,
-            system_prompt_file: None,
-            append_system_prompt: false,
-            tool_policy: ToolPolicy::default(),
-            model: None,
-            env: HashMap::new(),
-            auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
-            additional_dirs: vec![],
-            rooms: vec![],
-            mcp_servers: None,
-        };
-        let json = serde_json::to_string(&config).unwrap();
-        assert!(!json.contains("docker_image"));
-        assert!(!json.contains("extra_mounts"));
-        assert!(!json.contains("resource_limits"));
-    }
-
-    #[test]
-    fn test_agent_config_with_docker_fields() {
-        let config = AgentConfig {
-            working_dir: "/tmp".to_string(),
-            user: None,
-            shell: "zsh".to_string(),
-            interactive: false,
-            prompt: None,
-            worktree: false,
-            system_prompt: None,
-            system_prompt_file: None,
-            append_system_prompt: false,
-            tool_policy: ToolPolicy::default(),
-            model: None,
-            env: HashMap::new(),
-            auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: Some("custom-image:v1".to_string()),
-            extra_mounts: Some(vec![VolumeMount {
-                host_path: "/data".to_string(),
-                container_path: "/mnt/data".to_string(),
-                read_only: true,
-            }]),
-            resource_limits: Some(ResourceLimits {
-                cpu_limit: Some(4.0),
-                memory_limit_mb: Some(8192),
-            }),
-            additional_dirs: vec![],
-            rooms: vec![],
-            mcp_servers: None,
-        };
-        let json = serde_json::to_string(&config).unwrap();
-        assert!(json.contains("custom-image:v1"));
-        assert!(json.contains("/data"));
-        assert!(json.contains("8192"));
-
-        let deserialized: AgentConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.docker_image, Some("custom-image:v1".to_string()));
-        assert_eq!(deserialized.extra_mounts.as_ref().unwrap().len(), 1);
-        assert_eq!(deserialized.resource_limits.as_ref().unwrap().cpu_limit, Some(4.0));
-    }
-
-    #[test]
-    fn test_agent_config_backward_compat_missing_docker_fields() {
-        // Old JSON without docker fields should deserialize successfully
-        let json = r#"{"working_dir":"/tmp","shell":"zsh","tool_policy":{"mode":"allow_all"}}"#;
-        let config: AgentConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.docker_image, None);
-        assert_eq!(config.extra_mounts, None);
-        assert_eq!(config.resource_limits, None);
-    }
-
     // -- additional_dirs tests --
 
     #[test]
@@ -1711,13 +1514,10 @@ mod tests {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec!["/opt/configs".to_string(), "/shared/libs".to_string()],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("additional_dirs"));
@@ -1744,13 +1544,10 @@ mod tests {
             model: None,
             env: HashMap::new(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         // Empty vec should be omitted from JSON output
@@ -2105,13 +1902,10 @@ mod tests {
             model: None,
             env: Default::default(),
             auto_clear_threshold: None,
-            network_policy: None,
-            docker_image: None,
-            extra_mounts: None,
-            resource_limits: None,
             additional_dirs: vec![],
             rooms: vec![],
             mcp_servers: None,
+            agent_type: "claude".to_string(),
         };
         let agent = Agent::new("test".to_string(), config);
         let response = AgentResponse::from(agent);

@@ -57,14 +57,6 @@ describe("validateAgentForm", () => {
 		);
 		expect(errors.env).toBeUndefined();
 	});
-
-	it("rejects mounts missing one of the two paths", () => {
-		const errors = validateAgentForm({
-			...validState(),
-			extraMounts: [{ hostPath: "/host", containerPath: "", readOnly: false }],
-		});
-		expect(errors.extraMounts).toBeTruthy();
-	});
 });
 
 describe("agentToCreateRequest", () => {
@@ -75,8 +67,6 @@ describe("agentToCreateRequest", () => {
 		expect(request.model).toBeUndefined();
 		expect(request.env).toBeUndefined();
 		expect(request.rooms).toBeUndefined();
-		expect(request.extra_mounts).toBeUndefined();
-		expect(request.resource_limits).toBeUndefined();
 	});
 
 	it("drops the prompt when interactive", () => {

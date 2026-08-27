@@ -208,8 +208,8 @@ function UnavailableFallback({ onRetry }: { onRetry: () => void }) {
 				<p className="mt-1 text-xs text-th-text-muted">
 					This agent&apos;s backend does not support PTY streaming. Terminal
 					output is only available with a PTY-backed session (e.g. the wrap
-					service in PTY mode). Agents running on tmux or Docker backends use
-					the <strong className="text-th-text-muted">Logs</strong> tab instead.
+					service in PTY mode). Agents running on the tmux backend use the{" "}
+					<strong className="text-th-text-muted">Logs</strong> tab instead.
 				</p>
 			</div>
 			<button

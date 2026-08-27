@@ -36,15 +36,6 @@ env:
   PLAIN: value
 
 auto_clear_threshold: 100000
-network_policy: isolated
-docker_image: custom:latest
-extra_mounts:
-  - host_path: /data
-    container_path: /mnt/data
-    read_only: true
-resource_limits:
-  cpu_limit: 2
-  memory_limit_mb: 4096
 additional_dirs:
   - /shared
 
@@ -71,13 +62,6 @@ describe("importAgentYaml", () => {
 		expect(state.toolPolicy.sandboxBypass).toEqual(["Bash(git-spice *)"]);
 		expect(state.env).toContainEqual({ key: "PLAIN", value: "value" });
 		expect(state.autoClearThreshold).toBe("100000");
-		expect(state.networkPolicy).toBe("isolated");
-		expect(state.dockerImage).toBe("custom:latest");
-		expect(state.extraMounts).toEqual([
-			{ hostPath: "/data", containerPath: "/mnt/data", readOnly: true },
-		]);
-		expect(state.cpuLimit).toBe("2");
-		expect(state.memoryLimitMb).toBe("4096");
 		expect(state.additionalDirs).toEqual(["/shared"]);
 		expect(state.rooms).toEqual(["engineering", "announcements"]);
 		expect(state.systemPrompt).toContain("You are a worker agent.");
@@ -127,7 +111,6 @@ describe("exportAgentYaml", () => {
 		expect(yaml).toContain("working_dir: /work");
 		expect(yaml).toContain("model: opus");
 		expect(yaml).toContain("- engineering");
-		expect(yaml).not.toContain("docker_image");
 		expect(yaml).not.toContain("env:");
 		expect(yaml).not.toContain("prompt:");
 	});

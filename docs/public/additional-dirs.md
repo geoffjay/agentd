@@ -189,18 +189,6 @@ agent apply .agentd/agents/my-agent.yml
 
 ---
 
-## Docker backend behavior
-
-For agents running in Docker containers, each path in `additional_dirs` is automatically bind-mounted into the container at the same absolute path. The mount is read-write, so the agent can read and write to those directories.
-
-```
-Host: /opt/company/configs  →  Container: /opt/company/configs  (bind-mount, rw)
-```
-
-Ensure the paths exist on the **host** before starting the agent; the orchestrator validates their existence at creation and add time.
-
----
-
 ## Security considerations
 
 !!! warning "Agents can read and write"
@@ -208,4 +196,3 @@ Ensure the paths exist on the **host** before starting the agent; the orchestrat
 
 - Validate that paths point to the intended directories - avoid accidentally adding sensitive parent directories (e.g., `/home/user` instead of `/home/user/project`).
 - For agents with broad filesystem access, consider pairing with a restrictive [tool policy](tool-policies.md) that limits which tools the agent can use.
-- In Docker environments the bind-mounts are read-write; there is no current support for read-only additional directories.

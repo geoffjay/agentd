@@ -1,13 +1,14 @@
 # Event-Driven Triggers
 
-Event-driven triggers fire workflows in response to internal orchestrator events rather than on a schedule or by polling an external source. Two event trigger types are available as of Phase 3:
+Event-driven triggers fire workflows in response to internal orchestrator events rather than on a schedule or by polling an external source. Three event trigger types are available:
 
 | Type | When it fires |
 |------|--------------|
 | `agent_lifecycle` | When a specific agent connects, disconnects, or clears its context |
 | `dispatch_result` | When a workflow dispatch completes, enabling workflow chaining |
+| `ask_response` | When a human answers or dismisses an agent's question (the ask service) |
 
-Both types are backed by the internal [Event Bus](#event-bus-architecture) and implemented via `EventStrategy`.
+These types are backed by the internal [Event Bus](#event-bus-architecture) and implemented via `EventStrategy`.
 
 !!! tip "YAML template support"
     `dispatch_result` and `agent_lifecycle` triggers can be configured in `.agentd/` workflow YAML files (see [Pipeline chaining with YAML templates](#pipeline-chaining-with-yaml-templates)) as well as via the REST API.
@@ -249,6 +250,47 @@ Run the next pipeline stage.
 ```
 
 All `dispatch_result` variables are also listed in the [template variable reference](templates.md).
+
+---
+
+## `ask_response` Trigger
+
+The `ask_response` trigger fires when a human **answers or dismisses** a question raised through the [ask service](services/ask.md). It enables human-in-the-loop pipelines: an agent asks a question, and a separate workflow reacts to the response.
+
+!!! note "API-only"
+    `ask_response` is created via the REST API only — it is not available in `.agentd/` YAML templates or through the CLI.
+
+### Configuration format
+
+```json
+{
+  "type": "ask_response",
+  "agent_id": "dietician",
+  "category": "health",
+  "response_pattern": ".*"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes | Must be `"ask_response"` |
+| `agent_id` | string | No | Only react to questions asked by this agent |
+| `category` | string | No | Only react to questions in this category |
+| `response_pattern` | string | No | Regex matched against the answer text |
+
+All three filters are optional; omit them to react to every answered or dismissed question. When multiple filters are set, all must match.
+
+### Template variables
+
+| Variable | Description |
+|----------|-------------|
+| `{{question_id}}` | UUID of the answered question |
+| `{{agent_id}}` | Which agent asked the question |
+| `{{category}}` | Question category |
+| `{{question}}` | The question text |
+| `{{answer}}` | The human's answer (empty string if dismissed) |
+| `{{event_type}}` | `question_answered` or `question_dismissed` |
+| `{{workflow_id}}` | Originating workflow, if the question came from one |
 
 ---
 

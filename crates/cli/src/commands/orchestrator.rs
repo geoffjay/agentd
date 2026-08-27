@@ -225,45 +225,6 @@ pub enum OrchestratorCommand {
         #[arg(long)]
         auto_clear_threshold: Option<u64>,
 
-        /// Network policy for Docker-backed agents (internet, isolated, host_network).
-        ///
-        /// Controls container networking:
-        ///   internet     — bridge network with outbound access (default)
-        ///   isolated     — bridge network with DNS disabled (no outbound name resolution)
-        ///   host_network — host network mode (Linux only)
-        ///
-        /// Ignored for tmux-backed agents.
-        #[arg(long)]
-        network_policy: Option<String>,
-
-        /// Custom Docker image for the agent container.
-        ///
-        /// Overrides the default image set by AGENTD_DOCKER_IMAGE.
-        /// Ignored for tmux-backed agents.
-        #[arg(long)]
-        docker_image: Option<String>,
-
-        /// CPU limit for the Docker container (e.g., 2.0 means two full cores).
-        ///
-        /// Ignored for tmux-backed agents.
-        #[arg(long)]
-        cpu_limit: Option<f64>,
-
-        /// Memory limit in megabytes for the Docker container (e.g., 2048 for 2 GiB).
-        ///
-        /// Ignored for tmux-backed agents.
-        #[arg(long)]
-        memory_limit: Option<u64>,
-
-        /// Additional volume mount for the Docker container (host:container[:ro]).
-        ///
-        /// Can be specified multiple times for multiple mounts.
-        /// Format: /host/path:/container/path or /host/path:/container/path:ro
-        ///
-        /// Ignored for tmux-backed agents.
-        #[arg(long = "mount", value_name = "HOST:CONTAINER[:ro]")]
-        mounts: Vec<String>,
-
         /// Additional directories the agent can access via Claude Code's --add-dir flag.
         ///
         /// Can be specified multiple times for multiple directories.
@@ -308,46 +269,6 @@ pub enum OrchestratorCommand {
         /// Agent name (resolves to first matching running agent)
         #[arg(long, conflicts_with = "id")]
         name: Option<String>,
-    },
-
-    /// View logs from a Docker-backed agent's container.
-    ///
-    /// Fetches stdout/stderr from the agent's Docker container.
-    /// Only works for agents running on the Docker backend.
-    ///
-    /// # Examples
-    ///
-    /// View logs by agent ID:
-    ///
-    ///   agent orchestrator logs 550e8400-e29b-41d4-a716-446655440000
-    ///
-    /// View logs by agent name:
-    ///
-    ///   agent orchestrator logs --name my-agent
-    ///
-    /// Follow logs (tail -f style):
-    ///
-    ///   agent orchestrator logs --name my-agent --follow
-    ///
-    /// Show last 50 lines:
-    ///
-    ///   agent orchestrator logs --name my-agent --tail 50
-    Logs {
-        /// Agent ID (UUID)
-        #[arg(conflicts_with = "name")]
-        id: Option<String>,
-
-        /// Agent name (resolves to first matching agent)
-        #[arg(long, conflicts_with = "id")]
-        name: Option<String>,
-
-        /// Follow log output (stream new lines)
-        #[arg(long, short = 'f')]
-        follow: bool,
-
-        /// Number of lines to show from the end of the logs
-        #[arg(long, default_value = "100")]
-        tail: String,
     },
 
     /// Send a message/prompt to a running agent.
@@ -920,11 +841,6 @@ impl OrchestratorCommand {
                 mcp_config,
                 env_vars,
                 auto_clear_threshold,
-                network_policy,
-                docker_image,
-                cpu_limit,
-                memory_limit,
-                mounts,
                 add_dirs,
             } => {
                 create_agent(
@@ -945,11 +861,6 @@ impl OrchestratorCommand {
                     mcp_config.as_deref(),
                     env_vars,
                     *auto_clear_threshold,
-                    network_policy.as_deref(),
-                    docker_image.as_deref(),
-                    *cpu_limit,
-                    *memory_limit,
-                    mounts,
                     add_dirs,
                     json,
                 )
@@ -959,9 +870,6 @@ impl OrchestratorCommand {
             OrchestratorCommand::DeleteAgent { id } => delete_agent(client, id, json).await,
             OrchestratorCommand::Attach { id, name } => {
                 attach_agent(client, id.as_deref(), name.as_deref()).await
-            }
-            OrchestratorCommand::Logs { id, name, follow, tail } => {
-                agent_logs(client, id.as_deref(), name.as_deref(), *follow, tail).await
             }
             OrchestratorCommand::SendMessage { id, message, msg_stdin } => {
                 send_message_cmd(client, id, message.as_deref(), *msg_stdin, json).await
@@ -1156,46 +1064,6 @@ fn parse_env_vars(raw: &[String]) -> Result<std::collections::HashMap<String, St
     Ok(map)
 }
 
-/// Parse `--mount` flag values into [`VolumeMount`] structs.
-///
-/// Expected format: `host_path:container_path` or `host_path:container_path:ro`
-fn parse_mount_flags(raw: &[String]) -> Result<Vec<orchestrator::types::VolumeMount>> {
-    let mut mounts = Vec::new();
-    for entry in raw {
-        let parts: Vec<&str> = entry.splitn(3, ':').collect();
-        match parts.len() {
-            2 => {
-                mounts.push(orchestrator::types::VolumeMount {
-                    host_path: parts[0].to_string(),
-                    container_path: parts[1].to_string(),
-                    read_only: false,
-                });
-            }
-            3 => {
-                let read_only = match parts[2] {
-                    "ro" => true,
-                    "rw" => false,
-                    other => bail!(
-                        "Invalid mount mode '{}' in '{}'. Expected 'ro' or 'rw'.",
-                        other,
-                        entry
-                    ),
-                };
-                mounts.push(orchestrator::types::VolumeMount {
-                    host_path: parts[0].to_string(),
-                    container_path: parts[1].to_string(),
-                    read_only,
-                });
-            }
-            _ => bail!(
-                "Invalid --mount value '{}': expected format host:container or host:container:ro",
-                entry
-            ),
-        }
-    }
-    Ok(mounts)
-}
-
 /// Parse a `--mcp-config` value: a path to a JSON file or inline JSON.
 ///
 /// Accepts either a bare server map (`{"agentd": {...}}`) or a full
@@ -1243,11 +1111,6 @@ async fn create_agent(
     mcp_config: Option<&str>,
     env_vars: &[String],
     auto_clear_threshold: Option<u64>,
-    network_policy: Option<&str>,
-    docker_image: Option<&str>,
-    cpu_limit: Option<f64>,
-    memory_limit: Option<u64>,
-    mounts: &[String],
     add_dirs: &[String],
     json: bool,
 ) -> Result<()> {
@@ -1271,22 +1134,6 @@ async fn create_agent(
     // Entries missing '=' produce a clear error.
     let env = parse_env_vars(env_vars)?;
 
-    // Parse network policy string into the enum.
-    let parsed_network_policy =
-        network_policy.map(|s| s.parse::<wrap::docker::NetworkPolicy>()).transpose().context(
-            "Invalid --network-policy value. Valid options: internet, isolated, host_network",
-        )?;
-
-    // Parse --mount flags into VolumeMount structs.
-    let extra_mounts = parse_mount_flags(mounts)?;
-
-    // Build resource limits from individual flags.
-    let resource_limits = if cpu_limit.is_some() || memory_limit.is_some() {
-        Some(orchestrator::types::ResourceLimits { cpu_limit, memory_limit_mb: memory_limit })
-    } else {
-        None
-    };
-
     let request = CreateAgentRequest {
         name: name.to_string(),
         working_dir: resolved_working_dir,
@@ -1302,13 +1149,11 @@ async fn create_agent(
         model: model.map(|s| s.to_string()),
         env,
         auto_clear_threshold,
-        network_policy: parsed_network_policy,
-        docker_image: docker_image.map(|s| s.to_string()),
-        extra_mounts: if extra_mounts.is_empty() { None } else { Some(extra_mounts) },
-        resource_limits,
         additional_dirs: add_dirs.to_vec(),
         rooms: vec![],
         mcp_servers,
+        // TODO: expose an explicit `--agent-type` flag on `agent create`.
+        agent_type: "claude".to_string(),
     };
 
     let agent = client.create_agent(&request).await.context("Failed to create agent")?;
@@ -1323,7 +1168,6 @@ async fn create_agent(
 
     // If --attach was requested, connect to the agent session.
     if attach {
-        let is_docker = agent.backend_type.as_deref() == Some("docker");
         let is_pty = agent.backend_type.as_deref() == Some("pty");
 
         if is_pty {
@@ -1335,31 +1179,17 @@ async fn create_agent(
                 .as_deref()
                 .context("Agent response missing 'session_id' field — cannot attach")?;
 
-            if is_docker {
-                println!();
-                println!("{}", format!("Attaching to Docker container: {session}").cyan());
+            // Tmux backend (default)
+            println!();
+            println!("{}", format!("Attaching to tmux session: {session}").cyan());
 
-                let status = std::process::Command::new("docker")
-                    .args(["exec", "-it", session, "bash"])
-                    .status()
-                    .context("Failed to exec docker exec")?;
+            let status = std::process::Command::new("tmux")
+                .args(["attach-session", "-t", session])
+                .status()
+                .context("Failed to exec tmux attach-session")?;
 
-                if !status.success() {
-                    bail!("docker exec exited with status: {status}");
-                }
-            } else {
-                // Tmux backend (default)
-                println!();
-                println!("{}", format!("Attaching to tmux session: {session}").cyan());
-
-                let status = std::process::Command::new("tmux")
-                    .args(["attach-session", "-t", session])
-                    .status()
-                    .context("Failed to exec tmux attach-session")?;
-
-                if !status.success() {
-                    bail!("tmux attach-session exited with status: {status}");
-                }
+            if !status.success() {
+                bail!("tmux attach-session exited with status: {status}");
             }
         }
     }
@@ -1534,49 +1364,7 @@ async fn attach_agent(
         .as_deref()
         .context(format!("Agent '{}' has no session. It may have crashed.", agent.name))?;
 
-    let is_docker = agent.backend_type.as_deref() == Some("docker");
-
-    if is_docker {
-        // Docker backend: exec into the container
-        if std::process::Command::new("docker")
-            .arg("--version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_err()
-        {
-            bail!("docker is required but not found. Install Docker Desktop or Docker Engine.");
-        }
-
-        // Verify the container is running
-        let container_check = std::process::Command::new("docker")
-            .args(["inspect", "--format", "{{.State.Running}}", session])
-            .output();
-
-        match container_check {
-            Ok(output) if String::from_utf8_lossy(&output.stdout).trim() == "true" => {}
-            _ => bail!(
-                "Docker container '{}' is not running. Agent '{}' ({}) may have crashed.",
-                session,
-                agent.name,
-                agent.id
-            ),
-        }
-
-        println!(
-            "{}",
-            format!("Attaching to agent '{}' (container: {})...", agent.name, session).cyan()
-        );
-
-        let exit = std::process::Command::new("docker")
-            .args(["exec", "-it", session, "bash"])
-            .status()
-            .context("Failed to exec docker exec")?;
-
-        if !exit.success() {
-            bail!("docker exec exited with status: {}", exit);
-        }
-    } else if agent.backend_type.as_deref() == Some("pty") {
+    if agent.backend_type.as_deref() == Some("pty") {
         // PTY backend: connect to orchestrator WebSocket terminal relay.
         //
         // The orchestrator exposes a WebSocket endpoint at /terminal/{agent_id}
@@ -1750,71 +1538,6 @@ async fn attach_pty_agent(client: &OrchestratorClient, agent: &AgentResponse) ->
     eprintln!("\r\nDetached from '{}'.", agent.name);
 
     result
-}
-
-// -- Logs --
-
-async fn agent_logs(
-    client: &OrchestratorClient,
-    id: Option<&str>,
-    name: Option<&str>,
-    follow: bool,
-    tail: &str,
-) -> Result<()> {
-    let agent = match (id, name) {
-        (Some(agent_id), _) => {
-            let uuid = parse_uuid(agent_id)?;
-            client.get_agent(&uuid).await.context(
-                "Agent not found. Use 'agent orchestrator list-agents' to see available agents.",
-            )?
-        }
-        (_, Some(agent_name)) => {
-            let resolved = resolve_agent_id(client, None, Some(agent_name)).await?;
-            client.get_agent(&resolved).await.context("Failed to get agent")?
-        }
-        (None, None) => bail!("Either an agent ID or --name must be provided."),
-    };
-
-    let is_docker = agent.backend_type.as_deref() == Some("docker");
-    if !is_docker {
-        bail!(
-            "Agent '{}' uses the {} backend. The 'logs' command is only available for Docker-backed agents.",
-            agent.name,
-            agent.backend_type.as_deref().unwrap_or("tmux")
-        );
-    }
-
-    let container = agent
-        .session_id
-        .as_deref()
-        .context(format!("Agent '{}' has no container ID. It may have crashed.", agent.name))?;
-
-    if std::process::Command::new("docker")
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_err()
-    {
-        bail!("docker is required but not found. Install Docker Desktop or Docker Engine.");
-    }
-
-    let mut args = vec!["logs", "--tail", tail];
-    if follow {
-        args.push("-f");
-    }
-    args.push(container);
-
-    let status = std::process::Command::new("docker")
-        .args(&args)
-        .status()
-        .context("Failed to exec docker logs")?;
-
-    if !status.success() {
-        bail!("docker logs exited with status: {}", status);
-    }
-
-    Ok(())
 }
 
 // -- Send message --
@@ -2892,11 +2615,7 @@ fn display_agent(agent: &AgentResponse) {
     };
     println!("{}: {}", "Status".bold(), colored_status);
     if let Some(ref backend) = agent.backend_type {
-        let backend_display = match backend.as_str() {
-            "docker" => backend.cyan(),
-            _ => backend.normal(),
-        };
-        println!("{}: {}", "Backend".bold(), backend_display);
+        println!("{}: {}", "Backend".bold(), backend.normal());
     }
     if let Some(session) = &agent.session_id {
         println!("{}: {}", "Session".bold(), session);
@@ -2918,30 +2637,6 @@ fn display_agent(agent: &AgentResponse) {
         ToolPolicy::RequireApproval { .. } => "require_approval".bright_yellow().to_string(),
     };
     println!("{}: {}", "Tool Policy".bold(), policy_display);
-
-    // Docker-specific details
-    if agent.backend_type.as_deref() == Some("docker") {
-        if let Some(ref image) = agent.config.docker_image {
-            println!("{}: {}", "Docker Image".bold(), image.cyan());
-        }
-        if let Some(ref limits) = agent.config.resource_limits {
-            if let Some(cpu) = limits.cpu_limit {
-                println!("{}: {}", "CPU Limit".bold(), cpu);
-            }
-            if let Some(mem) = limits.memory_limit_mb {
-                println!("{}: {} MB", "Memory Limit".bold(), mem);
-            }
-        }
-        if let Some(ref mounts) = agent.config.extra_mounts {
-            for mount in mounts {
-                let ro = if mount.read_only { ":ro" } else { "" };
-                println!("{}: {}:{}{}", "Mount".bold(), mount.host_path, mount.container_path, ro);
-            }
-        }
-        if let Some(ref policy) = agent.config.network_policy {
-            println!("{}: {}", "Network Policy".bold(), policy);
-        }
-    }
 
     // Additional dirs (always shown)
     let dirs_display = if agent.config.additional_dirs.is_empty() {
@@ -3168,13 +2863,10 @@ mod tests {
                 model: None,
                 env: Default::default(),
                 auto_clear_threshold: None,
-                network_policy: None,
-                docker_image: None,
-                extra_mounts: None,
-                resource_limits: None,
                 additional_dirs: vec![],
                 rooms: vec![],
                 mcp_servers: None,
+                agent_type: "claude".to_string(),
             },
             session_id: Some("agentd-orch-abc123".to_string()),
             backend_type: Some("tmux".to_string()),
@@ -3941,114 +3633,6 @@ mod tests {
         ]);
 
         assert!(result.is_err(), "ID and --name should conflict");
-    }
-
-    #[test]
-    fn test_parse_mount_flags_basic() {
-        let mounts = vec!["/host/path:/container/path".to_string()];
-        let result = parse_mount_flags(&mounts).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].host_path, "/host/path");
-        assert_eq!(result[0].container_path, "/container/path");
-        assert!(!result[0].read_only);
-    }
-
-    #[test]
-    fn test_parse_mount_flags_read_only() {
-        let mounts = vec!["/host:/container:ro".to_string()];
-        let result = parse_mount_flags(&mounts).unwrap();
-        assert_eq!(result.len(), 1);
-        assert!(result[0].read_only);
-    }
-
-    #[test]
-    fn test_parse_mount_flags_read_write() {
-        let mounts = vec!["/host:/container:rw".to_string()];
-        let result = parse_mount_flags(&mounts).unwrap();
-        assert_eq!(result.len(), 1);
-        assert!(!result[0].read_only);
-    }
-
-    #[test]
-    fn test_parse_mount_flags_invalid_mode() {
-        let mounts = vec!["/host:/container:xyz".to_string()];
-        let result = parse_mount_flags(&mounts);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid mount mode"));
-    }
-
-    #[test]
-    fn test_parse_mount_flags_invalid_format() {
-        let mounts = vec!["no-colon".to_string()];
-        let result = parse_mount_flags(&mounts);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid --mount value"));
-    }
-
-    #[test]
-    fn test_parse_mount_flags_multiple() {
-        let mounts = vec!["/a:/b".to_string(), "/c:/d:ro".to_string(), "/e:/f:rw".to_string()];
-        let result = parse_mount_flags(&mounts).unwrap();
-        assert_eq!(result.len(), 3);
-        assert!(!result[0].read_only);
-        assert!(result[1].read_only);
-        assert!(!result[2].read_only);
-    }
-
-    #[test]
-    fn test_parse_mount_flags_empty() {
-        let mounts: Vec<String> = vec![];
-        let result = parse_mount_flags(&mounts).unwrap();
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_display_agent_with_docker_backend() {
-        use chrono::Utc;
-        let agent = AgentResponse {
-            id: Uuid::new_v4(),
-            name: "docker-agent".to_string(),
-            status: AgentStatus::Running,
-            activity: Default::default(),
-            config: AgentConfig {
-                working_dir: "/workspace".to_string(),
-                user: None,
-                shell: "bash".to_string(),
-                interactive: false,
-                prompt: None,
-                worktree: false,
-                system_prompt: None,
-                system_prompt_file: None,
-                append_system_prompt: false,
-                tool_policy: Default::default(),
-                model: Some("opus".to_string()),
-                env: Default::default(),
-                auto_clear_threshold: None,
-                network_policy: Some(wrap::docker::NetworkPolicy::Internet),
-                docker_image: Some("custom:latest".to_string()),
-                extra_mounts: Some(vec![orchestrator::types::VolumeMount {
-                    host_path: "/host".to_string(),
-                    container_path: "/container".to_string(),
-                    read_only: true,
-                }]),
-                resource_limits: Some(orchestrator::types::ResourceLimits {
-                    cpu_limit: Some(2.0),
-                    memory_limit_mb: Some(4096),
-                }),
-                additional_dirs: vec![],
-                rooms: vec![],
-                mcp_servers: None,
-            },
-            session_id: Some("abc123container".to_string()),
-            backend_type: Some("docker".to_string()),
-            launch_command: None,
-            pid: None,
-            built_in: false,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        // Should not panic and should display Docker-specific details
-        display_agent(&agent);
     }
 
     #[test]

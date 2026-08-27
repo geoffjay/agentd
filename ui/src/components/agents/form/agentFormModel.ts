@@ -15,22 +15,13 @@ import {
 import type {
 	Agent,
 	CreateAgentRequest,
-	NetworkPolicy,
-	ResourceLimits,
 	UpdateAgentRequest,
-	VolumeMount,
 } from "@/types/orchestrator";
 import { ENV_REDACTED } from "@/types/orchestrator";
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-
-export interface MountRow {
-	hostPath: string;
-	containerPath: string;
-	readOnly: boolean;
-}
 
 export interface AgentFormState {
 	name: string;
@@ -52,12 +43,6 @@ export interface AgentFormState {
 	autoClearThreshold: string;
 	additionalDirs: string[];
 	rooms: string[];
-	// Docker / backend-specific
-	networkPolicy: "" | NetworkPolicy;
-	dockerImage: string;
-	extraMounts: MountRow[];
-	cpuLimit: string;
-	memoryLimitMb: string;
 }
 
 export interface AgentFormErrors {
@@ -65,7 +50,6 @@ export interface AgentFormErrors {
 	workingDir?: string;
 	autoClearThreshold?: string;
 	env?: string;
-	extraMounts?: string;
 	general?: string;
 }
 
@@ -87,11 +71,6 @@ export const DEFAULT_AGENT_FORM: AgentFormState = {
 	autoClearThreshold: "",
 	additionalDirs: [],
 	rooms: [],
-	networkPolicy: "",
-	dockerImage: "",
-	extraMounts: [],
-	cpuLimit: "",
-	memoryLimitMb: "",
 };
 
 // ---------------------------------------------------------------------------
@@ -124,21 +103,6 @@ export function agentFormFromAgent(agent: Agent): AgentFormState {
 				: "",
 		additionalDirs: config.additional_dirs ?? [],
 		rooms: config.rooms ?? [],
-		networkPolicy: config.network_policy ?? "",
-		dockerImage: config.docker_image ?? "",
-		extraMounts: (config.extra_mounts ?? []).map((m) => ({
-			hostPath: m.host_path,
-			containerPath: m.container_path,
-			readOnly: m.read_only ?? false,
-		})),
-		cpuLimit:
-			config.resource_limits?.cpu_limit != null
-				? String(config.resource_limits.cpu_limit)
-				: "",
-		memoryLimitMb:
-			config.resource_limits?.memory_limit_mb != null
-				? String(config.resource_limits.memory_limit_mb)
-				: "",
 	};
 }
 
@@ -148,26 +112,6 @@ function envRecord(state: AgentFormState): Record<string, string> | undefined {
 		if (row.key.trim()) env[row.key.trim()] = row.value;
 	}
 	return Object.keys(env).length > 0 ? env : undefined;
-}
-
-function mounts(state: AgentFormState): VolumeMount[] | undefined {
-	const rows = state.extraMounts
-		.filter((m) => m.hostPath.trim() && m.containerPath.trim())
-		.map((m) => ({
-			host_path: m.hostPath.trim(),
-			container_path: m.containerPath.trim(),
-			read_only: m.readOnly,
-		}));
-	return rows.length > 0 ? rows : undefined;
-}
-
-function resourceLimits(state: AgentFormState): ResourceLimits | undefined {
-	const cpu = Number.parseFloat(state.cpuLimit);
-	const mem = Number.parseInt(state.memoryLimitMb, 10);
-	const limits: ResourceLimits = {};
-	if (!Number.isNaN(cpu)) limits.cpu_limit = cpu;
-	if (!Number.isNaN(mem)) limits.memory_limit_mb = mem;
-	return Object.keys(limits).length > 0 ? limits : undefined;
 }
 
 function parsedThreshold(state: AgentFormState): number | undefined {
@@ -206,10 +150,6 @@ export function agentToCreateRequest(
 		auto_clear_threshold: parsedThreshold(state),
 		additional_dirs: dirs.length > 0 ? dirs : undefined,
 		rooms: rooms.length > 0 ? rooms : undefined,
-		network_policy: state.networkPolicy || undefined,
-		docker_image: state.dockerImage.trim() || undefined,
-		extra_mounts: mounts(state),
-		resource_limits: resourceLimits(state),
 	};
 }
 
@@ -282,14 +222,6 @@ export function validateAgentForm(
 		if (hasSentinel)
 			errors.env = `"${ENV_REDACTED}" is the redaction placeholder and cannot be used as a value.`;
 	}
-
-	const partialMount = state.extraMounts.some(
-		(m) =>
-			(m.hostPath.trim() === "") !== (m.containerPath.trim() === "") &&
-			(m.hostPath.trim() || m.containerPath.trim()),
-	);
-	if (partialMount)
-		errors.extraMounts = "Each mount needs both a host and a container path.";
 
 	return errors;
 }
