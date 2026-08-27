@@ -2,8 +2,8 @@
 <!-- agentd orchestrator - nemo application -->
 <nemo>
   <variable name="app_title" type="string" default="agentd" />
-  <variable name="api_base" type="string" default="http://127.0.0.1:17006" />
-  <variable name="ws_base" type="string" default="ws://127.0.0.1:17006" />
+  <variable name="api_base" type="string" default="http://127.0.0.1:7006" />
+  <variable name="ws_base" type="string" default="ws://127.0.0.1:7006" />
   <variable name="poll_interval" type="int" default="5" />
 
   <app title="${var.app_title}">
