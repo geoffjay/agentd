@@ -1,8 +1,8 @@
 //! MCP server implementation for agentd.
 //!
-//! `AgentdMcp` is the central server struct. It implements `ServerHandler`
-//! via rmcp's `#[tool(tool_box)]` macro, which wires the tool routing into
-//! the MCP `tools/list` and `tools/call` handlers.
+//! `AgentdMcp` is the central server struct. Its tools are declared in the
+//! `#[tool_router]` impl block; `#[tool_handler]` on the `ServerHandler` impl
+//! wires them into the MCP `tools/list` and `tools/call` handlers.
 
 use crate::client::AgentdClient;
 use crate::config::AgentdMcpConfig;
@@ -11,8 +11,9 @@ use crate::tools::{
     metrics, notifications, orchestrator_debug, remediation, workflows,
 };
 use rmcp::{
+    handler::server::wrapper::Parameters,
     model::{ServerCapabilities, ServerInfo},
-    tool, ServerHandler,
+    tool, tool_handler, tool_router, ServerHandler,
 };
 use std::sync::Arc;
 
@@ -25,7 +26,459 @@ pub struct AgentdMcp {
     client: AgentdClient,
 }
 
-#[tool(tool_box)]
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct DiagnoseAgentArgs {
+    /// The agent ID (UUID) to diagnose
+    agent_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct DiagnoseWorkflowArgs {
+    /// The workflow ID (UUID) to diagnose
+    workflow_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct InspectQueueArgs {
+    /// Queue name (e.g. agent-tasks, workflow-dispatch)
+    queue_name: String,
+    /// Number of pending tasks to peek (default: 10, max: 100)
+    peek_limit: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetConversationSummaryArgs {
+    /// The agent ID (UUID)
+    agent_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListProjectsArgs {
+    /// Maximum projects to return (default: 50, max: 200)
+    limit: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetProjectArgs {
+    /// The project ID (UUID)
+    project_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListAgentsArgs {
+    /// Filter by status: pending | running | stopped | failed. Omit for all agents.
+    status: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetAgentArgs {
+    /// The agent ID (UUID) to inspect
+    agent_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetWorkflowArgs {
+    /// The workflow ID (UUID) to inspect
+    workflow_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListDispatchesArgs {
+    /// The workflow ID (UUID) to list dispatches for
+    workflow_id: String,
+    /// Filter by status: pending | dispatched | completed | failed | skipped. Omit for all.
+    status: Option<String>,
+    /// Maximum number of records to return (default: 20, max: 200)
+    limit: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetFailedDispatchesArgs {
+    /// Maximum number of records to return (default: 50, max: 200)
+    limit: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct CreateAgentArgs {
+    /// Unique agent name
+    name: String,
+    /// Absolute working directory for the agent process
+    working_dir: String,
+    /// Model alias or full name (e.g. sonnet, opus, claude-sonnet-4-6). Omit for the default.
+    model: Option<String>,
+    /// System prompt for the agent's Claude session
+    system_prompt: Option<String>,
+    /// If true, the system prompt is appended to Claude's default prompt instead of replacing it
+    append_system_prompt: Option<bool>,
+    /// Initial prompt delivered once the agent connects
+    prompt: Option<String>,
+    /// Tool policy mode: allow_all | deny_all | require_approval | allow_list | deny_list. Omit for allow_all.
+    tool_policy_mode: Option<String>,
+    /// Tool names/patterns for allow_list or deny_list modes
+    tool_policy_tools: Option<Vec<String>>,
+    /// Communicate room names the agent auto-joins on connect
+    rooms: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct CreateWorkflowArgs {
+    /// Workflow name
+    name: String,
+    /// ID (UUID) of the agent that receives dispatched prompts — see list_agents
+    agent_id: String,
+    /// Trigger configuration object with a `type` field (see tool description for examples)
+    trigger_config: serde_json::Value,
+    /// Prompt template dispatched on trigger; {{placeholder}} variables are substituted from the trigger payload
+    prompt_template: String,
+    /// Polling interval in seconds for polling triggers (default: 60)
+    poll_interval_secs: Option<u64>,
+    /// Whether the workflow starts enabled (default: true)
+    enabled: Option<bool>,
+    /// Tool policy mode applied to dispatched runs: allow_all | deny_all | require_approval | allow_list | deny_list
+    tool_policy_mode: Option<String>,
+    /// Tool names/patterns for allow_list or deny_list modes
+    tool_policy_tools: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct UpdateWorkflowArgs {
+    /// The workflow ID (UUID) to update
+    workflow_id: String,
+    /// New workflow name
+    name: Option<String>,
+    /// Reassign to this agent ID (UUID)
+    agent_id: Option<String>,
+    /// Replacement trigger configuration object with a `type` field
+    trigger_config: Option<serde_json::Value>,
+    /// Replacement prompt template
+    prompt_template: Option<String>,
+    /// New polling interval in seconds
+    poll_interval_secs: Option<u64>,
+    /// Enable or disable the workflow
+    enabled: Option<bool>,
+    /// Tool policy mode: allow_all | deny_all | require_approval | allow_list | deny_list
+    tool_policy_mode: Option<String>,
+    /// Tool names/patterns for allow_list or deny_list modes
+    tool_policy_tools: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SetWorkflowEnabledArgs {
+    /// The workflow ID (UUID)
+    workflow_id: String,
+    /// true to enable, false to disable
+    enabled: bool,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct TriggerWorkflowArgs {
+    /// The workflow ID (UUID) to trigger
+    workflow_id: String,
+    /// Task title substituted into {{title}}
+    title: Option<String>,
+    /// Task body substituted into {{body}}
+    body: Option<String>,
+    /// Task URL substituted into {{url}}
+    url: Option<String>,
+    /// Labels substituted into {{labels}}
+    labels: Option<Vec<String>>,
+    /// Additional string key/value metadata for {{metadata.*}} placeholders
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct DeleteWorkflowArgs {
+    /// The workflow ID (UUID) to delete
+    workflow_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListNotificationsArgs {
+    /// Filter by status: pending | viewed | responded | dismissed | expired. Omit for all.
+    status: Option<String>,
+    /// Filter by priority: low | normal | high | urgent. Omit for all.
+    priority: Option<String>,
+    /// Maximum number to return (default: 20, max: 200)
+    limit: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetNotificationArgs {
+    /// The notification ID (UUID)
+    notification_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct CreateNotificationArgs {
+    /// Short title for the notification
+    title: String,
+    /// Detailed message body with diagnostic context
+    message: String,
+    /// Priority level: low | normal | high | urgent (default: normal)
+    priority: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct DismissNotificationArgs {
+    /// The notification ID (UUID) to dismiss
+    notification_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetAgentApprovalsArgs {
+    /// The agent ID (UUID) whose approvals to list
+    agent_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ApproveToolRequestArgs {
+    /// The approval request ID (UUID) to approve
+    approval_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct DenyToolRequestArgs {
+    /// The approval request ID (UUID) to deny
+    approval_id: String,
+    /// Optional reason for denial, sent back to the agent
+    reason: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListRoomsArgs {
+    /// Filter by room type: direct | group | broadcast. Omit for all.
+    room_type: Option<String>,
+    /// Filter by project ID (UUID). Omit for all.
+    project_id: Option<String>,
+    /// Maximum number of rooms to return (default: 50, max: 200)
+    limit: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetRoomArgs {
+    /// The room ID (UUID) to fetch
+    room_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListMessagesArgs {
+    /// The room ID (UUID) whose messages to list
+    room_id: String,
+    /// Maximum number of messages (default: 20, max: 200)
+    limit: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SendRoomMessageArgs {
+    /// The room ID (UUID) to post into
+    room_id: String,
+    /// Sender identifier (agent ID or human username)
+    sender_id: String,
+    /// Display name for the sender
+    sender_name: String,
+    /// Sender kind: agent | human
+    sender_kind: String,
+    /// The message content to send
+    content: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RememberArgs {
+    /// The natural-language content to store (required, non-empty)
+    content: String,
+    /// Identity of the actor storing this memory, e.g. your agent name (required)
+    created_by: String,
+    /// Memory type: information | question | request (default: information)
+    memory_type: Option<String>,
+    /// Free-form tags for later filtering
+    tags: Option<Vec<String>>,
+    /// Visibility: public | private | shared (default: public)
+    visibility: Option<String>,
+    /// Actors allowed to read this memory; required when visibility is `shared`
+    shared_with: Option<Vec<String>>,
+    /// IDs of related memories this one references
+    references: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SearchMemoriesArgs {
+    /// Search query (required, non-empty)
+    query: String,
+    /// Filter results to memories with all of these tags
+    tags: Option<Vec<String>>,
+    /// Filter by memory type: information | question | request
+    memory_type: Option<String>,
+    /// Maximum results (default: 10, max: 100)
+    limit: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ListMemoriesArgs {
+    /// Filter by memory type: information | question | request
+    memory_type: Option<String>,
+    /// Filter by a tag (single tag)
+    tag: Option<String>,
+    /// Filter by creator identifier
+    created_by: Option<String>,
+    /// Filter by visibility: public | private | shared
+    visibility: Option<String>,
+    /// Maximum results (default: 50, max: 200)
+    limit: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetMemoryArgs {
+    /// The memory ID (e.g. mem_1718000000000_a1b2c3d4)
+    memory_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct KnowledgeListDocumentsArgs {
+    /// Project UUID that owns the documents
+    project_id: String,
+    /// Only return documents whose rel_path starts with this prefix, e.g. `docs/`
+    prefix: Option<String>,
+    /// Maximum results (default: 50, max: 500)
+    limit: Option<u32>,
+    /// Pagination offset (default: 0)
+    offset: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct KnowledgeReadDocumentArgs {
+    /// Project UUID that owns the document
+    project_id: String,
+    /// Document UUID to read
+    doc_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct KnowledgeCreateDocumentArgs {
+    /// Project UUID to create the document under
+    project_id: String,
+    /// Relative path ending in `.md`, e.g. `docs/readme.md` (no `..`, no absolute paths)
+    rel_path: String,
+    /// Initial markdown body content
+    content: String,
+    /// Optional title override (defaults to the filename stem)
+    title: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct KnowledgeUpdateDocumentArgs {
+    /// Project UUID that owns the document
+    project_id: String,
+    /// Document UUID to update
+    doc_id: String,
+    /// New markdown body content (replaces the whole body)
+    content: Option<String>,
+    /// New title
+    title: Option<String>,
+    /// Optimistic concurrency token: the RFC3339 updated_at from a prior read
+    expected_updated_at: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct KnowledgeDeleteDocumentArgs {
+    /// Project UUID that owns the document
+    project_id: String,
+    /// Document UUID to delete
+    doc_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct KnowledgeGetTreeArgs {
+    /// Project UUID whose document tree to render
+    project_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RestartAgentArgs {
+    /// The agent ID (UUID) to restart
+    agent_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct SendAgentMessageArgs {
+    /// The agent ID (UUID) to message
+    agent_id: String,
+    /// The message content or prompt to send to the agent
+    message: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct UpdateAgentToolPolicyArgs {
+    /// The agent ID (UUID)
+    agent_id: String,
+    /// Policy mode: allow_all | deny_all | require_approval | allow_list | deny_list
+    mode: String,
+    /// Tool name patterns for allow_list or deny_list modes (e.g. ["Bash", "Write"])
+    tools: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct TerminateAgentArgs {
+    /// The agent ID (UUID) to terminate
+    agent_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct UpdateAgentModelArgs {
+    /// The agent ID (UUID)
+    agent_id: String,
+    /// The new model identifier (e.g. claude-opus-4-5, claude-sonnet-4-5)
+    model: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RetryFailedDispatchesArgs {
+    /// The workflow ID (UUID) to retry dispatches for
+    workflow_id: String,
+    /// Only retry dispatches that failed within this many hours (default: 24)
+    hours: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct CleanupStaleDispatchesArgs {
+    /// Consider dispatches stale after this many hours (default: 2)
+    stale_hours: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct AutoApproveSafeToolsArgs {
+    /// Additional tool names to consider safe beyond the default read-only set (e.g. ["LSP", "TaskOutput"])
+    additional_safe_tools: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ResolveNotificationBacklogArgs {
+    /// Dismiss low-priority notifications older than this many hours (default: 48)
+    hours: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct CheckSingleServiceArgs {
+    /// Service name: orchestrator | communicate | memory | notify | ask | wrap | monitor | hook
+    service: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct GetPrometheusMetricsArgs {
+    /// Service: orchestrator | notify | memory | communicate | monitor | ask | wrap | hook (default: orchestrator)
+    service: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct QueryMetricsArgs {
+    /// Catalog query name; omit to list the catalog
+    name: Option<String>,
+    /// Time window for rate/increase queries, e.g. 15m, 1h, 24h
+    window: Option<String>,
+    /// true for a range query (trend over the last 6h) instead of an instant value
+    range: Option<bool>,
+}
+
+#[tool_router]
 impl AgentdMcp {
     /// Create a new server instance from the given configuration.
     pub fn new(config: AgentdMcpConfig) -> Self {
@@ -41,10 +494,9 @@ impl AgentdMcp {
     )]
     async fn diagnose_agent(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The agent ID (UUID) to diagnose")]
-        agent_id: String,
+        Parameters(diagnose_agent_args): Parameters<DiagnoseAgentArgs>,
     ) -> String {
+        let DiagnoseAgentArgs { agent_id } = diagnose_agent_args;
         diagnostic::run_diagnose_agent(&self.client, &agent_id).await
     }
 
@@ -55,10 +507,9 @@ impl AgentdMcp {
     )]
     async fn diagnose_workflow(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The workflow ID (UUID) to diagnose")]
-        workflow_id: String,
+        Parameters(diagnose_workflow_args): Parameters<DiagnoseWorkflowArgs>,
     ) -> String {
+        let DiagnoseWorkflowArgs { workflow_id } = diagnose_workflow_args;
         diagnostic::run_diagnose_workflow(&self.client, &workflow_id).await
     }
 
@@ -85,13 +536,9 @@ impl AgentdMcp {
     )]
     async fn inspect_queue(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Queue name (e.g. agent-tasks, workflow-dispatch)")]
-        queue_name: String,
-        #[tool(param)]
-        #[schemars(description = "Number of pending tasks to peek (default: 10, max: 100)")]
-        peek_limit: Option<u32>,
+        Parameters(inspect_queue_args): Parameters<InspectQueueArgs>,
     ) -> String {
+        let InspectQueueArgs { queue_name, peek_limit } = inspect_queue_args;
         orchestrator_debug::run_inspect_queue(&self.client, &queue_name, peek_limit).await
     }
 
@@ -101,10 +548,9 @@ impl AgentdMcp {
     )]
     async fn get_conversation_summary(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The agent ID (UUID)")]
-        agent_id: String,
+        Parameters(get_conversation_summary_args): Parameters<GetConversationSummaryArgs>,
     ) -> String {
+        let GetConversationSummaryArgs { agent_id } = get_conversation_summary_args;
         orchestrator_debug::run_get_conversation_summary(&self.client, &agent_id).await
     }
 
@@ -114,10 +560,9 @@ impl AgentdMcp {
     )]
     async fn list_projects(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Maximum projects to return (default: 50, max: 200)")]
-        limit: Option<u32>,
+        Parameters(list_projects_args): Parameters<ListProjectsArgs>,
     ) -> String {
+        let ListProjectsArgs { limit } = list_projects_args;
         orchestrator_debug::run_list_projects(&self.client, limit).await
     }
 
@@ -127,10 +572,9 @@ impl AgentdMcp {
     )]
     async fn get_project(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The project ID (UUID)")]
-        project_id: String,
+        Parameters(get_project_args): Parameters<GetProjectArgs>,
     ) -> String {
+        let GetProjectArgs { project_id } = get_project_args;
         orchestrator_debug::run_get_project(&self.client, &project_id).await
     }
 
@@ -142,12 +586,9 @@ impl AgentdMcp {
     )]
     async fn list_agents(
         &self,
-        #[tool(param)]
-        #[schemars(
-            description = "Filter by status: pending | running | stopped | failed. Omit for all agents."
-        )]
-        status: Option<String>,
+        Parameters(list_agents_args): Parameters<ListAgentsArgs>,
     ) -> String {
+        let ListAgentsArgs { status } = list_agents_args;
         agents::run_list_agents(&self.client, status.as_deref()).await
     }
 
@@ -155,12 +596,8 @@ impl AgentdMcp {
     #[tool(
         description = "Get detailed information about a specific agent including its configuration, tool policy, model, working directory, and environment variable keys (values are redacted)."
     )]
-    async fn get_agent(
-        &self,
-        #[tool(param)]
-        #[schemars(description = "The agent ID (UUID) to inspect")]
-        agent_id: String,
-    ) -> String {
+    async fn get_agent(&self, Parameters(get_agent_args): Parameters<GetAgentArgs>) -> String {
+        let GetAgentArgs { agent_id } = get_agent_args;
         agents::run_get_agent(&self.client, &agent_id).await
     }
 
@@ -188,10 +625,9 @@ impl AgentdMcp {
     )]
     async fn get_workflow(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The workflow ID (UUID) to inspect")]
-        workflow_id: String,
+        Parameters(get_workflow_args): Parameters<GetWorkflowArgs>,
     ) -> String {
+        let GetWorkflowArgs { workflow_id } = get_workflow_args;
         workflows::run_get_workflow(&self.client, &workflow_id).await
     }
 
@@ -201,18 +637,9 @@ impl AgentdMcp {
     )]
     async fn list_dispatches(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The workflow ID (UUID) to list dispatches for")]
-        workflow_id: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Filter by status: pending | dispatched | completed | failed | skipped. Omit for all."
-        )]
-        status: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Maximum number of records to return (default: 20, max: 200)")]
-        limit: Option<u32>,
+        Parameters(list_dispatches_args): Parameters<ListDispatchesArgs>,
     ) -> String {
+        let ListDispatchesArgs { workflow_id, status, limit } = list_dispatches_args;
         workflows::run_list_dispatches(&self.client, &workflow_id, status.as_deref(), limit).await
     }
 
@@ -222,10 +649,9 @@ impl AgentdMcp {
     )]
     async fn get_failed_dispatches(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Maximum number of records to return (default: 50, max: 200)")]
-        limit: Option<u32>,
+        Parameters(get_failed_dispatches_args): Parameters<GetFailedDispatchesArgs>,
     ) -> String {
+        let GetFailedDispatchesArgs { limit } = get_failed_dispatches_args;
         workflows::run_get_failed_dispatches(&self.client, limit).await
     }
 
@@ -235,43 +661,21 @@ impl AgentdMcp {
     #[tool(
         description = "Create a new agent. Exposes the safe subset of agent configuration: name, working_dir, model, system_prompt, initial prompt, tool policy, and rooms. Env vars and Docker settings are deliberately NOT exposed (secrets must not transit MCP) — use the CLI for those. Returns the new agent ID."
     )]
-    #[allow(clippy::too_many_arguments)]
     async fn create_agent(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Unique agent name")]
-        name: String,
-        #[tool(param)]
-        #[schemars(description = "Absolute working directory for the agent process")]
-        working_dir: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Model alias or full name (e.g. sonnet, opus, claude-sonnet-4-6). Omit for the default."
-        )]
-        model: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "System prompt for the agent's Claude session")]
-        system_prompt: Option<String>,
-        #[tool(param)]
-        #[schemars(
-            description = "If true, the system prompt is appended to Claude's default prompt instead of replacing it"
-        )]
-        append_system_prompt: Option<bool>,
-        #[tool(param)]
-        #[schemars(description = "Initial prompt delivered once the agent connects")]
-        prompt: Option<String>,
-        #[tool(param)]
-        #[schemars(
-            description = "Tool policy mode: allow_all | deny_all | require_approval | allow_list | deny_list. Omit for allow_all."
-        )]
-        tool_policy_mode: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Tool names/patterns for allow_list or deny_list modes")]
-        tool_policy_tools: Option<Vec<String>>,
-        #[tool(param)]
-        #[schemars(description = "Communicate room names the agent auto-joins on connect")]
-        rooms: Option<Vec<String>>,
+        Parameters(create_agent_args): Parameters<CreateAgentArgs>,
     ) -> String {
+        let CreateAgentArgs {
+            name,
+            working_dir,
+            model,
+            system_prompt,
+            append_system_prompt,
+            prompt,
+            tool_policy_mode,
+            tool_policy_tools,
+            rooms,
+        } = create_agent_args;
         creation::run_create_agent(
             &self.client,
             &name,
@@ -291,42 +695,20 @@ impl AgentdMcp {
     #[tool(
         description = "Create a new workflow that dispatches prompts to an agent when its trigger fires. trigger_config is a JSON object with a `type` field, e.g. {\"type\":\"cron\",\"expression\":\"0 9 * * MON-FRI\"}, {\"type\":\"manual\"}, or {\"type\":\"agent_idle\",\"idle_seconds\":600}. Valid types: github_issues, github_pull_requests, cron, delay, agent_lifecycle, dispatch_result, webhook, manual, agent_idle, linear_issues, composite, queue, ask_response, gitlab_issues, gitlab_merge_requests. Use get_workflow on an existing workflow to copy a working config. prompt_template supports {{placeholder}} substitution and is validated server-side."
     )]
-    #[allow(clippy::too_many_arguments)]
     async fn create_workflow(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Workflow name")]
-        name: String,
-        #[tool(param)]
-        #[schemars(
-            description = "ID (UUID) of the agent that receives dispatched prompts — see list_agents"
-        )]
-        agent_id: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Trigger configuration object with a `type` field (see tool description for examples)"
-        )]
-        trigger_config: serde_json::Value,
-        #[tool(param)]
-        #[schemars(
-            description = "Prompt template dispatched on trigger; {{placeholder}} variables are substituted from the trigger payload"
-        )]
-        prompt_template: String,
-        #[tool(param)]
-        #[schemars(description = "Polling interval in seconds for polling triggers (default: 60)")]
-        poll_interval_secs: Option<u64>,
-        #[tool(param)]
-        #[schemars(description = "Whether the workflow starts enabled (default: true)")]
-        enabled: Option<bool>,
-        #[tool(param)]
-        #[schemars(
-            description = "Tool policy mode applied to dispatched runs: allow_all | deny_all | require_approval | allow_list | deny_list"
-        )]
-        tool_policy_mode: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Tool names/patterns for allow_list or deny_list modes")]
-        tool_policy_tools: Option<Vec<String>>,
+        Parameters(create_workflow_args): Parameters<CreateWorkflowArgs>,
     ) -> String {
+        let CreateWorkflowArgs {
+            name,
+            agent_id,
+            trigger_config,
+            prompt_template,
+            poll_interval_secs,
+            enabled,
+            tool_policy_mode,
+            tool_policy_tools,
+        } = create_workflow_args;
         creation::run_create_workflow(
             &self.client,
             &name,
@@ -345,39 +727,21 @@ impl AgentdMcp {
     #[tool(
         description = "Update an existing workflow. Only the provided fields change (merge semantics): name, agent_id, trigger_config, prompt_template, poll_interval_secs, enabled, tool policy. Use set_workflow_enabled for a plain enable/disable toggle."
     )]
-    #[allow(clippy::too_many_arguments)]
     async fn update_workflow(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The workflow ID (UUID) to update")]
-        workflow_id: String,
-        #[tool(param)]
-        #[schemars(description = "New workflow name")]
-        name: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Reassign to this agent ID (UUID)")]
-        agent_id: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Replacement trigger configuration object with a `type` field")]
-        trigger_config: Option<serde_json::Value>,
-        #[tool(param)]
-        #[schemars(description = "Replacement prompt template")]
-        prompt_template: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "New polling interval in seconds")]
-        poll_interval_secs: Option<u64>,
-        #[tool(param)]
-        #[schemars(description = "Enable or disable the workflow")]
-        enabled: Option<bool>,
-        #[tool(param)]
-        #[schemars(
-            description = "Tool policy mode: allow_all | deny_all | require_approval | allow_list | deny_list"
-        )]
-        tool_policy_mode: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Tool names/patterns for allow_list or deny_list modes")]
-        tool_policy_tools: Option<Vec<String>>,
+        Parameters(update_workflow_args): Parameters<UpdateWorkflowArgs>,
     ) -> String {
+        let UpdateWorkflowArgs {
+            workflow_id,
+            name,
+            agent_id,
+            trigger_config,
+            prompt_template,
+            poll_interval_secs,
+            enabled,
+            tool_policy_mode,
+            tool_policy_tools,
+        } = update_workflow_args;
         creation::run_update_workflow(
             &self.client,
             &workflow_id,
@@ -399,13 +763,9 @@ impl AgentdMcp {
     )]
     async fn set_workflow_enabled(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The workflow ID (UUID)")]
-        workflow_id: String,
-        #[tool(param)]
-        #[schemars(description = "true to enable, false to disable")]
-        enabled: bool,
+        Parameters(set_workflow_enabled_args): Parameters<SetWorkflowEnabledArgs>,
     ) -> String {
+        let SetWorkflowEnabledArgs { workflow_id, enabled } = set_workflow_enabled_args;
         creation::run_set_workflow_enabled(&self.client, &workflow_id, enabled).await
     }
 
@@ -415,27 +775,10 @@ impl AgentdMcp {
     )]
     async fn trigger_workflow(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The workflow ID (UUID) to trigger")]
-        workflow_id: String,
-        #[tool(param)]
-        #[schemars(description = "Task title substituted into {{title}}")]
-        title: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Task body substituted into {{body}}")]
-        body: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Task URL substituted into {{url}}")]
-        url: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Labels substituted into {{labels}}")]
-        labels: Option<Vec<String>>,
-        #[tool(param)]
-        #[schemars(
-            description = "Additional string key/value metadata for {{metadata.*}} placeholders"
-        )]
-        metadata: Option<serde_json::Value>,
+        Parameters(trigger_workflow_args): Parameters<TriggerWorkflowArgs>,
     ) -> String {
+        let TriggerWorkflowArgs { workflow_id, title, body, url, labels, metadata } =
+            trigger_workflow_args;
         creation::run_trigger_workflow(
             &self.client,
             &workflow_id,
@@ -454,10 +797,9 @@ impl AgentdMcp {
     )]
     async fn delete_workflow(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The workflow ID (UUID) to delete")]
-        workflow_id: String,
+        Parameters(delete_workflow_args): Parameters<DeleteWorkflowArgs>,
     ) -> String {
+        let DeleteWorkflowArgs { workflow_id } = delete_workflow_args;
         creation::run_delete_workflow(&self.client, &workflow_id).await
     }
 
@@ -469,20 +811,9 @@ impl AgentdMcp {
     )]
     async fn list_notifications(
         &self,
-        #[tool(param)]
-        #[schemars(
-            description = "Filter by status: pending | viewed | responded | dismissed | expired. Omit for all."
-        )]
-        status: Option<String>,
-        #[tool(param)]
-        #[schemars(
-            description = "Filter by priority: low | normal | high | urgent. Omit for all."
-        )]
-        priority: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Maximum number to return (default: 20, max: 200)")]
-        limit: Option<u32>,
+        Parameters(list_notifications_args): Parameters<ListNotificationsArgs>,
     ) -> String {
+        let ListNotificationsArgs { status, priority, limit } = list_notifications_args;
         notifications::run_list_notifications(
             &self.client,
             status.as_deref(),
@@ -498,10 +829,9 @@ impl AgentdMcp {
     )]
     async fn get_notification(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The notification ID (UUID)")]
-        notification_id: String,
+        Parameters(get_notification_args): Parameters<GetNotificationArgs>,
     ) -> String {
+        let GetNotificationArgs { notification_id } = get_notification_args;
         notifications::run_get_notification(&self.client, &notification_id).await
     }
 
@@ -519,16 +849,9 @@ impl AgentdMcp {
     )]
     async fn create_notification(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Short title for the notification")]
-        title: String,
-        #[tool(param)]
-        #[schemars(description = "Detailed message body with diagnostic context")]
-        message: String,
-        #[tool(param)]
-        #[schemars(description = "Priority level: low | normal | high | urgent (default: normal)")]
-        priority: Option<String>,
+        Parameters(create_notification_args): Parameters<CreateNotificationArgs>,
     ) -> String {
+        let CreateNotificationArgs { title, message, priority } = create_notification_args;
         notifications::run_create_notification(&self.client, &title, &message, priority.as_deref())
             .await
     }
@@ -539,10 +862,9 @@ impl AgentdMcp {
     )]
     async fn dismiss_notification(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The notification ID (UUID) to dismiss")]
-        notification_id: String,
+        Parameters(dismiss_notification_args): Parameters<DismissNotificationArgs>,
     ) -> String {
+        let DismissNotificationArgs { notification_id } = dismiss_notification_args;
         notifications::run_dismiss_notification(&self.client, &notification_id).await
     }
 
@@ -562,10 +884,9 @@ impl AgentdMcp {
     )]
     async fn get_agent_approvals(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The agent ID (UUID) whose approvals to list")]
-        agent_id: String,
+        Parameters(get_agent_approvals_args): Parameters<GetAgentApprovalsArgs>,
     ) -> String {
+        let GetAgentApprovalsArgs { agent_id } = get_agent_approvals_args;
         approvals::run_get_agent_approvals(&self.client, &agent_id).await
     }
 
@@ -575,10 +896,9 @@ impl AgentdMcp {
     )]
     async fn approve_tool_request(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The approval request ID (UUID) to approve")]
-        approval_id: String,
+        Parameters(approve_tool_request_args): Parameters<ApproveToolRequestArgs>,
     ) -> String {
+        let ApproveToolRequestArgs { approval_id } = approve_tool_request_args;
         approvals::run_approve_tool_request(&self.client, &approval_id).await
     }
 
@@ -588,13 +908,9 @@ impl AgentdMcp {
     )]
     async fn deny_tool_request(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The approval request ID (UUID) to deny")]
-        approval_id: String,
-        #[tool(param)]
-        #[schemars(description = "Optional reason for denial, sent back to the agent")]
-        reason: Option<String>,
+        Parameters(deny_tool_request_args): Parameters<DenyToolRequestArgs>,
     ) -> String {
+        let DenyToolRequestArgs { approval_id, reason } = deny_tool_request_args;
         approvals::run_deny_tool_request(&self.client, &approval_id, reason.as_deref()).await
     }
 
@@ -604,18 +920,8 @@ impl AgentdMcp {
     #[tool(
         description = "List rooms in the communicate service. Optionally filter by room_type (direct | group | broadcast) or project_id. Returns a table with type, name, ID, topic, and creation time."
     )]
-    async fn list_rooms(
-        &self,
-        #[tool(param)]
-        #[schemars(description = "Filter by room type: direct | group | broadcast. Omit for all.")]
-        room_type: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Filter by project ID (UUID). Omit for all.")]
-        project_id: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Maximum number of rooms to return (default: 50, max: 200)")]
-        limit: Option<u32>,
-    ) -> String {
+    async fn list_rooms(&self, Parameters(list_rooms_args): Parameters<ListRoomsArgs>) -> String {
+        let ListRoomsArgs { room_type, project_id, limit } = list_rooms_args;
         communicate::run_list_rooms(
             &self.client,
             room_type.as_deref(),
@@ -629,12 +935,8 @@ impl AgentdMcp {
     #[tool(
         description = "Get a room's metadata and full participant list. Useful for understanding who's in a room and what its purpose is."
     )]
-    async fn get_room(
-        &self,
-        #[tool(param)]
-        #[schemars(description = "The room ID (UUID) to fetch")]
-        room_id: String,
-    ) -> String {
+    async fn get_room(&self, Parameters(get_room_args): Parameters<GetRoomArgs>) -> String {
+        let GetRoomArgs { room_id } = get_room_args;
         communicate::run_get_room(&self.client, &room_id).await
     }
 
@@ -644,13 +946,9 @@ impl AgentdMcp {
     )]
     async fn list_messages(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The room ID (UUID) whose messages to list")]
-        room_id: String,
-        #[tool(param)]
-        #[schemars(description = "Maximum number of messages (default: 20, max: 200)")]
-        limit: Option<u32>,
+        Parameters(list_messages_args): Parameters<ListMessagesArgs>,
     ) -> String {
+        let ListMessagesArgs { room_id, limit } = list_messages_args;
         communicate::run_list_messages(&self.client, &room_id, limit).await
     }
 
@@ -660,22 +958,10 @@ impl AgentdMcp {
     )]
     async fn send_room_message(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The room ID (UUID) to post into")]
-        room_id: String,
-        #[tool(param)]
-        #[schemars(description = "Sender identifier (agent ID or human username)")]
-        sender_id: String,
-        #[tool(param)]
-        #[schemars(description = "Display name for the sender")]
-        sender_name: String,
-        #[tool(param)]
-        #[schemars(description = "Sender kind: agent | human")]
-        sender_kind: String,
-        #[tool(param)]
-        #[schemars(description = "The message content to send")]
-        content: String,
+        Parameters(send_room_message_args): Parameters<SendRoomMessageArgs>,
     ) -> String {
+        let SendRoomMessageArgs { room_id, sender_id, sender_name, sender_kind, content } =
+            send_room_message_args;
         communicate::run_send_room_message(
             &self.client,
             &room_id,
@@ -693,37 +979,16 @@ impl AgentdMcp {
     #[tool(
         description = "Store a new memory in the shared agent memory service. The content is embedded for later semantic search. Use this to persist a fact, decision, open question, or request so it survives across sessions and is discoverable by other agents. `created_by` should be your own agent identity. Defaults: type=information, visibility=public."
     )]
-    #[allow(clippy::too_many_arguments)]
-    async fn remember(
-        &self,
-        #[tool(param)]
-        #[schemars(description = "The natural-language content to store (required, non-empty)")]
-        content: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Identity of the actor storing this memory, e.g. your agent name (required)"
-        )]
-        created_by: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Memory type: information | question | request (default: information)"
-        )]
-        memory_type: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Free-form tags for later filtering")]
-        tags: Option<Vec<String>>,
-        #[tool(param)]
-        #[schemars(description = "Visibility: public | private | shared (default: public)")]
-        visibility: Option<String>,
-        #[tool(param)]
-        #[schemars(
-            description = "Actors allowed to read this memory; required when visibility is `shared`"
-        )]
-        shared_with: Option<Vec<String>>,
-        #[tool(param)]
-        #[schemars(description = "IDs of related memories this one references")]
-        references: Option<Vec<String>>,
-    ) -> String {
+    async fn remember(&self, Parameters(remember_args): Parameters<RememberArgs>) -> String {
+        let RememberArgs {
+            content,
+            created_by,
+            memory_type,
+            tags,
+            visibility,
+            shared_with,
+            references,
+        } = remember_args;
         memory::run_create_memory(
             &self.client,
             &content,
@@ -743,19 +1008,9 @@ impl AgentdMcp {
     )]
     async fn search_memories(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Search query (required, non-empty)")]
-        query: String,
-        #[tool(param)]
-        #[schemars(description = "Filter results to memories with all of these tags")]
-        tags: Option<Vec<String>>,
-        #[tool(param)]
-        #[schemars(description = "Filter by memory type: information | question | request")]
-        memory_type: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Maximum results (default: 10, max: 100)")]
-        limit: Option<u32>,
+        Parameters(search_memories_args): Parameters<SearchMemoriesArgs>,
     ) -> String {
+        let SearchMemoriesArgs { query, tags, memory_type, limit } = search_memories_args;
         memory::run_search_memories(&self.client, &query, tags, memory_type.as_deref(), limit).await
     }
 
@@ -765,22 +1020,10 @@ impl AgentdMcp {
     )]
     async fn list_memories(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Filter by memory type: information | question | request")]
-        memory_type: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Filter by a tag (single tag)")]
-        tag: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Filter by creator identifier")]
-        created_by: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Filter by visibility: public | private | shared")]
-        visibility: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Maximum results (default: 50, max: 200)")]
-        limit: Option<u32>,
+        Parameters(list_memories_args): Parameters<ListMemoriesArgs>,
     ) -> String {
+        let ListMemoriesArgs { memory_type, tag, created_by, visibility, limit } =
+            list_memories_args;
         memory::run_list_memories(
             &self.client,
             memory_type.as_deref(),
@@ -796,12 +1039,8 @@ impl AgentdMcp {
     #[tool(
         description = "Fetch a single memory by its ID, including full content, tags, visibility, references, and sharing list."
     )]
-    async fn get_memory(
-        &self,
-        #[tool(param)]
-        #[schemars(description = "The memory ID (e.g. mem_1718000000000_a1b2c3d4)")]
-        memory_id: String,
-    ) -> String {
+    async fn get_memory(&self, Parameters(get_memory_args): Parameters<GetMemoryArgs>) -> String {
+        let GetMemoryArgs { memory_id } = get_memory_args;
         memory::run_get_memory(&self.client, &memory_id).await
     }
 
@@ -813,21 +1052,10 @@ impl AgentdMcp {
     )]
     async fn knowledge_list_documents(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Project UUID that owns the documents")]
-        project_id: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Only return documents whose rel_path starts with this prefix, e.g. `docs/`"
-        )]
-        prefix: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Maximum results (default: 50, max: 500)")]
-        limit: Option<u32>,
-        #[tool(param)]
-        #[schemars(description = "Pagination offset (default: 0)")]
-        offset: Option<u32>,
+        Parameters(knowledge_list_documents_args): Parameters<KnowledgeListDocumentsArgs>,
     ) -> String {
+        let KnowledgeListDocumentsArgs { project_id, prefix, limit, offset } =
+            knowledge_list_documents_args;
         knowledge::run_list_documents(&self.client, &project_id, prefix.as_deref(), limit, offset)
             .await
     }
@@ -838,13 +1066,9 @@ impl AgentdMcp {
     )]
     async fn knowledge_read_document(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Project UUID that owns the document")]
-        project_id: String,
-        #[tool(param)]
-        #[schemars(description = "Document UUID to read")]
-        doc_id: String,
+        Parameters(knowledge_read_document_args): Parameters<KnowledgeReadDocumentArgs>,
     ) -> String {
+        let KnowledgeReadDocumentArgs { project_id, doc_id } = knowledge_read_document_args;
         knowledge::run_read_document(&self.client, &project_id, &doc_id).await
     }
 
@@ -854,21 +1078,10 @@ impl AgentdMcp {
     )]
     async fn knowledge_create_document(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Project UUID to create the document under")]
-        project_id: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Relative path ending in `.md`, e.g. `docs/readme.md` (no `..`, no absolute paths)"
-        )]
-        rel_path: String,
-        #[tool(param)]
-        #[schemars(description = "Initial markdown body content")]
-        content: String,
-        #[tool(param)]
-        #[schemars(description = "Optional title override (defaults to the filename stem)")]
-        title: Option<String>,
+        Parameters(knowledge_create_document_args): Parameters<KnowledgeCreateDocumentArgs>,
     ) -> String {
+        let KnowledgeCreateDocumentArgs { project_id, rel_path, content, title } =
+            knowledge_create_document_args;
         knowledge::run_create_document(
             &self.client,
             &project_id,
@@ -885,24 +1098,10 @@ impl AgentdMcp {
     )]
     async fn knowledge_update_document(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Project UUID that owns the document")]
-        project_id: String,
-        #[tool(param)]
-        #[schemars(description = "Document UUID to update")]
-        doc_id: String,
-        #[tool(param)]
-        #[schemars(description = "New markdown body content (replaces the whole body)")]
-        content: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "New title")]
-        title: Option<String>,
-        #[tool(param)]
-        #[schemars(
-            description = "Optimistic concurrency token: the RFC3339 updated_at from a prior read"
-        )]
-        expected_updated_at: Option<String>,
+        Parameters(knowledge_update_document_args): Parameters<KnowledgeUpdateDocumentArgs>,
     ) -> String {
+        let KnowledgeUpdateDocumentArgs { project_id, doc_id, content, title, expected_updated_at } =
+            knowledge_update_document_args;
         knowledge::run_update_document(
             &self.client,
             &project_id,
@@ -920,13 +1119,9 @@ impl AgentdMcp {
     )]
     async fn knowledge_delete_document(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Project UUID that owns the document")]
-        project_id: String,
-        #[tool(param)]
-        #[schemars(description = "Document UUID to delete")]
-        doc_id: String,
+        Parameters(knowledge_delete_document_args): Parameters<KnowledgeDeleteDocumentArgs>,
     ) -> String {
+        let KnowledgeDeleteDocumentArgs { project_id, doc_id } = knowledge_delete_document_args;
         knowledge::run_delete_document(&self.client, &project_id, &doc_id).await
     }
 
@@ -936,10 +1131,9 @@ impl AgentdMcp {
     )]
     async fn knowledge_get_tree(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Project UUID whose document tree to render")]
-        project_id: String,
+        Parameters(knowledge_get_tree_args): Parameters<KnowledgeGetTreeArgs>,
     ) -> String {
+        let KnowledgeGetTreeArgs { project_id } = knowledge_get_tree_args;
         knowledge::run_get_tree(&self.client, &project_id).await
     }
 
@@ -953,10 +1147,9 @@ impl AgentdMcp {
     )]
     async fn restart_agent(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The agent ID (UUID) to restart")]
-        agent_id: String,
+        Parameters(restart_agent_args): Parameters<RestartAgentArgs>,
     ) -> String {
+        let RestartAgentArgs { agent_id } = restart_agent_args;
         lifecycle::run_restart_agent(&self.client, &agent_id).await
     }
 
@@ -966,13 +1159,9 @@ impl AgentdMcp {
     )]
     async fn send_agent_message(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The agent ID (UUID) to message")]
-        agent_id: String,
-        #[tool(param)]
-        #[schemars(description = "The message content or prompt to send to the agent")]
-        message: String,
+        Parameters(send_agent_message_args): Parameters<SendAgentMessageArgs>,
     ) -> String {
+        let SendAgentMessageArgs { agent_id, message } = send_agent_message_args;
         lifecycle::run_send_agent_message(&self.client, &agent_id, &message).await
     }
 
@@ -982,20 +1171,9 @@ impl AgentdMcp {
     )]
     async fn update_agent_tool_policy(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The agent ID (UUID)")]
-        agent_id: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Policy mode: allow_all | deny_all | require_approval | allow_list | deny_list"
-        )]
-        mode: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Tool name patterns for allow_list or deny_list modes (e.g. [\"Bash\", \"Write\"])"
-        )]
-        tools: Option<Vec<String>>,
+        Parameters(update_agent_tool_policy_args): Parameters<UpdateAgentToolPolicyArgs>,
     ) -> String {
+        let UpdateAgentToolPolicyArgs { agent_id, mode, tools } = update_agent_tool_policy_args;
         lifecycle::run_update_agent_tool_policy(&self.client, &agent_id, &mode, tools).await
     }
 
@@ -1007,10 +1185,9 @@ impl AgentdMcp {
     )]
     async fn terminate_agent(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The agent ID (UUID) to terminate")]
-        agent_id: String,
+        Parameters(terminate_agent_args): Parameters<TerminateAgentArgs>,
     ) -> String {
+        let TerminateAgentArgs { agent_id } = terminate_agent_args;
         lifecycle::run_terminate_agent(&self.client, &agent_id).await
     }
 
@@ -1020,15 +1197,9 @@ impl AgentdMcp {
     )]
     async fn update_agent_model(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The agent ID (UUID)")]
-        agent_id: String,
-        #[tool(param)]
-        #[schemars(
-            description = "The new model identifier (e.g. claude-opus-4-5, claude-sonnet-4-5)"
-        )]
-        model: String,
+        Parameters(update_agent_model_args): Parameters<UpdateAgentModelArgs>,
     ) -> String {
+        let UpdateAgentModelArgs { agent_id, model } = update_agent_model_args;
         lifecycle::run_update_agent_model(&self.client, &agent_id, &model).await
     }
 
@@ -1048,15 +1219,9 @@ impl AgentdMcp {
     )]
     async fn retry_failed_dispatches(
         &self,
-        #[tool(param)]
-        #[schemars(description = "The workflow ID (UUID) to retry dispatches for")]
-        workflow_id: String,
-        #[tool(param)]
-        #[schemars(
-            description = "Only retry dispatches that failed within this many hours (default: 24)"
-        )]
-        hours: Option<u32>,
+        Parameters(retry_failed_dispatches_args): Parameters<RetryFailedDispatchesArgs>,
     ) -> String {
+        let RetryFailedDispatchesArgs { workflow_id, hours } = retry_failed_dispatches_args;
         remediation::run_retry_failed_dispatches(&self.client, &workflow_id, hours).await
     }
 
@@ -1066,10 +1231,9 @@ impl AgentdMcp {
     )]
     async fn cleanup_stale_dispatches(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Consider dispatches stale after this many hours (default: 2)")]
-        stale_hours: Option<u32>,
+        Parameters(cleanup_stale_dispatches_args): Parameters<CleanupStaleDispatchesArgs>,
     ) -> String {
+        let CleanupStaleDispatchesArgs { stale_hours } = cleanup_stale_dispatches_args;
         remediation::run_cleanup_stale_dispatches(&self.client, stale_hours).await
     }
 
@@ -1079,12 +1243,9 @@ impl AgentdMcp {
     )]
     async fn auto_approve_safe_tools(
         &self,
-        #[tool(param)]
-        #[schemars(
-            description = "Additional tool names to consider safe beyond the default read-only set (e.g. [\"LSP\", \"TaskOutput\"])"
-        )]
-        additional_safe_tools: Option<Vec<String>>,
+        Parameters(auto_approve_safe_tools_args): Parameters<AutoApproveSafeToolsArgs>,
     ) -> String {
+        let AutoApproveSafeToolsArgs { additional_safe_tools } = auto_approve_safe_tools_args;
         remediation::run_auto_approve_safe_tools(&self.client, additional_safe_tools).await
     }
 
@@ -1094,12 +1255,9 @@ impl AgentdMcp {
     )]
     async fn resolve_notification_backlog(
         &self,
-        #[tool(param)]
-        #[schemars(
-            description = "Dismiss low-priority notifications older than this many hours (default: 48)"
-        )]
-        hours: Option<u32>,
+        Parameters(resolve_notification_backlog_args): Parameters<ResolveNotificationBacklogArgs>,
     ) -> String {
+        let ResolveNotificationBacklogArgs { hours } = resolve_notification_backlog_args;
         remediation::run_resolve_notification_backlog(&self.client, hours).await
     }
 
@@ -1119,12 +1277,9 @@ impl AgentdMcp {
     )]
     async fn check_single_service(
         &self,
-        #[tool(param)]
-        #[schemars(
-            description = "Service name: orchestrator | communicate | memory | notify | ask | wrap | monitor | hook"
-        )]
-        service: String,
+        Parameters(check_single_service_args): Parameters<CheckSingleServiceArgs>,
     ) -> String {
+        let CheckSingleServiceArgs { service } = check_single_service_args;
         health::run_check_single_service(&self.client, &service).await
     }
 
@@ -1142,12 +1297,9 @@ impl AgentdMcp {
     )]
     async fn get_prometheus_metrics(
         &self,
-        #[tool(param)]
-        #[schemars(
-            description = "Service: orchestrator | notify | memory | communicate | monitor | ask | wrap | hook (default: orchestrator)"
-        )]
-        service: Option<String>,
+        Parameters(get_prometheus_metrics_args): Parameters<GetPrometheusMetricsArgs>,
     ) -> String {
+        let GetPrometheusMetricsArgs { service } = get_prometheus_metrics_args;
         health::run_get_prometheus_metrics(&self.client, service.as_deref()).await
     }
 
@@ -1157,18 +1309,9 @@ impl AgentdMcp {
     )]
     async fn query_metrics(
         &self,
-        #[tool(param)]
-        #[schemars(description = "Catalog query name; omit to list the catalog")]
-        name: Option<String>,
-        #[tool(param)]
-        #[schemars(description = "Time window for rate/increase queries, e.g. 15m, 1h, 24h")]
-        window: Option<String>,
-        #[tool(param)]
-        #[schemars(
-            description = "true for a range query (trend over the last 6h) instead of an instant value"
-        )]
-        range: Option<bool>,
+        Parameters(query_metrics_args): Parameters<QueryMetricsArgs>,
     ) -> String {
+        let QueryMetricsArgs { name, window, range } = query_metrics_args;
         metrics::run_query_metrics(
             &self.client,
             name.as_deref(),
@@ -1179,12 +1322,11 @@ impl AgentdMcp {
     }
 }
 
-#[tool(tool_box)]
+#[tool_handler]
 impl ServerHandler for AgentdMcp {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
-                "agentd MCP server — exposes agentd agent management, \
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "agentd MCP server — exposes agentd agent management, \
                  messaging, memory, knowledge, notification, approval, \
                  workflow, and diagnostic services as MCP tools. \
                  Start with `diagnose_system` or `check_service_health` for a \
@@ -1192,11 +1334,7 @@ impl ServerHandler for AgentdMcp {
                  subtle agent stuckness. Provision resources with \
                  `create_agent` and `create_workflow`; smoke-test new \
                  workflows with `trigger_workflow`. Browse and author \
-                 per-project documents with the `knowledge_*` tools."
-                    .into(),
-            ),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
+                 per-project documents with the `knowledge_*` tools.",
+        )
     }
 }
