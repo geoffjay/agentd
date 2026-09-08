@@ -24,8 +24,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 # MCP server framework
-rmcp = { version = "0.1", features = ["server", "macros", "transport-io"] }
-schemars = "0.8"
+rmcp = { version = "1.4", features = ["server", "macros", "transport-io"] }
+schemars = "1"
 
 # HTTP client for agentd services
 reqwest = { workspace = true, features = ["json"] }
